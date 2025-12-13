@@ -225,7 +225,7 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
        */
       delete: () =>
         withTransaction(doc, () => {
-          if (this === this.doc.root)
+          if (this === (this.doc.root as DocNode))
             throw new Error("Root node cannot be deleted");
           operations.onDeleteRange(this.doc, this, laterSibling);
           this.to(laterSibling).forEach((node) => {
@@ -730,6 +730,7 @@ export class Doc {
     this.root = new DocNode(this, "root", ulid().toLowerCase()) as DocNode<
       typeof RootNode
     >;
+    if (config.namespace) this.root.state.namespace.set(config.namespace);
     this._nodeMap.set(this.root.id, this.root);
     this._nodeIdGenerator = nodeIdFactory(this);
 

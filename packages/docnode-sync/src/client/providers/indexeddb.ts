@@ -57,7 +57,7 @@ export class IndexedDBProvider implements ClientProvider {
     const defaultRoot: ReturnType<DocNode<typeof RootNode>["toJSON"]> = [
       "TODO",
       "root",
-      {},
+      { namespace: '"indexDoc"' },
     ];
     return results?.d ?? defaultRoot;
   }

@@ -1,4 +1,5 @@
 import type { Doc, DocNode } from "./main.js";
+import { string } from "./stateDefinitions.js";
 import type { NodeDefinition, StateRecord } from "./types.js";
 
 export function defineNode<T extends string, S extends StateRecord>(
@@ -9,7 +10,9 @@ export function defineNode<T extends string, S extends StateRecord>(
 
 export const RootNode = defineNode({
   type: "root",
-  state: {},
+  state: {
+    namespace: string(""),
+  },
 });
 
 export function detachRange(startNode: DocNode, endNode: DocNode) {

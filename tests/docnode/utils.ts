@@ -286,8 +286,7 @@ export function checkUndoManager(
   const IS_TEST_NODE = false;
   const jsonDoc = doc.toJSON();
   const nodes = Array.from(doc["_nodeDefs"]).filter(
-    (nodeDef) =>
-      !(nodeDef.type === "root" && Object.keys(nodeDef.state).length === 0),
+    (nodeDef) => !(nodeDef.type === "root" && "namespace" in nodeDef.state),
   ) as unknown as [NodeDefinition, ...NodeDefinition[]];
   // This document will replay all doc operations in a single update
   const doc2 = Doc.fromJSON({ extensions: [{ nodes }] }, jsonDoc);

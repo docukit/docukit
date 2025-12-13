@@ -2,7 +2,7 @@
 
 import { DocNodeClientProvider } from "@docnode/sync-react";
 import { type ReactNode } from "react";
-import { defineNode, type Doc, string } from "docnode";
+import { defineNode, type Doc, type DocConfig, string } from "docnode";
 
 export const IndexNode = defineNode({
   type: "editor-index",
@@ -14,6 +14,11 @@ export const IndexNode = defineNode({
     // }
   },
 });
+
+const IndexDocConfig: DocConfig = {
+  namespace: "indexDoc",
+  extensions: [{ nodes: [IndexNode] }],
+};
 
 export function createIndexNode(doc: Doc, { value }: { value: string }) {
   const node = doc.createNode(IndexNode);
@@ -28,9 +33,7 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
         url: "ws://localhost:8081",
         userId: "user1",
         // undoManagerSize: 50, // by default is 0
-        indexDoc: {
-          extensions: [{ nodes: [IndexNode] }],
-        },
+        docConfigs: [IndexDocConfig],
       }}
     >
       {children}

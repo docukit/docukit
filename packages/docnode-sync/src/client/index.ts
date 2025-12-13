@@ -30,7 +30,7 @@ export type MessageFromWorker =
     };
 
 export type ClientConfig = WorkerConfig & {
-  indexDoc: DocConfig;
+  docConfigs: DocConfig[];
 };
 
 export type ClientProvider = {
@@ -50,7 +50,7 @@ type DocsCacheEntry = {
 export class DocNodeClient {
   private _docsCache = new Map<string, DocsCacheEntry>();
   private _provider: ClientProvider = new IndexedDBProvider();
-  private _indexDocConfig: DocConfig;
+  private _docConfigs = new Map<string, DocConfig>();
   private _sharedWorker: SharedWorker;
   private _shouldBroadcast = true;
 
@@ -60,8 +60,14 @@ export class DocNodeClient {
     this._sharedWorker = new SharedWorker("docnode-worker.js", {
       name: "DocNode Shared Worker",
     });
-    const { indexDoc, ...workerConfig } = config;
-    this._indexDocConfig = indexDoc;
+    const { docConfigs, ...workerConfig } = config;
+    docConfigs.forEach((docConfig) => {
+      const namespace = docConfig.namespace ?? "";
+      if (this._docConfigs.has(namespace)) {
+        throw new Error(`Duplicate namespace: ${namespace}`);
+      }
+      this._docConfigs.set(namespace, docConfig);
+    });
     const port = this._sharedWorker.port;
     port.start();
     port.onmessage = async (ev: MessageEvent<MessageFromWorker>) => {
@@ -96,7 +102,12 @@ export class DocNodeClient {
 
   private async _loadDoc(docId: string): Promise<Doc> {
     const jsonNodes = await this._provider.getJsonDoc(docId);
-    const doc = Doc.fromJSON(this._indexDocConfig, jsonNodes);
+    const namespace = JSON.parse(jsonNodes[2].namespace ?? "") as string;
+    const docConfig = this._docConfigs.get(namespace);
+    if (!docConfig) {
+      throw new Error(`Unknown namespace: ${namespace}`);
+    }
+    const doc = Doc.fromJSON(docConfig, jsonNodes);
     // @ts-expect-error - read-only property
     doc.id = docId;
 

@@ -188,6 +188,11 @@ export type DocConfig = {
    * If true, the document will throw an error if the normalize callback mutates the document on the second pass.
    */
   strictMode?: boolean;
+  /**
+   * The namespace of the document, used to identify a document with its config.
+   * Used for deserialization.
+   */
+  namespace?: string;
 };
 
 // https://github.com/microsoft/TypeScript/issues/13923#issuecomment-2191862501
