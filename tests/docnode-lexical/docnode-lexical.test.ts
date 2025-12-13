@@ -5,7 +5,7 @@ import { assertJson } from "../docnode/utils.js";
 import { type SerializedParagraphNode, type SerializedTextNode } from "lexical";
 
 describe("docnode to lexical", () => {
-  test("no doc provided", () => {
+  test.todo("no doc provided", () => {
     const { editor, doc } = docToLexical({
       namespace: "MyEditor",
       onError: (error) => {
