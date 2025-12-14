@@ -424,7 +424,7 @@ describe("change", () => {
     doc.root.append(...text(doc, "1", "2", "3", "4"));
 
     await expect(errorP).rejects.toThrowError(
-      "You can't register a change event listener inside a transaction or another change event",
+      "You can't register a change event listener during the change stage",
     );
   });
 

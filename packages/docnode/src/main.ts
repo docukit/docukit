@@ -726,10 +726,9 @@ export class Doc {
       };
     });
 
+    const id = config.id ?? ulid().toLowerCase();
     // @ts-expect-error - private constructor
-    this.root = new DocNode(this, "root", ulid().toLowerCase()) as DocNode<
-      typeof RootNode
-    >;
+    this.root = new DocNode(this, "root", id) as DocNode<typeof RootNode>;
     if (config.namespace) this.root.state.namespace.set(config.namespace);
     this._nodeMap.set(this.root.id, this.root);
     this._nodeIdGenerator = nodeIdFactory(this);
@@ -874,7 +873,7 @@ export class Doc {
   onChange(callback: (ev: ChangeEvent) => void) {
     if (this._lifeCycleStage !== "idle" && this._lifeCycleStage !== "init")
       throw new Error(
-        "You can't register a change event listener inside a transaction or another change event",
+        `You can't register a change event listener during the ${this._lifeCycleStage} stage`,
       );
     this._changeListeners.add(callback);
     return () => {
@@ -1013,6 +1012,10 @@ export class Doc {
   // What should happen to the listeners in this case? Should be configurable?
   /**
    * Creates a new doc from the given JSON.
+   *
+   * In the process, it dispatches an initial transaction,
+   * so if you want to register listeners events immediately
+   * afterward, you must first call doc.forceCommit().
    */
   static fromJSON(config: DocConfig, jsonDoc: JsonDoc): Doc {
     const doc = new Doc(config);

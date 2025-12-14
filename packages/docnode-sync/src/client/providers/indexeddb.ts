@@ -46,7 +46,7 @@ export class IndexedDBProvider implements ClientProvider {
     const result = await store.get(docId);
     await tx.done;
     const defaultRoot: ReturnType<DocNode<typeof RootNode>["toJSON"]> = [
-      "TODO",
+      docId,
       "root",
       { namespace: '"indexDoc"' },
     ];

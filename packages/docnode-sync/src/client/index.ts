@@ -29,7 +29,7 @@ export type ClientProvider = {
 };
 
 type DocsCacheEntry = {
-  promisedDoc: Promise<Doc>;
+  promisedDoc: Promise<Doc | undefined>;
   refCount: number;
 };
 
@@ -87,23 +87,42 @@ export class DocNodeClient {
     const docFromCache = this._docsCache.get(docId);
     if (!docFromCache) return;
     const doc = await docFromCache.promisedDoc;
+    if (!doc) return;
     this._shouldBroadcast = false;
     doc.applyOperations(operations);
   }
 
   /**
+   * Create a new document with the provided id, or a new ulid if no id is provided.
+   */
+  async createDoc(namespace: string, docId?: string): Promise<Doc> {
+    const docConfig = this._docConfigs.get(namespace);
+    if (!docConfig) {
+      throw new Error(`Unknown namespace: ${namespace}`);
+    }
+    const doc = new Doc({ ...docConfig, id: docId });
+    await this._provider.saveJsonDoc(doc.toJSON(), doc.root.id);
+    this._broadcastOperationsOnChange(doc);
+    this._docsCache.set(doc.root.id, {
+      promisedDoc: Promise.resolve(doc),
+      refCount: 1,
+    });
+    return doc;
+  }
+
+  /**
    * Load a document from the cache or from the provider (E.g. IndexedDB).
    */
-  async getDoc(docId: string): Promise<Doc> {
+  async getDoc(docId: string): Promise<Doc | undefined> {
     const cacheEntry = this._docsCache.get(docId);
     if (cacheEntry) {
       cacheEntry.refCount += 1;
       return cacheEntry.promisedDoc;
     }
 
-    const docPromise = this._loadDoc(docId);
-    this._docsCache.set(docId, { promisedDoc: docPromise, refCount: 1 });
-    return docPromise;
+    const promisedDoc = this._loadDoc(docId);
+    this._docsCache.set(docId, { promisedDoc, refCount: 1 });
+    return promisedDoc;
   }
 
   /**
@@ -112,7 +131,7 @@ export class DocNodeClient {
    * - save the operations to the provider (E.g. IndexedDB).
    * - send the operations to the broadcast channel for tab-synchronization.
    */
-  private async _loadDoc(docId: string): Promise<Doc> {
+  private async _loadDoc(docId: string): Promise<Doc | undefined> {
     const jsonNodes = await this._provider.getJsonDoc(docId);
     const namespace = JSON.parse(jsonNodes[2].namespace ?? "") as string;
     const docConfig = this._docConfigs.get(namespace);
@@ -120,15 +139,20 @@ export class DocNodeClient {
       throw new Error(`Unknown namespace: ${namespace}`);
     }
     const doc = Doc.fromJSON(docConfig, jsonNodes);
+    doc.forceCommit();
+    this._broadcastOperationsOnChange(doc);
+    return doc;
+  }
 
+  private _broadcastOperationsOnChange(doc: Doc) {
     doc.onChange(({ operations }) => {
       if (this._shouldBroadcast) {
+        const docId = doc.root.id;
         this._sendMessage({ type: "OPERATIONS", operations, docId });
-        void this.onLocalOperations(operations, doc.root.id);
+        void this.onLocalOperations(operations, docId);
       }
       this._shouldBroadcast = true;
     });
-    return doc;
   }
 
   /**
@@ -141,9 +165,12 @@ export class DocNodeClient {
     else {
       this._docsCache.delete(docId);
       const doc = await cacheEntry.promisedDoc;
+      if (!doc) return;
       // TODO: maybe doc should have a destroy method?
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       doc["_changeListeners"].clear();
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      doc["_normalizeListeners"].clear();
     }
   }
 
@@ -172,7 +199,7 @@ export class DocNodeClient {
         // hubo otras operaciones que escribieron en idb?
         // 2 stores? Almacenar el id de la última operación enviada?
         await this._provider.deleteOperations(allOperations.length);
-        const doc = await this.getDoc(docId);
+        const doc = (await this.getDoc(docId)) ?? (await this.createDoc(docId));
         const json = doc.toJSON();
         await this._provider.saveJsonDoc(json, docId);
 

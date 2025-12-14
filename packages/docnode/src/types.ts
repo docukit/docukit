@@ -193,6 +193,11 @@ export type DocConfig = {
    * Used for deserialization.
    */
   namespace?: string;
+  /**
+   * The document id, which is also the root node id.
+   * If not provided, a ulid will be generated (preferred).
+   */
+  id?: string | undefined;
 };
 
 // https://github.com/microsoft/TypeScript/issues/13923#issuecomment-2191862501
