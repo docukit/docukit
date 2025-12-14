@@ -18,6 +18,7 @@ export const IndexNode = defineNode({
 const IndexDocConfig: DocConfig = {
   namespace: "indexDoc",
   extensions: [{ nodes: [IndexNode] }],
+  nodeIdGenerator: "ulid",
 };
 
 export function createIndexNode(doc: Doc, { value }: { value: string }) {

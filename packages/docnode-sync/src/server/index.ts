@@ -70,7 +70,7 @@ export class DocNodeServer {
       console.log("Client connected", auth);
       socket.on("disconnect", reason => console.log(`Client disconnected: ${reason}`));
       socket.on("error", err => console.error("Socket.io error:", err));
-      socket.on("push", async (operations, cb) => {        
+      socket.on("push", async (wrappedOperations, cb) => {        
         // 1. In the same SQL operation, save the operations and 
         // obtain the ones that the client was missing, if any.
         
@@ -78,7 +78,9 @@ export class DocNodeServer {
         // if they are missing only those (or send the entire document otherwise)
 
         // 3. To the client who sent it, we respond with the operations that he was missing, obtained in point 1
-        cb(operations);
+        // TODO: implement actual sync logic
+        const _operations = wrappedOperations.map((w) => w.o);
+        cb([[], {}]); // Empty operations = "you're not missing anything"
       });
     });
   }

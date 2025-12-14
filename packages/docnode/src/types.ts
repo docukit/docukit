@@ -198,6 +198,14 @@ export type DocConfig = {
    * If not provided, a ulid will be generated (preferred).
    */
   id?: string | undefined;
+  /**
+   * It allows all nodes to be generated with a ulid.
+   * If not defined, DocNode will use a Lamport Timestamp consisting of
+   * the time elapsed since the document's creation and a random part, both in base64.
+   * The default id is more compact than a ulid. This option is very rare and is
+   * recommended only under extraordinary circumstances.
+   */
+  nodeIdGenerator?: "ulid";
 };
 
 // https://github.com/microsoft/TypeScript/issues/13923#issuecomment-2191862501

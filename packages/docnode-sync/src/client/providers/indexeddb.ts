@@ -16,7 +16,7 @@ export interface DocNodeDB extends DBSchema {
   operations: {
     key: number;
     value: { i?: string; o: Operations };
-    // I am using this index?
+    // Am I using this index?
     indexes: {
       docId_idx: string;
     };
@@ -39,18 +39,13 @@ export class IndexedDBProvider implements ClientProvider {
     });
   }
 
-  async getJsonDoc(docId: string): Promise<JsonDoc> {
+  async getJsonDoc(docId: string): Promise<JsonDoc | undefined> {
     const db = await this._dbPromise;
     const tx = db.transaction("docs", "readonly");
     const store = tx.objectStore("docs");
     const result = await store.get(docId);
     await tx.done;
-    const defaultRoot: ReturnType<DocNode<typeof RootNode>["toJSON"]> = [
-      docId,
-      "root",
-      { namespace: '"indexDoc"' },
-    ];
-    return result ?? defaultRoot;
+    return result;
   }
 
   async saveJsonDoc(json: JsonDoc) {

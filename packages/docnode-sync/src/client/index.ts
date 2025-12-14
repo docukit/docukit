@@ -7,6 +7,15 @@ import type {
 } from "../server/index.js";
 import { io, type Socket } from "socket.io-client";
 
+/**
+ * Arguments for {@link DocNodeClient.getDoc}.
+ *
+ * - `{ id }` → Try to get an existing doc by ID. Returns `undefined` if not found.
+ * - `{ namespace }` → Create a new doc with auto-generated ID (ulid).
+ * - `{ id, namespace }` → Get existing doc or create it if not found.
+ */
+export type GetDocArgs = { id: string } | { namespace: string; id?: string };
+
 export type BroadcastMessage = {
   type: "OPERATIONS";
   operations: Operations;
@@ -20,7 +29,7 @@ export type ClientConfig = {
 };
 
 export type ClientProvider = {
-  getJsonDoc(docId: string): Promise<JsonDoc>;
+  getJsonDoc(docId: string): Promise<JsonDoc | undefined>;
   saveOnChange(doc: Doc, afterSave: () => void): Promise<void>;
   getOperations(): Promise<DocNodeDB["operations"]["value"][]>;
   deleteOperations(count: number): Promise<void>;
@@ -93,66 +102,99 @@ export class DocNodeClient {
   }
 
   /**
-   * Create a new document with the provided id, or a new ulid if no id is provided.
+   * Get or create a document based on the provided arguments.
+   *
+   * The behavior depends on which fields are provided:
+   * - `{ id }` → Try to get an existing doc. Returns `undefined` if not found.
+   * - `{ namespace }` → Create a new doc with auto-generated ID (ulid).
+   * - `{ id, namespace }` → Get existing doc or create it if not found.
+   *
+   * The returned doc is cached and has listeners for:
+   * - Saving operations to the provider (e.g., IndexedDB).
+   * - Broadcasting operations to other tabs for synchronization.
+   *
+   * @example
+   * ```ts
+   * // Get existing doc (might be undefined)
+   * const doc = await client.getDoc({ id: "abc123" });
+   *
+   * // Create new doc with auto-generated ID
+   * const newDoc = await client.getDoc({ namespace: "notes" });
+   *
+   * // Get or create (guaranteed to return a Doc)
+   * const doc = await client.getDoc({ id: "abc123", namespace: "notes" });
+   * ```
    */
-  async createDoc(namespace: string, docId?: string): Promise<Doc> {
-    const docConfig = this._docConfigs.get(namespace);
-    if (!docConfig) {
-      throw new Error(`Unknown namespace: ${namespace}`);
+  async getDoc(args: { namespace: string; id?: string }): Promise<Doc>;
+  async getDoc(args: { id: string }): Promise<Doc | undefined>;
+  async getDoc(args: GetDocArgs): Promise<Doc | undefined> {
+    const namespace = "namespace" in args ? args.namespace : undefined;
+    const id = args.id;
+
+    let promisedDoc: Promise<Doc | undefined>;
+
+    if (!id && namespace) {
+      // Case: { namespace } only → Create new doc with auto-generated ID (ulid)
+      const docConfig = this._docConfigs.get(namespace);
+      if (!docConfig) throw new Error(`Unknown namespace: ${namespace}`);
+      const doc = new Doc(docConfig);
+      await this._provider.saveJsonDoc(doc.toJSON(), doc.root.id);
+      promisedDoc = Promise.resolve(doc);
+      this._docsCache.set(doc.root.id, { promisedDoc, refCount: 1 });
+    } else if (id) {
+      // Case: { id } or { id, namespace } → Try to get, optionally create
+      const cacheEntry = this._docsCache.get(id);
+      if (cacheEntry) {
+        cacheEntry.refCount += 1;
+        return cacheEntry.promisedDoc;
+      }
+      promisedDoc = this._loadOrCreateDoc(id, namespace);
+      this._docsCache.set(id, { promisedDoc, refCount: 1 });
+    } else {
+      return undefined;
     }
-    const doc = new Doc({ ...docConfig, id: docId });
-    await this._provider.saveJsonDoc(doc.toJSON(), doc.root.id);
-    this._broadcastOperationsOnChange(doc);
-    this._docsCache.set(doc.root.id, {
-      promisedDoc: Promise.resolve(doc),
-      refCount: 1,
-    });
-    return doc;
-  }
 
-  /**
-   * Load a document from the cache or from the provider (E.g. IndexedDB).
-   */
-  async getDoc(docId: string): Promise<Doc | undefined> {
-    const cacheEntry = this._docsCache.get(docId);
-    if (cacheEntry) {
-      cacheEntry.refCount += 1;
-      return cacheEntry.promisedDoc;
-    }
-
-    const promisedDoc = this._loadDoc(docId);
-    this._docsCache.set(docId, { promisedDoc, refCount: 1 });
-    return promisedDoc;
-  }
-
-  /**
-   * Load a document from the provider (E.g. IndexedDB).
-   * Create a listener to:
-   * - save the operations to the provider (E.g. IndexedDB).
-   * - send the operations to the broadcast channel for tab-synchronization.
-   */
-  private async _loadDoc(docId: string): Promise<Doc | undefined> {
-    const jsonNodes = await this._provider.getJsonDoc(docId);
-    const namespace = JSON.parse(jsonNodes[2].namespace ?? "") as string;
-    const docConfig = this._docConfigs.get(namespace);
-    if (!docConfig) {
-      throw new Error(`Unknown namespace: ${namespace}`);
-    }
-    const doc = Doc.fromJSON(docConfig, jsonNodes);
-    doc.forceCommit();
-    this._broadcastOperationsOnChange(doc);
-    return doc;
-  }
-
-  private _broadcastOperationsOnChange(doc: Doc) {
-    doc.onChange(({ operations }) => {
+    // Setup change listener once doc is ready (single place)
+    const doc = await promisedDoc;
+    doc?.onChange(({ operations }) => {
       if (this._shouldBroadcast) {
-        const docId = doc.root.id;
-        this._sendMessage({ type: "OPERATIONS", operations, docId });
-        void this.onLocalOperations(operations, docId);
+        this._sendMessage({
+          type: "OPERATIONS",
+          operations,
+          docId: doc.root.id,
+        });
+        void this.onLocalOperations(operations, doc.root.id);
       }
       this._shouldBroadcast = true;
     });
+    return doc;
+  }
+
+  private async _loadOrCreateDoc(
+    id: string,
+    namespace?: string,
+  ): Promise<Doc | undefined> {
+    // Try to load existing doc
+    const jsonNodes = await this._provider.getJsonDoc(id);
+    if (jsonNodes) {
+      const ns = JSON.parse(jsonNodes[2].namespace ?? "") as string;
+      const docConfig = this._docConfigs.get(ns);
+      if (!docConfig) throw new Error(`Unknown namespace: ${ns}`);
+      const doc = Doc.fromJSON(docConfig, jsonNodes);
+      doc.forceCommit();
+      return doc;
+    }
+
+    // Create new doc if namespace provided
+    if (namespace) {
+      const docConfig = this._docConfigs.get(namespace);
+      if (!docConfig) throw new Error(`Unknown namespace: ${namespace}`);
+      const doc = new Doc({ ...docConfig, id });
+      await this._provider.saveJsonDoc(doc.toJSON(), doc.root.id);
+      return doc;
+    }
+
+    return undefined;
   }
 
   /**
@@ -199,9 +241,11 @@ export class DocNodeClient {
         // hubo otras operaciones que escribieron en idb?
         // 2 stores? Almacenar el id de la última operación enviada?
         await this._provider.deleteOperations(allOperations.length);
-        const doc = (await this.getDoc(docId)) ?? (await this.createDoc(docId));
-        const json = doc.toJSON();
-        await this._provider.saveJsonDoc(json, docId);
+        // TODO: this function could receive the doc directly
+        const doc = await this.getDoc({ id: docId });
+        if (doc) {
+          await this._provider.saveJsonDoc(doc.toJSON(), docId);
+        }
 
         this._pushInProgress = false;
         const shouldPushAgain = this._inLocalWaiting;

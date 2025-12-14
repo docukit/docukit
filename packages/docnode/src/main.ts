@@ -731,7 +731,10 @@ export class Doc {
     this.root = new DocNode(this, "root", id) as DocNode<typeof RootNode>;
     if (config.namespace) this.root.state.namespace.set(config.namespace);
     this._nodeMap.set(this.root.id, this.root);
-    this._nodeIdGenerator = nodeIdFactory(this);
+    this._nodeIdGenerator =
+      config.nodeIdGenerator === "ulid"
+        ? () => ulid().toLowerCase()
+        : nodeIdFactory(this);
 
     this._lifeCycleStage = "init";
     config.extensions.forEach((extension) => {

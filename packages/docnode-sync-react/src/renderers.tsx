@@ -1,4 +1,5 @@
-// this is very opinionated, I'm not sure if I am going to expose this to users
+// TODO: this is very opinionated, I'm not going to publish it in npm
+// copy-paste it in the docs instead.
 
 import type { Doc, DocNode } from "docnode";
 import React, { useEffect, useReducer, type JSX } from "react";

@@ -1,1 +1,5 @@
-export { DocNodeClient, type ClientConfig } from "../client/index.js";
+export {
+  DocNodeClient,
+  type ClientConfig,
+  type GetDocArgs,
+} from "../client/index.js";

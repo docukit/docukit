@@ -1,11 +1,14 @@
 "use client";
-import { useIndexDoc } from "@docnode/sync-react";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { createIndexNode } from "./ClientLayout";
 import { IndexDoc } from "./IndexDoc";
+import { useDoc } from "@docnode/sync-react";
 
 function SubPage() {
-  const indexDoc = useIndexDoc();
+  const indexDoc = useDoc({
+    namespace: "indexDoc",
+    id: "01KCFHZZ66V3393XHGGX6AEB6T",
+  });
   const [activeDoc, setActiveDoc] = useState<string | undefined>();
 
   useLayoutEffect(() => {

@@ -11,7 +11,7 @@ export function IndexDoc({
   selectedDoc?: string;
   setActiveDoc?: (docId: string) => void;
 }) {
-  const doc = useDoc(activeDoc);
+  const doc = useDoc({ id: activeDoc, namespace: "indexDoc" });
   // const { isPending, isError, doc } = useDoc("editor", indexDoc.root.id); // useDoc(getIdFromUrl());
 
   function handleSelect(ev: React.MouseEvent, docId: string) {

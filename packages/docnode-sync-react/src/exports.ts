@@ -1,6 +1,1 @@
-export {
-  useDoc,
-  useIndexDoc,
-  DocNodeClientProvider,
-  DocRenderer,
-} from "./index.js";
+export { useDoc, DocRenderer, DocNodeClientProvider } from "./index.js";
