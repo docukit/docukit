@@ -240,15 +240,17 @@ export const onApplyOperations = (doc: Doc, operations: Operations) => {
         const nodes = operation[1].map((jsonNode) =>
           doc["_createNodeFromJson"]([jsonNode[0], jsonNode[1], {}]),
         );
-        if (operation[3]) {
-          doc["_insertRange"](doc.getNodeById(operation[3])!, "after", nodes);
+        const prev = operation[3] ? doc.getNodeById(operation[3]) : undefined;
+        if (prev) {
+          doc["_insertRange"](prev, "after", nodes);
           break;
         }
-        if (operation[4]) {
-          doc["_insertRange"](doc.getNodeById(operation[4])!, "before", nodes);
+        const next = operation[4] ? doc.getNodeById(operation[4]) : undefined;
+        if (next) {
+          doc["_insertRange"](next, "before", nodes);
           break;
         }
-        const parent = operation[2] ? doc.getNodeById(operation[2])! : doc.root;
+        const parent = operation[2] ? doc.getNodeById(operation[2]) : doc.root;
         if (parent) doc["_insertRange"](parent, "append", nodes);
         break;
       case 1:
