@@ -10,16 +10,16 @@ import type { ClientProvider } from "../index.js";
 
 export interface DocNodeDB extends DBSchema {
   docs: {
-    key: string;
-    value: { i?: string; d: JsonDoc };
-    indexes: {
-      id_idx: string;
-      clock_idx: number;
-    };
+    key: string; // docId
+    value: JsonDoc;
   };
   operations: {
     key: number;
     value: { i?: string; o: Operations };
+    // I am using this index?
+    indexes: {
+      docId_idx: string;
+    };
   };
 }
 
@@ -30,16 +30,11 @@ export class IndexedDBProvider implements ClientProvider {
     this._dbPromise = openDB("docnode", 1, {
       upgrade(db) {
         if (db.objectStoreNames.contains("docs")) return;
-
-        // Docs store
-        const store = db.createObjectStore("docs", {
-          keyPath: "i",
+        db.createObjectStore("docs");
+        const operationsStore = db.createObjectStore("operations", {
+          autoIncrement: true,
         });
-        store.createIndex("id_idx", "i");
-        store.createIndex("clock_idx", "clock");
-
-        // Operations store
-        db.createObjectStore("operations", { autoIncrement: true });
+        operationsStore.createIndex("docId_idx", "i");
       },
     });
   }
@@ -48,15 +43,14 @@ export class IndexedDBProvider implements ClientProvider {
     const db = await this._dbPromise;
     const tx = db.transaction("docs", "readonly");
     const store = tx.objectStore("docs");
-    const index = store.index("id_idx");
-    const results = await index.get(docId);
+    const result = await store.get(docId);
     await tx.done;
     const defaultRoot: ReturnType<DocNode<typeof RootNode>["toJSON"]> = [
       "TODO",
       "root",
       { namespace: '"indexDoc"' },
     ];
-    return results?.d ?? defaultRoot;
+    return result ?? defaultRoot;
   }
 
   async saveJsonDoc(json: JsonDoc) {
@@ -64,8 +58,7 @@ export class IndexedDBProvider implements ClientProvider {
     const db = await this._dbPromise;
     const tx = db.transaction("docs", "readwrite");
     const store = tx.objectStore("docs");
-    const storedDoc = { i: docId, d: json };
-    await store.put(storedDoc);
+    await store.put(json, docId);
     await tx.done;
   }
 
@@ -78,8 +71,7 @@ export class IndexedDBProvider implements ClientProvider {
       const jsonDoc = doc.toJSON();
       const tx1 = db.transaction("docs", "readwrite");
       const docStore = tx1.objectStore("docs");
-      const storedDoc = { i: doc.root.id, d: jsonDoc };
-      await docStore.put(storedDoc);
+      await docStore.put(jsonDoc, doc.root.id);
       tx1.onerror = (event) => {
         console.error("Error saving to IndexedDB", event);
       };
@@ -108,7 +100,6 @@ export class IndexedDBProvider implements ClientProvider {
   }
 
   async saveOperations(operations: Operations, docId: string) {
-    console.log("saveOperations", operations, docId);
     const db = await this._dbPromise;
     const tx = db.transaction("operations", "readwrite");
     const store = tx.objectStore("operations");
