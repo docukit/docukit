@@ -163,7 +163,6 @@ export const rootEslintConfig = tseslint.config(
       "**/.test-results",
       "**/.source",
       "**/next-env.d.ts",
-      "**/worker/**/*.js",
     ],
   },
 );

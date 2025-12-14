@@ -2,36 +2,16 @@ import { IndexedDBProvider } from "./providers/indexeddb.js";
 import { Doc, type Operations } from "docnode";
 import { type DocConfig, type JsonDoc } from "docnode";
 
-export type WorkerConfig = {
-  url: string;
-  userId: string;
+export type BroadcastMessage = {
+  type: "OPERATIONS";
+  operations: Operations;
+  docId: string;
 };
 
-export type MessageToWorker =
-  | {
-      type: "INIT";
-      workerConfig: WorkerConfig;
-    }
-  | {
-      type: "OPERATIONS";
-      operations: Operations;
-      docId: string;
-    };
-
-export type MessageFromWorker =
-  | {
-      type: "ERROR";
-      error: string;
-    }
-  | {
-      type: "OPERATIONS";
-      operations: Operations;
-      docId: string;
-    };
-
-export type ClientConfig = WorkerConfig & {
+export type ClientConfig = {
+  url: string;
+  userId: string;
   docConfigs: DocConfig[];
-  useSharedWorker?: boolean;
 };
 
 export type ClientProvider = {
@@ -53,16 +33,12 @@ export class DocNodeClient {
   private _provider: ClientProvider = new IndexedDBProvider();
   private _docConfigs = new Map<string, DocConfig>();
   private _shouldBroadcast = true;
-  private _pushOperations: (operations: Operations, docId: string) => void;
+  private _broadcastChannel: BroadcastChannel;
 
-  /**
-   * Se conecta a un shared worker, y le envía la configuracion del cliente.
-   * También configura un listener para RECIBIR operaciones del worker.
-   */
   constructor(config: ClientConfig) {
     if (typeof window === "undefined")
       throw new Error("DocNodeClient can only be used in the browser");
-    const { docConfigs, useSharedWorker = false, ...workerConfig } = config;
+    const { docConfigs } = config;
     docConfigs.forEach((docConfig) => {
       const namespace = docConfig.namespace ?? "";
       if (this._docConfigs.has(namespace)) {
@@ -70,74 +46,27 @@ export class DocNodeClient {
       }
       this._docConfigs.set(namespace, docConfig);
     });
-    // Opcion 1: Configura un listener para RECIBIR operacions de BroadcastChannel.
 
-    if (useSharedWorker) {
-      const broadcastChannel = new BroadcastChannel("docnode-sync");
-      broadcastChannel.onmessage = async (
-        ev: MessageEvent<MessageFromWorker>,
-      ) => {
-        if (ev.data.type === "ERROR") {
-          throw new Error("Error in docnode-worker: " + ev.data.error);
-        }
-        if (ev.data.type === "OPERATIONS") {
-          const { operations, docId } = ev.data;
-          const docFromCache = this._docsCache.get(docId);
-          if (!docFromCache) return;
-          const doc = await docFromCache.promisedDoc;
-          this._shouldBroadcast = false;
-          doc.applyOperations(operations);
-          return;
-        }
-        ev.data satisfies never;
-      };
-      this._pushOperations = (operations, docId) => {
-        broadcastChannel.postMessage({
-          type: "OPERATIONS",
-          operations,
-          docId,
-        });
-        // save operations to indexedDB
-      };
-    } else {
-      // Opcion 2: Configura un listener para RECIBIR operaciones del worker.
-      const sharedWorker = new SharedWorker("docnode-worker.js", {
-        name: "DocNode Shared Worker",
-      });
-      const port = sharedWorker.port;
-      port.start();
-      port.onmessage = async (ev: MessageEvent<MessageFromWorker>) => {
-        if (ev.data.type === "ERROR") {
-          throw new Error("Error in docnode-worker: " + ev.data.error);
-        }
-        if (ev.data.type === "OPERATIONS") {
-          console.log("OPERATIONS", ev.data);
-          const { operations, docId } = ev.data;
-          const docFromCache = this._docsCache.get(docId);
-          if (!docFromCache) return;
-          const doc = await docFromCache.promisedDoc;
-          this._shouldBroadcast = false;
-          doc.applyOperations(operations);
-          return;
-        }
-        ev.data satisfies never;
-      };
-      sharedWorker.port.postMessage({
-        type: "INIT",
-        workerConfig,
-      } satisfies MessageToWorker);
-      this._pushOperations = (operations, docId) => {
-        sharedWorker.port.postMessage({
-          type: "OPERATIONS",
-          operations,
-          docId,
-        } satisfies MessageToWorker);
-      };
-    }
+    // Listen for operations from other tabs.
+    this._broadcastChannel = new BroadcastChannel("docnode-sync");
+    this._broadcastChannel.onmessage = async (
+      ev: MessageEvent<BroadcastMessage>,
+    ) => {
+      if (ev.data.type === "OPERATIONS") {
+        const { operations, docId } = ev.data;
+        const docFromCache = this._docsCache.get(docId);
+        if (!docFromCache) return;
+        const doc = await docFromCache.promisedDoc;
+        this._shouldBroadcast = false;
+        doc.applyOperations(operations);
+        return;
+      }
+      ev.data.type satisfies never;
+    };
   }
 
   /**
-   * Carga un documento desde el cache o desde el provider (IndexedDB).
+   * Load a document from the cache or from the provider (E.g. IndexedDB).
    */
   async getDoc(docId: string): Promise<Doc> {
     const cacheEntry = this._docsCache.get(docId);
@@ -152,8 +81,10 @@ export class DocNodeClient {
   }
 
   /**
-   * Carga un documento desde el provider (IndexedDB).
-   * Crea un listener para ENVIAR las operaciones al worker.
+   * Load a document from the provider (E.g. IndexedDB).
+   * Create a listener to:
+   * - save the operations to the provider (E.g. IndexedDB).
+   * - send the operations to the broadcast channel for tab-synchronization.
    */
   private async _loadDoc(docId: string): Promise<Doc> {
     const jsonNodes = await this._provider.getJsonDoc(docId);
@@ -168,23 +99,15 @@ export class DocNodeClient {
 
     doc.onChange(({ operations }) => {
       if (this._shouldBroadcast) {
-        this._pushOperations(operations, docId);
+        this._sendMessage({ type: "OPERATIONS", operations, docId });
       }
       this._shouldBroadcast = true;
-      // Possible micro-optimization for the future:
-      // instead of pushing in the worker, it could be done here. This is because
-      // sending something to a worker takes as long as saving it in IndexedDB!
-      // See https://x.com/GermanJablo/status/1898569709131313255
-      // However, for small payloads, this might be negligible.
-      // In the worker I already have WebSockets, and here I would need to create an HTTP endpoint.
-      // I also would need to identify the request with an ID (because the response
-      // would be handled by the worker), so that would add some complexity.
     });
     return doc;
   }
 
   /**
-   * Disminuye el contador de referencias de un documento y, si es 0, elimina el documento del cache.
+   * Decrease the reference count of a document and, if it is 0, delete the document from the cache.
    */
   async _unloadDoc(docId: string) {
     const cacheEntry = this._docsCache.get(docId);
@@ -197,5 +120,9 @@ export class DocNodeClient {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       doc["_changeListeners"].clear();
     }
+  }
+
+  _sendMessage(message: BroadcastMessage) {
+    this._broadcastChannel.postMessage(message);
   }
 }

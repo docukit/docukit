@@ -15,8 +15,8 @@
     "README.md"
   ],
   "scripts": {
-    "dev": "concurrently \"tsc -p tsconfig.build.json --watch\" \"tsx watch --include ./worker ./worker/bundle.ts\"",
-    "build": "tsc -p tsconfig.build.json && node --experimental-strip-types ./worker/bundle.ts",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf .next node_modules .turbo dist tsconfig.build.tsbuildinfo || rmdir /s /q .next node_modules .turbo dist tsconfig.build.tsbuildinfo",
     "db:push": "drizzle-kit push --config=./src/server/providers/postgres/drizzle.config.ts",
     "test-db:push": "drizzle-kit push --config=./src/tests-int/db-models-bench/test-drizzle.config.ts",
