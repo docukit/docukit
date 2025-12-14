@@ -1,9 +1,13 @@
 import { Server, type Socket } from "socket.io";
 import type { Operations } from "docnode";
 import type { SharedWith } from "../client/indexNode.js";
+import type { DocNodeDB } from "../client/providers/indexeddb.js";
 
 export type ClientToServerEvents = {
-  push: (operations: Operations, cb: (res: Operations | Error) => void) => void;
+  push: (
+    operations: DocNodeDB["operations"]["value"][],
+    cb: (res: Operations | Error) => void,
+  ) => void;
 };
 
 export type ServerToClientEvents = {

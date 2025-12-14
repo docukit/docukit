@@ -7,7 +7,6 @@ import {
   type RootNode,
 } from "docnode";
 import type { ClientProvider } from "../index.js";
-// TODO: import from core
 
 export interface DocNodeDB extends DBSchema {
   docs: {
@@ -24,8 +23,6 @@ export interface DocNodeDB extends DBSchema {
   };
 }
 
-// TODO: maybe this should be a set of functions to make it tree-shakable
-// DocNodeWorker doesn't need the same methods as DocNodeClient
 export class IndexedDBProvider implements ClientProvider {
   private _dbPromise: Promise<IDBPDatabase<DocNodeDB>>;
 
@@ -60,6 +57,16 @@ export class IndexedDBProvider implements ClientProvider {
       { namespace: '"indexDoc"' },
     ];
     return results?.d ?? defaultRoot;
+  }
+
+  async saveJsonDoc(json: JsonDoc) {
+    const docId = json[0];
+    const db = await this._dbPromise;
+    const tx = db.transaction("docs", "readwrite");
+    const store = tx.objectStore("docs");
+    const storedDoc = { i: docId, d: json };
+    await store.put(storedDoc);
+    await tx.done;
   }
 
   async saveOnChange(doc: Doc, afterSave: () => void) {
@@ -100,15 +107,16 @@ export class IndexedDBProvider implements ClientProvider {
     await tx.done;
   }
 
-  async saveOperations(_operations: Operations) {
-    throw new Error("no definido");
+  async saveOperations(operations: Operations, docId: string) {
+    console.log("saveOperations", operations, docId);
+    const db = await this._dbPromise;
+    const tx = db.transaction("operations", "readwrite");
+    const store = tx.objectStore("operations");
+    await store.add({ i: docId, o: operations });
+    await tx.done;
   }
 
-  async mergeAndDeleteOperations(_operations: Operations) {
-    throw new Error("no definido");
-  }
-
-  async getOperations(): Promise<Operations> {
+  async getOperations() {
     // This should probably be here:
     // Group operations by docId (this saves work for the server)
     // const groupedOps = ops.reduce((acc, curr) => {
@@ -122,14 +130,12 @@ export class IndexedDBProvider implements ClientProvider {
     // }, new Map<DocNodeDB["operations"]["value"]["i"], DocNodeDB["operations"]["value"]>());
     // Convert grouped ops back to array
     // const consolidatedOps = Array.from(groupedOps.values());
-
-    throw new Error("fix with the new return type");
     const db = await this._dbPromise;
     const tx = db.transaction("operations", "readonly");
     const store = tx.objectStore("operations");
-    const _results = await store.getAll();
+    const results = await store.getAll();
     await tx.done;
-    // return results;
+    return results;
   }
 
   async deleteOperations(count: number) {
