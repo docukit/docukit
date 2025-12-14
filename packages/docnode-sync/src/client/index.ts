@@ -100,6 +100,7 @@ export class DocNodeClient {
     doc.onChange(({ operations }) => {
       if (this._shouldBroadcast) {
         this._sendMessage({ type: "OPERATIONS", operations, docId });
+        this._provider.saveOperations(operations);
       }
       this._shouldBroadcast = true;
     });
