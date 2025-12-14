@@ -31,6 +31,7 @@ export type MessageFromWorker =
 
 export type ClientConfig = WorkerConfig & {
   docConfigs: DocConfig[];
+  useSharedWorker?: boolean;
 };
 
 export type ClientProvider = {
@@ -51,16 +52,17 @@ export class DocNodeClient {
   private _docsCache = new Map<string, DocsCacheEntry>();
   private _provider: ClientProvider = new IndexedDBProvider();
   private _docConfigs = new Map<string, DocConfig>();
-  private _sharedWorker: SharedWorker;
   private _shouldBroadcast = true;
+  private _pushOperations: (operations: Operations, docId: string) => void;
 
+  /**
+   * Se conecta a un shared worker, y le envía la configuracion del cliente.
+   * También configura un listener para RECIBIR operaciones del worker.
+   */
   constructor(config: ClientConfig) {
     if (typeof window === "undefined")
       throw new Error("DocNodeClient can only be used in the browser");
-    this._sharedWorker = new SharedWorker("docnode-worker.js", {
-      name: "DocNode Shared Worker",
-    });
-    const { docConfigs, ...workerConfig } = config;
+    const { docConfigs, useSharedWorker = false, ...workerConfig } = config;
     docConfigs.forEach((docConfig) => {
       const namespace = docConfig.namespace ?? "";
       if (this._docConfigs.has(namespace)) {
@@ -68,26 +70,75 @@ export class DocNodeClient {
       }
       this._docConfigs.set(namespace, docConfig);
     });
-    const port = this._sharedWorker.port;
-    port.start();
-    port.onmessage = async (ev: MessageEvent<MessageFromWorker>) => {
-      if (ev.data.type === "ERROR") {
-        throw new Error("Error in docnode-worker: " + ev.data.error);
-      }
-      if (ev.data.type === "OPERATIONS") {
-        const { operations, docId } = ev.data;
-        const docFromCache = this._docsCache.get(docId);
-        if (!docFromCache) return;
-        const doc = await docFromCache.promisedDoc;
-        this._shouldBroadcast = false;
-        doc.applyOperations(operations);
-        return;
-      }
-      ev.data satisfies never;
-    };
-    this.sendMessage({ type: "INIT", workerConfig });
+    // Opcion 1: Configura un listener para RECIBIR operacions de BroadcastChannel.
+
+    if (useSharedWorker) {
+      const broadcastChannel = new BroadcastChannel("docnode-sync");
+      broadcastChannel.onmessage = async (
+        ev: MessageEvent<MessageFromWorker>,
+      ) => {
+        if (ev.data.type === "ERROR") {
+          throw new Error("Error in docnode-worker: " + ev.data.error);
+        }
+        if (ev.data.type === "OPERATIONS") {
+          const { operations, docId } = ev.data;
+          const docFromCache = this._docsCache.get(docId);
+          if (!docFromCache) return;
+          const doc = await docFromCache.promisedDoc;
+          this._shouldBroadcast = false;
+          doc.applyOperations(operations);
+          return;
+        }
+        ev.data satisfies never;
+      };
+      this._pushOperations = (operations, docId) => {
+        broadcastChannel.postMessage({
+          type: "OPERATIONS",
+          operations,
+          docId,
+        });
+        // save operations to indexedDB
+      };
+    } else {
+      // Opcion 2: Configura un listener para RECIBIR operaciones del worker.
+      const sharedWorker = new SharedWorker("docnode-worker.js", {
+        name: "DocNode Shared Worker",
+      });
+      const port = sharedWorker.port;
+      port.start();
+      port.onmessage = async (ev: MessageEvent<MessageFromWorker>) => {
+        if (ev.data.type === "ERROR") {
+          throw new Error("Error in docnode-worker: " + ev.data.error);
+        }
+        if (ev.data.type === "OPERATIONS") {
+          console.log("OPERATIONS", ev.data);
+          const { operations, docId } = ev.data;
+          const docFromCache = this._docsCache.get(docId);
+          if (!docFromCache) return;
+          const doc = await docFromCache.promisedDoc;
+          this._shouldBroadcast = false;
+          doc.applyOperations(operations);
+          return;
+        }
+        ev.data satisfies never;
+      };
+      sharedWorker.port.postMessage({
+        type: "INIT",
+        workerConfig,
+      } satisfies MessageToWorker);
+      this._pushOperations = (operations, docId) => {
+        sharedWorker.port.postMessage({
+          type: "OPERATIONS",
+          operations,
+          docId,
+        } satisfies MessageToWorker);
+      };
+    }
   }
 
+  /**
+   * Carga un documento desde el cache o desde el provider (IndexedDB).
+   */
   async getDoc(docId: string): Promise<Doc> {
     const cacheEntry = this._docsCache.get(docId);
     if (cacheEntry) {
@@ -100,6 +151,10 @@ export class DocNodeClient {
     return docPromise;
   }
 
+  /**
+   * Carga un documento desde el provider (IndexedDB).
+   * Crea un listener para ENVIAR las operaciones al worker.
+   */
   private async _loadDoc(docId: string): Promise<Doc> {
     const jsonNodes = await this._provider.getJsonDoc(docId);
     const namespace = JSON.parse(jsonNodes[2].namespace ?? "") as string;
@@ -113,7 +168,7 @@ export class DocNodeClient {
 
     doc.onChange(({ operations }) => {
       if (this._shouldBroadcast) {
-        this.sendMessage({ type: "OPERATIONS", operations, docId });
+        this._pushOperations(operations, docId);
       }
       this._shouldBroadcast = true;
       // Possible micro-optimization for the future:
@@ -128,6 +183,9 @@ export class DocNodeClient {
     return doc;
   }
 
+  /**
+   * Disminuye el contador de referencias de un documento y, si es 0, elimina el documento del cache.
+   */
   async _unloadDoc(docId: string) {
     const cacheEntry = this._docsCache.get(docId);
     if (!cacheEntry) return;
@@ -139,9 +197,5 @@ export class DocNodeClient {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       doc["_changeListeners"].clear();
     }
-  }
-
-  sendMessage(message: MessageToWorker) {
-    this._sharedWorker.port.postMessage(message);
   }
 }
