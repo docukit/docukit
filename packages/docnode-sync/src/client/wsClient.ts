@@ -3,11 +3,11 @@ import type {
   ClientToServerEvents,
   ServerToClientEvents,
 } from "../server/index.js";
-import type { ClientProvider } from "../client/index.js";
-import { IndexedDBProvider } from "../client/providers/indexeddb.js";
+import type { ClientProvider } from "./index.js";
+import { IndexedDBProvider, type DocNodeDB } from "./providers/indexeddb.js";
 import type { Operations } from "docnode";
 
-export class DocNodeWebsocketClient {
+export class WsClient {
   private _socket: Socket<ServerToClientEvents, ClientToServerEvents>;
   private _clientProvider: ClientProvider = new IndexedDBProvider();
 
@@ -31,8 +31,8 @@ export class DocNodeWebsocketClient {
     this._socket.on("disconnect", reason => console.error("Socket.io disconnected:", reason))
    }
 
-  async onLocalOperations(operations: Operations) {
-    await this._clientProvider.saveOperations(operations);
+  async onLocalOperations(operations: Operations, docId: string) {
+    await this._clientProvider.saveOperations(operations, docId);
     if (this._pushInProgress) this._inLocalWaiting = true;
 
     const pushOperations = async () => {
@@ -50,7 +50,7 @@ export class DocNodeWebsocketClient {
         // TODO: como hago en deleteOperations de indexedDB si quizás mientras viajaba al servidor y volvía
         // hubo otras operaciones que escribieron en idb?
         // 2 stores? Almacenar el id de la última operación enviada?
-        await this._clientProvider.mergeAndDeleteOperations(newOperations);
+        await this._clientProvider.deleteOperations(allOperations.length);
         this._pushInProgress = false;
         const shouldPushAgain = this._inLocalWaiting;
         this._inLocalWaiting = false;
@@ -61,7 +61,7 @@ export class DocNodeWebsocketClient {
   }
 
   private async _pushOperationsToServer(
-    operations: Operations,
+    operations: DocNodeDB["operations"]["value"][],
   ): Promise<[Error, undefined] | [undefined, Operations]> {
     const response = await new Promise<Operations | Error>((resolve) => {
       this._socket.emit("push", operations, (res: Operations | Error) => {
