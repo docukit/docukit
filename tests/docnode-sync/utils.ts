@@ -47,7 +47,9 @@ export class DocNodeHelper {
     expect(await this._app1.innerHTML()).toEqual(await this._app4.innerHTML());
   }
 
-  private async _assertPanel(panel: "main" | "secondary", state: string[]) {}
+  private async _assertPanel(_panel: "main" | "secondary", _state: string[]) {
+    // TODO: implement panel state assertion
+  }
 
   async createChild({
     parent,

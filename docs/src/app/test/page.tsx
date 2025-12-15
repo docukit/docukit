@@ -8,6 +8,7 @@ function SubPage({ id }: { id: string }) {
   const indexDoc = useDoc({
     namespace: "indexDoc",
     id: "01KCFHZZ66V3393XHGGX6AEB6T",
+    createIfMissing: true,
   });
   const [activeDoc, setActiveDoc] = useState<string | undefined>();
 

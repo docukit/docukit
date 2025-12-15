@@ -37,7 +37,7 @@ test("IndexedDB - Benchmarking 1 row per docnode vs 1 row per doc", async () => 
     performance.mark(`start get ${Provider.name} - ${index}`);
     const jsonDoc = await provider.getJsonDoc(doc.root.id);
     performance.mark(`end get ${Provider.name} - ${index}`);
-    expect(jsonDoc[3]?.length).toBe(QUANTITY);
+    expect(jsonDoc?.[3]?.length).toBe(QUANTITY);
     results.push({
       _name: `${Provider.name} - ${index}`,
       get: performance.measure(

@@ -1,11 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import {
-  type Doc,
-  type DocNode,
-  type JsonDoc,
-  type Operations,
-  type RootNode,
-} from "docnode";
+import { type Doc, type JsonDoc, type Operations } from "docnode";
 import type { ClientProvider } from "../index.js";
 
 export interface DocNodeDB extends DBSchema {

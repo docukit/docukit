@@ -10,11 +10,13 @@ import { io, type Socket } from "socket.io-client";
 /**
  * Arguments for {@link DocNodeClient.getDoc}.
  *
- * - `{ id }` → Try to get an existing doc by ID. Returns `undefined` if not found.
- * - `{ namespace }` → Create a new doc with auto-generated ID (ulid).
- * - `{ id, namespace }` → Get existing doc or create it if not found.
+ * - `{ namespace, id }` → Try to get an existing doc by ID. Returns `undefined` if not found.
+ * - `{ namespace, createIfMissing: true }` → Create a new doc with auto-generated ID (ulid).
+ * - `{ namespace, id, createIfMissing: true }` → Get existing doc or create it if not found.
  */
-export type GetDocArgs = { id: string } | { namespace: string; id?: string };
+export type GetDocArgs =
+  | { namespace: string; id: string; createIfMissing?: boolean }
+  | { namespace: string; createIfMissing: true };
 
 export type BroadcastMessage = {
   type: "OPERATIONS";
@@ -105,9 +107,9 @@ export class DocNodeClient {
    * Get or create a document based on the provided arguments.
    *
    * The behavior depends on which fields are provided:
-   * - `{ id }` → Try to get an existing doc. Returns `undefined` if not found.
-   * - `{ namespace }` → Create a new doc with auto-generated ID (ulid).
-   * - `{ id, namespace }` → Get existing doc or create it if not found.
+   * - `{ namespace, id }` → Try to get an existing doc. Returns `undefined` if not found.
+   * - `{ namespace, createIfMissing: true }` → Create a new doc with auto-generated ID (ulid).
+   * - `{ namespace, id, createIfMissing: true }` → Get existing doc or create it if not found.
    *
    * The returned doc is cached and has listeners for:
    * - Saving operations to the provider (e.g., IndexedDB).
@@ -116,25 +118,34 @@ export class DocNodeClient {
    * @example
    * ```ts
    * // Get existing doc (might be undefined)
-   * const doc = await client.getDoc({ id: "abc123" });
+   * const doc = await client.getDoc({ namespace: "notes", id: "abc123" });
    *
    * // Create new doc with auto-generated ID
-   * const newDoc = await client.getDoc({ namespace: "notes" });
+   * const newDoc = await client.getDoc({ namespace: "notes", createIfMissing: true });
    *
    * // Get or create (guaranteed to return a Doc)
-   * const doc = await client.getDoc({ id: "abc123", namespace: "notes" });
+   * const doc = await client.getDoc({ namespace: "notes", id: "abc123", createIfMissing: true });
    * ```
    */
-  async getDoc(args: { namespace: string; id?: string }): Promise<Doc>;
-  async getDoc(args: { id: string }): Promise<Doc | undefined>;
+  async getDoc(args: {
+    namespace: string;
+    id?: string;
+    createIfMissing: true;
+  }): Promise<Doc>;
+  async getDoc(args: {
+    namespace: string;
+    id: string;
+    createIfMissing?: false;
+  }): Promise<Doc | undefined>;
   async getDoc(args: GetDocArgs): Promise<Doc | undefined> {
-    const namespace = "namespace" in args ? args.namespace : undefined;
-    const id = args.id;
+    const namespace = args.namespace;
+    const id = "id" in args ? args.id : undefined;
+    const createIfMissing = "createIfMissing" in args && args.createIfMissing;
 
     let promisedDoc: Promise<Doc | undefined>;
 
-    if (!id && namespace) {
-      // Case: { namespace } only → Create new doc with auto-generated ID (ulid)
+    if (!id && createIfMissing) {
+      // Case: { namespace, createIfMissing: true } → Create new doc with auto-generated ID (ulid)
       const docConfig = this._docConfigs.get(namespace);
       if (!docConfig) throw new Error(`Unknown namespace: ${namespace}`);
       const doc = new Doc(docConfig);
@@ -142,13 +153,16 @@ export class DocNodeClient {
       promisedDoc = Promise.resolve(doc);
       this._docsCache.set(doc.root.id, { promisedDoc, refCount: 1 });
     } else if (id) {
-      // Case: { id } or { id, namespace } → Try to get, optionally create
+      // Case: { namespace, id } or { namespace, id, createIfMissing } → Try to get, optionally create
       const cacheEntry = this._docsCache.get(id);
       if (cacheEntry) {
         cacheEntry.refCount += 1;
         return cacheEntry.promisedDoc;
       }
-      promisedDoc = this._loadOrCreateDoc(id, namespace);
+      promisedDoc = this._loadOrCreateDoc(
+        id,
+        createIfMissing ? namespace : undefined,
+      );
       this._docsCache.set(id, { promisedDoc, refCount: 1 });
     } else {
       return undefined;
@@ -241,8 +255,9 @@ export class DocNodeClient {
         // hubo otras operaciones que escribieron en idb?
         // 2 stores? Almacenar el id de la última operación enviada?
         await this._provider.deleteOperations(allOperations.length);
-        // TODO: this function could receive the doc directly
-        const doc = await this.getDoc({ id: docId });
+        // Get doc from cache directly (it's guaranteed to exist since it triggered this)
+        const cacheEntry = this._docsCache.get(docId);
+        const doc = cacheEntry ? await cacheEntry.promisedDoc : undefined;
         if (doc) {
           await this._provider.saveJsonDoc(doc.toJSON(), docId);
         }
