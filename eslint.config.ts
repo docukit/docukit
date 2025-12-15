@@ -108,7 +108,6 @@ export const rootEslintConfig = tseslint.config(
       // I probably need to tune the additional options
       "playwright/no-get-by-title": "error",
       "playwright/no-duplicate-hooks": "error",
-      "playwright/expect-expect": "error",
       "playwright/no-element-handle": "error",
       "playwright/no-nth-methods": "error",
       "playwright/missing-playwright-await": "error",

@@ -21,7 +21,12 @@ export default defineConfig({
           //   enabled: true, // I prefer to use tsc for typechecking (pnpm check)
           // },
           setupFiles: ["dotenv/config"],
-          exclude: ["**/*.browser.test.ts", "**/node_modules", "**/dist"],
+          exclude: [
+            "**/*.browser.test.ts",
+            "**/node_modules",
+            "**/dist",
+            "**/*.e2e*.ts",
+          ],
           name: "node",
           environment: "node",
         },

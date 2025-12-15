@@ -4,7 +4,7 @@ import { createIndexNode } from "./ClientLayout";
 import { IndexDoc } from "./IndexDoc";
 import { useDoc } from "@docnode/sync-react";
 
-function SubPage() {
+function SubPage({ id }: { id: string }) {
   const indexDoc = useDoc({
     namespace: "indexDoc",
     id: "01KCFHZZ66V3393XHGGX6AEB6T",
@@ -34,7 +34,7 @@ function SubPage() {
 
   if (!indexDoc) return <div>Loading...</div>;
   return (
-    <div className="flex">
+    <div className="flex" id={id}>
       <div className="main-doc">
         <IndexDoc
           activeDoc={indexDoc.root.id}
@@ -57,8 +57,8 @@ function SubPage() {
 export default function Page() {
   return (
     <>
-      <SubPage />
-      <SubPage />
+      <SubPage id="original" />
+      <SubPage id="copy" />
     </>
   );
 }
