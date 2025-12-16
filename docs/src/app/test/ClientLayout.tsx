@@ -1,6 +1,9 @@
 "use client";
 
-import { DocNodeClientProvider } from "@docnode/sync-react";
+import {
+  DocNodeClientProvider,
+  InMemoryClientProvider,
+} from "@docnode/sync-react/client";
 import { type ReactNode } from "react";
 import { defineNode, type Doc, type DocConfig, string } from "docnode";
 
@@ -32,6 +35,7 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
     <DocNodeClientProvider
       config={{
         url: "ws://localhost:8081",
+        provider: InMemoryClientProvider,
         userId: "user1",
         // undoManagerSize: 50, // by default is 0
         docConfigs: [IndexDocConfig],

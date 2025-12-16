@@ -1,6 +1,7 @@
-import { DocRenderer, useDoc } from "@docnode/sync-react";
+import { useDoc } from "@docnode/sync-react/client";
 import { IndexNode } from "./ClientLayout";
 import { type DocNode } from "docnode";
+import { DocRenderer } from "@/components/Renderers";
 
 export function IndexDoc({
   activeDoc,

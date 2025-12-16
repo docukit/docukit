@@ -1,6 +1,5 @@
 import { Server, type Socket } from "socket.io";
 import type { Operations } from "docnode";
-import type { SharedWith } from "../client/indexNode.js";
 import type { DocNodeDB } from "../client/providers/indexeddb.js";
 
 export type ClientToServerEvents = {
@@ -97,7 +96,6 @@ type _ClientOrchestrator = {
       isInMemory: boolean;
       localVersion: number;
       serverVersion: number;
-      sharedWith: SharedWith;
     };
   };
 };

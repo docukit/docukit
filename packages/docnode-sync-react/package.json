@@ -31,9 +31,9 @@
     "react-dom": "19.1.0"
   },
   "exports": {
-    ".": {
-      "types": "./dist/src/exports.d.ts",
-      "default": "./dist/src/exports.js"
+    "./*": {
+      "types": "./dist/src/exports/*.d.ts",
+      "default": "./dist/src/exports/*.js"
     }
   }
 }

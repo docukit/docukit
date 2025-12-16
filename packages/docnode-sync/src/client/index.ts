@@ -1,4 +1,4 @@
-import { IndexedDBProvider, type DocNodeDB } from "./providers/indexeddb.js";
+import { type DocNodeDB } from "./providers/indexeddb.js";
 import { Doc, type Operations } from "docnode";
 import { type DocConfig, type JsonDoc } from "docnode";
 import type {
@@ -28,6 +28,7 @@ export type ClientConfig = {
   url: string;
   userId: string;
   docConfigs: DocConfig[];
+  provider: new () => ClientProvider;
 };
 
 export type ClientProvider = {
@@ -45,7 +46,7 @@ type DocsCacheEntry = {
 
 export class DocNodeClient {
   private _docsCache = new Map<string, DocsCacheEntry>();
-  private _provider: ClientProvider = new IndexedDBProvider();
+  private _provider: ClientProvider;
   private _docConfigs = new Map<string, DocConfig>();
   private _shouldBroadcast = true;
   private _broadcastChannel: BroadcastChannel;
@@ -58,7 +59,8 @@ export class DocNodeClient {
   constructor(config: ClientConfig) {
     if (typeof window === "undefined")
       throw new Error("DocNodeClient can only be used in the browser");
-    const { docConfigs } = config;
+    const { docConfigs, provider } = config;
+    this._provider = new provider();
     docConfigs.forEach((docConfig) => {
       const namespace = docConfig.namespace ?? "";
       if (this._docConfigs.has(namespace)) {

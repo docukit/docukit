@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import { type Doc, type JsonDoc, type Operations } from "docnode";
+import { type JsonDoc, type Operations } from "docnode";
 import type { ClientProvider } from "../index.js";
 
 export interface DocNodeDB extends DBSchema {
@@ -17,7 +17,7 @@ export interface DocNodeDB extends DBSchema {
   };
 }
 
-export class IndexedDBProvider implements ClientProvider {
+export class IndexedDBClientProvider implements ClientProvider {
   private _dbPromise: Promise<IDBPDatabase<DocNodeDB>>;
 
   constructor() {

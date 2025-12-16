@@ -1,14 +1,12 @@
 "use client";
 
 import React, { createContext, use, useLayoutEffect, useState } from "react";
-import { DocRenderer, DocRenderer2 } from "./renderers.js";
 import {
   DocNodeClient,
   type ClientConfig,
   type GetDocArgs,
 } from "@docnode/sync/client";
 import type { Doc } from "docnode";
-export { DocRenderer, DocRenderer2 };
 
 type ClientState = DocNodeClient | undefined;
 const DocNodeClientContext = createContext<ClientState>(undefined);

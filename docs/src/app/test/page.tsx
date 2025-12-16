@@ -2,7 +2,7 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import { createIndexNode } from "./ClientLayout";
 import { IndexDoc } from "./IndexDoc";
-import { useDoc } from "@docnode/sync-react";
+import { useDoc } from "@docnode/sync-react/client";
 
 function SubPage({ id }: { id: string }) {
   const indexDoc = useDoc({
