@@ -32,7 +32,6 @@ export type ClientConfig = {
 
 export type ClientProvider = {
   getJsonDoc(docId: string): Promise<JsonDoc | undefined>;
-  saveOnChange(doc: Doc, afterSave: () => void): Promise<void>;
   getOperations(): Promise<DocNodeDB["operations"]["value"][]>;
   deleteOperations(count: number): Promise<void>;
   saveOperations(operations: Operations, docId: string): Promise<void>;

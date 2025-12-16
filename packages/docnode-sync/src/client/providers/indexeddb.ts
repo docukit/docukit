@@ -42,42 +42,12 @@ export class IndexedDBProvider implements ClientProvider {
     return result;
   }
 
-  async saveJsonDoc(json: JsonDoc) {
-    const docId = json[0];
+  async saveJsonDoc(json: JsonDoc, docId: string) {
     const db = await this._dbPromise;
     const tx = db.transaction("docs", "readwrite");
     const store = tx.objectStore("docs");
     await store.put(json, docId);
     await tx.done;
-  }
-
-  async saveOnChange(doc: Doc, afterSave: () => void) {
-    // eslint-disable-next-line @typescript-eslint/no-misused-promises
-    doc.onChange(async ({ operations }) => {
-      const db = await this._dbPromise;
-
-      // save doc
-      const jsonDoc = doc.toJSON();
-      const tx1 = db.transaction("docs", "readwrite");
-      const docStore = tx1.objectStore("docs");
-      await docStore.put(jsonDoc, doc.root.id);
-      tx1.onerror = (event) => {
-        console.error("Error saving to IndexedDB", event);
-      };
-      await tx1.done;
-
-      // save operations
-      const tx2 = db.transaction("operations", "readwrite");
-      const operationsStore = tx2.objectStore("operations");
-      const storedOperations = { i: doc.root.id, o: operations };
-      await operationsStore.add(storedOperations);
-      tx2.onerror = (event) => {
-        console.error("Error saving to IndexedDB", event);
-      };
-      await tx2.done;
-
-      afterSave();
-    });
   }
 
   async cleanDB() {
