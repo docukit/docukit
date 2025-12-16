@@ -36,7 +36,7 @@ export type ClientProvider = {
   getOperations(): Promise<DocNodeDB["operations"]["value"][]>;
   deleteOperations(count: number): Promise<void>;
   saveOperations(operations: Operations, docId: string): Promise<void>;
-  saveJsonDoc(json: JsonDoc, docId: string): Promise<void>;
+  saveJsonDoc(json: JsonDoc): Promise<void>;
 };
 
 type DocsCacheEntry = {
@@ -150,7 +150,7 @@ export class DocNodeClient {
       const docConfig = this._docConfigs.get(namespace);
       if (!docConfig) throw new Error(`Unknown namespace: ${namespace}`);
       const doc = new Doc(docConfig);
-      await this._provider.saveJsonDoc(doc.toJSON(), doc.root.id);
+      await this._provider.saveJsonDoc(doc.toJSON());
       promisedDoc = Promise.resolve(doc);
       this._docsCache.set(doc.root.id, { promisedDoc, refCount: 1 });
     } else if (id) {
@@ -205,7 +205,7 @@ export class DocNodeClient {
       const docConfig = this._docConfigs.get(namespace);
       if (!docConfig) throw new Error(`Unknown namespace: ${namespace}`);
       const doc = new Doc({ ...docConfig, id });
-      await this._provider.saveJsonDoc(doc.toJSON(), doc.root.id);
+      await this._provider.saveJsonDoc(doc.toJSON());
       return doc;
     }
 
@@ -260,7 +260,7 @@ export class DocNodeClient {
         const cacheEntry = this._docsCache.get(docId);
         const doc = cacheEntry ? await cacheEntry.promisedDoc : undefined;
         if (doc) {
-          await this._provider.saveJsonDoc(doc.toJSON(), docId);
+          await this._provider.saveJsonDoc(doc.toJSON());
         }
 
         this._pushInProgress = false;

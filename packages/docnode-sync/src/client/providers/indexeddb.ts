@@ -42,11 +42,11 @@ export class IndexedDBClientProvider implements ClientProvider {
     return result;
   }
 
-  async saveJsonDoc(json: JsonDoc, docId: string) {
+  async saveJsonDoc(json: JsonDoc) {
     const db = await this._dbPromise;
     const tx = db.transaction("docs", "readwrite");
     const store = tx.objectStore("docs");
-    await store.put(json, docId);
+    await store.put(json, json[0]);
     await tx.done;
   }
 

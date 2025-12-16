@@ -2,7 +2,7 @@ import { type JsonDoc, type Operations } from "docnode";
 import type { ClientProvider } from "../index.js";
 import type { DocNodeDB } from "./indexeddb.js";
 
-export class InMemoryProvider implements ClientProvider {
+export class InMemoryClientProvider implements ClientProvider {
   private _docs = new Map<string, JsonDoc>();
   private _operations: DocNodeDB["operations"]["value"][] = [];
 
@@ -10,8 +10,8 @@ export class InMemoryProvider implements ClientProvider {
     return this._docs.get(docId);
   }
 
-  async saveJsonDoc(json: JsonDoc, docId: string): Promise<void> {
-    this._docs.set(docId, json);
+  async saveJsonDoc(json: JsonDoc): Promise<void> {
+    this._docs.set(json[0], json);
   }
 
   async cleanDB(): Promise<void> {
