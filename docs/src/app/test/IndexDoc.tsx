@@ -74,7 +74,7 @@ export function IndexDoc({
               >
                 <span className="inline-block w-44 truncate">
                   {node.is(IndexNode) ? node.state.value.get() : "root"} -{" "}
-                  {node.id}
+                  {node.id.slice(-8)}
                 </span>
                 <button
                   className="create m-1 w-7 rounded bg-green-500 p-1 text-white"
