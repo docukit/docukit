@@ -1,5 +1,5 @@
 import { Doc, type Operations } from "docnode";
-import { type DocConfig, type JsonDoc } from "docnode";
+import { type DocConfig } from "docnode";
 import type {
   ClientSocket,
   JsonDocPayload,
@@ -35,7 +35,7 @@ export type ClientProvider = {
   getJsonDoc(docId: string): Promise<JsonDocPayload | undefined>;
   getOperations(): Promise<OpsPayload[]>;
   deleteOperations(count: number): Promise<void>;
-  saveOperations(operations: Operations, docId: string): Promise<void>;
+  saveOperations(ops: OpsPayload): Promise<void>;
   saveJsonDoc(json: JsonDocPayload): Promise<void>;
 };
 
@@ -178,7 +178,7 @@ export class DocNodeClient {
           operations,
           docId: doc.root.id,
         });
-        void this.onLocalOperations(operations, doc.root.id);
+        void this.onLocalOperations({ docId: doc.root.id, ops: operations });
       }
       this._shouldBroadcast = true;
     });
@@ -235,8 +235,8 @@ export class DocNodeClient {
     this._broadcastChannel.postMessage(message);
   }
 
-  async onLocalOperations(operations: Operations, docId: string) {
-    await this._provider.saveOperations(operations, docId);
+  async onLocalOperations({ docId, ops }: OpsPayload) {
+    await this._provider.saveOperations({ docId, ops });
     if (this._pushInProgress) this._inLocalWaiting = true;
 
     const pushOperations = async () => {

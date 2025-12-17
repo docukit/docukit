@@ -1,17 +1,16 @@
-import { type JsonDoc, type Operations } from "docnode";
 import type { ClientProvider } from "../index.js";
-import type { OpsPayload } from "../../shared/types.js";
+import type { JsonDocPayload, OpsPayload } from "../../shared/types.js";
 
 export class InMemoryClientProvider implements ClientProvider {
-  private _docs = new Map<string, JsonDoc>();
+  private _docs = new Map<string, JsonDocPayload>();
   private _operations: OpsPayload[] = [];
 
-  async getJsonDoc(docId: string): Promise<JsonDoc | undefined> {
+  async getJsonDoc(docId: string): Promise<JsonDocPayload | undefined> {
     return this._docs.get(docId);
   }
 
-  async saveJsonDoc(json: JsonDoc): Promise<void> {
-    this._docs.set(json[0], json);
+  async saveJsonDoc(json: JsonDocPayload): Promise<void> {
+    this._docs.set(json.jsonDoc[0], json);
   }
 
   async cleanDB(): Promise<void> {
@@ -19,8 +18,8 @@ export class InMemoryClientProvider implements ClientProvider {
     this._operations = [];
   }
 
-  async saveOperations(ops: Operations, docId: string): Promise<void> {
-    this._operations.push({ docId, ops });
+  async saveOperations(ops: OpsPayload): Promise<void> {
+    this._operations.push(ops);
   }
 
   async getOperations(): Promise<OpsPayload[]> {
