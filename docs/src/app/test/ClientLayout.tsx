@@ -2,6 +2,7 @@
 
 import {
   DocNodeClientProvider,
+  IndexedDBClientProvider,
   InMemoryClientProvider,
 } from "@docnode/sync-react/client";
 import { type ReactNode } from "react";
@@ -35,7 +36,7 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
     <DocNodeClientProvider
       config={{
         url: "ws://localhost:8081",
-        provider: InMemoryClientProvider,
+        provider: IndexedDBClientProvider,
         userId: "user1",
         // undoManagerSize: 50, // by default is 0
         docConfigs: [IndexDocConfig],

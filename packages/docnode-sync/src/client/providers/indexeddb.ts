@@ -2,20 +2,20 @@ import { openDB, type IDBPDatabase } from "idb";
 import { type JsonDoc, type Operations } from "docnode";
 import type { ClientProvider } from "../index.js";
 import { type DBSchema } from "idb";
-import type { OpsPayload } from "../../shared/types.js";
+import type { JsonDocPayload, OpsPayload } from "../../shared/types.js";
 
 interface DocNodeIDB extends DBSchema {
   docs: {
     key: string; // docId
-    value: JsonDoc;
+    value: JsonDocPayload;
   };
   operations: {
     key: number;
     value: OpsPayload;
-    // Am I using this index?
-    indexes: {
-      docId_idx: string;
-    };
+    // For the moment, we're not using this index.
+    // indexes: {
+    //   docId_idx: string;
+    // };
   };
 }
 
@@ -27,15 +27,15 @@ export class IndexedDBClientProvider implements ClientProvider {
       upgrade(db) {
         if (db.objectStoreNames.contains("docs")) return;
         db.createObjectStore("docs");
-        const operationsStore = db.createObjectStore("operations", {
+        db.createObjectStore("operations", {
           autoIncrement: true,
         });
-        operationsStore.createIndex("docId_idx", "i");
+        // operationsStore.createIndex("docId_idx", "docId");
       },
     });
   }
 
-  async getJsonDoc(docId: string): Promise<JsonDoc | undefined> {
+  async getJsonDoc(docId: string): Promise<JsonDocPayload | undefined> {
     const db = await this._dbPromise;
     const tx = db.transaction("docs", "readonly");
     const store = tx.objectStore("docs");
@@ -44,11 +44,11 @@ export class IndexedDBClientProvider implements ClientProvider {
     return result;
   }
 
-  async saveJsonDoc(json: JsonDoc) {
+  async saveJsonDoc(json: JsonDocPayload) {
     const db = await this._dbPromise;
     const tx = db.transaction("docs", "readwrite");
     const store = tx.objectStore("docs");
-    await store.put(json, json[0]);
+    await store.put(json, json.jsonDoc[0]);
     await tx.done;
   }
 
