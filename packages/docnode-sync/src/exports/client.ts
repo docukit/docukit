@@ -4,4 +4,4 @@ export {
   type GetDocArgs,
 } from "../client/index.js";
 export { InMemoryClientProvider } from "../client/providers/inmemory.js";
-export { IndexedDBClientProvider } from "../client/providers/indexeddb.js";
+export { IndexedDBProvider } from "../client/providers/indexeddb.js";

@@ -76,7 +76,7 @@
 // "should handle socket disconnection"
 
 // ============================================================================
-// IndexedDBClientProvider Tests
+// IndexedDBProvider Tests
 // ============================================================================
 
 // Constructor tests

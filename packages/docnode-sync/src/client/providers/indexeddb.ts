@@ -19,7 +19,7 @@ interface DocNodeIDB extends DBSchema {
   };
 }
 
-export class IndexedDBClientProvider implements ClientProvider {
+export class IndexedDBProvider implements ClientProvider {
   private _dbPromise: Promise<IDBPDatabase<DocNodeIDB>>;
 
   constructor() {
