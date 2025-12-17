@@ -1,11 +1,7 @@
-import { type DocNodeDB } from "./providers/indexeddb.js";
 import { Doc, type Operations } from "docnode";
 import { type DocConfig, type JsonDoc } from "docnode";
-import type {
-  ClientToServerEvents,
-  ServerToClientEvents,
-} from "../server/index.js";
-import { io, type Socket } from "socket.io-client";
+import type { ClientSocket, OpsPayload } from "../shared/types.js";
+import { io } from "socket.io-client";
 
 /**
  * Arguments for {@link DocNodeClient.getDoc}.
@@ -33,7 +29,7 @@ export type ClientConfig = {
 
 export type ClientProvider = {
   getJsonDoc(docId: string): Promise<JsonDoc | undefined>;
-  getOperations(): Promise<DocNodeDB["operations"]["value"][]>;
+  getOperations(): Promise<OpsPayload[]>;
   deleteOperations(count: number): Promise<void>;
   saveOperations(operations: Operations, docId: string): Promise<void>;
   saveJsonDoc(json: JsonDoc): Promise<void>;
@@ -52,7 +48,7 @@ export class DocNodeClient {
   private _broadcastChannel: BroadcastChannel;
 
   // ws
-  private _socket: Socket<ServerToClientEvents, ClientToServerEvents>;
+  private _socket: ClientSocket;
   private _pushInProgress = false;
   private _inLocalWaiting = false; // debería disparar un push al inicializar (quizás hay en local)
 
@@ -88,14 +84,14 @@ export class DocNodeClient {
       ev: MessageEvent<BroadcastMessage>,
     ) => {
       if (ev.data.type === "OPERATIONS") {
-        void this.applyOperations(ev.data.operations, ev.data.docId);
+        void this._applyOperations(ev.data.operations, ev.data.docId);
         return;
       }
       ev.data.type satisfies never;
     };
   }
 
-  async applyOperations(operations: Operations, docId: string) {
+  async _applyOperations(operations: Operations, docId: string) {
     const docFromCache = this._docsCache.get(docId);
     if (!docFromCache) return;
     const doc = await docFromCache.promisedDoc;
@@ -273,10 +269,10 @@ export class DocNodeClient {
   }
 
   private async _pushOperationsToServer(
-    operations: DocNodeDB["operations"]["value"][],
-  ): Promise<[Error, undefined] | [undefined, Operations]> {
-    const response = await new Promise<Operations | Error>((resolve) => {
-      this._socket.emit("push", operations, (res: Operations | Error) => {
+    ops: OpsPayload[],
+  ): Promise<[Error, undefined] | [undefined, OpsPayload[]]> {
+    const response = await new Promise<OpsPayload[] | Error>((resolve) => {
+      this._socket.emit("operations", ops, (res: OpsPayload[] | Error) => {
         resolve(res);
       });
     });

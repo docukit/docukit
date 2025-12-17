@@ -1,15 +1,17 @@
-import { openDB, type DBSchema, type IDBPDatabase } from "idb";
+import { openDB, type IDBPDatabase } from "idb";
 import { type JsonDoc, type Operations } from "docnode";
 import type { ClientProvider } from "../index.js";
+import { type DBSchema } from "idb";
+import type { OpsPayload } from "../../shared/types.js";
 
-export interface DocNodeDB extends DBSchema {
+interface DocNodeIDB extends DBSchema {
   docs: {
     key: string; // docId
     value: JsonDoc;
   };
   operations: {
     key: number;
-    value: { i?: string; o: Operations };
+    value: OpsPayload;
     // Am I using this index?
     indexes: {
       docId_idx: string;
@@ -18,7 +20,7 @@ export interface DocNodeDB extends DBSchema {
 }
 
 export class IndexedDBClientProvider implements ClientProvider {
-  private _dbPromise: Promise<IDBPDatabase<DocNodeDB>>;
+  private _dbPromise: Promise<IDBPDatabase<DocNodeIDB>>;
 
   constructor() {
     this._dbPromise = openDB("docnode", 1, {
@@ -58,11 +60,11 @@ export class IndexedDBClientProvider implements ClientProvider {
     await tx.done;
   }
 
-  async saveOperations(operations: Operations, docId: string) {
+  async saveOperations(ops: Operations, docId: string) {
     const db = await this._dbPromise;
     const tx = db.transaction("operations", "readwrite");
     const store = tx.objectStore("operations");
-    await store.add({ i: docId, o: operations });
+    await store.add({ docId, ops });
     await tx.done;
   }
 
@@ -77,7 +79,7 @@ export class IndexedDBClientProvider implements ClientProvider {
     //     acc.set(curr.i, { i: curr.i, o: curr.o });
     //   }
     //   return acc;
-    // }, new Map<DocNodeDB["operations"]["value"]["i"], DocNodeDB["operations"]["value"]>());
+    // }, new Map<DocNodeIDB["operations"]["value"]["i"], DocNodeIDB["operations"]["value"]>());
     // Convert grouped ops back to array
     // const consolidatedOps = Array.from(groupedOps.values());
     const db = await this._dbPromise;

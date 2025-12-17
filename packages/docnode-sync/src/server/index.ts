@@ -1,17 +1,6 @@
 import { Server, type Socket } from "socket.io";
 import type { Operations } from "docnode";
-import type { DocNodeDB } from "../client/providers/indexeddb.js";
-
-export type ClientToServerEvents = {
-  push: (
-    operations: DocNodeDB["operations"]["value"][],
-    cb: (res: Operations | Error) => void,
-  ) => void;
-};
-
-export type ServerToClientEvents = {
-  world: () => void;
-};
+import type { ServerSocket } from "../shared/types.js";
 
 export type ServerProvider = {
   saveOperations: (operations: Operations) => Promise<void>;
@@ -21,7 +10,7 @@ type DocId = string;
 type ClientId = string;
 
 export class DocNodeServer {
-  private _io: Server<ClientToServerEvents, ServerToClientEvents>;
+  private _io: ServerSocket;
   private _provider: ServerProvider;
   /**
    * This are the docs that at least one client has in memory (open/active).
@@ -69,7 +58,7 @@ export class DocNodeServer {
       console.log("Client connected", auth);
       socket.on("disconnect", reason => console.log(`Client disconnected: ${reason}`));
       socket.on("error", err => console.error("Socket.io error:", err));
-      socket.on("push", async (wrappedOperations, cb) => {        
+      socket.on("operations", async (_opsPayloads, _cb) => {        
         // 1. In the same SQL operation, save the operations and 
         // obtain the ones that the client was missing, if any.
         
@@ -78,8 +67,8 @@ export class DocNodeServer {
 
         // 3. To the client who sent it, we respond with the operations that he was missing, obtained in point 1
         // TODO: implement actual sync logic
-        const _operations = wrappedOperations.map((w) => w.o);
-        cb([[], {}]); // Empty operations = "you're not missing anything"
+        // const _operations = wrappedOperations.map((w) => w.o);
+        // cb([[], {}]); // Empty operations = "you're not missing anything"
       });
     });
   }
