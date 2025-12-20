@@ -1,6 +1,10 @@
+import { test } from "vitest";
+
 // ============================================================================
 // DocSyncClient Tests
 // ============================================================================
+
+test.todo("DocSyncClient integration tests - placeholder");
 
 // Constructor tests
 // "should throw error when used outside browser environment"

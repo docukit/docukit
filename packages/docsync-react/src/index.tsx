@@ -1,109 +1,104 @@
 "use client";
 
-import React, { createContext, use, useLayoutEffect, useState } from "react";
+import type React from "react";
+import { createContext, use, useLayoutEffect, useState } from "react";
 import {
   DocSyncClient,
   type ClientConfig,
   type GetDocArgs,
 } from "@docnode/docsync/client";
-import type { Doc, Operations } from "docnode";
-import type { NN } from "../../docsync/dist/src/shared/docBinding.js";
+import { type DocBinding } from "@docnode/docsync";
 
-const DocSyncClientContext = createContext<
-  DocSyncClient<NN, Array<unknown>, Operations> | undefined
->(undefined);
+// Helper types to infer D, S, O from ClientConfig
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type InferD<T> = T extends { docBinding: DocBinding<infer D, any, any> }
+  ? D
+  : never;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type InferS<T> = T extends { docBinding: DocBinding<any, infer S, any> }
+  ? S
+  : never;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type InferO<T> = T extends { docBinding: DocBinding<any, any, infer O> }
+  ? O
+  : never;
 
-export function DocSyncClientProvider(props: {
-  config: ClientConfig<NN, Array<unknown>, Operations>;
-  children: React.ReactNode;
-}) {
-  const { config, children } = props;
-  const [client] = useState(() => new DocSyncClient(config));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
+  config: T,
+) {
+  type D = InferD<T>;
+  type S = InferS<T>;
+  type O = InferO<T>;
+  const client = new DocSyncClient(config as ClientConfig<D, S, O>);
 
-  // useLayoutEffect(() => {
-  //   setClient(new DocSyncClient(config));
-  // }, []);
+  const DocSyncClientContext = createContext(client);
 
-  return (
-    <DocSyncClientContext.Provider value={client}>
-      {children}
-    </DocSyncClientContext.Provider>
-  );
-}
+  function DocSyncClientProvider({ children }: { children: React.ReactNode }) {
+    return (
+      <DocSyncClientContext value={client}>{children}</DocSyncClientContext>
+    );
+  }
 
-/**
- * React hook to get or create a document.
- *
- * The behavior depends on which fields are provided in `args`:
- * - `{ namespace, id }` → Try to get an existing doc. Returns `undefined` if not found.
- * - `{ namespace, createIfMissing: true }` → Create a new doc with auto-generated ID.
- * - `{ namespace, id, createIfMissing: true }` → Get existing doc or create it if not found.
- *
- * @example
- * ```tsx
- * // Get existing doc (might be undefined)
- * const doc = useDoc({ namespace: "notes", id: "abc123" });
- *
- * // Create new doc with auto-generated ID
- * const newDoc = useDoc({ namespace: "notes", createIfMissing: true });
- *
- * // Get or create (guaranteed to return a Doc once loaded)
- * const doc = useDoc({ namespace: "notes", id: "abc123", createIfMissing: true });
- * ```
- */
-export function useDoc(args: {
-  namespace: string;
-  id?: string;
-  createIfMissing: true;
-}): Doc | undefined;
-export function useDoc(args: {
-  namespace: string;
-  id: string;
-  createIfMissing?: false;
-}): Doc | undefined;
-export function useDoc(args: GetDocArgs): Doc | undefined {
-  const [doc, setDoc] = useState<Doc | undefined>();
-  const client = use(DocSyncClientContext);
+  type DocResult = { doc: D; id: string } | { doc: undefined; id: undefined };
 
-  // Use the provided id, or the loaded doc's id for cleanup
-  const argsId = "id" in args ? args.id : undefined;
-  const createIfMissing = "createIfMissing" in args && args.createIfMissing;
+  function useDoc(args: {
+    namespace: string;
+    id?: string;
+    createIfMissing: true;
+  }): DocResult;
+  function useDoc(args: {
+    namespace: string;
+    id: string;
+    createIfMissing?: false;
+  }): DocResult;
+  function useDoc(args: GetDocArgs): DocResult {
+    const [result, setResult] = useState<DocResult>({
+      doc: undefined,
+      id: undefined,
+    });
+    const client = use(DocSyncClientContext);
 
-  const namespace = args.namespace;
+    // Use the provided id, or the loaded doc's id for cleanup
+    const argsId = "id" in args ? args.id : undefined;
+    const createIfMissing = "createIfMissing" in args && args.createIfMissing;
 
-  // The reason why I can't just `return client?.getDoc(args)` is because I get error
-  // "async/await is not YET supported in Client Components". Maybe in the future.
-  useLayoutEffect(() => {
-    let loadedDocId: string | undefined;
+    const namespace = args.namespace;
 
-    if (createIfMissing) {
-      const getDocArgs = argsId
-        ? { namespace, id: argsId, createIfMissing: true as const }
-        : { namespace, createIfMissing: true as const };
-      client
-        ?.getDoc(getDocArgs)
-        .then((loadedDoc) => {
-          // TODO: fix this
-          loadedDocId = (loadedDoc as Doc).root.id;
-          setDoc(loadedDoc as Doc);
-        })
-        .catch(console.error);
-    } else if (argsId) {
-      client
-        ?.getDoc({ namespace, id: argsId })
-        .then((loadedDoc) => {
-          // TODO: fix this
-          loadedDocId = (loadedDoc as Doc)?.root.id;
-          setDoc(loadedDoc as Doc);
-        })
-        .catch(console.error);
-    }
+    // The reason why I can't just `return client?.getDoc(args)` is because I get error
+    // "async/await is not YET supported in Client Components". Maybe in the future.
+    useLayoutEffect(() => {
+      let loadedDocId: string | undefined;
 
-    return () => {
-      const idToUnload = argsId ?? loadedDocId;
-      if (idToUnload) client?._unloadDoc(idToUnload).catch(console.error);
-    };
-  }, [client, argsId, namespace, createIfMissing]);
+      // TODO: fix getDoc return type
+      const handleResult = (res: { doc: D; id: string } | undefined) => {
+        setResult(res ?? { doc: undefined, id: undefined });
+      };
 
-  return doc;
+      if (createIfMissing) {
+        const getDocArgs = argsId
+          ? { namespace, id: argsId, createIfMissing: true as const }
+          : { namespace, createIfMissing: true as const };
+        client?.getDoc(getDocArgs).then(handleResult).catch(console.error);
+      } else if (argsId) {
+        client
+          ?.getDoc({ namespace, id: argsId })
+          .then(handleResult)
+          .catch(console.error);
+      }
+
+      return () => {
+        const idToUnload = argsId ?? loadedDocId;
+        if (idToUnload) client?._unloadDoc(idToUnload).catch(console.error);
+      };
+    }, [client, argsId, namespace, createIfMissing]);
+
+    return result;
+  }
+
+  return {
+    DocSyncClientContext,
+    DocSyncClientProvider,
+    useDoc,
+  };
 }

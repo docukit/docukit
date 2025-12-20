@@ -7,7 +7,7 @@ import { io } from "socket.io-client";
 import type { DocBinding, SerializedDoc, NN } from "../shared/docBinding.js";
 
 /**
- * Arguments for {@link DocSyncClient.getDoc}.
+ * Arguments for {@link DocSyncClient["getDoc"]}.
  *
  * - `{ namespace, id }` → Try to get an existing doc by ID. Returns `undefined` if not found.
  * - `{ namespace, createIfMissing: true }` → Create a new doc with auto-generated ID (ulid).
@@ -163,13 +163,13 @@ export class DocSyncClient<
     namespace: string;
     id?: string;
     createIfMissing: true;
-  }): Promise<D>;
+  }): Promise<{ doc: D; id: string }>;
   async getDoc(args: {
     namespace: string;
     id: string;
     createIfMissing?: false;
-  }): Promise<D | undefined>;
-  async getDoc(args: GetDocArgs): Promise<D | undefined> {
+  }): Promise<{ doc: D; id: string } | undefined>;
+  async getDoc(args: GetDocArgs): Promise<{ doc: D; id: string } | undefined> {
     const namespace = args.namespace;
     const id = "id" in args ? args.id : undefined;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
@@ -187,13 +187,15 @@ export class DocSyncClient<
         promisedDoc: Promise.resolve(doc),
         refCount: 1,
       });
-      return doc;
+      return { doc, id };
     } else if (id) {
       // Case: { namespace, id } or { namespace, id, createIfMissing } → Try to get, optionally create
       const cacheEntry = this._docsCache.get(id);
       if (cacheEntry) {
         cacheEntry.refCount += 1;
-        return cacheEntry.promisedDoc;
+        return cacheEntry.promisedDoc.then((doc) =>
+          doc ? { doc, id } : undefined,
+        );
       }
       const promisedDoc = this._loadOrCreateDoc(
         id,
@@ -203,7 +205,7 @@ export class DocSyncClient<
       const doc = await promisedDoc;
       if (!doc) return undefined;
       this._setupChangeListener(doc, id);
-      return doc;
+      return { doc, id };
     } else {
       return undefined;
     }

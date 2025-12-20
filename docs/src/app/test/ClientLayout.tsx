@@ -1,19 +1,12 @@
 "use client";
 
 import {
-  DocSyncClientProvider,
+  createDocSyncClient,
   IndexedDBProvider,
 } from "@docnode/docsync-react/client";
 import { DocNodeBinding } from "@docnode/docsync-react/docnode";
-import { type DocBinding } from "@docnode/docsync-react";
 import { type ReactNode } from "react";
-import {
-  defineNode,
-  type Doc,
-  type DocConfig,
-  type Operations,
-  string,
-} from "docnode";
+import { defineNode, type Doc, type DocConfig, string } from "docnode";
 
 export const IndexNode = defineNode({
   type: "editor-index",
@@ -38,31 +31,23 @@ export function createIndexNode(doc: Doc, { value }: { value: string }) {
   return node;
 }
 
+export const { DocSyncClientProvider, useDoc } = createDocSyncClient({
+  url: "ws://localhost:8081",
+  local: {
+    provider: IndexedDBProvider,
+    getIdentity: async () => ({
+      userId: "John Salchichon",
+      secret: "asdasdasd",
+    }),
+  },
+  auth: {
+    getToken: async () => "1234567890" as string,
+  },
+  docBinding: DocNodeBinding([IndexDocConfig]),
+  // undoManagerSize: 50
+  // TODO: fix this
+});
+
 export default function ClientLayout({ children }: { children: ReactNode }) {
-  return (
-    <DocSyncClientProvider
-      config={{
-        url: "ws://localhost:8081",
-        local: {
-          provider: IndexedDBProvider,
-          getIdentity: async () => ({
-            userId: "John Salchichon",
-            secret: "asdasdasd",
-          }),
-        },
-        auth: {
-          getToken: async () => "1234567890" as string,
-        },
-        // undoManagerSize: 50
-        // TODO: fix this
-        docBinding: DocNodeBinding([IndexDocConfig]) as unknown as DocBinding<
-          NonNullable<unknown>,
-          Array<unknown>,
-          Operations
-        >,
-      }}
-    >
-      {children}
-    </DocSyncClientProvider>
-  );
+  return <DocSyncClientProvider>{children}</DocSyncClientProvider>;
 }

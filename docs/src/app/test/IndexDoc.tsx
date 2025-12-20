@@ -1,5 +1,4 @@
-import { useDoc } from "@docnode/docsync-react/client";
-import { IndexNode } from "./ClientLayout";
+import { IndexNode, useDoc } from "./ClientLayout";
 import { type DocNode } from "docnode";
 import { DocRenderer } from "@/components/Renderers";
 
@@ -12,7 +11,7 @@ export function IndexDoc({
   selectedDoc?: string;
   setActiveDoc?: (docId: string) => void;
 }) {
-  const doc = useDoc({
+  const { doc } = useDoc({
     namespace: "indexDoc",
     id: activeDoc,
     createIfMissing: true,

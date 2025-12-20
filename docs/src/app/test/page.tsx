@@ -1,11 +1,10 @@
 "use client";
 import { useEffect, useLayoutEffect, useState } from "react";
-import { createIndexNode } from "./ClientLayout";
+import { createIndexNode, useDoc } from "./ClientLayout";
 import { IndexDoc } from "./IndexDoc";
-import { useDoc } from "@docnode/docsync-react/client";
 
 function SubPage({ id }: { id: string }) {
-  const indexDoc = useDoc({
+  const { doc: indexDoc } = useDoc({
     namespace: "indexDoc",
     id: "01KCFHZZ66V3393XHGGX6AEB6T",
     createIfMissing: true,
