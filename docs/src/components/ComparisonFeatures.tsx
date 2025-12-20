@@ -95,8 +95,8 @@ export function SyncBackendFeature() {
         <div className="prose prose-sm prose-a:text-inherit space-y-2">
           <h4 className="text-sm font-semibold">Backend Infrastructure</h4>
           <p className="text-sm">
-            You can think of DocNode Core as an alternative to Yjs. On the other
-            hand, DocNode Sync would be to DocNode what{" "}
+            You can think of DocNode as an alternative to Yjs. On the other
+            hand, DocSync would be to DocNode what{" "}
             <a
               href="https://tiptap.dev/docs/hocuspocus/introduction"
               className="text-blue-600 hover:underline"

@@ -7,7 +7,7 @@ import { io } from "socket.io-client";
 import type { DocBinding, SerializedDoc, NN } from "../shared/docBinding.js";
 
 /**
- * Arguments for {@link DocNodeClient.getDoc}.
+ * Arguments for {@link DocSyncClient.getDoc}.
  *
  * - `{ namespace, id }` → Try to get an existing doc by ID. Returns `undefined` if not found.
  * - `{ namespace, createIfMissing: true }` → Create a new doc with auto-generated ID (ulid).
@@ -69,7 +69,7 @@ export type ClientProvider<S, O> = {
   saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
 };
 
-export class DocNodeClient<
+export class DocSyncClient<
   D extends NN,
   S extends SerializedDoc,
   O extends NN,
@@ -91,7 +91,7 @@ export class DocNodeClient<
 
   constructor(config: ClientConfig<D, S, O>) {
     if (typeof window === "undefined")
-      throw new Error("DocNodeClient can only be used in the browser");
+      throw new Error("DocSyncClient can only be used in the browser");
     const { docBinding, local } = config;
     this._docBinding = docBinding;
     if (local)
@@ -114,7 +114,7 @@ export class DocNodeClient<
     }
 
     // Listen for operations from other tabs.
-    this._broadcastChannel = new BroadcastChannel("docnode-sync");
+    this._broadcastChannel = new BroadcastChannel("docsync");
     this._broadcastChannel.onmessage = async (
       ev: MessageEvent<BroadcastMessage<O>>,
     ) => {

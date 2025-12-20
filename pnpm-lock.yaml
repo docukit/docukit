@@ -95,9 +95,9 @@ importers:
       '@ai-sdk/react':
         specifier: ^2.0.81
         version: 2.0.89(react@19.1.0)(zod@4.1.12)
-      '@docnode/sync-react':
+      '@docnode/docsync-react':
         specifier: workspace:*
-        version: link:../packages/docnode-sync-react
+        version: link:../packages/docsync-react
       '@lexical/react':
         specifier: ^0.38.2
         version: 0.38.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(yjs@13.6.27)
@@ -280,7 +280,7 @@ importers:
         specifier: ^0.38.2
         version: 0.38.2
 
-  packages/docnode-sync:
+  packages/docsync:
     dependencies:
       docnode:
         specifier: workspace:*
@@ -317,11 +317,11 @@ importers:
         specifier: ^4.19.2
         version: 4.20.6
 
-  packages/docnode-sync-react:
+  packages/docsync-react:
     dependencies:
-      '@docnode/sync':
+      '@docnode/docsync':
         specifier: workspace:*
-        version: link:../docnode-sync
+        version: link:../docsync
       docnode:
         specifier: workspace:*
         version: link:../docnode
@@ -341,15 +341,15 @@ importers:
 
   tests:
     dependencies:
+      '@docnode/docsync':
+        specifier: workspace:*
+        version: link:../packages/docsync
+      '@docnode/docsync-react':
+        specifier: workspace:*
+        version: link:../packages/docsync-react
       '@docnode/lexical':
         specifier: workspace:*
         version: link:../packages/docnode-lexical
-      '@docnode/sync':
-        specifier: workspace:*
-        version: link:../packages/docnode-sync
-      '@docnode/sync-react':
-        specifier: workspace:*
-        version: link:../packages/docnode-sync-react
       docnode:
         specifier: workspace:*
         version: link:../packages/docnode
@@ -7169,7 +7169,7 @@ snapshots:
 
   '@types/cors@2.8.19':
     dependencies:
-      '@types/node': 24.1.0
+      '@types/node': 22.19.0
 
   '@types/debug@4.1.12':
     dependencies:
@@ -7728,7 +7728,7 @@ snapshots:
   engine.io@6.6.4:
     dependencies:
       '@types/cors': 2.8.19
-      '@types/node': 24.1.0
+      '@types/node': 22.19.0
       accepts: 1.3.8
       base64id: 2.0.0
       cookie: 0.7.2

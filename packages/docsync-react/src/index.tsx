@@ -2,30 +2,32 @@
 
 import React, { createContext, use, useLayoutEffect, useState } from "react";
 import {
-  DocNodeClient,
+  DocSyncClient,
   type ClientConfig,
   type GetDocArgs,
-} from "@docnode/sync/client";
-import type { Doc } from "docnode";
+} from "@docnode/docsync/client";
+import type { Doc, Operations } from "docnode";
+import type { NN } from "../../docsync/dist/src/shared/docBinding.js";
 
-type ClientState = DocNodeClient | undefined;
-const DocNodeClientContext = createContext<ClientState>(undefined);
+const DocSyncClientContext = createContext<
+  DocSyncClient<NN, Array<unknown>, Operations> | undefined
+>(undefined);
 
-export function DocNodeClientProvider(props: {
-  config: ClientConfig;
+export function DocSyncClientProvider(props: {
+  config: ClientConfig<NN, Array<unknown>, Operations>;
   children: React.ReactNode;
 }) {
   const { config, children } = props;
-  const [client, setClient] = useState<ClientState>(undefined);
+  const [client] = useState(() => new DocSyncClient(config));
 
-  useLayoutEffect(() => {
-    setClient(new DocNodeClient(config));
-  }, []);
+  // useLayoutEffect(() => {
+  //   setClient(new DocSyncClient(config));
+  // }, []);
 
   return (
-    <DocNodeClientContext.Provider value={client}>
+    <DocSyncClientContext.Provider value={client}>
       {children}
-    </DocNodeClientContext.Provider>
+    </DocSyncClientContext.Provider>
   );
 }
 
@@ -61,7 +63,7 @@ export function useDoc(args: {
 }): Doc | undefined;
 export function useDoc(args: GetDocArgs): Doc | undefined {
   const [doc, setDoc] = useState<Doc | undefined>();
-  const client = use(DocNodeClientContext);
+  const client = use(DocSyncClientContext);
 
   // Use the provided id, or the loaded doc's id for cleanup
   const argsId = "id" in args ? args.id : undefined;
@@ -81,16 +83,18 @@ export function useDoc(args: GetDocArgs): Doc | undefined {
       client
         ?.getDoc(getDocArgs)
         .then((loadedDoc) => {
-          loadedDocId = loadedDoc.root.id;
-          setDoc(loadedDoc);
+          // TODO: fix this
+          loadedDocId = (loadedDoc as Doc).root.id;
+          setDoc(loadedDoc as Doc);
         })
         .catch(console.error);
     } else if (argsId) {
       client
         ?.getDoc({ namespace, id: argsId })
         .then((loadedDoc) => {
-          loadedDocId = loadedDoc?.root.id;
-          setDoc(loadedDoc);
+          // TODO: fix this
+          loadedDocId = (loadedDoc as Doc)?.root.id;
+          setDoc(loadedDoc as Doc);
         })
         .catch(console.error);
     }

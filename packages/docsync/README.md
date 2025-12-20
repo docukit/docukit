@@ -1,4 +1,4 @@
-# DocNode Sync Engine Documentation
+# DocSync Engine Documentation
 
 ## Architecture Overview
 

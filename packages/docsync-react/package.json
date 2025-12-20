@@ -1,13 +1,13 @@
 {
-  "name": "@docnode/sync-react",
+  "name": "@docnode/docsync-react",
   "license": "SEE LICENSE IN LICENSE.md",
   "private": true,
   "type": "module",
-  "homepage": "https://docnode.dev",
+  "homepage": "https://docnode.dev/docsync",
   "repository": {
     "type": "git",
     "url": "https://github.com/docnode/docnode.git",
-    "directory": "packages/docnode-sync-react"
+    "directory": "packages/docsync-react"
   },
   "files": [
     "dist",
@@ -25,12 +25,16 @@
     "@types/react-dom": "19.1.6"
   },
   "dependencies": {
-    "@docnode/sync": "workspace:*",
+    "@docnode/docsync": "workspace:*",
     "docnode": "workspace:*",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
   "exports": {
+    ".": {
+      "types": "./dist/src/exports/index.d.ts",
+      "default": "./dist/src/exports/index.js"
+    },
     "./*": {
       "types": "./dist/src/exports/*.d.ts",
       "default": "./dist/src/exports/*.js"

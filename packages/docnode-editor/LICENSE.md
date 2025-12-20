@@ -1,4 +1,4 @@
-# DocNode Core License 1.0
+# DocNode License 1.0
 
 ## Notice
 
@@ -27,11 +27,11 @@ defined below.
 You may not:
 
 1. Distribute software that offers the same or substantially similar
-   functionality as `@docnode/sync`, including but not limited to libraries that
+   functionality as `@docnode/docsync`, including but not limited to libraries that
    synchronize or persist document state across multiple clients or storage
    systems.
 2. Offer any hosted or cloud-based service to third parties that provides the
-   same or substantially similar functionality as `@docnode/sync`, unless you
+   same or substantially similar functionality as `@docnode/docsync`, unless you
    have an explicit license from the copyright holder.
 
 These restrictions do not prevent you from developing or using similar

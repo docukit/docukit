@@ -1,13 +1,13 @@
 {
-  "name": "@docnode/sync",
+  "name": "@docnode/docsync",
   "license": "SEE LICENSE IN LICENSE.md",
   "private": true,
   "type": "module",
-  "homepage": "https://docnode.dev",
+  "homepage": "https://docnode.dev/docsync",
   "repository": {
     "type": "git",
     "url": "https://github.com/docnode/docnode.git",
-    "directory": "packages/docnode-sync"
+    "directory": "packages/docsync"
   },
   "files": [
     "dist",
@@ -24,7 +24,7 @@
     "typecheck": "tsc --noEmit"
   },
   "bin": {
-    "docnode-server": "./dist/src/server/cli.js"
+    "docsync-server": "./dist/src/server/cli.js"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
@@ -33,6 +33,10 @@
     "tsx": "^4.19.2"
   },
   "exports": {
+    ".": {
+      "types": "./dist/src/exports/index.d.ts",
+      "default": "./dist/src/exports/index.js"
+    },
     "./*": {
       "types": "./dist/src/exports/*.d.ts",
       "default": "./dist/src/exports/*.js"

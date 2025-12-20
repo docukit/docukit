@@ -62,7 +62,7 @@ export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
     await tx.done;
   }
 
-  async saveOperations(ops: OpsPayload) {
+  async saveOperations(ops: OpsPayload<O>) {
     const db = await this._dbPromise;
     const tx = db.transaction("operations", "readwrite");
     const store = tx.objectStore("operations");

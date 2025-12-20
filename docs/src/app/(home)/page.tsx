@@ -67,10 +67,10 @@ const Index = () => {
 
           <div className="mx-auto grid max-w-6xl gap-8 md:grid-cols-2">
             <div className="animate-fade-in" style={{ animationDelay: "0.2s" }}>
-              <FeatureCard title="DocNode Core" features={coreFeatures} />
+              <FeatureCard title="DocNode" features={coreFeatures} />
             </div>
             <div className="animate-fade-in" style={{ animationDelay: "0.4s" }}>
-              <FeatureCard title="DocNode Sync" features={syncFeatures} />
+              <FeatureCard title="DocSync" features={syncFeatures} />
             </div>
           </div>
         </div>

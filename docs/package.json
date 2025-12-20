@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "next build",
-    "dev": "concurrently --kill-others-on-fail \"next dev\" \"npm:docnode-server\"",
+    "dev": "concurrently --kill-others-on-fail \"next dev\" \"npm:docsync-server\"",
     "clean": "rm -rf .next node_modules .turbo || rmdir /s /q .next node_modules .turbo",
-    "docnode-server": "node --env-file=.env --experimental-strip-types --watch src/docnode-server.ts",
+    "docsync-server": "node --env-file=.env --experimental-strip-types --watch src/docsync-server.ts",
     "start": "next start",
     "typecheck": "tsc --noEmit"
   },
@@ -15,7 +15,7 @@
   "dependencies": {
     "@ai-sdk/openai-compatible": "^1.0.23",
     "@ai-sdk/react": "^2.0.81",
-    "@docnode/sync-react": "workspace:*",
+    "@docnode/docsync-react": "workspace:*",
     "@lexical/react": "^0.38.2",
     "@lexical/rich-text": "^0.38.2",
     "@lexical/selection": "^0.38.2",

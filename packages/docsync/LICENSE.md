@@ -1,4 +1,4 @@
-# Docnode Sync License 1.0
+# DocSync License 1.0
 
 Copyright (c) 2025 German Jablonski. All rights reserved.
 

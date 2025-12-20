@@ -23,9 +23,9 @@ import {
 
 DocNode is a local-first framework. It is primarily composed of:
 
-1. **DocNode Core**: a highly performant type-safe document manager with atomic transactions and an undo manager.
+1. **DocNode**: a highly performant type-safe document manager with atomic transactions and an undo manager.
    It supports Operational Transformation (OT) and in the future also a Conflict-free Replicated Data Type (CRDT) mode.
-2. **DocNode Sync**: A client-server framework for managing DocNode documents. It synchronizes documents across different
+2. **DocSync**: A client-server framework for managing DocNode documents. It synchronizes documents across different
    tabs and clients in real time, both locally and in a central database. It supports authentication,
    conflict resolution, multiplexing, history version, and more.
 
@@ -36,7 +36,7 @@ DocNode is a local-first framework. It is primarily composed of:
     <thead>
       <tr>
         <th>Feature</th>
-        <th>DocNode Core</th>
+        <th>DocNode</th>
         <th>Yjs</th>
       </tr>
     </thead>
@@ -52,8 +52,8 @@ DocNode is a local-first framework. It is primarily composed of:
         <td>
           <SyncBackendFeature />
         </td>
-        <td>DocNode Sync</td>
-        <td>Hocuspocus, Y-Sweet</td>
+        <td>DocSync</td>
+        <td>Hocuspocus, Y-Sweet, DocSync</td>
       </tr>
       <tr>
         <td>

@@ -1,6 +1,6 @@
-# DocNode Sync – Authentication Model
+# DocSync – Authentication Model
 
-This document describes how authentication works in **DocNode Sync**.
+This document describes how authentication works in **DocSync**.
 
 DocNode does **not** implement authentication itself. Instead, it defines clear extension points so applications can plug in their own auth system while DocNode focuses strictly on synchronization.
 
@@ -10,10 +10,10 @@ DocNode provides **authentication and authorization hooks**, but it does not imp
 
 ## Core Principles
 
-* DocNode **never issues credentials**.
-* DocNode **never refreshes credentials**.
-* DocNode **never persists credentials**.
-* DocNode treats authentication as a **connection concern**, not a business concern.
+- DocNode **never issues credentials**.
+- DocNode **never refreshes credentials**.
+- DocNode **never persists credentials**.
+- DocNode treats authentication as a **connection concern**, not a business concern.
 
 If your app can authenticate users today, it can authenticate DocNode.
 
@@ -23,8 +23,8 @@ If your app can authenticate users today, it can authenticate DocNode.
 
 DocNode makes a strict distinction:
 
-* **Authentication**: Who is this connection?
-* **Authorization**: What is this user allowed to do?
+- **Authentication**: Who is this connection?
+- **Authorization**: What is this user allowed to do?
 
 DocNode only defines **authentication**.
 Authorization (document sharing, ACLs, permissions) is intentionally left to the application layer.
@@ -35,7 +35,7 @@ Authorization (document sharing, ACLs, permissions) is intentionally left to the
 
 ### Client Configuration
 
-```ts
+````ts
 export type ClientConfig = {
   url: string;
   userId: string;
@@ -47,9 +47,9 @@ export type ClientConfig = {
      * - Passed verbatim to the server on connection.
      * - Validation is delegated to the server via `authenticate`.
      * - This library does not issue, refresh, rotate, or persist tokens.
-     * 
+     *
      * `getToken` is expected to be a **cheap read** from existing auth state, not a network login flow.
-     * 
+     *
      * @example
      * ```
      * auth: {
@@ -77,14 +77,14 @@ export type ClientConfig = {
     provider: new () => ClientProvider;
   };
 };
-```
+````
 
 ---
 
 ### When `getToken` Is Called
 
-* On initial WebSocket connection
-* On reconnection after disconnect
+- On initial WebSocket connection
+- On reconnection after disconnect
 
 DocNode does **not** call `getToken` per operation.
 
@@ -107,9 +107,7 @@ export type ServerConfig = {
    * - Must resolve the canonical userId.
    * - May optionally return an authoritative expiration time.
    */
-  authenticate: (ev: {
-    token: string;
-  }) => Promise<{
+  authenticate: (ev: { token: string }) => Promise<{
     userId: string;
     /**
      * Absolute expiration time (epoch ms).
@@ -168,9 +166,9 @@ The client may claim a `userId`, but the server is authoritative.
 
 Reasons:
 
-* Prevents identity spoofing
-* Matches real-world auth systems (JWT `sub`, sessions, API keys)
-* Keeps trust boundaries explicit
+- Prevents identity spoofing
+- Matches real-world auth systems (JWT `sub`, sessions, API keys)
+- Keeps trust boundaries explicit
 
 The resolved `userId` is attached to the connection context and used for all subsequent operations.
 
@@ -182,8 +180,8 @@ Local persistence **does not authenticate users** and **does not authorize opera
 
 It exists only to:
 
-* Partition local data
-* Encrypt data at rest
+- Partition local data
+- Encrypt data at rest
 
 Local persistence never validates identity and never calls `getToken`.
 
@@ -207,16 +205,16 @@ IndexedDB name = `docnode:${userId}`
 
 This ensures:
 
-* Tokens may rotate or expire without affecting local data
-* Local data is correctly partitioned per account
-* Identity authority remains server-side
+- Tokens may rotate or expire without affecting local data
+- Local data is correctly partitioned per account
+- Identity authority remains server-side
 
 ### Why This Does NOT Violate “Local Has No Auth”
 
 Local persistence is **namespacing**, not authentication.
 
-* Authentication answers: "Who are you, according to an authority?"
-* Namespacing answers: "Which local bucket should I use?"
+- Authentication answers: "Who are you, according to an authority?"
+- Namespacing answers: "Which local bucket should I use?"
 
 Local storage does not verify the userId. It simply trusts the application to pass one.
 
@@ -246,13 +244,13 @@ DocNode does not manage encryption secrets. However, for most applications, the 
 
 #### Secret Creation (Server)
 
-* When a user account is created, the server generates a **high-entropy random secret**.
-* This secret is **never stored in plaintext**.
-* The server stores the secret **encrypted under the user’s authentication credentials**, for example:
+- When a user account is created, the server generates a **high-entropy random secret**.
+- This secret is **never stored in plaintext**.
+- The server stores the secret **encrypted under the user’s authentication credentials**, for example:
 
-  * encrypted with a key derived from OAuth credentials
-  * encrypted with a password-derived key
-  * protected by the identity provider’s security guarantees
+  - encrypted with a key derived from OAuth credentials
+  - encrypted with a password-derived key
+  - protected by the identity provider’s security guarantees
 
 This ensures that a database leak alone does not expose local encryption keys.
 
@@ -265,8 +263,8 @@ On the first login from a new device:
 3. The client derives its local encryption keys and initializes persistence
 4. The secret is stored **locally in secure storage**, preferably:
 
-   * a secure cookie
-   * using app-bound encryption if supported by the browser
+   - a secure cookie
+   - using app-bound encryption if supported by the browser
 
 The cookie expiration should match the desired **local session lifetime**. In many applications this may be very long or effectively indefinite.
 
@@ -303,10 +301,10 @@ local: {
 
 Such helpers:
 
-* Fetch the secret once after authentication
-* Store it in secure local storage (e.g. secure cookies with app-bound encryption when available)
-* Reuse the locally stored secret on subsequent startups
-* Avoid unnecessary network roundtrips
+- Fetch the secret once after authentication
+- Store it in secure local storage (e.g. secure cookies with app-bound encryption when available)
+- Reuse the locally stored secret on subsequent startups
+- Avoid unnecessary network roundtrips
 
 This provides a batteries-included path for most users while keeping the DocNode core minimal, flexible, and honest about its security boundaries.
 
@@ -320,16 +318,16 @@ Authentication and encryption are intentionally separate.
 
 ### Online
 
-* Token is provided
-* Server authenticates
-* `userId` is resolved
-* Sync proceeds normally
+- Token is provided
+- Server authenticates
+- `userId` is resolved
+- Sync proceeds normally
 
 ### Offline
 
-* Local persistence may continue (if configured)
-* No authentication occurs
-* Sync resumes when connection is re-established
+- Local persistence may continue (if configured)
+- No authentication occurs
+- Sync resumes when connection is re-established
 
 DocNode does not attempt to validate identity while offline.
 
@@ -349,9 +347,9 @@ There are two supported strategies:
 
 If `authenticate` returns `expiresAt`:
 
-* The server schedules a disconnect exactly at that time
-* No periodic revalidation is performed
-* This is the most efficient path
+- The server schedules a disconnect exactly at that time
+- No periodic revalidation is performed
+- This is the most efficient path
 
 This is strongly recommended when the auth system knows the token TTL (e.g. JWT `exp`).
 
@@ -359,20 +357,20 @@ This is strongly recommended when the auth system knows the token TTL (e.g. JWT 
 
 If `expiresAt` is **not** provided:
 
-* DocNode periodically re-calls `authenticate`
-* If authentication fails, the socket is disconnected
-* The interval is controlled via `authRevalidation.intervalMs`
+- DocNode periodically re-calls `authenticate`
+- If authentication fails, the socket is disconnected
+- The interval is controlled via `authRevalidation.intervalMs`
 
 This is required for:
 
-* opaque tokens
-* manually revocable sessions
-* external identity providers
+- opaque tokens
+- manually revocable sessions
+- external identity providers
 
 ### Why These Are Different
 
-* `expiresAt` represents **authoritative knowledge**: a guaranteed upper bound.
-* Revalidation represents **uncertainty management**: checking in case revocation occurred.
+- `expiresAt` represents **authoritative knowledge**: a guaranteed upper bound.
+- Revalidation represents **uncertainty management**: checking in case revocation occurred.
 
 They may be implemented with similar timers internally, but they have different semantics and guarantees.
 
@@ -380,16 +378,16 @@ They may be implemented with similar timers internally, but they have different 
 
 When a socket is disconnected (e.g. due to token expiry):
 
-* Pending operations remain local
-* Socket.IO reconnects automatically
-* `auth.getToken()` is called again
-* A new authenticated connection is established
+- Pending operations remain local
+- Socket.IO reconnects automatically
+- `auth.getToken()` is called again
+- A new authenticated connection is established
 
 This ensures DocNode works correctly with:
 
-* short-lived tokens
-* refresh and rotation
-* long-lived sessions
+- short-lived tokens
+- refresh and rotation
+- long-lived sessions
 
 ### Proactive Token Refresh (Optional)
 
@@ -403,10 +401,10 @@ However, this event is not supported in DocNode, at least not at the moment. Rec
 
 ## Security Model Summary
 
-* Tokens are **presented**, not derived
-* Secrets are **derived**, not presented
-* Authentication happens per connection
-* Authorization is application-defined
+- Tokens are **presented**, not derived
+- Secrets are **derived**, not presented
+- Authentication happens per connection
+- Authorization is application-defined
 
 ---
 
@@ -416,8 +414,8 @@ DocNode’s auth model is deliberately minimal.
 
 This allows it to:
 
-* Work with any auth system
-* Avoid security assumptions
-* Remain stable as applications evolve
+- Work with any auth system
+- Avoid security assumptions
+- Remain stable as applications evolve
 
 If you need more than this, DocNode is intentionally not the place to add it.

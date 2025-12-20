@@ -26,7 +26,7 @@ export type ServerConfig = {
 type DocId = string;
 type ClientId = string;
 
-export class DocNodeServer<S, O> {
+export class DocSyncServer<S, O> {
   private _io: ServerSocket<S, O>;
   private _provider: ServerProvider;
   /**
