@@ -1,12 +1,13 @@
-import { Doc, type DocConfig } from "docnode";
+import { Doc, type DocConfig, type Operations } from "docnode";
 
 // TO-DECIDE: should params in fn's be objects?
 export interface DocBinding<D = NN, S = NN, O = NN> {
-  new: (type: string) => D;
+  new: (type: string, id?: string) => { doc: D; id: string };
   deserialize: (serializedDoc: S) => D;
   serialize: (doc: D) => S;
-  onChange: (doc: D) => (cb: (ev: { operations: O }) => void) => () => void;
+  onChange: (doc: D, cb: (ev: { operations: O }) => void) => void;
   applyOperations: (doc: D, operations: O) => void;
+  removeListeners: (doc: D) => void;
 }
 
 export type NN = NonNullable<unknown>;
@@ -29,20 +30,30 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
   });
 
   return createDocBinding({
-    new: (type) => {
+    new: (type, id) => {
       const docConfig = docConfigsMap.get(type);
       if (!docConfig) throw new Error(`Unknown namespace: ${type}`);
-      return new Doc(docConfig);
+      const doc = new Doc({ ...docConfig, id });
+      return { doc, id: doc.root.id };
     },
     serialize: (doc) => doc.toJSON(),
     deserialize: (serializedDoc) => {
       const namespace = JSON.parse(serializedDoc[2].namespace!) as string;
       const docConfig = docConfigsMap.get(namespace);
       if (!docConfig) throw new Error(`Unknown namespace: ${namespace}`);
-      const doc = new Doc(docConfig);
+      const doc = Doc.fromJSON(docConfig, serializedDoc);
+      doc.forceCommit();
       return doc;
     },
-    onChange: (doc) => doc.onChange.bind(doc),
+    onChange: (doc, cb: (ev: { operations: Operations }) => void) =>
+      doc.onChange(cb),
     applyOperations: (doc, operations) => doc.applyOperations(operations),
+    removeListeners: (doc) => {
+      // TODO: maybe doc should have a removeListeners method?
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      doc["_changeListeners"].clear();
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      doc["_normalizeListeners"].clear();
+    },
   });
 };

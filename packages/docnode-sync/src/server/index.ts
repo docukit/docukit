@@ -26,8 +26,8 @@ export type ServerConfig = {
 type DocId = string;
 type ClientId = string;
 
-export class DocNodeServer {
-  private _io: ServerSocket;
+export class DocNodeServer<S, O> {
+  private _io: ServerSocket<S, O>;
   private _provider: ServerProvider;
   /**
    * This are the docs that at least one client has in memory (open/active).

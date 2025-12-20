@@ -1,7 +1,7 @@
-import { Doc, type Operations } from "docnode";
 import type { ClientSocket, OpsPayload } from "../shared/types.js";
 import { io } from "socket.io-client";
 import type { DocBinding } from "../shared/docBinding.js";
+import type { Doc } from "docnode";
 
 /**
  * Arguments for {@link DocNodeClient.getDoc}.
@@ -14,15 +14,15 @@ export type GetDocArgs =
   | { namespace: string; id: string; createIfMissing?: boolean }
   | { namespace: string; createIfMissing: true };
 
-export type BroadcastMessage = {
+export type BroadcastMessage<O> = {
   type: "OPERATIONS";
-  operations: Operations;
+  operations: O;
   docId: string;
 };
 
-export type ClientConfig = {
+export type ClientConfig<D extends Doc, S, O> = {
   url: string;
-  docBinding: DocBinding;
+  docBinding: DocBinding<D, S, O>;
   auth: {
     /**
      * Server authentication token.
@@ -34,7 +34,7 @@ export type ClientConfig = {
     getToken: () => Promise<string>;
   };
   local?: {
-    provider: new () => ClientProvider;
+    provider: new () => ClientProvider<S, O>;
     /**
      * Resolves the local storage identity.
      *
@@ -56,13 +56,13 @@ export type ClientConfig = {
 
 export type ClientProvider<S, O> = {
   getSerializedDoc(docId: string): Promise<{ serializedDoc: S } | undefined>;
-  getOperations(): Promise<{ operations: O; userId: string }[]>;
+  getOperations(): Promise<OpsPayload<O>[]>;
   deleteOperations(count: number): Promise<void>;
-  saveOperations(arg: { operations: O; userId: string }): Promise<void>;
+  saveOperations(arg: OpsPayload<O>): Promise<void>;
   saveSerializedDoc(arg: { serializedDoc: S }): Promise<void>;
 };
 
-export class DocNodeClient<D, S, O> {
+export class DocNodeClient<D extends Doc, S, O> {
   private _docBinding: DocBinding<D, S, O>;
   // prettier-ignore
   private _docsCache = new Map<string, { promisedDoc: Promise<D | undefined>; refCount: number; }>();
@@ -74,18 +74,18 @@ export class DocNodeClient<D, S, O> {
   private _broadcastChannel: BroadcastChannel;
 
   // ws
-  private _socket: ClientSocket;
+  private _socket: ClientSocket<S, O>;
   private _pushInProgress = false;
   private _inLocalWaiting = false; // debería disparar un push al inicializar (quizás hay en local)
 
-  constructor(config: ClientConfig) {
+  constructor(config: ClientConfig<D, S, O>) {
     if (typeof window === "undefined")
       throw new Error("DocNodeClient can only be used in the browser");
     const { docBinding, local } = config;
     this._docBinding = docBinding;
     if (local)
       this._local = {
-        secret: local.getSecret(),
+        secret: local.getIdentity().then((identity) => identity.secret),
         provider: new local.provider(),
       };
 
@@ -105,7 +105,7 @@ export class DocNodeClient<D, S, O> {
     // Listen for operations from other tabs.
     this._broadcastChannel = new BroadcastChannel("docnode-sync");
     this._broadcastChannel.onmessage = async (
-      ev: MessageEvent<BroadcastMessage>,
+      ev: MessageEvent<BroadcastMessage<O>>,
     ) => {
       if (ev.data.type === "OPERATIONS") {
         void this._applyOperations(ev.data.operations, ev.data.docId);
@@ -115,13 +115,13 @@ export class DocNodeClient<D, S, O> {
     };
   }
 
-  async _applyOperations(operations: Operations, docId: string) {
+  async _applyOperations(operations: O, docId: string) {
     const docFromCache = this._docsCache.get(docId);
     if (!docFromCache) return;
     const doc = await docFromCache.promisedDoc;
     if (!doc) return;
     this._shouldBroadcast = false;
-    doc.applyOperations(operations);
+    this._docBinding.applyOperations(doc, operations);
   }
 
   /**
@@ -166,11 +166,11 @@ export class DocNodeClient<D, S, O> {
     let promisedDoc: Promise<D | undefined>;
 
     if (!id && createIfMissing) {
-      const doc = this._docBinding.new(namespace);
+      const { doc, id } = this._docBinding.new(namespace);
       const serializedDoc = this._docBinding.serialize(doc);
       await this._local?.provider.saveSerializedDoc({ serializedDoc });
       promisedDoc = Promise.resolve(doc);
-      this._docsCache.set(doc.root.id, { promisedDoc, refCount: 1 });
+      this._docsCache.set(id, { promisedDoc, refCount: 1 });
     } else if (id) {
       // Case: { namespace, id } or { namespace, id, createIfMissing } → Try to get, optionally create
       const cacheEntry = this._docsCache.get(id);
@@ -189,41 +189,37 @@ export class DocNodeClient<D, S, O> {
 
     // Setup change listener once doc is ready (single place)
     const doc = await promisedDoc;
-    doc?.onChange(({ operations }) => {
-      if (this._shouldBroadcast) {
-        this._sendMessage({
-          type: "OPERATIONS",
-          operations,
-          docId: doc.root.id,
-        });
-        void this.onLocalOperations({ docId: doc.root.id, ops: operations });
-      }
-      this._shouldBroadcast = true;
-    });
+    if (doc) {
+      this._docBinding.onChange(doc, ({ operations }) => {
+        if (this._shouldBroadcast) {
+          this._sendMessage({
+            type: "OPERATIONS",
+            operations,
+            docId: doc.root.id,
+          });
+          void this.onLocalOperations({ docId: doc.root.id, operations });
+        }
+        this._shouldBroadcast = true;
+      });
+    }
     return doc;
   }
 
   private async _loadOrCreateDoc(
     id: string,
     namespace?: string,
-  ): Promise<Doc | undefined> {
+  ): Promise<D | undefined> {
     // Try to load existing doc
-    const jsonDoc = (await this._provider.getSerializedDoc(id))?.jsonDoc;
-    if (jsonDoc) {
-      const ns = JSON.parse(jsonDoc[2].namespace ?? "") as string;
-      const docConfig = this._docConfigs.get(ns);
-      if (!docConfig) throw new Error(`Unknown namespace: ${ns}`);
-      const doc = Doc.fromJSON(docConfig, jsonDoc);
-      doc.forceCommit();
+    const serializedDoc = (await this._local?.provider.getSerializedDoc(id))
+      ?.serializedDoc;
+    if (serializedDoc) {
+      const doc = this._docBinding.deserialize(serializedDoc);
       return doc;
     }
 
     // Create new doc if namespace provided
     if (namespace) {
-      const docConfig = this._docConfigs.get(namespace);
-      if (!docConfig) throw new Error(`Unknown namespace: ${namespace}`);
-      const doc = new Doc({ ...docConfig, id });
-      await this._provider.saveJsonDoc({ jsonDoc: doc.toJSON() });
+      const { doc } = this._docBinding.new(namespace, id);
       return doc;
     }
 
@@ -241,28 +237,24 @@ export class DocNodeClient<D, S, O> {
       this._docsCache.delete(docId);
       const doc = await cacheEntry.promisedDoc;
       if (!doc) return;
-      // TODO: maybe doc should have a destroy method?
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-      doc["_changeListeners"].clear();
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-      doc["_normalizeListeners"].clear();
+      this._docBinding.removeListeners(doc);
     }
   }
 
-  _sendMessage(message: BroadcastMessage) {
+  _sendMessage(message: BroadcastMessage<O>) {
     this._broadcastChannel.postMessage(message);
   }
 
-  async onLocalOperations({ docId, ops }: OpsPayload) {
-    await this._provider.saveOperations({ docId, ops });
+  async onLocalOperations({ docId, operations }: OpsPayload<O>) {
+    await this._local?.provider.saveOperations({ docId, operations });
     if (this._pushInProgress) this._inLocalWaiting = true;
 
     const pushOperations = async () => {
       if (this._pushInProgress) throw new Error("Push already in progress");
       this._pushInProgress = true;
-      const allOperations = await this._provider.getOperations();
+      const allOperations = (await this._local?.provider.getOperations()) ?? [];
       // Acá puedo llegar a tener que devolver el documento completo si hubo concurrencia
-      const [error, newOperations] =
+      const [error, _newOperations] =
         await this._pushOperationsToServer(allOperations);
       if (error) {
         // retry. Maybe I should consider throw the error depending on the error type
@@ -273,12 +265,14 @@ export class DocNodeClient<D, S, O> {
         // TODO: como hago en deleteOperations de indexedDB si quizás mientras viajaba al servidor y volvía
         // hubo otras operaciones que escribieron en idb?
         // 2 stores? Almacenar el id de la última operación enviada?
-        await this._provider.deleteOperations(allOperations.length);
+        await this._local?.provider.deleteOperations(allOperations.length);
         // Get doc from cache directly (it's guaranteed to exist since it triggered this)
         const cacheEntry = this._docsCache.get(docId);
         const doc = cacheEntry ? await cacheEntry.promisedDoc : undefined;
         if (doc) {
-          await this._provider.saveJsonDoc({ jsonDoc: doc.toJSON() });
+          await this._local?.provider.saveSerializedDoc({
+            serializedDoc: this._docBinding.serialize(doc),
+          });
         }
 
         this._pushInProgress = false;
@@ -291,10 +285,10 @@ export class DocNodeClient<D, S, O> {
   }
 
   private async _pushOperationsToServer(
-    ops: OpsPayload[],
-  ): Promise<[Error, undefined] | [undefined, OpsPayload[]]> {
-    const response = await new Promise<OpsPayload[] | Error>((resolve) => {
-      this._socket.emit("operations", ops, (res: OpsPayload[] | Error) => {
+    ops: OpsPayload<O>[],
+  ): Promise<[Error, undefined] | [undefined, OpsPayload<O>[]]> {
+    const response = await new Promise<OpsPayload<O>[] | Error>((resolve) => {
+      this._socket.emit("operations", ops, (res: OpsPayload<O>[] | Error) => {
         resolve(res);
       });
     });
