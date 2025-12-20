@@ -1,11 +1,7 @@
 import { Doc, type Operations } from "docnode";
-import { type DocConfig } from "docnode";
-import type {
-  ClientSocket,
-  JsonDocPayload,
-  OpsPayload,
-} from "../shared/types.js";
+import type { ClientSocket, OpsPayload } from "../shared/types.js";
 import { io } from "socket.io-client";
+import type { DocBinding } from "../shared/docBinding.js";
 
 /**
  * Arguments for {@link DocNodeClient.getDoc}.
@@ -26,28 +22,54 @@ export type BroadcastMessage = {
 
 export type ClientConfig = {
   url: string;
-  userId: string;
-  docConfigs: DocConfig[];
-  provider: new () => ClientProvider;
+  docBinding: DocBinding;
+  auth: {
+    /**
+     * Server authentication token.
+     *
+     * - Passed verbatim to the server on connection.
+     * - Validation is delegated to the server via `onAuth`.
+     * - This library does not issue, refresh, or rotate tokens.
+     */
+    getToken: () => Promise<string>;
+  };
+  local?: {
+    provider: new () => ClientProvider;
+    /**
+     * Resolves the local storage identity.
+     *
+     * Used exclusively for:
+     * - Namespacing local persistence (userId)
+     * - Deriving encryption keys for data at rest (secret)
+     *
+     * About the secret:
+     * - Must never be persisted client-side (localStorage, IndexedDB, etc).
+     * - Re-encryption is not supported, so losing the secret makes local data permanently unrecoverable.
+     *
+     */
+    getIdentity: () => Promise<{
+      userId: string;
+      secret: string;
+    }>;
+  };
 };
 
-export type ClientProvider = {
-  getJsonDoc(docId: string): Promise<JsonDocPayload | undefined>;
-  getOperations(): Promise<OpsPayload[]>;
+export type ClientProvider<S, O> = {
+  getSerializedDoc(docId: string): Promise<{ serializedDoc: S } | undefined>;
+  getOperations(): Promise<{ operations: O; userId: string }[]>;
   deleteOperations(count: number): Promise<void>;
-  saveOperations(ops: OpsPayload): Promise<void>;
-  saveJsonDoc(json: JsonDocPayload): Promise<void>;
+  saveOperations(arg: { operations: O; userId: string }): Promise<void>;
+  saveSerializedDoc(arg: { serializedDoc: S }): Promise<void>;
 };
 
-type DocsCacheEntry = {
-  promisedDoc: Promise<Doc | undefined>;
-  refCount: number;
-};
-
-export class DocNodeClient {
-  private _docsCache = new Map<string, DocsCacheEntry>();
-  private _provider: ClientProvider;
-  private _docConfigs = new Map<string, DocConfig>();
+export class DocNodeClient<D, S, O> {
+  private _docBinding: DocBinding<D, S, O>;
+  // prettier-ignore
+  private _docsCache = new Map<string, { promisedDoc: Promise<D | undefined>; refCount: number; }>();
+  private _local?: {
+    provider: ClientProvider<S, O>;
+    secret: Promise<string>;
+  };
   private _shouldBroadcast = true;
   private _broadcastChannel: BroadcastChannel;
 
@@ -59,15 +81,13 @@ export class DocNodeClient {
   constructor(config: ClientConfig) {
     if (typeof window === "undefined")
       throw new Error("DocNodeClient can only be used in the browser");
-    const { docConfigs, provider } = config;
-    this._provider = new provider();
-    docConfigs.forEach((docConfig) => {
-      const namespace = docConfig.namespace ?? "";
-      if (this._docConfigs.has(namespace)) {
-        throw new Error(`Duplicate namespace: ${namespace}`);
-      }
-      this._docConfigs.set(namespace, docConfig);
-    });
+    const { docBinding, local } = config;
+    this._docBinding = docBinding;
+    if (local)
+      this._local = {
+        secret: local.getSecret(),
+        provider: new local.provider(),
+      };
 
     this._socket = io(config.url, {
       auth: {
@@ -132,25 +152,23 @@ export class DocNodeClient {
     namespace: string;
     id?: string;
     createIfMissing: true;
-  }): Promise<Doc>;
+  }): Promise<D>;
   async getDoc(args: {
     namespace: string;
     id: string;
     createIfMissing?: false;
-  }): Promise<Doc | undefined>;
-  async getDoc(args: GetDocArgs): Promise<Doc | undefined> {
+  }): Promise<D | undefined>;
+  async getDoc(args: GetDocArgs): Promise<D | undefined> {
     const namespace = args.namespace;
     const id = "id" in args ? args.id : undefined;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
 
-    let promisedDoc: Promise<Doc | undefined>;
+    let promisedDoc: Promise<D | undefined>;
 
     if (!id && createIfMissing) {
-      // Case: { namespace, createIfMissing: true } → Create new doc with auto-generated ID (ulid)
-      const docConfig = this._docConfigs.get(namespace);
-      if (!docConfig) throw new Error(`Unknown namespace: ${namespace}`);
-      const doc = new Doc(docConfig);
-      await this._provider.saveJsonDoc({ jsonDoc: doc.toJSON() });
+      const doc = this._docBinding.new(namespace);
+      const serializedDoc = this._docBinding.serialize(doc);
+      await this._local?.provider.saveSerializedDoc({ serializedDoc });
       promisedDoc = Promise.resolve(doc);
       this._docsCache.set(doc.root.id, { promisedDoc, refCount: 1 });
     } else if (id) {
@@ -190,7 +208,7 @@ export class DocNodeClient {
     namespace?: string,
   ): Promise<Doc | undefined> {
     // Try to load existing doc
-    const jsonDoc = (await this._provider.getJsonDoc(id))?.jsonDoc;
+    const jsonDoc = (await this._provider.getSerializedDoc(id))?.jsonDoc;
     if (jsonDoc) {
       const ns = JSON.parse(jsonDoc[2].namespace ?? "") as string;
       const docConfig = this._docConfigs.get(ns);

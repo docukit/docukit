@@ -873,7 +873,7 @@ export class Doc {
    *
    * @throws If the document is **not** in the `idle` stage at the time of registration.
    */
-  onChange(callback: (ev: ChangeEvent) => void) {
+  onChange = (callback: (ev: ChangeEvent) => void) => {
     if (this._lifeCycleStage !== "idle" && this._lifeCycleStage !== "init")
       throw new Error(
         `You can't register a change event listener during the ${this._lifeCycleStage} stage`,
@@ -882,7 +882,7 @@ export class Doc {
     return () => {
       this._changeListeners.delete(callback);
     };
-  }
+  };
 
   /**
    * Registers a callback to be executed during the document's normalization phase.

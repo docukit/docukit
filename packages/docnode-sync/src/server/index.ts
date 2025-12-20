@@ -2,8 +2,25 @@ import { Server, type Socket } from "socket.io";
 import type { Operations } from "docnode";
 import type { ServerSocket } from "../shared/types.js";
 
+// replace this with shared types
 export type ServerProvider = {
   saveOperations: (operations: Operations) => Promise<void>;
+};
+
+export type ServerConfig = {
+  port?: number;
+  provider: new () => ServerProvider;
+  authenticate: (authEv: {
+    token: string;
+    // should return errors instead of null?
+    // eslint-disable-next-line @typescript-eslint/no-restricted-types
+  }) => Promise<{ userId: string } | null>;
+  // review args
+  authorize?: (ev: {
+    userId: string;
+    docId: string;
+    type: "read" | "write";
+  }) => boolean;
 };
 
 type DocId = string;
@@ -37,8 +54,8 @@ export class DocNodeServer {
     }
   >();
 
-  constructor(config: { port: number; provider: new () => ServerProvider }) {
-    this._io = new Server(config.port, {
+  constructor(config: ServerConfig) {
+    this._io = new Server(config.port ?? 8080, {
       cors: {
         origin: "*",
       },

@@ -1,5 +1,4 @@
 import { openDB, type IDBPDatabase } from "idb";
-import { type JsonDoc, type Operations } from "docnode";
 import type { ClientProvider } from "../index.js";
 import { type DBSchema } from "idb";
 import type { JsonDocPayload, OpsPayload } from "../../shared/types.js";
