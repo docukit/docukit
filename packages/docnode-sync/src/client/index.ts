@@ -1,7 +1,10 @@
-import type { ClientSocket, OpsPayload } from "../shared/types.js";
+import type {
+  ClientSocket,
+  OpsPayload,
+  SerializedDocPayload,
+} from "../shared/types.js";
 import { io } from "socket.io-client";
-import type { DocBinding } from "../shared/docBinding.js";
-import type { Doc } from "docnode";
+import type { DocBinding, SerializedDoc, NN } from "../shared/docBinding.js";
 
 /**
  * Arguments for {@link DocNodeClient.getDoc}.
@@ -20,7 +23,11 @@ export type BroadcastMessage<O> = {
   docId: string;
 };
 
-export type ClientConfig<D extends Doc, S, O> = {
+export type ClientConfig<
+  D extends NN,
+  S extends SerializedDoc,
+  O extends NN,
+> = {
   url: string;
   docBinding: DocBinding<D, S, O>;
   auth: {
@@ -59,10 +66,14 @@ export type ClientProvider<S, O> = {
   getOperations(): Promise<OpsPayload<O>[]>;
   deleteOperations(count: number): Promise<void>;
   saveOperations(arg: OpsPayload<O>): Promise<void>;
-  saveSerializedDoc(arg: { serializedDoc: S }): Promise<void>;
+  saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
 };
 
-export class DocNodeClient<D extends Doc, S, O> {
+export class DocNodeClient<
+  D extends NN,
+  S extends SerializedDoc,
+  O extends NN,
+> {
   private _docBinding: DocBinding<D, S, O>;
   // prettier-ignore
   private _docsCache = new Map<string, { promisedDoc: Promise<D | undefined>; refCount: number; }>();
@@ -163,14 +174,20 @@ export class DocNodeClient<D extends Doc, S, O> {
     const id = "id" in args ? args.id : undefined;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
 
-    let promisedDoc: Promise<D | undefined>;
-
+    // Case: { namespace, createIfMissing: true } → Create a new doc with auto-generated ID (ulid).
     if (!id && createIfMissing) {
       const { doc, id } = this._docBinding.new(namespace);
       const serializedDoc = this._docBinding.serialize(doc);
-      await this._local?.provider.saveSerializedDoc({ serializedDoc });
-      promisedDoc = Promise.resolve(doc);
-      this._docsCache.set(id, { promisedDoc, refCount: 1 });
+      await this._local?.provider.saveSerializedDoc({
+        serializedDoc,
+        docId: id,
+      });
+      this._setupChangeListener(doc, id);
+      this._docsCache.set(id, {
+        promisedDoc: Promise.resolve(doc),
+        refCount: 1,
+      });
+      return doc;
     } else if (id) {
       // Case: { namespace, id } or { namespace, id, createIfMissing } → Try to get, optionally create
       const cacheEntry = this._docsCache.get(id);
@@ -178,31 +195,32 @@ export class DocNodeClient<D extends Doc, S, O> {
         cacheEntry.refCount += 1;
         return cacheEntry.promisedDoc;
       }
-      promisedDoc = this._loadOrCreateDoc(
+      const promisedDoc = this._loadOrCreateDoc(
         id,
         createIfMissing ? namespace : undefined,
       );
       this._docsCache.set(id, { promisedDoc, refCount: 1 });
+      const doc = await promisedDoc;
+      if (!doc) return undefined;
+      this._setupChangeListener(doc, id);
+      return doc;
     } else {
       return undefined;
     }
+  }
 
-    // Setup change listener once doc is ready (single place)
-    const doc = await promisedDoc;
-    if (doc) {
-      this._docBinding.onChange(doc, ({ operations }) => {
-        if (this._shouldBroadcast) {
-          this._sendMessage({
-            type: "OPERATIONS",
-            operations,
-            docId: doc.root.id,
-          });
-          void this.onLocalOperations({ docId: doc.root.id, operations });
-        }
-        this._shouldBroadcast = true;
-      });
-    }
-    return doc;
+  private _setupChangeListener(doc: D, docId: string) {
+    this._docBinding.onChange(doc, ({ operations }) => {
+      if (this._shouldBroadcast) {
+        this._sendMessage({
+          type: "OPERATIONS",
+          operations,
+          docId,
+        });
+        void this.onLocalOperations({ docId, operations });
+      }
+      this._shouldBroadcast = true;
+    });
   }
 
   private async _loadOrCreateDoc(
@@ -272,6 +290,7 @@ export class DocNodeClient<D extends Doc, S, O> {
         if (doc) {
           await this._local?.provider.saveSerializedDoc({
             serializedDoc: this._docBinding.serialize(doc),
+            docId,
           });
         }
 

@@ -1,16 +1,16 @@
 import { openDB, type IDBPDatabase } from "idb";
 import type { ClientProvider } from "../index.js";
 import { type DBSchema } from "idb";
-import type { JsonDocPayload, OpsPayload } from "../../shared/types.js";
+import type { OpsPayload, SerializedDocPayload } from "../../shared/types.js";
 
-interface DocNodeIDB extends DBSchema {
+interface DocNodeIDB<S, O> extends DBSchema {
   docs: {
     key: string; // docId
-    value: JsonDocPayload;
+    value: SerializedDocPayload<S>;
   };
   operations: {
     key: number;
-    value: OpsPayload;
+    value: OpsPayload<O>;
     // For the moment, we're not using this index.
     // indexes: {
     //   docId_idx: string;
@@ -18,14 +18,17 @@ interface DocNodeIDB extends DBSchema {
   };
 }
 
-export class IndexedDBProvider implements ClientProvider {
-  private _dbPromise: Promise<IDBPDatabase<DocNodeIDB>>;
+export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
+  private _dbPromise: Promise<IDBPDatabase<DocNodeIDB<S, O>>>;
 
   constructor() {
     this._dbPromise = openDB("docnode", 1, {
       upgrade(db) {
         if (db.objectStoreNames.contains("docs")) return;
-        db.createObjectStore("docs");
+        db.createObjectStore("docs", {
+          keyPath: "docId",
+        });
+
         db.createObjectStore("operations", {
           autoIncrement: true,
         });
@@ -34,7 +37,7 @@ export class IndexedDBProvider implements ClientProvider {
     });
   }
 
-  async getJsonDoc(docId: string): Promise<JsonDocPayload | undefined> {
+  async getSerializedDoc(docId: string) {
     const db = await this._dbPromise;
     const tx = db.transaction("docs", "readonly");
     const store = tx.objectStore("docs");
@@ -43,11 +46,11 @@ export class IndexedDBProvider implements ClientProvider {
     return result;
   }
 
-  async saveJsonDoc(json: JsonDocPayload) {
+  async saveSerializedDoc(serializedDocPayload: SerializedDocPayload<S>) {
     const db = await this._dbPromise;
     const tx = db.transaction("docs", "readwrite");
     const store = tx.objectStore("docs");
-    await store.put(json, json.jsonDoc[0]);
+    await store.put(serializedDocPayload);
     await tx.done;
   }
 

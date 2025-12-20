@@ -1,7 +1,18 @@
 import { Doc, type DocConfig, type Operations } from "docnode";
 
+export type SerializedDoc =
+  | string
+  | Record<string, unknown>
+  | Array<unknown>
+  | Uint8Array;
+export type NN = NonNullable<unknown>;
+
 // TO-DECIDE: should params in fn's be objects?
-export interface DocBinding<D = NN, S = NN, O = NN> {
+export interface DocBinding<
+  D extends NN = NN,
+  S extends SerializedDoc = SerializedDoc,
+  O extends NN = NN,
+> {
   new: (type: string, id?: string) => { doc: D; id: string };
   deserialize: (serializedDoc: S) => D;
   serialize: (doc: D) => S;
@@ -10,9 +21,11 @@ export interface DocBinding<D = NN, S = NN, O = NN> {
   removeListeners: (doc: D) => void;
 }
 
-export type NN = NonNullable<unknown>;
-
-export const createDocBinding = <D, S, O>(
+export const createDocBinding = <
+  D extends NN,
+  S extends SerializedDoc,
+  O extends NN = NN,
+>(
   docBinding: DocBinding<D, S, O>,
 ): DocBinding<D, S, O> => {
   return docBinding;

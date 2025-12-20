@@ -3,7 +3,7 @@ import { type Socket } from "socket.io-client";
 
 export type OpsPayload<O> = { docId: string; operations: O };
 
-export type SerializedDocPayload<S> = { serializedDoc: S };
+export type SerializedDocPayload<S> = { serializedDoc: S; docId: string };
 
 type ClientToServerEvents<S, O> = {
   operations: (
