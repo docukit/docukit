@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type {
   ClientSocket,
   OpsPayload,
@@ -16,6 +17,23 @@ import type { DocBinding, SerializedDoc, NN } from "../shared/docBinding.js";
 export type GetDocArgs =
   | { namespace: string; id: string; createIfMissing?: boolean }
   | { namespace: string; createIfMissing: true };
+
+export type QueryResult<D> =
+  | {
+      status: "loading";
+      data: undefined;
+      error: undefined;
+    }
+  | {
+      status: "success";
+      data: D;
+      error: undefined;
+    }
+  | {
+      status: "error";
+      data: undefined;
+      error: Error;
+    };
 
 export type BroadcastMessage<O> = {
   type: "OPERATIONS";
@@ -135,40 +153,46 @@ export class DocSyncClient<
   }
 
   /**
-   * Get or create a document based on the provided arguments.
+   * Subscribe to a document with reactive state updates.
    *
    * The behavior depends on which fields are provided:
    * - `{ namespace, id }` → Try to get an existing doc. Returns `undefined` if not found.
    * - `{ namespace, createIfMissing: true }` → Create a new doc with auto-generated ID (ulid).
    * - `{ namespace, id, createIfMissing: true }` → Get existing doc or create it if not found.
    *
-   * The returned doc is cached and has listeners for:
-   * - Saving operations to the provider (e.g., IndexedDB).
-   * - Broadcasting operations to other tabs for synchronization.
+   * The callback will be invoked with state updates:
+   * 1. `{ status: "loading" }` - Initial state while fetching
+   * 2. `{ status: "success", data: { doc, id } }` - Document loaded successfully
+   * 3. `{ status: "error", error }` - Failed to load document
+   *
+   * Subsequent updates will be sent whenever the document changes.
    *
    * @example
    * ```ts
-   * // Get existing doc (might be undefined)
-   * const doc = await client.getDoc({ namespace: "notes", id: "abc123" });
+   * // Subscribe to doc changes
+   * const unsubscribe = client.getDoc(
+   *   { namespace: "notes", id: "abc123" },
+   *   (result) => {
+   *     if (result.status === "loading") console.log("Loading...");
+   *     if (result.status === "success") console.log("Doc:", result.data.doc);
+   *     if (result.status === "error") console.error(result.error);
+   *   }
+   * );
    *
-   * // Create new doc with auto-generated ID
-   * const newDoc = await client.getDoc({ namespace: "notes", createIfMissing: true });
-   *
-   * // Get or create (guaranteed to return a Doc)
-   * const doc = await client.getDoc({ namespace: "notes", id: "abc123", createIfMissing: true });
+   * // Clean up when done
+   * unsubscribe();
    * ```
    */
-  async getDoc(args: {
-    namespace: string;
-    id?: string;
-    createIfMissing: true;
-  }): Promise<{ doc: D; id: string }>;
-  async getDoc(args: {
-    namespace: string;
-    id: string;
-    createIfMissing?: false;
-  }): Promise<{ doc: D; id: string } | undefined>;
-  async getDoc(args: GetDocArgs): Promise<{ doc: D; id: string } | undefined> {
+  getDoc<T extends GetDocArgs>(
+    args: T,
+    callback: (
+      result: QueryResult<
+        T extends { createIfMissing: true }
+          ? { doc: D; id: string }
+          : { doc: D | undefined; id: string }
+      >,
+    ) => void,
+  ): void {
     const namespace = args.namespace;
     const id = "id" in args ? args.id : undefined;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
