@@ -86,8 +86,7 @@ export class DocSyncClient<
 
   // ws
   private _socket: ClientSocket<S, O>;
-  private _pushInProgress = false;
-  private _inLocalWaiting = false; // debería disparar un push al inicializar (quizás hay en local)
+  protected _pushStatus: "idle" | "pushing" | "pushing-with-pending" = "idle";
 
   constructor(config: ClientConfig<D, S, O>) {
     if (typeof window === "undefined")
@@ -267,11 +266,14 @@ export class DocSyncClient<
 
   async onLocalOperations({ docId, operations }: OpsPayload<O>) {
     await this._local?.provider.saveOperations({ docId, operations });
-    if (this._pushInProgress) this._inLocalWaiting = true;
+    if (this._pushStatus !== "idle") this._pushStatus = "pushing-with-pending";
 
     const pushOperations = async () => {
-      if (this._pushInProgress) throw new Error("Push already in progress");
-      this._pushInProgress = true;
+      if (this._pushStatus !== "idle")
+        throw new Error("Push already in progress");
+      // prevent narrowing for security due to async mutation scenario. TS trade-off.
+      // https://github.com/microsoft/TypeScript/issues/9998
+      this._pushStatus = "pushing" as DocSyncClient<D, S, O>["_pushStatus"];
       const allOperations = (await this._local?.provider.getOperations()) ?? [];
       // Acá puedo llegar a tener que devolver el documento completo si hubo concurrencia
       const [error, _newOperations] =
@@ -279,7 +281,7 @@ export class DocSyncClient<
       if (error) {
         // retry. Maybe I should consider throw the error depending on the error type
         // to avoid infinite loops
-        this._pushInProgress = false;
+        this._pushStatus = "idle";
         await pushOperations();
       } else {
         // TODO: como hago en deleteOperations de indexedDB si quizás mientras viajaba al servidor y volvía
@@ -296,13 +298,13 @@ export class DocSyncClient<
           });
         }
 
-        this._pushInProgress = false;
-        const shouldPushAgain = this._inLocalWaiting;
-        this._inLocalWaiting = false;
+        // Status may have changed to "pushing-with-pending" during async ops
+        const shouldPushAgain = this._pushStatus === "pushing-with-pending";
+        this._pushStatus = "idle";
         if (shouldPushAgain) await pushOperations();
       }
     };
-    if (!this._pushInProgress) await pushOperations();
+    if (this._pushStatus === "idle") await pushOperations();
   }
 
   private async _pushOperationsToServer(
