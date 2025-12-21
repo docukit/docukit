@@ -6,6 +6,7 @@ import {
   DocSyncClient,
   type ClientConfig,
   type GetDocArgs,
+  type QueryResult,
 } from "@docnode/docsync/client";
 import { type DocBinding } from "@docnode/docsync";
 
@@ -52,57 +53,38 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
     );
   }
 
-  type DocResult = { doc: D; id: string } | { doc: undefined; id: undefined };
-
-  function useDoc(args: {
-    namespace: string;
-    id?: string;
-    createIfMissing: true;
-  }): DocResult;
-  function useDoc(args: {
-    namespace: string;
-    id: string;
-    createIfMissing?: false;
-  }): DocResult;
-  function useDoc(args: GetDocArgs): DocResult {
-    const [result, setResult] = useState<DocResult>({
-      doc: undefined,
-      id: undefined,
+  function useDoc(args: GetDocArgs): QueryResult<D> {
+    const [result, setResult] = useState<QueryResult<D>>({
+      status: "loading",
+      data: undefined,
+      error: undefined,
     });
     const client = use(DocSyncClientContext);
-
-    // Use the provided id, or the loaded doc's id for cleanup
     const argsId = "id" in args ? args.id : undefined;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
-
     const namespace = args.namespace;
 
-    // The reason why I can't just `return client?.getDoc(args)` is because I get error
-    // "async/await is not YET supported in Client Components". Maybe in the future.
     useLayoutEffect(() => {
-      let loadedDocId: string | undefined;
-
-      // TODO: fix getDoc return type
-      const handleResult = (res: { doc: D; id: string } | undefined) => {
-        setResult(res ?? { doc: undefined, id: undefined });
-      };
-
-      if (createIfMissing) {
-        const getDocArgs = argsId
+      if (!client) return;
+      const getDocArgs = createIfMissing
+        ? argsId
           ? { namespace, id: argsId, createIfMissing: true as const }
-          : { namespace, createIfMissing: true as const };
-        client?.getDoc(getDocArgs).then(handleResult).catch(console.error);
-      } else if (argsId) {
-        client
-          ?.getDoc({ namespace, id: argsId })
-          .then(handleResult)
-          .catch(console.error);
-      }
-
-      return () => {
-        const idToUnload = argsId ?? loadedDocId;
-        if (idToUnload) client?._unloadDoc(idToUnload).catch(console.error);
-      };
+          : { namespace, createIfMissing: true as const }
+        : argsId
+          ? { namespace, id: argsId }
+          : undefined;
+      if (!getDocArgs) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return client.getDoc(getDocArgs, (res: QueryResult<any>) => {
+        if (res.status === "success")
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+          setResult({
+            status: "success",
+            data: res.data?.doc,
+            error: undefined,
+          });
+        else if (res.status === "error") setResult(res);
+      });
     }, [client, argsId, namespace, createIfMissing]);
 
     return result;

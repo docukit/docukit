@@ -1,10 +1,11 @@
+/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type {
   ClientSocket,
   OpsPayload,
   SerializedDocPayload,
 } from "../shared/types.js";
 import { io } from "socket.io-client";
-import type { DocBinding, SerializedDoc, NN } from "../shared/docBinding.js";
+import type { DocBinding, SerializedDoc } from "../shared/docBinding.js";
 
 /**
  * Arguments for {@link DocSyncClient["getDoc"]}.
@@ -16,6 +17,23 @@ import type { DocBinding, SerializedDoc, NN } from "../shared/docBinding.js";
 export type GetDocArgs =
   | { namespace: string; id: string; createIfMissing?: boolean }
   | { namespace: string; createIfMissing: true };
+
+export type QueryResult<D> =
+  | {
+      status: "loading";
+      data: undefined;
+      error: undefined;
+    }
+  | {
+      status: "success";
+      data: D;
+      error: undefined;
+    }
+  | {
+      status: "error";
+      data: undefined;
+      error: Error;
+    };
 
 export type BroadcastMessage<O> = {
   type: "OPERATIONS";
@@ -135,92 +153,125 @@ export class DocSyncClient<
   }
 
   /**
-   * Get or create a document based on the provided arguments.
+   * Subscribe to a document with reactive state updates.
    *
    * The behavior depends on which fields are provided:
    * - `{ namespace, id }` → Try to get an existing doc. Returns `undefined` if not found.
    * - `{ namespace, createIfMissing: true }` → Create a new doc with auto-generated ID (ulid).
    * - `{ namespace, id, createIfMissing: true }` → Get existing doc or create it if not found.
    *
-   * The returned doc is cached and has listeners for:
-   * - Saving operations to the provider (e.g., IndexedDB).
-   * - Broadcasting operations to other tabs for synchronization.
+   * The callback will be invoked with state updates:
+   * 1. `{ status: "loading" }` - Initial state while fetching
+   * 2. `{ status: "success", data: { doc, id } }` - Document loaded successfully
+   * 3. `{ status: "error", error }` - Failed to load document
+   *
+   * Subsequent updates will be sent whenever the document changes.
    *
    * @example
    * ```ts
-   * // Get existing doc (might be undefined)
-   * const doc = await client.getDoc({ namespace: "notes", id: "abc123" });
+   * // Subscribe to doc changes
+   * const unsubscribe = client.getDoc(
+   *   { namespace: "notes", id: "abc123" },
+   *   (result) => {
+   *     if (result.status === "loading") console.log("Loading...");
+   *     if (result.status === "success") console.log("Doc:", result.data.doc);
+   *     if (result.status === "error") console.error(result.error);
+   *   }
+   * );
    *
-   * // Create new doc with auto-generated ID
-   * const newDoc = await client.getDoc({ namespace: "notes", createIfMissing: true });
-   *
-   * // Get or create (guaranteed to return a Doc)
-   * const doc = await client.getDoc({ namespace: "notes", id: "abc123", createIfMissing: true });
+   * // Clean up when done
+   * unsubscribe();
    * ```
    */
-  async getDoc(args: {
-    namespace: string;
-    id?: string;
-    createIfMissing: true;
-  }): Promise<{ doc: D; id: string }>;
-  async getDoc(args: {
-    namespace: string;
-    id: string;
-    createIfMissing?: false;
-  }): Promise<{ doc: D; id: string } | undefined>;
-  async getDoc(args: GetDocArgs): Promise<{ doc: D; id: string } | undefined> {
+  getDoc<T extends GetDocArgs>(
+    args: T,
+    callback: (
+      result: QueryResult<
+        T extends { createIfMissing: true }
+          ? { doc: D; id: string }
+          : { doc: D | undefined; id: string }
+      >,
+    ) => void,
+  ): () => void {
     const namespace = args.namespace;
-    const id = "id" in args ? args.id : undefined;
+    const argId = "id" in args ? args.id : undefined;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const emit = (result: QueryResult<any>) => callback(result);
+    let docId: string | undefined;
 
-    // Case: { namespace, createIfMissing: true } → Create a new doc with auto-generated ID (ulid).
-    if (!id && createIfMissing) {
+    // Case: { namespace, createIfMissing: true } → Create new doc with auto-generated ID (sync).
+    if (!argId && createIfMissing) {
       const { doc, id } = this._docBinding.new(namespace);
-      const serializedDoc = this._docBinding.serialize(doc);
-      await this._local?.provider.saveSerializedDoc({
-        serializedDoc,
-        docId: id,
-      });
-      this._setupChangeListener(doc, id);
+      docId = id;
       this._docsCache.set(id, {
         promisedDoc: Promise.resolve(doc),
         refCount: 1,
       });
-      return { doc, id };
-    } else if (id) {
-      // Case: { namespace, id } or { namespace, id, createIfMissing } → Try to get, optionally create
-      const cacheEntry = this._docsCache.get(id);
-      if (cacheEntry) {
-        cacheEntry.refCount += 1;
-        return cacheEntry.promisedDoc.then((doc) =>
-          doc ? { doc, id } : undefined,
-        );
-      }
-      const promisedDoc = this._loadOrCreateDoc(
-        id,
-        createIfMissing ? namespace : undefined,
-      );
-      this._docsCache.set(id, { promisedDoc, refCount: 1 });
-      const doc = await promisedDoc;
-      if (!doc) return undefined;
-      this._setupChangeListener(doc, id);
-      return { doc, id };
-    } else {
-      return undefined;
+      this._setupChangeListener(doc, id, emit);
+      emit({ status: "success", data: { doc, id }, error: undefined });
+      void this._local?.provider.saveSerializedDoc({
+        serializedDoc: this._docBinding.serialize(doc),
+        docId: id,
+      });
+      return () => void this._unloadDoc(id);
     }
+
+    // Preparing for the async cases
+    emit({ status: "loading", data: undefined, error: undefined });
+
+    // Case: { namespace, id } or { namespace, id, createIfMissing } → Load or create (async).
+    if (argId) {
+      docId = argId;
+      void (async () => {
+        try {
+          let doc: D | undefined;
+          const cacheEntry = this._docsCache.get(docId);
+          if (cacheEntry) {
+            cacheEntry.refCount += 1;
+            doc = await cacheEntry.promisedDoc;
+          } else {
+            const promisedDoc = this._loadOrCreateDoc(
+              docId,
+              createIfMissing ? namespace : undefined,
+            );
+            this._docsCache.set(docId, { promisedDoc, refCount: 1 });
+            doc = await promisedDoc;
+          }
+          if (doc) this._setupChangeListener(doc, docId, emit);
+          emit({
+            status: "success",
+            data: { doc, id: docId },
+            error: undefined,
+          });
+        } catch (e) {
+          emit({
+            status: "error",
+            data: undefined,
+            error: e instanceof Error ? e : new Error(String(e)),
+          });
+        }
+      })();
+    }
+
+    return () => {
+      if (docId) void this._unloadDoc(docId);
+    };
   }
 
-  private _setupChangeListener(doc: D, docId: string) {
+  private _setupChangeListener(
+    doc: D,
+    docId: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    emit: (result: QueryResult<any>) => void,
+  ) {
     this._docBinding.onChange(doc, ({ operations }) => {
       if (this._shouldBroadcast) {
-        this._sendMessage({
-          type: "OPERATIONS",
-          operations,
-          docId,
-        });
+        this._sendMessage({ type: "OPERATIONS", operations, docId });
         void this.onLocalOperations({ docId, operations, doc });
       }
       this._shouldBroadcast = true;
+      emit({ status: "success", data: { doc, id: docId }, error: undefined });
     });
   }
 

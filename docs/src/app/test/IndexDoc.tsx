@@ -11,12 +11,12 @@ export function IndexDoc({
   selectedDoc?: string;
   setActiveDoc?: (docId: string) => void;
 }) {
-  const { doc } = useDoc({
+  const result = useDoc({
     namespace: "indexDoc",
     id: activeDoc,
     createIfMissing: true,
   });
-  // const { isPending, isError, doc } = useDoc("editor", indexDoc.root.id); // useDoc(getIdFromUrl());
+  const doc = result.status === "success" ? result.data : undefined;
 
   function handleSelect(ev: React.MouseEvent, docId: string) {
     const target = ev.target as HTMLElement;
