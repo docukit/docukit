@@ -24,9 +24,9 @@ export type BroadcastMessage<O> = {
 };
 
 export type ClientConfig<
-  D extends NN,
+  D extends {},
   S extends SerializedDoc,
-  O extends NN,
+  O extends {},
 > = {
   url: string;
   docBinding: DocBinding<D, S, O>;
@@ -70,9 +70,9 @@ export type ClientProvider<S, O> = {
 };
 
 export class DocSyncClient<
-  D extends NN,
+  D extends {},
   S extends SerializedDoc,
-  O extends NN,
+  O extends {},
 > {
   private _docBinding: DocBinding<D, S, O>;
   // prettier-ignore
