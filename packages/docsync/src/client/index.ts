@@ -218,7 +218,7 @@ export class DocSyncClient<
           operations,
           docId,
         });
-        void this.onLocalOperations({ docId, operations });
+        void this.onLocalOperations({ docId, operations, doc });
       }
       this._shouldBroadcast = true;
     });
@@ -264,7 +264,11 @@ export class DocSyncClient<
     this._broadcastChannel.postMessage(message);
   }
 
-  async onLocalOperations({ docId, operations }: OpsPayload<O>) {
+  async onLocalOperations({
+    docId,
+    operations,
+    doc,
+  }: OpsPayload<O> & { doc: D }) {
     await this._local?.provider.saveOperations({ docId, operations });
     if (this._pushStatus !== "idle") this._pushStatus = "pushing-with-pending";
 
@@ -288,15 +292,10 @@ export class DocSyncClient<
         // hubo otras operaciones que escribieron en idb?
         // 2 stores? Almacenar el id de la última operación enviada?
         await this._local?.provider.deleteOperations(allOperations.length);
-        // Get doc from cache directly (it's guaranteed to exist since it triggered this)
-        const cacheEntry = this._docsCache.get(docId);
-        const doc = cacheEntry ? await cacheEntry.promisedDoc : undefined;
-        if (doc) {
-          await this._local?.provider.saveSerializedDoc({
-            serializedDoc: this._docBinding.serialize(doc),
-            docId,
-          });
-        }
+        await this._local?.provider.saveSerializedDoc({
+          serializedDoc: this._docBinding.serialize(doc),
+          docId,
+        });
 
         // Status may have changed to "pushing-with-pending" during async ops
         const shouldPushAgain = this._pushStatus === "pushing-with-pending";
