@@ -5,6 +5,8 @@ export type SerializedDoc =
   | Record<string, unknown>
   | Array<unknown>
   | Uint8Array;
+
+// TODO: is this the same as {}?
 export type NN = NonNullable<unknown>;
 
 // TO-DECIDE: should params in fn's be objects?
