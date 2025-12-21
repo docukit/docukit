@@ -16,7 +16,7 @@ export function IndexDoc({
     id: activeDoc,
     createIfMissing: true,
   });
-  const doc = result.status === "success" ? result.data : undefined;
+  const doc = result.status === "success" ? result.data.doc : undefined;
 
   function handleSelect(ev: React.MouseEvent, docId: string) {
     const target = ev.target as HTMLElement;

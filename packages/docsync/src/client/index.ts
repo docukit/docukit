@@ -18,6 +18,8 @@ export type GetDocArgs =
   | { namespace: string; id: string; createIfMissing?: boolean }
   | { namespace: string; createIfMissing: true };
 
+export type DocData<D> = { doc: D; id: string };
+
 export type QueryResult<D> =
   | {
       status: "loading";
@@ -188,16 +190,18 @@ export class DocSyncClient<
     callback: (
       result: QueryResult<
         T extends { createIfMissing: true }
-          ? { doc: D; id: string }
-          : { doc: D | undefined; id: string }
+          ? DocData<D>
+          : DocData<D> | undefined
       >,
     ) => void,
   ): () => void {
     const namespace = args.namespace;
     const argId = "id" in args ? args.id : undefined;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const emit = (result: QueryResult<any>) => callback(result);
+    // Internal emit uses wider type; runtime logic ensures correct data per overload
+    const emit = callback as (
+      result: QueryResult<DocData<D> | undefined>,
+    ) => void;
     let docId: string | undefined;
 
     // Case: { namespace, createIfMissing: true } → Create new doc with auto-generated ID (sync).
@@ -241,7 +245,7 @@ export class DocSyncClient<
           if (doc) this._setupChangeListener(doc, docId, emit);
           emit({
             status: "success",
-            data: { doc, id: docId },
+            data: doc ? { doc, id: docId } : undefined,
             error: undefined,
           });
         } catch (e) {
@@ -262,8 +266,7 @@ export class DocSyncClient<
   private _setupChangeListener(
     doc: D,
     docId: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    emit: (result: QueryResult<any>) => void,
+    emit: (result: QueryResult<DocData<D> | undefined>) => void,
   ) {
     this._docBinding.onChange(doc, ({ operations }) => {
       if (this._shouldBroadcast) {

@@ -53,39 +53,33 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
     );
   }
 
-  function useDoc(args: GetDocArgs): QueryResult<D> {
-    const [result, setResult] = useState<QueryResult<D>>({
+  type DocData = { doc: D; id: string };
+
+  function useDoc(args: {
+    namespace: string;
+    createIfMissing: true;
+    id?: string;
+  }): QueryResult<DocData>;
+  function useDoc(args: {
+    namespace: string;
+    id: string;
+    createIfMissing?: false;
+  }): QueryResult<DocData | undefined>;
+  function useDoc(args: GetDocArgs): QueryResult<DocData | undefined> {
+    const [result, setResult] = useState<QueryResult<DocData | undefined>>({
       status: "loading",
       data: undefined,
       error: undefined,
     });
     const client = use(DocSyncClientContext);
-    const argsId = "id" in args ? args.id : undefined;
+    const id = "id" in args ? args.id : undefined;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
     const namespace = args.namespace;
 
     useLayoutEffect(() => {
       if (!client) return;
-      const getDocArgs = createIfMissing
-        ? argsId
-          ? { namespace, id: argsId, createIfMissing: true as const }
-          : { namespace, createIfMissing: true as const }
-        : argsId
-          ? { namespace, id: argsId }
-          : undefined;
-      if (!getDocArgs) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return client.getDoc(getDocArgs, (res: QueryResult<any>) => {
-        if (res.status === "success")
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-          setResult({
-            status: "success",
-            data: res.data?.doc,
-            error: undefined,
-          });
-        else if (res.status === "error") setResult(res);
-      });
-    }, [client, argsId, namespace, createIfMissing]);
+      return client.getDoc(args, setResult);
+    }, [client, id, namespace, createIfMissing]);
 
     return result;
   }

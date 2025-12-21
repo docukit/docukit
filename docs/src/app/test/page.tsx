@@ -9,7 +9,7 @@ function SubPage({ id }: { id: string }) {
     id: "01KCFHZZ66V3393XHGGX6AEB6T",
     createIfMissing: true,
   });
-  const indexDoc = result.status === "success" ? result.data : undefined;
+  const indexDoc = result.status === "success" ? result.data.doc : undefined;
   const [activeDoc, setActiveDoc] = useState<string | undefined>();
 
   useLayoutEffect(() => {
