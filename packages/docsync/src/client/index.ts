@@ -135,7 +135,8 @@ export class DocSyncClient<
       ev: MessageEvent<BroadcastMessage<O>>,
     ) => {
       if (ev.data.type === "OPERATIONS") {
-        console.log("sending", ev.data.operations[0]);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+        console.log("receiving", (ev.data.operations as any)[1 as any]);
         void this._applyOperations(ev.data.operations, ev.data.docId);
         return;
       }
@@ -282,14 +283,25 @@ export class DocSyncClient<
     // Try to load existing doc
     const serializedDoc = (await this._local?.provider.getSerializedDoc(id))
       ?.serializedDoc;
+    const localOperations = await this._local?.provider.getOperations();
     if (serializedDoc) {
       const doc = this._docBinding.deserialize(serializedDoc);
+      this._shouldBroadcast = false;
+      localOperations?.forEach(({ operations }) => {
+        this._docBinding.applyOperations(doc, operations);
+      });
+      this._shouldBroadcast = true;
       return doc;
     }
 
     // Create new doc if namespace provided
     if (namespace) {
       const { doc } = this._docBinding.new(namespace, id);
+      this._shouldBroadcast = false;
+      localOperations?.forEach(({ operations }) => {
+        this._docBinding.applyOperations(doc, operations);
+      });
+      this._shouldBroadcast = true;
       return doc;
     }
 
@@ -320,6 +332,7 @@ export class DocSyncClient<
     operations,
     doc,
   }: OpsPayload<O> & { doc: D }) {
+    console.log("[onLocalOperations] saving to IndexedDB, docId:", docId);
     await this._local?.provider.saveOperations({ docId, operations });
     if (this._pushStatus !== "idle") this._pushStatus = "pushing-with-pending";
 
