@@ -19,6 +19,7 @@ import {
   RootNode,
   withTransaction,
   isObjectEmpty,
+  ULID_REGEX,
 } from "./utils.js";
 import * as operations from "./operations.js";
 import { nodeIdFactory } from "./idGenerator.js";
@@ -726,7 +727,22 @@ export class Doc {
       };
     });
 
-    const id = config.id ?? ulid().toLowerCase();
+    // Validate ULID format only when using the ULID generator explicitly.
+    // When using the default nodeIdFactory, it can handle non-ULID root IDs.
+    // Note:
+    // - The ulid timestamp is used by nodeIdFactory to generate small IDs on other nodes.
+    // - Database providers can be optimized by using ULIDs column type.
+    if (
+      config.id &&
+      config.nodeIdGenerator === "ulid" &&
+      !ULID_REGEX.test(config.id)
+    ) {
+      throw new Error(
+        `Invalid document id: ${config.id}. It must be a valid ULID when using nodeIdGenerator: "ulid".`,
+      );
+    }
+
+    const id = (config.id ?? ulid()).toLowerCase();
     // @ts-expect-error - private constructor
     this.root = new DocNode(this, "root", id) as DocNode<typeof RootNode>;
     if (config.namespace) this.root.state.namespace.set(config.namespace);

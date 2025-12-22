@@ -6,6 +6,7 @@ import {
   DocSyncClient,
   type ClientConfig,
   type GetDocArgs,
+  type QueryResult,
 } from "@docnode/docsync/client";
 import { type DocBinding } from "@docnode/docsync";
 
@@ -52,58 +53,33 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
     );
   }
 
-  type DocResult = { doc: D; id: string } | { doc: undefined; id: undefined };
+  type DocData = { doc: D; id: string };
 
   function useDoc(args: {
     namespace: string;
-    id?: string;
     createIfMissing: true;
-  }): DocResult;
+    id?: string;
+  }): QueryResult<DocData>;
   function useDoc(args: {
     namespace: string;
     id: string;
     createIfMissing?: false;
-  }): DocResult;
-  function useDoc(args: GetDocArgs): DocResult {
-    const [result, setResult] = useState<DocResult>({
-      doc: undefined,
-      id: undefined,
+  }): QueryResult<DocData | undefined>;
+  function useDoc(args: GetDocArgs): QueryResult<DocData | undefined> {
+    const [result, setResult] = useState<QueryResult<DocData | undefined>>({
+      status: "loading",
+      data: undefined,
+      error: undefined,
     });
     const client = use(DocSyncClientContext);
-
-    // Use the provided id, or the loaded doc's id for cleanup
-    const argsId = "id" in args ? args.id : undefined;
+    const id = "id" in args ? args.id : undefined;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
-
     const namespace = args.namespace;
 
-    // The reason why I can't just `return client?.getDoc(args)` is because I get error
-    // "async/await is not YET supported in Client Components". Maybe in the future.
     useLayoutEffect(() => {
-      let loadedDocId: string | undefined;
-
-      // TODO: fix getDoc return type
-      const handleResult = (res: { doc: D; id: string } | undefined) => {
-        setResult(res ?? { doc: undefined, id: undefined });
-      };
-
-      if (createIfMissing) {
-        const getDocArgs = argsId
-          ? { namespace, id: argsId, createIfMissing: true as const }
-          : { namespace, createIfMissing: true as const };
-        client?.getDoc(getDocArgs).then(handleResult).catch(console.error);
-      } else if (argsId) {
-        client
-          ?.getDoc({ namespace, id: argsId })
-          .then(handleResult)
-          .catch(console.error);
-      }
-
-      return () => {
-        const idToUnload = argsId ?? loadedDocId;
-        if (idToUnload) client?._unloadDoc(idToUnload).catch(console.error);
-      };
-    }, [client, argsId, namespace, createIfMissing]);
+      if (!client) return;
+      return client.getDoc(args, setResult);
+    }, [client, id, namespace, createIfMissing]);
 
     return result;
   }

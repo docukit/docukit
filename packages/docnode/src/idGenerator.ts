@@ -72,7 +72,14 @@ function incrementStringInBase64(str: string): string {
  */
 export const nodeIdFactory = (doc: Doc) => {
   const rootId = doc.root.id;
-  const createdAt = decodeTime(rootId);
+  let createdAt: number;
+  try {
+    createdAt = decodeTime(rootId);
+  } catch (error) {
+    throw new Error(
+      `Invalid doc/root id: ${rootId}. It must be a valid ULID. ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   const milisecondsPassed = Date.now() - createdAt;
   const milisecondsInBase64 = numberToBase64(milisecondsPassed);
   const randomString = randomStringBase64(3);
