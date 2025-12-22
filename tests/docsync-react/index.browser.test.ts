@@ -1,4 +1,4 @@
-import { test, expectTypeOf } from "vitest";
+import { test, expectTypeOf, expect } from "vitest";
 import {
   createDocSyncClient,
   IndexedDBProvider,
@@ -6,10 +6,11 @@ import {
 import { DocNodeBinding } from "@docnode/docsync-react/docnode";
 import type { Doc } from "docnode";
 import type { DocData, QueryResult } from "@docnode/docsync/client";
+import { renderHook } from "vitest-browser-react";
 
 // Type-only test - we don't actually call the hook since it can only be called in React components
-test("createDocSyncClient", () => {
-  const { useDoc } = createDocSyncClient({
+test("createDocSyncClient", async () => {
+  const { useDoc, DocSyncClientProvider } = createDocSyncClient({
     url: "ws://localhost:8081",
     local: {
       provider: IndexedDBProvider,
@@ -31,34 +32,39 @@ test("createDocSyncClient", () => {
   expectTypeOf<ReturnType<typeof useDoc>>().toEqualTypeOf<MaybeDocResult>();
 
   // @ts-expect-error - namespace is required
-  useDoc({ createIfMissing: true, id: "123" });
+  await renderHook(() => useDoc({ createIfMissing: true, id: "123" }));
 
   // with id, without createIfMissing
-  const withId = useDoc({ namespace: "test", id: "123" });
-  expectTypeOf(withId).toEqualTypeOf<MaybeDocResult>();
+  // prettier-ignore
+  const {result: _1} = await renderHook(() => useDoc({ namespace: "test", id: "123" }));
+  expectTypeOf(_1.current).toEqualTypeOf<MaybeDocResult>();
+  expect(_1.current.status).toBe("loading");
+  // await expect
+  //   .poll(() => _1.current.status, { interval: 1000, timeout: 10000 })
+  //   .toBe("success");
 
   // with id, with createIfMissing true
   // prettier-ignore
-  const withIdAndCreate = useDoc({ namespace: "test", id: "123", createIfMissing: true });
-  expectTypeOf(withIdAndCreate).toEqualTypeOf<DocResult>();
+  const { result: _2 } = await renderHook(() => useDoc({ namespace: "test", id: "123", createIfMissing: true }));
+  expectTypeOf(_2.current).toEqualTypeOf<DocResult>();
 
   // without id, with createIfMissing true
   // prettier-ignore
-  const withoutIdAndCreate = useDoc({ namespace: "test", createIfMissing: true });
-  expectTypeOf(withoutIdAndCreate).toEqualTypeOf<DocResult>();
+  const { result: _3 } = await renderHook(() => useDoc({ namespace: "test", createIfMissing: true }));
+  expectTypeOf(_3.current).toEqualTypeOf<DocResult>();
 
   // @ts-expect-error - without id, without createIfMissing
-  useDoc({ namespace: "test" });
+  await renderHook(() => useDoc({ namespace: "test" }));
 
   // without id, with createIfMissing false
   // @ts-expect-error - required id
   // prettier-ignore
-  useDoc({ namespace: "test", createIfMissing: false });
+  await renderHook(() => useDoc({ namespace: "test", createIfMissing: false }));
 
   // with id, with createIfMissing false
   // prettier-ignore
-  const createFalse = useDoc({ namespace: "test", id: "123", createIfMissing: false });
-  expectTypeOf(createFalse).toEqualTypeOf<MaybeDocResult>();
+  const { result: _4 } = await renderHook(() => useDoc({ namespace: "test", id: "123", createIfMissing: false }));
+  expectTypeOf(_4.current).toEqualTypeOf<MaybeDocResult>();
 
   // Type check: QueryResult<DocData<Doc>> has the expected structure
   expectTypeOf<DocResult>().toEqualTypeOf<
