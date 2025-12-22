@@ -1,4 +1,5 @@
 import { test, expectTypeOf, expect } from "vitest";
+import type React from "react";
 import {
   createDocSyncClient,
   IndexedDBProvider,
@@ -34,14 +35,22 @@ test("createDocSyncClient", async () => {
   // @ts-expect-error - namespace is required
   await renderHook(() => useDoc({ createIfMissing: true, id: "123" }));
 
+  // Create wrapper with provider
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <DocSyncClientProvider>{children}</DocSyncClientProvider>
+  );
+
   // with id, without createIfMissing
   // prettier-ignore
-  const {result: _1} = await renderHook(() => useDoc({ namespace: "test", id: "123" }));
+  const {result: _1} = await renderHook(
+    () => useDoc({ namespace: "test", id: "123" }),
+    { wrapper }
+  );
   expectTypeOf(_1.current).toEqualTypeOf<MaybeDocResult>();
   expect(_1.current.status).toBe("loading");
-  // await expect
-  //   .poll(() => _1.current.status, { interval: 1000, timeout: 10000 })
-  //   .toBe("success");
+  await expect
+    .poll(() => _1.current.status, { interval: 100, timeout: 2000 })
+    .toBe("success");
 
   // with id, with createIfMissing true
   // prettier-ignore

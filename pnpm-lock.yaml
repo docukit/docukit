@@ -378,6 +378,9 @@ importers:
         specifier: ^1.0.0
         version: 1.1.0(typescript@5.9.3)
     devDependencies:
+      '@types/react':
+        specifier: ^19.1.0
+        version: 19.1.8
       drizzle-kit:
         specifier: ^0.30.2
         version: 0.30.6

@@ -24,6 +24,7 @@ export default defineConfig({
           setupFiles: ["dotenv/config"],
           exclude: [
             "**/*.browser.test.ts",
+            "**/*.browser.test.tsx",
             "**/node_modules",
             "**/dist",
             "**/*.e2e*.ts",
@@ -35,7 +36,7 @@ export default defineConfig({
       {
         plugins: [react()],
         test: {
-          include: ["**/*.browser.test.ts"],
+          include: ["**/*.browser.test.ts", "**/*.browser.test.tsx"],
           benchmark: {
             include: ["**/*browser.bench.ts"],
           },
