@@ -239,8 +239,9 @@ export class DocSyncClient<
             );
             this._docsCache.set(docId, { promisedDoc, refCount: 1 });
             doc = await promisedDoc;
+            // Register listener only for new docs (not cache hits)
+            if (doc) this._setupChangeListener(doc, docId, emit);
           }
-          if (doc) this._setupChangeListener(doc, docId, emit);
           emit({
             status: "success",
             data: doc ? { doc, id: docId } : undefined,
@@ -249,6 +250,7 @@ export class DocSyncClient<
         } catch (e) {
           const error = e instanceof Error ? e : new Error(String(e));
           emit({ status: "error", data: undefined, error });
+          throw error;
         }
       })();
     }

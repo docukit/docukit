@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { createContext, use, useLayoutEffect, useState } from "react";
+import { createContext, use, useEffect, useState } from "react";
 import {
   DocSyncClient,
   type ClientConfig,
@@ -44,7 +44,7 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
       undefined,
     );
 
-    useLayoutEffect(() => {
+    useEffect(() => {
       setClient(new DocSyncClient(config as ClientConfig<D, S, O>));
     }, []);
 
@@ -76,7 +76,7 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
     const namespace = args.namespace;
 
-    useLayoutEffect(() => {
+    useEffect(() => {
       if (!client) return;
       return client.getDoc(args, setResult);
     }, [client, id, namespace, createIfMissing]);

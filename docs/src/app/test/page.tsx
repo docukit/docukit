@@ -33,12 +33,15 @@ function SubPage({ id }: { id: string }) {
     );
   }, [indexDoc]);
 
-  if (!indexDoc) return <div>Loading...</div>;
+  if (result.status === "error")
+    return <div>Error: {result.error.message}</div>;
+  if (result.status === "loading") return <div>Loading...</div>;
+
   return (
     <div className="flex" id={id}>
       <div className="main-doc">
         <IndexDoc
-          activeDoc={indexDoc.root.id}
+          activeDoc={result.data.id}
           selectedDoc={activeDoc}
           setActiveDoc={setActiveDoc}
         />
