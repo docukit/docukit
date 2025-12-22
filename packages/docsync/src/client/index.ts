@@ -120,10 +120,7 @@ export class DocSyncClient<
       };
 
     this._socket = io(config.url, {
-      auth: {
-        userId: "John Salchichon",
-        token: "1234567890",
-      },
+      auth: { userId: "John", token: "1234567890" },
     });
     // prettier-ignore
     {
@@ -138,6 +135,7 @@ export class DocSyncClient<
       ev: MessageEvent<BroadcastMessage<O>>,
     ) => {
       if (ev.data.type === "OPERATIONS") {
+        console.log("sending", ev.data.operations[0]);
         void this._applyOperations(ev.data.operations, ev.data.docId);
         return;
       }

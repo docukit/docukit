@@ -36,7 +36,7 @@ export const { DocSyncClientProvider, useDoc } = createDocSyncClient({
   local: {
     provider: IndexedDBProvider,
     getIdentity: async () => ({
-      userId: "John Salchichon",
+      userId: "John",
       secret: "asdasdasd",
     }),
   },
