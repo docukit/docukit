@@ -5,11 +5,11 @@ import {
 } from "@docnode/docsync-react/client";
 import { DocNodeBinding } from "@docnode/docsync-react/docnode";
 import type { Doc } from "docnode";
-import type { QueryResult } from "@docnode/docsync/client";
+import type { DocData, QueryResult } from "@docnode/docsync/client";
 
 // Type-only test - we don't actually call the hook since it can only be called in React components
 test("createDocSyncClient", () => {
-  const { useDoc: _useDoc } = createDocSyncClient({
+  const { useDoc } = createDocSyncClient({
     url: "ws://localhost:8081",
     local: {
       provider: IndexedDBProvider,
@@ -24,11 +24,44 @@ test("createDocSyncClient", () => {
     docBinding: DocNodeBinding([]),
   });
 
-  // Type check: useDoc returns QueryResult<Doc>
-  expectTypeOf<ReturnType<typeof _useDoc>>().toEqualTypeOf<QueryResult<Doc>>();
+  type DocResult = QueryResult<DocData<Doc>>;
+  type MaybeDocResult = QueryResult<DocData<Doc> | undefined>;
 
-  // Type check: QueryResult has the expected structure
-  expectTypeOf<QueryResult<Doc>>().toEqualTypeOf<
+  // Type check: useDoc returns QueryResult<Doc>
+  expectTypeOf<ReturnType<typeof useDoc>>().toEqualTypeOf<MaybeDocResult>();
+
+  // @ts-expect-error - namespace is required
+  useDoc({ createIfMissing: true, id: "123" });
+
+  // with id, without createIfMissing
+  const withId = useDoc({ namespace: "test", id: "123" });
+  expectTypeOf(withId).toEqualTypeOf<MaybeDocResult>();
+
+  // with id, with createIfMissing true
+  // prettier-ignore
+  const withIdAndCreate = useDoc({ namespace: "test", id: "123", createIfMissing: true });
+  expectTypeOf(withIdAndCreate).toEqualTypeOf<DocResult>();
+
+  // without id, with createIfMissing true
+  // prettier-ignore
+  const withoutIdAndCreate = useDoc({ namespace: "test", createIfMissing: true });
+  expectTypeOf(withoutIdAndCreate).toEqualTypeOf<DocResult>();
+
+  // @ts-expect-error - without id, without createIfMissing
+  useDoc({ namespace: "test" });
+
+  // without id, with createIfMissing false
+  // @ts-expect-error - required id
+  // prettier-ignore
+  useDoc({ namespace: "test", createIfMissing: false });
+
+  // with id, with createIfMissing false
+  // prettier-ignore
+  const createFalse = useDoc({ namespace: "test", id: "123", createIfMissing: false });
+  expectTypeOf(createFalse).toEqualTypeOf<MaybeDocResult>();
+
+  // Type check: QueryResult<DocData<Doc>> has the expected structure
+  expectTypeOf<DocResult>().toEqualTypeOf<
     | {
         status: "loading";
         data: undefined;
@@ -36,7 +69,7 @@ test("createDocSyncClient", () => {
       }
     | {
         status: "success";
-        data: Doc;
+        data: DocData<Doc>;
         error: undefined;
       }
     | {
@@ -45,14 +78,4 @@ test("createDocSyncClient", () => {
         error: Error;
       }
   >();
-
-  // Type narrowing check
-  const mockResult = {} as QueryResult<Doc>;
-  if (mockResult.status === "success") {
-    expectTypeOf<typeof mockResult.data>().toEqualTypeOf<Doc>();
-  }
-
-  // Even with createIfMissing, the initial state can be loading
-  type UseDocResult = ReturnType<typeof _useDoc>;
-  expectTypeOf<UseDocResult>().toMatchTypeOf<{ data: Doc | undefined }>();
 });
