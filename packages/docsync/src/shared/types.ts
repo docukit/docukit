@@ -3,6 +3,7 @@ import { type Socket } from "socket.io-client";
 
 export type OpsGroup<O> = { docId: string; operations: O };
 
+// TODO: zod?
 export type DocSyncEvents<S, O> = {
   "get-doc": {
     request: { docId: string };
