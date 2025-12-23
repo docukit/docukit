@@ -3,7 +3,23 @@ import { type Socket } from "socket.io-client";
 
 export type OpsGroup<O> = { docId: string; operations: O };
 
+// ============================================================================
+// Helper types for client
+// ============================================================================
+// TODO: review these types
+export type OpsPayload<O> = { docId: string; operations: O };
+
+export type SerializedDocPayload<S> = {
+  serializedDoc: S;
+  docId: string;
+  clock: number;
+};
+
+// ============================================================================
+// DocSync events
+// ============================================================================
 // TODO: zod?
+// these are request to the server or indexedDB?
 export type DocSyncEvents<S, O> = {
   "get-doc": {
     request: { docId: string };
@@ -62,15 +78,4 @@ export type SocketHandlers<S, O> = {
     payload: DocSyncEvents<S, O>[K]["request"],
     cb: (res: DocSyncEvents<S, O>[K]["response"]) => void,
   ) => void | Promise<void>;
-};
-
-// ============================================================================
-// Helper types for client
-// ============================================================================
-// TODO: review these types
-export type OpsPayload<O> = { docId: string; operations: O };
-
-export type SerializedDocPayload<S> = {
-  serializedDoc: S;
-  docId: string;
 };
