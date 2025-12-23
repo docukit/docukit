@@ -28,6 +28,7 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
   /**
    * Called when operations are saved to local storage.
    * Triggers sync with the server.
+   * This is the only public method or property of the class.
    */
   onSaved() {
     if (this._pushStatus !== "idle") {
