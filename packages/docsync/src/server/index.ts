@@ -60,8 +60,7 @@ export class DocSyncServer<S, O> {
       // TypeScript errors if any handler is missing
       const handlers: SocketHandlers<S, O> = {
         "get-doc": (_payload, cb) => cb(undefined),
-        "sync-operations": (payload, cb) =>
-          cb({ opsGroups: payload.opsGroups, clock: payload.clock }),
+        "sync-operations": (payload, cb) => cb([]), // no operations = no change
         "delete-doc": (_payload, cb) => cb({ success: true }),
       };
 

@@ -1,7 +1,6 @@
+/* eslint-disable @typescript-eslint/no-restricted-types */
 import { type Server } from "socket.io";
 import { type Socket } from "socket.io-client";
-
-export type OpsGroup<O> = { docId: string; operations: O };
 
 // ============================================================================
 // Helper types for client
@@ -24,10 +23,15 @@ export type DocSyncEvents<S, O> = {
   "get-doc": {
     request: { docId: string };
     response: { serializedDoc: S; clock: number } | undefined;
+    // requestLocal: { id?: string; namespace: string; createIfMissing?: boolean };
+    // responseLocal: { serializedDoc: S; clock: number } | undefined;
+    // requestRemote: {  }
+    // responseRemote: unknown;
   };
+  // prettier-ignore
   "sync-operations": {
-    request: { opsGroups: OpsGroup<O>[]; clock: number };
-    response: { opsGroups: OpsGroup<O>[]; clock: number };
+    request: Array<{ docId: string; operations: O[] | null, clock: number }>;
+    response: Array<{ docId: string; operations: O[] | null, serializedDoc: S, clock: number }>;
   };
   "delete-doc": {
     request: { docId: string };

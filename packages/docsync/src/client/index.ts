@@ -1,11 +1,5 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type {
-  ClientSocket,
-  DocSyncEvents,
-  OpsGroup,
-  OpsPayload,
-} from "../shared/types.js";
-import { io } from "socket.io-client";
+import type { OpsPayload } from "../shared/types.js";
 import type { DocBinding, SerializedDoc } from "../shared/docBinding.js";
 import type {
   BroadcastMessage,
@@ -15,6 +9,7 @@ import type {
   GetDocArgs,
   QueryResult,
 } from "./types.js";
+import { API } from "./utils.js";
 
 export class DocSyncClient<
   D extends {},
@@ -22,17 +17,17 @@ export class DocSyncClient<
   O extends {},
 > {
   private _docBinding: DocBinding<D, S, O>;
-  // prettier-ignore
-  private _docsCache = new Map<string, { promisedDoc: Promise<D | undefined>; refCount: number; }>();
+  private _docsCache = new Map<
+    string,
+    { promisedDoc: Promise<D | undefined>; clock: number; refCount: number }
+  >();
   private _local?: {
     provider: ClientProvider<S, O>;
     secret: Promise<string>;
   };
   private _shouldBroadcast = true;
   private _broadcastChannel: BroadcastChannel;
-
-  // ws
-  private _socket: ClientSocket<S, O>;
+  private _api: API<S, O>;
   protected _pushStatus: "idle" | "pushing" | "pushing-with-pending" = "idle";
 
   constructor(config: ClientConfig<D, S, O>) {
@@ -40,21 +35,12 @@ export class DocSyncClient<
       throw new Error("DocSyncClient can only be used in the browser");
     const { docBinding, local } = config;
     this._docBinding = docBinding;
+    this._api = new API({ url: config.url });
     if (local)
       this._local = {
         secret: local.getIdentity().then((identity) => identity.secret),
         provider: new local.provider(),
       };
-
-    this._socket = io(config.url, {
-      auth: { userId: "John", token: "1234567890" },
-    });
-    // prettier-ignore
-    {
-    this._socket.on("connect", () => console.log("Connected to Socket.io server"));
-    this._socket.on("connect_error", err => console.error("Socket.io connection error:", err));
-    this._socket.on("disconnect", reason => console.error("Socket.io disconnected:", reason));
-    }
 
     // Listen for operations from other tabs.
     this._broadcastChannel = new BroadcastChannel("docsync");
@@ -135,6 +121,7 @@ export class DocSyncClient<
       docId = id;
       this._docsCache.set(id, {
         promisedDoc: Promise.resolve(doc),
+        clock: 0,
         refCount: 1,
       });
       this._setupChangeListener(doc, id, emit);
@@ -143,6 +130,12 @@ export class DocSyncClient<
         serializedDoc: this._docBinding.serialize(doc),
         docId: id,
         clock: 0,
+      });
+      // This forces a fetch if the document exists on the server.
+      void this.onLocalOperations({
+        docId: id,
+        operations: [] as unknown as O,
+        doc,
       });
       return () => void this._unloadDoc(id);
     }
@@ -271,7 +264,14 @@ export class DocSyncClient<
       const allOperations = (await this._local?.provider.getOperations()) ?? [];
       // Acá puedo llegar a tener que devolver el documento completo si hubo concurrencia
       try {
-        await this._pushOperationsToServer(allOperations);
+        await this._api.request("sync-operations", [
+          // TODO: convert allOperations to this format
+          {
+            clock: 0,
+            docId: "",
+            operations: [],
+          },
+        ]);
       } catch {
         // retry. Maybe I should consider throw the error depending on the error type
         // to avoid infinite loops
@@ -287,6 +287,8 @@ export class DocSyncClient<
       await this._local?.provider.saveSerializedDoc({
         serializedDoc: this._docBinding.serialize(doc),
         docId,
+        // TODO
+        clock: 123123,
       });
 
       // Status may have changed to "pushing-with-pending" during async ops
@@ -295,17 +297,5 @@ export class DocSyncClient<
       if (shouldPushAgain) await pushOperations();
     };
     if (this._pushStatus === "idle") await pushOperations();
-  }
-
-  private async _pushOperationsToServer(
-    opsGroups: OpsGroup<O>[],
-  ): Promise<OpsGroup<O>[]> {
-    type Response = DocSyncEvents<S, O>["sync-operations"]["response"];
-
-    const response = await new Promise<Response>((resolve) => {
-      this._socket.emit("sync-operations", { opsGroups, clock: 0 }, resolve);
-    });
-
-    return response.opsGroups;
   }
 }
