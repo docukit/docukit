@@ -56,7 +56,10 @@ export type ClientConfig<
     getToken: () => Promise<string>;
   };
   local?: {
-    provider: new () => ClientProvider<S, O>;
+    // We want D, S, O to be inferred from the docBinding, not
+    // from the provider
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    provider: new () => ClientProvider<any, any>;
     /**
      * Resolves the local storage identity.
      *
