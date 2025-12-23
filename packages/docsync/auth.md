@@ -95,7 +95,7 @@ DocNode does **not** call `getToken` per operation.
 ### Server Configuration
 
 ```ts
-export type ServerConfig = {
+export type ServerConfig<TContext = {}> = {
   port?: number;
   provider: new () => ServerProvider;
 
@@ -105,37 +105,24 @@ export type ServerConfig = {
    * - Called once per connection attempt.
    * - Must validate the provided token.
    * - Must resolve the canonical userId.
-   * - May optionally return an authoritative expiration time.
+   * - May optionally return a context object passed to authorize.
    */
-  authenticate: (ev: { token: string }) => Promise<{
-    userId: string;
-    /**
-     * Absolute expiration time (epoch ms).
-     *
-     * If provided, DocNode will disconnect the socket exactly at this time.
-     * Strongly recommended when the auth system knows the token TTL (e.g. JWT exp).
-     */
-    expiresAt?: number;
-  } | null>;
+  authenticate: (ev: { token: string }) => Promise<
+    | {
+        userId: string;
+        context?: TContext;
+      }
+    | undefined
+  >;
 
   /**
-   * Optional per-operation authorization hook.
-   *
-   * - Called for read/write operations.
-   * - Must return true to allow the operation.
-   * - DocNode does not define any authorization model.
+   * Authorizes an operation (get-doc, sync-operations, delete-doc).
+   * Receives cached context from authenticate.
    */
-  authorize?: (ev: {
-    userId: string;
-    docId: string;
-    type: "read" | "write";
-  }) => boolean;
+  authorize?: (ev: AuthorizeEvent<TContext>) => Promise<boolean>;
 
   /**
    * Optional revalidation policy used when `expiresAt` is not provided.
-   *
-   * - Used for opaque or revocable tokens.
-   * - Controls how often DocNode re-checks authentication defensively.
    */
   authRevalidation?: {
     intervalMs?: number; // default: 30_000
@@ -157,6 +144,60 @@ Flow:
 6. Operations are accepted while the connection is trusted
 
 If authentication fails, the connection is rejected immediately.
+
+---
+
+## Authorization
+
+DocSync provides authorization hooks but **does not impose any model**. The app decides how to authorize.
+
+### Authorize Events
+
+Each operation has its own typed payload:
+
+```ts
+type AuthorizeEvent<TContext> =
+  | {
+      type: "get-doc";
+      payload: { docId: string };
+      userId: string;
+      context: TContext;
+    }
+  | {
+      type: "sync-operations";
+      payload: { docId: string; operations: O };
+      userId: string;
+      context: TContext;
+    }
+  | {
+      type: "delete-doc";
+      payload: { docId: string };
+      userId: string;
+      context: TContext;
+    };
+```
+
+### Context: Cached vs Fresh
+
+`authenticate` can return a `context` that's cached and passed to `authorize`:
+
+```ts
+authenticate: async ({ token }) => ({
+  userId: user.id,
+  context: { roles: user.roles }, // cached at connection time
+}),
+
+authorize: async ({ type, userId, context }) => {
+  // Option 1: Use cached context (fast, might be stale)
+  if (context.roles.includes("admin")) return true;
+
+  // Option 2: Fetch fresh data (slower, always consistent)
+  const freshUser = await db.getUser(userId);
+  return freshUser.roles.includes("editor");
+},
+```
+
+**The tradeoff:** Cached context is fast but might be stale if roles change mid-session. Fetching fresh data is always consistent but slower. The app decides based on their needs.
 
 ---
 

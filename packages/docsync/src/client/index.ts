@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import type {
   ClientSocket,
+  DocSyncEvents,
+  OpsGroup,
   OpsPayload,
   SerializedDocPayload,
 } from "../shared/types.js";
@@ -344,41 +346,42 @@ export class DocSyncClient<
       this._pushStatus = "pushing" as DocSyncClient<D, S, O>["_pushStatus"];
       const allOperations = (await this._local?.provider.getOperations()) ?? [];
       // Acá puedo llegar a tener que devolver el documento completo si hubo concurrencia
-      const [error, _newOperations] =
+      try {
         await this._pushOperationsToServer(allOperations);
-      if (error) {
+      } catch {
         // retry. Maybe I should consider throw the error depending on the error type
         // to avoid infinite loops
         this._pushStatus = "idle";
         await pushOperations();
-      } else {
-        // TODO: como hago en deleteOperations de indexedDB si quizás mientras viajaba al servidor y volvía
-        // hubo otras operaciones que escribieron en idb?
-        // 2 stores? Almacenar el id de la última operación enviada?
-        await this._local?.provider.deleteOperations(allOperations.length);
-        await this._local?.provider.saveSerializedDoc({
-          serializedDoc: this._docBinding.serialize(doc),
-          docId,
-        });
-
-        // Status may have changed to "pushing-with-pending" during async ops
-        const shouldPushAgain = this._pushStatus === "pushing-with-pending";
-        this._pushStatus = "idle";
-        if (shouldPushAgain) await pushOperations();
+        return;
       }
+
+      // TODO: como hago en deleteOperations de indexedDB si quizás mientras viajaba al servidor y volvía
+      // hubo otras operaciones que escribieron en idb?
+      // 2 stores? Almacenar el id de la última operación enviada?
+      await this._local?.provider.deleteOperations(allOperations.length);
+      await this._local?.provider.saveSerializedDoc({
+        serializedDoc: this._docBinding.serialize(doc),
+        docId,
+      });
+
+      // Status may have changed to "pushing-with-pending" during async ops
+      const shouldPushAgain = this._pushStatus === "pushing-with-pending";
+      this._pushStatus = "idle";
+      if (shouldPushAgain) await pushOperations();
     };
     if (this._pushStatus === "idle") await pushOperations();
   }
 
   private async _pushOperationsToServer(
-    ops: OpsPayload<O>[],
-  ): Promise<[Error, undefined] | [undefined, OpsPayload<O>[]]> {
-    const response = await new Promise<OpsPayload<O>[] | Error>((resolve) => {
-      this._socket.emit("operations", ops, (res: OpsPayload<O>[] | Error) => {
-        resolve(res);
-      });
+    opsGroups: OpsGroup<O>[],
+  ): Promise<OpsGroup<O>[]> {
+    type Response = DocSyncEvents<S, O>["sync-operations"]["response"];
+
+    const response = await new Promise<Response>((resolve) => {
+      this._socket.emit("sync-operations", { opsGroups, clock: 0 }, resolve);
     });
-    if (response instanceof Error) return [response, undefined];
-    return [undefined, response];
+
+    return response.opsGroups;
   }
 }

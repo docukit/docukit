@@ -1,18 +1,43 @@
 import { type Server } from "socket.io";
 import { type Socket } from "socket.io-client";
 
-export type OpsPayload<O> = { docId: string; operations: O };
+export type OpsGroup<O> = { docId: string; operations: O };
 
-export type SerializedDocPayload<S> = { serializedDoc: S; docId: string };
+export type DocSyncEvents<S, O> = {
+  "get-doc": {
+    request: { docId: string };
+    response: { serializedDoc: S; clock: number } | undefined;
+  };
+  "sync-operations": {
+    request: { opsGroups: OpsGroup<O>[]; clock: number };
+    response: { opsGroups: OpsGroup<O>[]; clock: number };
+  };
+  "delete-doc": {
+    request: { docId: string };
+    response: { success: boolean };
+  };
+};
+
+export type DocSyncEventName = keyof DocSyncEvents<unknown, unknown>;
+
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export type AuthorizeEvent<TContext = {}, S = unknown, O = unknown> = {
+  [K in DocSyncEventName]: {
+    type: K;
+    payload: DocSyncEvents<S, O>[K]["request"];
+    userId: string;
+    context: TContext;
+  };
+}[DocSyncEventName];
+
+// ============================================================================
+// Socket.io Types (derived from events)
+// ============================================================================
 
 type ClientToServerEvents<S, O> = {
-  operations: (
-    operations: OpsPayload<O>[],
-    cb: (res: OpsPayload<O>[] | Error) => void,
-  ) => void;
-  jsonDoc: (
-    jsonDoc: SerializedDocPayload<S>, // should be an array of jsonDocs?
-    cb: (res: SerializedDocPayload<S> | Error) => void,
+  [K in DocSyncEventName]: (
+    payload: DocSyncEvents<S, O>[K]["request"],
+    cb: (res: DocSyncEvents<S, O>[K]["response"]) => void,
   ) => void;
 };
 
@@ -27,3 +52,24 @@ export type ClientSocket<S, O> = Socket<
   ServerToClientEvents,
   ClientToServerEvents<S, O>
 >;
+
+/**
+ * Event handlers type - TypeScript errors if any event is missing.
+ */
+export type SocketHandlers<S, O> = {
+  [K in DocSyncEventName]: (
+    payload: DocSyncEvents<S, O>[K]["request"],
+    cb: (res: DocSyncEvents<S, O>[K]["response"]) => void,
+  ) => void | Promise<void>;
+};
+
+// ============================================================================
+// Helper types for client
+// ============================================================================
+
+export type OpsPayload<O> = { docId: string; operations: O };
+
+export type SerializedDocPayload<S> = {
+  serializedDoc: S;
+  docId: string;
+};

@@ -1,26 +1,62 @@
 import { Server, type Socket } from "socket.io";
 import type { Operations } from "docnode";
-import type { ServerSocket } from "../shared/types.js";
+import {
+  type ServerSocket,
+  type AuthorizeEvent,
+  type SocketHandlers,
+  type DocSyncEventName,
+} from "../shared/types.js";
+
+// Re-export AuthorizeEvent for consumers
+export type { AuthorizeEvent } from "../shared/types.js";
 
 // replace this with shared types
 export type ServerProvider = {
   saveOperations: (operations: Operations) => Promise<void>;
 };
 
-export type ServerConfig = {
+/**
+ * Server configuration with generic context type.
+ *
+ * @typeParam TContext - Application-defined context shape returned by authenticate
+ *                       and passed to authorize. Defaults to empty object.
+ */
+export type ServerConfig<
+  TContext = Record<string, unknown>,
+  S = unknown,
+  O = unknown,
+> = {
   port?: number;
   provider: new () => ServerProvider;
-  authenticate: (authEv: {
-    token: string;
-    // should return errors instead of null?
-    // eslint-disable-next-line @typescript-eslint/no-restricted-types
-  }) => Promise<{ userId: string } | null>;
-  // review args
-  authorize?: (ev: {
-    userId: string;
-    docId: string;
-    type: "read" | "write";
-  }) => boolean;
+
+  /**
+   * Authenticates a WebSocket connection.
+   *
+   * - Called once per connection attempt.
+   * - Must validate the provided token.
+   * - Must resolve the canonical userId.
+   * - May optionally return a context object that will be passed to authorize.
+   *
+   * @returns User info with optional context, or undefined if authentication fails.
+   */
+  authenticate: (ev: { token: string }) => Promise<
+    | {
+        userId: string;
+        context?: TContext;
+      }
+    | undefined
+  >;
+
+  /**
+   * Authorizes an operation.
+   *
+   * - Called for each operation (get-doc, apply-operations, create-doc, save-doc).
+   * - Receives the cached context from authenticate.
+   * - Can use cached context for fast checks or fetch fresh data for consistency.
+   *
+   * @returns true to allow, false to deny.
+   */
+  authorize?: (ev: AuthorizeEvent<TContext, S, O>) => Promise<boolean>;
 };
 
 type DocId = string;
@@ -66,27 +102,26 @@ export class DocSyncServer<S, O> {
   }
 
   private _setupSocketServer() {
-    // prettier-ignore
     this._io.on("connection", (socket) => {
       const auth = socket.handshake.auth as { userId: string; token: string };
-      // TODO: check token
-      // 2. obtener el indexDoc del userId
-
       console.log("Client connected", auth);
-      socket.on("disconnect", reason => console.log(`Client disconnected: ${reason}`));
-      socket.on("error", err => console.error("Socket.io error:", err));
-      socket.on("operations", async (_opsPayloads, _cb) => {        
-        // 1. In the same SQL operation, save the operations and 
-        // obtain the ones that the client was missing, if any.
-        
-        // 2. If there are users connected to that document, broadcast the operations
-        // if they are missing only those (or send the entire document otherwise)
+      socket.on("disconnect", (reason) =>
+        console.log(`Client disconnected: ${reason}`),
+      );
+      socket.on("error", (err) => console.error("Socket.io error:", err));
 
-        // 3. To the client who sent it, we respond with the operations that he was missing, obtained in point 1
-        // TODO: implement actual sync logic
-        // const _operations = wrappedOperations.map((w) => w.o);
-        // cb([[], {}]); // Empty operations = "you're not missing anything"
-      });
+      // TypeScript errors if any handler is missing
+      const handlers: SocketHandlers<S, O> = {
+        "get-doc": (_payload, cb) => cb(undefined),
+        "sync-operations": (payload, cb) =>
+          cb({ opsGroups: payload.opsGroups, clock: payload.clock }),
+        "delete-doc": (_payload, cb) => cb({ success: true }),
+      };
+
+      // Register handlers
+      for (const event of Object.keys(handlers) as DocSyncEventName[]) {
+        socket.on(event, handlers[event]);
+      }
     });
   }
 }
