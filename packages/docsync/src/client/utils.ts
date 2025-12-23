@@ -24,8 +24,13 @@ export class API<S, O> {
     event: E,
     payload: DocSyncEvents<S, O>[E]["request"],
   ): Promise<DocSyncEvents<S, O>[E]["response"]> {
+    type Emit = <K extends DocSyncEventName>(
+      event: K,
+      payload: DocSyncEvents<S, O>[K]["request"],
+      cb: (res: DocSyncEvents<S, O>[K]["response"]) => void,
+    ) => void;
     return new Promise((resolve) => {
-      this._socket.emit(event, payload, resolve);
+      (this._socket.emit as Emit)(event, payload, resolve);
     });
   }
 }
