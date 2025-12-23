@@ -49,7 +49,7 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
       const doc = new Doc({ ...docConfig, id });
       return { doc, id: doc.root.id };
     },
-    serialize: (doc) => doc.toJSON(),
+    serialize: (doc) => doc.toJSON({ unsafe: true }),
     deserialize: (serializedDoc) => {
       const namespace = JSON.parse(serializedDoc[2].namespace!) as string;
       const docConfig = docConfigsMap.get(namespace);

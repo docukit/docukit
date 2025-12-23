@@ -226,6 +226,12 @@ export class DocSyncClient<
         this._docBinding.applyOperations(doc, operations);
       });
       this._shouldBroadcast = true;
+      // Save the new doc to IDB
+      void this._local?.provider.saveSerializedDoc({
+        serializedDoc: this._docBinding.serialize(doc),
+        docId: id,
+        clock: 0,
+      });
       return doc;
     }
 
