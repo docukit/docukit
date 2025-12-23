@@ -10,6 +10,7 @@ import type {
   QueryResult,
 } from "./types.js";
 import { API } from "./utils.js";
+import { ServerSync } from "./serverSync.js";
 
 export class DocSyncClient<
   D extends {},
@@ -28,7 +29,7 @@ export class DocSyncClient<
   private _shouldBroadcast = true;
   private _broadcastChannel: BroadcastChannel;
   private _api: API<S, O>;
-  protected _pushStatus: "idle" | "pushing" | "pushing-with-pending" = "idle";
+  private _serverSync?: ServerSync<D, S, O>;
 
   constructor(config: ClientConfig<D, S, O>) {
     if (typeof window === "undefined")
@@ -36,11 +37,18 @@ export class DocSyncClient<
     const { docBinding, local } = config;
     this._docBinding = docBinding;
     this._api = new API({ url: config.url });
-    if (local)
+    if (local) {
+      const provider = new local.provider() as ClientProvider<S, O>;
       this._local = {
         secret: local.getIdentity().then((identity) => identity.secret),
-        provider: new local.provider(),
+        provider,
       };
+      this._serverSync = new ServerSync({
+        provider,
+        api: this._api,
+        docBinding: this._docBinding,
+      });
+    }
 
     // Listen for operations from other tabs.
     this._broadcastChannel = new BroadcastChannel("docsync");
@@ -135,7 +143,6 @@ export class DocSyncClient<
       void this.onLocalOperations({
         docId: id,
         operations: [] as unknown as O,
-        doc,
       });
       return () => void this._unloadDoc(id);
     }
@@ -158,7 +165,7 @@ export class DocSyncClient<
               docId,
               createIfMissing ? namespace : undefined,
             );
-            this._docsCache.set(docId, { promisedDoc, refCount: 1 });
+            this._docsCache.set(docId, { promisedDoc, clock: 0, refCount: 1 });
             doc = await promisedDoc;
             // Register listener only for new docs (not cache hits)
             if (doc) this._setupChangeListener(doc, docId, emit);
@@ -189,7 +196,7 @@ export class DocSyncClient<
     this._docBinding.onChange(doc, ({ operations }) => {
       if (this._shouldBroadcast) {
         this._sendMessage({ type: "OPERATIONS", operations, docId });
-        void this.onLocalOperations({ docId, operations, doc });
+        void this.onLocalOperations({ docId, operations });
       }
       this._shouldBroadcast = true;
       emit({ status: "success", data: { doc, id: docId }, error: undefined });
@@ -247,55 +254,8 @@ export class DocSyncClient<
     this._broadcastChannel.postMessage(message);
   }
 
-  async onLocalOperations({
-    docId,
-    operations,
-    doc,
-  }: OpsPayload<O> & { doc: D }) {
+  async onLocalOperations({ docId, operations }: OpsPayload<O>) {
     await this._local?.provider.saveOperations({ docId, operations });
-    if (this._pushStatus !== "idle") this._pushStatus = "pushing-with-pending";
-
-    const pushOperations = async () => {
-      if (this._pushStatus !== "idle")
-        throw new Error("Push already in progress");
-      // prevent narrowing for security due to async mutation scenario. TS trade-off.
-      // https://github.com/microsoft/TypeScript/issues/9998
-      this._pushStatus = "pushing" as DocSyncClient<D, S, O>["_pushStatus"];
-      const allOperations = (await this._local?.provider.getOperations()) ?? [];
-      // Acá puedo llegar a tener que devolver el documento completo si hubo concurrencia
-      try {
-        await this._api.request("sync-operations", [
-          // TODO: convert allOperations to this format
-          {
-            clock: 0,
-            docId: "",
-            operations: [],
-          },
-        ]);
-      } catch {
-        // retry. Maybe I should consider throw the error depending on the error type
-        // to avoid infinite loops
-        this._pushStatus = "idle";
-        await pushOperations();
-        return;
-      }
-
-      // TODO: como hago en deleteOperations de indexedDB si quizás mientras viajaba al servidor y volvía
-      // hubo otras operaciones que escribieron en idb?
-      // 2 stores? Almacenar el id de la última operación enviada?
-      await this._local?.provider.deleteOperations(allOperations.length);
-      await this._local?.provider.saveSerializedDoc({
-        serializedDoc: this._docBinding.serialize(doc),
-        docId,
-        // TODO
-        clock: 123123,
-      });
-
-      // Status may have changed to "pushing-with-pending" during async ops
-      const shouldPushAgain = this._pushStatus === "pushing-with-pending";
-      this._pushStatus = "idle";
-      if (shouldPushAgain) await pushOperations();
-    };
-    if (this._pushStatus === "idle") await pushOperations();
+    this._serverSync?.onSaved();
   }
 }
