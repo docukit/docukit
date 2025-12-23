@@ -15,6 +15,7 @@ import type {
   GetDocArgs,
   QueryResult,
 } from "./types.js";
+import { API } from "./utils.js";
 
 export class DocSyncClient<
   D extends {},
@@ -30,9 +31,7 @@ export class DocSyncClient<
   };
   private _shouldBroadcast = true;
   private _broadcastChannel: BroadcastChannel;
-
-  // ws
-  private _socket: ClientSocket<S, O>;
+  private _api: API<S, O>;
   protected _pushStatus: "idle" | "pushing" | "pushing-with-pending" = "idle";
 
   constructor(config: ClientConfig<D, S, O>) {
@@ -40,21 +39,12 @@ export class DocSyncClient<
       throw new Error("DocSyncClient can only be used in the browser");
     const { docBinding, local } = config;
     this._docBinding = docBinding;
+    this._api = new API({ url: config.url });
     if (local)
       this._local = {
         secret: local.getIdentity().then((identity) => identity.secret),
         provider: new local.provider(),
       };
-
-    this._socket = io(config.url, {
-      auth: { userId: "John", token: "1234567890" },
-    });
-    // prettier-ignore
-    {
-    this._socket.on("connect", () => console.log("Connected to Socket.io server"));
-    this._socket.on("connect_error", err => console.error("Socket.io connection error:", err));
-    this._socket.on("disconnect", reason => console.error("Socket.io disconnected:", reason));
-    }
 
     // Listen for operations from other tabs.
     this._broadcastChannel = new BroadcastChannel("docsync");
@@ -299,17 +289,5 @@ export class DocSyncClient<
       if (shouldPushAgain) await pushOperations();
     };
     if (this._pushStatus === "idle") await pushOperations();
-  }
-
-  private async _pushOperationsToServer(
-    opsGroups: OpsGroup<O>[],
-  ): Promise<OpsGroup<O>[]> {
-    type Response = DocSyncEvents<S, O>["sync-operations"]["response"];
-
-    const response = await new Promise<Response>((resolve) => {
-      this._socket.emit("sync-operations", { opsGroups, clock: 0 }, resolve);
-    });
-
-    return response.opsGroups;
   }
 }
