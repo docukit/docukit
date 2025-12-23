@@ -61,9 +61,8 @@ export class DocSyncClient<
     this._broadcastChannel.onmessage = async (
       ev: MessageEvent<BroadcastMessage<O>>,
     ) => {
+      // RECEIVED MESSAGES
       if (ev.data.type === "OPERATIONS") {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-        console.log("receiving", (ev.data.operations as any)[1 as any]);
         void this._applyOperations(ev.data.operations, ev.data.docId);
         return;
       }
@@ -143,6 +142,7 @@ export class DocSyncClient<
       void this._local?.provider.saveSerializedDoc({
         serializedDoc: this._docBinding.serialize(doc),
         docId: id,
+        clock: 0,
       });
       return () => void this._unloadDoc(id);
     }
