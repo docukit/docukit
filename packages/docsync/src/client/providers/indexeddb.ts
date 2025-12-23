@@ -22,7 +22,7 @@ export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
   private _dbPromise: Promise<IDBPDatabase<DocNodeIDB<S, O>>>;
 
   constructor() {
-    this._dbPromise = openDB("docnode", 1, {
+    this._dbPromise = openDB("docsync", 1, {
       upgrade(db) {
         if (db.objectStoreNames.contains("docs")) return;
         db.createObjectStore("docs", {
