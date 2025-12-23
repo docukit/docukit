@@ -1,11 +1,5 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type {
-  ClientSocket,
-  DocSyncEvents,
-  OpsGroup,
-  OpsPayload,
-} from "../shared/types.js";
-import { io } from "socket.io-client";
+import type { OpsPayload } from "../shared/types.js";
 import type { DocBinding, SerializedDoc } from "../shared/docBinding.js";
 import type {
   BroadcastMessage,
@@ -23,8 +17,10 @@ export class DocSyncClient<
   O extends {},
 > {
   private _docBinding: DocBinding<D, S, O>;
-  // prettier-ignore
-  private _docsCache = new Map<string, { promisedDoc: Promise<D | undefined>; refCount: number; }>();
+  private _docsCache = new Map<
+    string,
+    { promisedDoc: Promise<D | undefined>; clock: number; refCount: number }
+  >();
   private _local?: {
     provider: ClientProvider<S, O>;
     secret: Promise<string>;
@@ -125,6 +121,7 @@ export class DocSyncClient<
       docId = id;
       this._docsCache.set(id, {
         promisedDoc: Promise.resolve(doc),
+        clock: 0,
         refCount: 1,
       });
       this._setupChangeListener(doc, id, emit);
@@ -135,7 +132,11 @@ export class DocSyncClient<
         clock: 0,
       });
       // This forces a fetch if the document exists on the server.
-      void this.onLocalOperations({ docId: id, operations: null, doc });
+      void this.onLocalOperations({
+        docId: id,
+        operations: [] as unknown as O,
+        doc,
+      });
       return () => void this._unloadDoc(id);
     }
 
@@ -263,7 +264,14 @@ export class DocSyncClient<
       const allOperations = (await this._local?.provider.getOperations()) ?? [];
       // Acá puedo llegar a tener que devolver el documento completo si hubo concurrencia
       try {
-        await this._pushOperationsToServer(allOperations);
+        await this._api.request("sync-operations", [
+          // TODO: convert allOperations to this format
+          {
+            clock: 0,
+            docId: "",
+            operations: [],
+          },
+        ]);
       } catch {
         // retry. Maybe I should consider throw the error depending on the error type
         // to avoid infinite loops

@@ -1,14 +1,12 @@
+/* eslint-disable @typescript-eslint/no-restricted-types */
 import { type Server } from "socket.io";
 import { type Socket } from "socket.io-client";
-
-export type OpsGroup<O> = { docId: string; operations: O };
 
 // ============================================================================
 // Helper types for client
 // ============================================================================
 // TODO: review these types
-// eslint-disable-next-line @typescript-eslint/no-restricted-types
-export type OpsPayload<O> = { docId: string; operations: O | null };
+export type OpsPayload<O> = { docId: string; operations: O };
 
 export type SerializedDocPayload<S> = {
   serializedDoc: S;
@@ -30,9 +28,10 @@ export type DocSyncEvents<S, O> = {
     // requestRemote: {  }
     // responseRemote: unknown;
   };
+  // prettier-ignore
   "sync-operations": {
-    request: { opsGroups: OpsGroup<O>[]; clock: number };
-    response: { opsGroups: OpsGroup<O>[]; clock: number };
+    request: Array<{ docId: string; operations: O[] | null, clock: number }>;
+    response: Array<{ docId: string; operations: O[] | null, serializedDoc: S, clock: number }>;
   };
   "delete-doc": {
     request: { docId: string };
