@@ -55,7 +55,7 @@ export type ClientSocket<S, O> = Socket<
 >;
 
 /**
- * Event handlers type - TypeScript errors if any event is missing.
+ * Server socket event handlers type - TypeScript errors if any event is missing.
  */
 export type SocketHandlers<S, O> = {
   [K in DocSyncEventName]: (
@@ -67,7 +67,7 @@ export type SocketHandlers<S, O> = {
 // ============================================================================
 // Helper types for client
 // ============================================================================
-
+// TODO: review these types
 export type OpsPayload<O> = { docId: string; operations: O };
 
 export type SerializedDocPayload<S> = {
