@@ -1,6 +1,6 @@
 import type { DocBinding, SerializedDoc } from "../shared/docBinding.js";
 import type { ClientProvider } from "./types.js";
-import type { API } from "./utils.js";
+import { API } from "./utils.js";
 
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 export type ServerSyncConfig<
@@ -9,7 +9,7 @@ export type ServerSyncConfig<
   O extends {},
 > = {
   provider: ClientProvider<S, O>;
-  api: API<S, O>;
+  url: string;
   docBinding: DocBinding<D, S, O>;
 };
 
@@ -21,7 +21,7 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
 
   constructor(config: ServerSyncConfig<D, S, O>) {
     this._provider = config.provider;
-    this._api = config.api;
+    this._api = new API({ url: config.url });
     this._docBinding = config.docBinding;
   }
 

@@ -9,7 +9,6 @@ import type {
   GetDocArgs,
   QueryResult,
 } from "./types.js";
-import { API } from "./utils.js";
 import { ServerSync } from "./serverSync.js";
 
 export class DocSyncClient<
@@ -28,7 +27,6 @@ export class DocSyncClient<
   };
   private _shouldBroadcast = true;
   private _broadcastChannel: BroadcastChannel;
-  private _api: API<S, O>;
   private _serverSync?: ServerSync<D, S, O>;
 
   constructor(config: ClientConfig<D, S, O>) {
@@ -36,7 +34,6 @@ export class DocSyncClient<
       throw new Error("DocSyncClient can only be used in the browser");
     const { docBinding, local } = config;
     this._docBinding = docBinding;
-    this._api = new API({ url: config.url });
     if (local) {
       const provider = new local.provider() as ClientProvider<S, O>;
       this._local = {
@@ -45,7 +42,7 @@ export class DocSyncClient<
       };
       this._serverSync = new ServerSync({
         provider,
-        api: this._api,
+        url: config.url,
         docBinding: this._docBinding,
       });
     }
