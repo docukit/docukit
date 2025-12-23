@@ -1,5 +1,5 @@
 import { openDB, type IDBPDatabase } from "idb";
-import type { ClientProvider } from "../index.js";
+import type { ClientProvider } from "../types.js";
 import { type DBSchema } from "idb";
 import type { OpsPayload, SerializedDocPayload } from "../../shared/types.js";
 

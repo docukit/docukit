@@ -1,7 +1,7 @@
 import { queryClient } from "./schema.js";
 import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "./schema.js";
-import type { ServerProvider } from "../../index.js";
+import type { ServerProvider } from "../../types.js";
 import { sql, eq } from "drizzle-orm";
 import type { Operations } from "docnode";
 
