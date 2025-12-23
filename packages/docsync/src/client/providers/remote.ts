@@ -16,7 +16,7 @@ export class RemoteProvider<S, O> implements ClientProvider<S, O> {
 
   async getSerializedDoc(
     docId: string,
-  ): Promise<{ serializedDoc: S } | undefined> {
+  ): Promise<{ serializedDoc: S; clock: number } | undefined> {
     throw new Error("not implemented yet");
   }
 
