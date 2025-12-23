@@ -144,6 +144,8 @@ export class DocSyncClient<
         docId: id,
         clock: 0,
       });
+      // This forces a fetch if the document exists on the server.
+      void this.onLocalOperations({ docId: id, operations: null, doc });
       return () => void this._unloadDoc(id);
     }
 
@@ -287,6 +289,8 @@ export class DocSyncClient<
       await this._local?.provider.saveSerializedDoc({
         serializedDoc: this._docBinding.serialize(doc),
         docId,
+        // TODO
+        clock: 123123,
       });
 
       // Status may have changed to "pushing-with-pending" during async ops

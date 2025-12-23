@@ -7,7 +7,8 @@ export type OpsGroup<O> = { docId: string; operations: O };
 // Helper types for client
 // ============================================================================
 // TODO: review these types
-export type OpsPayload<O> = { docId: string; operations: O };
+// eslint-disable-next-line @typescript-eslint/no-restricted-types
+export type OpsPayload<O> = { docId: string; operations: O | null };
 
 export type SerializedDocPayload<S> = {
   serializedDoc: S;
@@ -24,6 +25,10 @@ export type DocSyncEvents<S, O> = {
   "get-doc": {
     request: { docId: string };
     response: { serializedDoc: S; clock: number } | undefined;
+    // requestLocal: { id?: string; namespace: string; createIfMissing?: boolean };
+    // responseLocal: { serializedDoc: S; clock: number } | undefined;
+    // requestRemote: {  }
+    // responseRemote: unknown;
   };
   "sync-operations": {
     request: { opsGroups: OpsGroup<O>[]; clock: number };
