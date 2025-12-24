@@ -1,9 +1,10 @@
-import type { Operations } from "docnode";
-import type { AuthorizeEvent } from "../shared/types.js";
+import type { AuthorizeEvent, DocSyncEvents } from "../shared/types.js";
 
 // replace this with shared types
-export type ServerProvider = {
-  saveOperations: (operations: Operations) => Promise<void>;
+export type ServerProvider<S, O> = {
+  sync: (
+    req: DocSyncEvents<S, O>["sync-operations"]["request"],
+  ) => Promise<DocSyncEvents<S, O>["sync-operations"]["response"]>;
 };
 
 /**
@@ -12,13 +13,9 @@ export type ServerProvider = {
  * @typeParam TContext - Application-defined context shape returned by authenticate
  *                       and passed to authorize. Defaults to empty object.
  */
-export type ServerConfig<
-  TContext = Record<string, unknown>,
-  S = unknown,
-  O = unknown,
-> = {
+export type ServerConfig<TContext, S, O> = {
   port?: number;
-  provider: new () => ServerProvider;
+  provider: new () => ServerProvider<S, O>;
 
   /**
    * Authenticates a WebSocket connection.

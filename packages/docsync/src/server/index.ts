@@ -6,38 +6,11 @@ import {
 } from "../shared/types.js";
 import type { ServerConfig, ServerProvider } from "./types.js";
 
-type DocId = string;
-type ClientId = string;
-
-export class DocSyncServer<S, O> {
+export class DocSyncServer<TContext, S, O> {
   private _io: ServerSocket<S, O>;
-  private _provider: ServerProvider;
-  /**
-   * This are the docs that at least one client has in memory (open/active).
-   * The clients in the value are ALL the clients who have access to the document, not just those who are connected.
-   */
-  private _activeDocs = new Map<
-    DocId,
-    {
-      [clientId: string]: {
-        accessType: "view" | "edit";
-        localVersion: number;
-      };
-    }
-  >();
-  /**
-   * This are the clients that are connected to the server.
-   * The docs in the value are ONLY the docs that the client has active/in memory.
-   */
-  private _activeClients = new Map<
-    ClientId,
-    {
-      sockets: Set<Socket>;
-      activeDocs: Set<DocId>;
-    }
-  >();
+  private _provider: ServerProvider<S, O>;
 
-  constructor(config: ServerConfig) {
+  constructor(config: ServerConfig<TContext, S, O>) {
     this._io = new Server(config.port ?? 8080, {
       cors: {
         origin: "*",
@@ -60,7 +33,9 @@ export class DocSyncServer<S, O> {
       // TypeScript errors if any handler is missing
       const handlers: SocketHandlers<S, O> = {
         "get-doc": (_payload, cb) => cb(undefined),
-        "sync-operations": (payload, cb) => cb([]), // no operations = no change
+        "sync-operations": (payload, cb) => {
+          void this._provider.sync(payload).then(cb);
+        },
         "delete-doc": (_payload, cb) => cb({ success: true }),
       };
 

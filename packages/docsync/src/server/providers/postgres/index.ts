@@ -5,8 +5,15 @@ import type { ServerProvider } from "../../types.js";
 import { sql, eq } from "drizzle-orm";
 import type { Operations } from "docnode";
 
-export class PostgresProvider implements ServerProvider {
+export class PostgresProvider<S, O> implements ServerProvider<S, O> {
   private _db = drizzle(queryClient, { schema });
+
+  async sync(
+    _req: Parameters<ServerProvider<S, O>["sync"]>[0],
+  ): ReturnType<ServerProvider<S, O>["sync"]> {
+    // TODO: implement sync
+    return [];
+  }
 
   async saveOperations(operations: Operations) {
     const firstOp = operations[0][0];
