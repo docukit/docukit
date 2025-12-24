@@ -23,10 +23,6 @@ export type DocSyncEvents<S, O> = {
   "get-doc": {
     request: { docId: string };
     response: { serializedDoc: S; clock: number } | undefined;
-    // requestLocal: { id?: string; namespace: string; createIfMissing?: boolean };
-    // responseLocal: { serializedDoc: S; clock: number } | undefined;
-    // requestRemote: {  }
-    // responseRemote: unknown;
   };
   // prettier-ignore
   "sync-operations": {
