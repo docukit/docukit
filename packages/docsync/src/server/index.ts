@@ -1,4 +1,4 @@
-import { Server, type Socket } from "socket.io";
+import { Server } from "socket.io";
 import {
   type ServerSocket,
   type SocketHandlers,
@@ -47,18 +47,3 @@ export class DocSyncServer<TContext, S, O> {
     });
   }
 }
-
-/**
- * Although it shares many things with indexDoc, I am not going to use it because:
- * 1. I want it to be json serializable to share it with the server
- * 2. I find a simpler model to decouple these concepts (some things persist, others are awareness, etc.).
- */
-type _ClientOrchestrator = {
-  docs: {
-    [docId: string]: {
-      isInMemory: boolean;
-      localVersion: number;
-      serverVersion: number;
-    };
-  };
-};
