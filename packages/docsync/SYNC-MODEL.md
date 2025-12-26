@@ -49,7 +49,7 @@ Periodically, a **squash** operation applies accumulated operations to the docum
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ documents                                                   │
+│ docsync-documents                                           │
 ├─────────────────────────────────────────────────────────────┤
 │ docId        │ Primary key                                  │
 │ doc          │ Serialized document                          │
@@ -57,15 +57,17 @@ Periodically, a **squash** operation applies accumulated operations to the docum
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│ operations                                                  │
+│ docsync-operations                                          │
 ├─────────────────────────────────────────────────────────────┤
 │ docId        │ Foreign key to documents                     │
-│ operation    │ The operation data                           │
+│ operations   │ Array of operations (JSONB)                  │
 │ clock        │ Assigned by server on INSERT (timestamp)     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 **Key insight**: The document's clock represents the version of the _serialized_ document. Operations with `clock > document.clock` have not yet been applied to the serialized document.
+
+**Note**: Each row in `docsync-operations` contains an **array** of operations from a single sync request, not individual operations. This reduces the number of rows and simplifies insertion.
 
 ### Client Storage
 
@@ -145,9 +147,10 @@ When syncing, the client essentially says:
 
 The server:
 
-1. **Appends** the client's operations to the operations table (assigns clock = current timestamp)
-2. **Queries** operations where `clock > client's clock` (excluding the ones just inserted)
-3. **Returns** those operations + the latest clock
+1. **Queries** operations where `clock > client's clock` (BEFORE inserting, so we don't return the client's own ops)
+2. **Appends** the client's operations to the operations table (assigns clock = current timestamp via `DEFAULT NOW()`)
+3. **Gets the inserted clock** via `RETURNING clock` to return to the client
+4. **Returns** missing operations + the newly inserted clock
 
 ## Squash Operation
 
@@ -207,12 +210,19 @@ If a client was offline for a long time and accumulated many operations:
 - Should they be batched?
 - What if the server squashed multiple times in between?
 
-### 5. Multi-Document Sync
+### 5. ~~Multi-Document Sync~~ (Resolved)
 
-The current sync request is an array of documents. Questions:
+**Decision**: Sync is now **single-document**. Each sync request handles one document at a time:
 
-- Should it be transactional across all documents?
-- What if one document fails but others succeed?
+```typescript
+// Request
+{ docId: string; operations: O[] | null; clock: number }
+
+// Response
+{ docId: string; operations: O[] | null; serializedDoc: S; clock: number }
+```
+
+This simplifies error handling and transaction scope.
 
 ### 6. Clock Type: Integer vs. Timestamp
 
@@ -239,10 +249,12 @@ After squash, operations are deleted. What if a very slow client syncs with a cl
 
 ## Implementation Checklist
 
-- [ ] Add `clock` (timestamp) column to operations table
-- [ ] Server: INSERT operations with `clock = NOW()`
-- [ ] Server: SELECT operations WHERE `docId = ? AND clock > ?`
-- [ ] Server: Exclude just-inserted operations from response
+- [x] Add `clock` (timestamp) column to operations table
+- [x] Server: INSERT operations with `clock = NOW()` and get clock via `RETURNING`
+- [x] Server: SELECT operations WHERE `docId = ? AND clock > ?`
+- [x] Server: Query BEFORE insert to exclude client's own operations
+- [x] Single-document sync (not array)
+- [x] Operations stored as array per row (not one row per op)
 - [ ] Client: Apply server operations + own operations
 - [ ] Client: Update local doc with new clock
 - [ ] Squash: Implement periodic consolidation

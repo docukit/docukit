@@ -80,14 +80,15 @@ This amortizes the expensive deserialization/serialization cost across many oper
 │  1. User makes changes                                              │
 │     └─→ Operations saved to local `operations` store                │
 │                                                                     │
-│  2. Sync triggered                                                  │
+│  2. Sync triggered (single document at a time)                      │
 │     └─→ Read local doc clock from `docs` store                      │
 │     └─→ Read pending operations from `operations` store             │
 │     └─→ Send to server: { docId, clock, operations[] }              │
 │                                                                     │
 │  3. Receive server response                                         │
-│     └─→ Server returns: { operations[], clock }                     │
+│     └─→ Server returns: { operations[], serializedDoc, clock }      │
 │     └─→ If server sent operations, client was behind                │
+│     └─→ serializedDoc returned only if doc.clock > clientClock      │
 │                                                                     │
 │  4. Reconcile locally                                               │
 │     └─→ Load doc from `docs` store                                  │
@@ -110,19 +111,23 @@ This amortizes the expensive deserialization/serialization cost across many oper
 │     └─→ "Starting from version X, I applied these operations.       │
 │          Give me any operations I'm missing."                       │
 │                                                                     │
-│  2. Find operations the client doesn't have                         │
-│     └─→ SELECT * FROM operations                                    │
+│  2. Find operations the client doesn't have (BEFORE insert!)        │
+│     └─→ SELECT operations FROM "docsync-operations"                 │
 │         WHERE docId = ? AND clock > clientClock                     │
+│         ORDER BY clock                                              │
 │                                                                     │
-│  3. Append client operations with current timestamp                 │
-│     └─→ INSERT INTO operations (docId, data, clock)                 │
-│         VALUES (?, ?, NOW())                                        │
+│  3. Append client operations and get the assigned clock             │
+│     └─→ INSERT INTO "docsync-operations" (docId, operations)        │
+│         VALUES (?, ?)                                               │
+│         RETURNING clock                                             │
 │                                                                     │
-│  4. Return missing operations to client                             │
-│     └─→ { operations[], clock: latestOperationClock }               │
+│  4. Return missing operations + newly inserted clock to client      │
+│     └─→ { operations[], clock: insertedClock }                      │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+**Key**: We query BEFORE inserting so the client doesn't receive their own operations back. The clock returned is from the newly inserted row (via `RETURNING`), not from existing operations.
 
 ### Sequence Diagram
 
@@ -158,26 +163,28 @@ Client A          Server          Client B
 ### Documents Table
 
 ```sql
-CREATE TABLE documents (
-  docId     VARCHAR(26) PRIMARY KEY,
-  doc       JSONB NOT NULL,           -- Serialized document
-  clock     TIMESTAMP NOT NULL,       -- Last squash timestamp
-  userId    VARCHAR(26)               -- Optional: owner
+CREATE TABLE "docsync-documents" (
+  "docId"     VARCHAR(26) PRIMARY KEY,
+  doc         JSONB NOT NULL,           -- Serialized document
+  clock       TIMESTAMP NOT NULL,       -- Last squash timestamp
+  "userId"    VARCHAR(26)               -- Optional: owner
 );
 ```
 
 ### Operations Table
 
 ```sql
-CREATE TABLE operations (
-  docId     VARCHAR(26) NOT NULL,
-  data      JSONB NOT NULL,           -- Operation payload
-  clock     TIMESTAMP NOT NULL        -- Assigned by server on insert
+CREATE TABLE "docsync-operations" (
+  "docId"     VARCHAR(26) NOT NULL,
+  operations  JSONB NOT NULL,           -- Array of operations from one sync
+  clock       TIMESTAMP NOT NULL        -- Assigned by server on insert
                 DEFAULT NOW()
 );
 
-CREATE INDEX idx_operations_doc_clock ON operations(docId, clock);
+CREATE INDEX idx_operations_doc_clock ON "docsync-operations"("docId", clock);
 ```
+
+**Note**: Each row contains an **array** of operations from a single sync request, not individual operations.
 
 ---
 
@@ -235,8 +242,13 @@ For large documents with many operations:
 
 ## Implementation Checklist
 
-- [ ] Add `clock` (timestamp) column to operations table
-- [ ] Implement `sync` method in PostgresProvider
+- [x] Add `clock` (timestamp) column to operations table
+- [x] Implement `sync` method in PostgresProvider
+- [x] Single-document sync (not array)
+- [x] Operations stored as array per row
+- [x] Use `RETURNING` to get inserted clock
+- [x] Query operations BEFORE insert
+- [x] Only fetch serializedDoc if doc.clock > clientClock
 - [ ] Implement squash logic (separate method/job)
 - [ ] Define when squashing is triggered
 - [ ] Handle edge case: first sync with no existing document
