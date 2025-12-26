@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "./schema.js";
 import type { ServerProvider } from "../../types.js";
 import type { DocSyncEvents } from "../../../shared/types.js";
-import { eq, gt, and } from "drizzle-orm";
+import { eq, gt, and, sql } from "drizzle-orm";
 import type { Operations } from "docnode";
 
 export class PostgresProvider<S, O> implements ServerProvider<S, O> {
@@ -19,7 +19,7 @@ export class PostgresProvider<S, O> implements ServerProvider<S, O> {
       // 1. Get operations the client doesn't have
       //    We query BEFORE inserting so we don't return the client's own operations
       const serverOps = await tx
-        .select({ o: schema.operations.o })
+        .select({ operations: schema.operations.operations })
         .from(schema.operations)
         .where(
           and(
@@ -45,7 +45,7 @@ export class PostgresProvider<S, O> implements ServerProvider<S, O> {
               .insert(schema.operations)
               .values({
                 docId,
-                o: operations,
+                operations,
               })
               .returning({ clock: schema.operations.clock })
           : [];
@@ -55,7 +55,9 @@ export class PostgresProvider<S, O> implements ServerProvider<S, O> {
       return {
         docId,
         operations:
-          serverOps.length > 0 ? (serverOps.map((r) => r.o) as O[]) : null,
+          serverOps.length > 0
+            ? (serverOps.map((r) => r.operations) as O[])
+            : null,
         serializedDoc: (serverDoc?.doc ?? null) as S,
         clock: newClock,
       };
@@ -81,7 +83,7 @@ export class PostgresProvider<S, O> implements ServerProvider<S, O> {
     await this._db
       .insert(schema.operations)
       .values({
-        o: operations[0],
+        operations: operations[0],
         docId,
       })
       .execute();
@@ -94,9 +96,9 @@ export class PostgresProvider<S, O> implements ServerProvider<S, O> {
         WITH deleted_ops AS (
           DELETE FROM ${schema.operations}
           WHERE "docId" = (SELECT "docId" FROM ${schema.operations} ORDER BY clock LIMIT 1)
-          RETURNING "docId", o
+          RETURNING "docId", operations
         )
-        SELECT "docId" AS doc_id, ARRAY_AGG(o ORDER BY clock) AS operations_list
+        SELECT "docId" AS doc_id, ARRAY_AGG(operations ORDER BY clock) AS operations_list
         FROM deleted_ops
         GROUP BY "docId";
       `,

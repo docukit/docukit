@@ -14,7 +14,7 @@ export const queryClient = postgres(process.env.DOCNODE_DB_URL);
 
 // wip
 export const documents = pgTable(
-  "dn-documents",
+  "docsync-documents",
   {
     userId: varchar("userId", { length: 26 }).notNull(), // ??
     docId: varchar("docId", { length: 26 }).notNull(),
@@ -29,10 +29,10 @@ export const documents = pgTable(
 );
 
 export const operations = pgTable(
-  "dn-operations",
+  "docsync-operations",
   {
     docId: varchar("docId", { length: 26 }).notNull(),
-    o: jsonb("o").notNull(),
+    operations: jsonb("operations").notNull(),
     clock: timestamp("clock", { withTimezone: true, mode: "date" })
       .notNull()
       .defaultNow(),
