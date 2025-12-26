@@ -1,4 +1,3 @@
-import type { ClientProvider } from "../client/types.js";
 import type { AuthorizeEvent, DocSyncEvents } from "../shared/types.js";
 
 // replace this with shared types
@@ -16,7 +15,7 @@ export type ServerProvider<S, O> = {
  */
 export type ServerConfig<TContext, S, O> = {
   port?: number;
-  provider: new () => ClientProvider<S, O>;
+  provider: new () => ServerProvider<S, O>;
 
   /**
    * Authenticates a WebSocket connection.

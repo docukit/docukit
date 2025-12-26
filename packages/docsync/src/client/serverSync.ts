@@ -44,13 +44,12 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
   private async _doPush({ docId }: { docId: string }) {
     this._pushStatusByDocId.set(docId, "pushing");
 
-    // Get operations to sync (separate transaction - we need them for API call)
-    const allOperations = await this._provider.transaction("readonly", (ctx) =>
+    const operations = await this._provider.transaction("readonly", (ctx) =>
       ctx.getOperations({ docId }),
     );
 
     // Nothing to push - but check if more were queued during fetch
-    if (allOperations.length === 0) {
+    if (operations.length === 0) {
       const currentStatus = this._pushStatusByDocId.get(docId);
       const shouldRetry = currentStatus === "pushing-with-pending";
       this._pushStatusByDocId.set(docId, "idle");
@@ -59,11 +58,10 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
     }
 
     try {
-      // TODO: convert allOperations to proper format
       await this._api.request("sync-operations", {
         clock: 0,
         docId,
-        operations: allOperations,
+        operations,
       });
     } catch {
       // Retry on failure
@@ -76,7 +74,7 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
     await this._provider.transaction("readwrite", async (ctx) => {
       await ctx.deleteOperations({
         docId,
-        count: allOperations.length,
+        count: operations.length,
       });
 
       // Consolidate operations into serialized doc
@@ -84,7 +82,7 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
       if (!stored) return;
 
       const doc = this._docBinding.deserialize(stored.serializedDoc);
-      for (const op of allOperations) {
+      for (const op of operations) {
         this._docBinding.applyOperations(doc, op);
       }
       const serializedDoc = this._docBinding.serialize(doc);
