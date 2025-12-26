@@ -24,6 +24,10 @@ export type DocSyncEvents<S, O> = {
     request: { docId: string };
     response: { serializedDoc: S; clock: number } | undefined;
   };
+  "save-operations": {
+    request: { docId: string; operations: O };
+    response: { serializedDoc: S; clock: number } | undefined;
+  };
   // prettier-ignore
   "sync-operations": {
     request: Array<{ docId: string; operations: O[] | null, clock: number }>;
