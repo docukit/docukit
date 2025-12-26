@@ -368,6 +368,9 @@ importers:
       drizzle-orm:
         specifier: ^0.38.4
         version: 0.38.4(@opentelemetry/api@1.9.0)(@types/react@19.1.8)(postgres@3.4.7)(react@19.1.0)
+      idb:
+        specifier: ^8.0.3
+        version: 8.0.3
       lexical:
         specifier: ^0.36.1
         version: 0.36.2

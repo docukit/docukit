@@ -79,11 +79,12 @@ export type ClientConfig<
   };
 };
 
+// prettier-ignore
 export type ClientProvider<S, O> = {
-  // prettier-ignore
   getSerializedDoc(docId: string): Promise<{ serializedDoc: S, clock: number } | undefined>;
-  getOperations(): Promise<OpsPayload<O>[]>;
-  deleteOperations(count: number): Promise<void>;
+  getOperations({ docId }: { docId: string }): Promise<O[]>;
+  deleteOperations({ docId, count }: { docId: string; count: number }): Promise<void>;
   saveOperations(arg: OpsPayload<O>): Promise<void>;
   saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
+  // getDocIdsChangedSince
 };

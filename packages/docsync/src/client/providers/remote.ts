@@ -15,21 +15,27 @@ export class RemoteProvider<S, O> implements ClientProvider<S, O> {
   }
 
   async getSerializedDoc(
-    docId: string,
+    _docId: string,
   ): Promise<{ serializedDoc: S; clock: number } | undefined> {
     throw new Error("not implemented yet");
   }
 
-  getOperations(): Promise<OpsPayload<O>[]> {
+  getOperations({ docId: _docId }: { docId: string }): Promise<O[]> {
     throw new Error("not implemented yet");
   }
-  deleteOperations(count: number): Promise<void> {
+  deleteOperations({
+    docId: _docId,
+    count: _count,
+  }: {
+    docId: string;
+    count: number;
+  }): Promise<void> {
     throw new Error("not implemented yet");
   }
-  saveOperations(arg: OpsPayload<O>): Promise<void> {
+  saveOperations(_arg: OpsPayload<O>): Promise<void> {
     throw new Error("not implemented yet");
   }
-  saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void> {
+  saveSerializedDoc(_arg: SerializedDocPayload<S>): Promise<void> {
     throw new Error("not implemented yet");
   }
 }
