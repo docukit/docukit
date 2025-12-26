@@ -1,6 +1,5 @@
 import {
   index,
-  integer,
   jsonb,
   pgTable,
   primaryKey,
@@ -20,22 +19,28 @@ export const documents = pgTable(
     userId: varchar("userId", { length: 26 }).notNull(), // ??
     docId: varchar("docId", { length: 26 }).notNull(),
     doc: jsonb("doc").notNull(),
-    clock: integer("clock").notNull(),
+    clock: timestamp("clock", { withTimezone: true, mode: "date" }).notNull(),
     permissions: jsonb("permissions"), // ??
   },
   (table) => [
     primaryKey({ columns: [table.docId, table.userId] }),
-    index("clock_idx").on(table.clock),
+    index("docs_clock_idx").on(table.clock),
   ],
 );
 
 export const operations = pgTable(
   "dn-operations",
   {
-    i: varchar("i", { length: 26 }),
+    docId: varchar("docId", { length: 26 }).notNull(),
     o: jsonb("o").notNull(),
+    clock: timestamp("clock", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
   },
-  (table) => [index("docId_idx").on(table.i)],
+  (table) => [
+    index("ops_docId_idx").on(table.docId),
+    index("ops_clock_idx").on(table.clock),
+  ],
 );
 
 export const snapshots_deltas = pgTable(
