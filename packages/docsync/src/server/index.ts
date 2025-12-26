@@ -34,10 +34,6 @@ export class DocSyncServer<TContext, S, O> {
       // TypeScript errors if any handler is missing
       const handlers: SocketHandlers<S, O> = {
         "get-doc": (_payload, cb) => cb(undefined),
-        "save-operations": async (payload, _cb) =>
-          await this._provider.transaction("readwrite", async (ctx) => {
-            await ctx.saveOperations(payload);
-          }),
         "sync-operations": async (_payload, _cb) => {
           // const result = await this._provider.sync(payload);
           // cb(result);
