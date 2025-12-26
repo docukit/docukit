@@ -131,11 +131,13 @@ export class DocSyncClient<
       });
       this._setupChangeListener(doc, id, emit);
       emit({ status: "success", data: { doc, id }, error: undefined });
-      void this._local?.provider.saveSerializedDoc({
-        serializedDoc: this._docBinding.serialize(doc),
-        docId: id,
-        clock: 0,
-      });
+      void this._local?.provider.transaction("readwrite", (ctx) =>
+        ctx.saveSerializedDoc({
+          serializedDoc: this._docBinding.serialize(doc),
+          docId: id,
+          clock: 0,
+        }),
+      );
       // This forces a fetch if the document exists on the server.
       void this.onLocalOperations({
         docId: id,
@@ -204,41 +206,43 @@ export class DocSyncClient<
     docId: string,
     namespace?: string,
   ): Promise<D | undefined> {
-    // Try to load existing doc
-    const serializedDoc = (await this._local?.provider.getSerializedDoc(docId))
-      ?.serializedDoc;
-    const localOperations = await this._local?.provider.getOperations({
-      docId,
+    if (!this._local) return undefined;
+
+    return this._local.provider.transaction("readwrite", async (ctx) => {
+      // Try to load existing doc
+      const stored = await ctx.getSerializedDoc(docId);
+      const localOperations = await ctx.getOperations({ docId });
+
+      if (stored) {
+        const doc = this._docBinding.deserialize(stored.serializedDoc);
+        this._shouldBroadcast = false;
+        localOperations.forEach((operations) => {
+          this._docBinding.applyOperations(doc, operations);
+        });
+        this._shouldBroadcast = true;
+        return doc;
+      }
+
+      // Create new doc if namespace provided
+      if (namespace) {
+        const { doc } = this._docBinding.new(namespace, docId);
+        this._shouldBroadcast = false;
+        if (localOperations.length)
+          throw new Error(
+            `Doc ${docId} has operations stored locally but no serialized doc found`,
+          );
+        this._shouldBroadcast = true;
+        // Save the new doc to IDB
+        await ctx.saveSerializedDoc({
+          serializedDoc: this._docBinding.serialize(doc),
+          docId,
+          clock: 0,
+        });
+        return doc;
+      }
+
+      return undefined;
     });
-    if (serializedDoc) {
-      const doc = this._docBinding.deserialize(serializedDoc);
-      this._shouldBroadcast = false;
-      localOperations?.forEach((operations) => {
-        this._docBinding.applyOperations(doc, operations);
-      });
-      this._shouldBroadcast = true;
-      return doc;
-    }
-
-    // Create new doc if namespace provided
-    if (namespace) {
-      const { doc } = this._docBinding.new(namespace, docId);
-      this._shouldBroadcast = false;
-      if (localOperations?.length)
-        throw new Error(
-          `Doc ${docId} has operations stored locally but no serialized doc found`,
-        );
-      this._shouldBroadcast = true;
-      // Save the new doc to IDB
-      void this._local?.provider.saveSerializedDoc({
-        serializedDoc: this._docBinding.serialize(doc),
-        docId,
-        clock: 0,
-      });
-      return doc;
-    }
-
-    return undefined;
   }
 
   /**
@@ -261,7 +265,9 @@ export class DocSyncClient<
   }
 
   async onLocalOperations({ docId, operations }: OpsPayload<O>) {
-    await this._local?.provider.saveOperations({ docId, operations });
+    await this._local?.provider.transaction("readwrite", (ctx) =>
+      ctx.saveOperations({ docId, operations }),
+    );
     this._serverSync?.onSaved({ docId });
   }
 }

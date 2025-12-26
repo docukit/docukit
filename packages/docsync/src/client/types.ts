@@ -79,12 +79,31 @@ export type ClientConfig<
   };
 };
 
+/**
+ * Context passed to transaction callbacks.
+ * All operations share the same underlying transaction.
+ */
 // prettier-ignore
-export type ClientProvider<S, O> = {
-  getSerializedDoc(docId: string): Promise<{ serializedDoc: S, clock: number } | undefined>;
+export type TransactionContext<S, O> = {
+  getSerializedDoc(docId: string): Promise<{ serializedDoc: S; clock: number } | undefined>;
   getOperations({ docId }: { docId: string }): Promise<O[]>;
   deleteOperations({ docId, count }: { docId: string; count: number }): Promise<void>;
   saveOperations(arg: OpsPayload<O>): Promise<void>;
   saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
-  // getDocIdsChangedSince
+  // TODO:   // getDocIdsChangedSince
+};
+
+/**
+ * Client-side storage provider.
+ * All operations must be performed within a transaction.
+ */
+export type ClientProvider<S, O> = {
+  /**
+   * Run operations in a single atomic transaction.
+   * If any operation fails, all changes are rolled back.
+   */
+  transaction<T>(
+    mode: "readonly" | "readwrite",
+    callback: (ctx: TransactionContext<S, O>) => Promise<T>,
+  ): Promise<T>;
 };

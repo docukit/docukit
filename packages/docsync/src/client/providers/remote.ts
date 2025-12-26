@@ -3,8 +3,7 @@
 // or local-only, but server-only.
 // It won't work without an internet connection.
 
-import type { OpsPayload, SerializedDocPayload } from "../../shared/types.js";
-import type { ClientProvider } from "../types.js";
+import type { ClientProvider, TransactionContext } from "../types.js";
 import type { API } from "../utils.js";
 
 export class RemoteProvider<S, O> implements ClientProvider<S, O> {
@@ -14,28 +13,10 @@ export class RemoteProvider<S, O> implements ClientProvider<S, O> {
     this._api = api;
   }
 
-  async getSerializedDoc(
-    _docId: string,
-  ): Promise<{ serializedDoc: S; clock: number } | undefined> {
-    throw new Error("not implemented yet");
-  }
-
-  getOperations({ docId: _docId }: { docId: string }): Promise<O[]> {
-    throw new Error("not implemented yet");
-  }
-  deleteOperations({
-    docId: _docId,
-    count: _count,
-  }: {
-    docId: string;
-    count: number;
-  }): Promise<void> {
-    throw new Error("not implemented yet");
-  }
-  saveOperations(_arg: OpsPayload<O>): Promise<void> {
-    throw new Error("not implemented yet");
-  }
-  saveSerializedDoc(_arg: SerializedDocPayload<S>): Promise<void> {
+  transaction<T>(
+    _mode: "readonly" | "readwrite",
+    _callback: (ctx: TransactionContext<S, O>) => Promise<T>,
+  ): Promise<T> {
     throw new Error("not implemented yet");
   }
 }

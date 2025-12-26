@@ -1,5 +1,5 @@
-import { openDB, type IDBPDatabase } from "idb";
-import type { ClientProvider } from "../types.js";
+import { openDB, type IDBPDatabase, type IDBPTransaction } from "idb";
+import type { ClientProvider, TransactionContext } from "../types.js";
 import { type DBSchema } from "idb";
 import type { OpsPayload, SerializedDocPayload } from "../../shared/types.js";
 
@@ -13,6 +13,9 @@ interface DocNodeIDB<S, O> extends DBSchema {
     value: O; // Just the operations, no wrapper
   };
 }
+
+type StoreNames = ("docs" | "operations")[];
+type IDBTx<S, O> = IDBPTransaction<DocNodeIDB<S, O>, StoreNames, "readwrite">;
 
 export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
   private _dbPromise: Promise<IDBPDatabase<DocNodeIDB<S, O>>>;
@@ -45,85 +48,89 @@ export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
     return () => ++seq;
   }
 
-  async getSerializedDoc(docId: string) {
-    const db = await this._dbPromise;
-    const tx = db.transaction("docs", "readonly");
-    const store = tx.objectStore("docs");
-    const result = await store.get(docId);
-    await tx.done;
-    return result;
+  /**
+   * Create a transaction context that wraps all operations in a single IDB transaction.
+   */
+  private _createContext(
+    tx: IDBTx<S, O>,
+    getSeq: () => number,
+  ): TransactionContext<S, O> {
+    return {
+      async getSerializedDoc(docId: string) {
+        const store = tx.objectStore("docs");
+        return await store.get(docId);
+      },
+
+      async saveSerializedDoc(payload: SerializedDocPayload<S>) {
+        const store = tx.objectStore("docs");
+        await store.put(payload);
+      },
+
+      async getOperations({ docId }: { docId: string }) {
+        // TODO: maybe I should add a docbinding.mergeOperations call here?
+        const store = tx.objectStore("operations");
+        const range = IDBKeyRange.bound([docId], [docId, []]);
+        return await store.getAll(range);
+      },
+
+      async saveOperations({ docId, operations }: OpsPayload<O>) {
+        const store = tx.objectStore("operations");
+        await store.add(operations, [docId, getSeq()]);
+      },
+
+      async deleteOperations({
+        docId,
+        count,
+      }: {
+        docId: string;
+        count: number;
+      }) {
+        if (count <= 0) return;
+        const store = tx.objectStore("operations");
+        const range = IDBKeyRange.bound([docId], [docId, []]);
+        let cursor = await store.openCursor(range);
+        let deletedCount = 0;
+        while (cursor && deletedCount < count) {
+          await cursor.delete();
+          deletedCount++;
+          cursor = await cursor.continue();
+        }
+      },
+    };
   }
 
-  async saveSerializedDoc(serializedDocPayload: SerializedDocPayload<S>) {
-    const db = await this._dbPromise;
-    const tx = db.transaction("docs", "readwrite");
-    const store = tx.objectStore("docs");
-    await store.put(serializedDocPayload);
-    await tx.done;
+  /**
+   * Run multiple operations in a single atomic transaction.
+   * If any operation fails, all changes are rolled back.
+   */
+  async transaction<T>(
+    mode: "readonly" | "readwrite",
+    callback: (ctx: TransactionContext<S, O>) => Promise<T>,
+  ): Promise<T> {
+    const [db, getSeq] = await Promise.all([
+      this._dbPromise,
+      this._seqGeneratorPromise,
+    ]);
+    // Always use readwrite to support all context operations
+    const tx = db.transaction(["docs", "operations"], mode as "readwrite");
+    const ctx = this._createContext(tx, getSeq);
+
+    try {
+      const result = await callback(ctx);
+      await tx.done;
+      return result;
+    } catch (error) {
+      tx.abort();
+      throw error;
+    }
   }
 
+  // TODO: this should be derived from other methods
   async cleanDB() {
     const db = await this._dbPromise;
     const tx = db.transaction(["docs", "operations"], "readwrite");
     await tx.objectStore("docs").clear();
     await tx.objectStore("operations").clear();
     await tx.done;
-  }
-
-  async saveOperations({ docId, operations }: OpsPayload<O>) {
-    const [db, getSeq] = await Promise.all([
-      this._dbPromise,
-      this._seqGeneratorPromise,
-    ]);
-    const tx = db.transaction("operations", "readwrite");
-    const store = tx.objectStore("operations");
-    // Compound key: [docId, seq]
-    await store.add(operations, [docId, getSeq()]);
-    await tx.done;
-  }
-
-  async getOperations({ docId }: { docId: string }) {
-    // This should probably be here:
-    // Group operations by docId (this saves work for the server)
-    // const groupedOps = ops.reduce((acc, curr) => {
-    //   const existing = acc.get(curr.i);
-    //   if (existing) {
-    //     existing.o.push(...curr.o);
-    //   } else {
-    //     acc.set(curr.i, { i: curr.i, o: curr.o });
-    //   }
-    //   return acc;
-    // }, new Map<DocNodeIDB["operations"]["value"]["i"], DocNodeIDB["operations"]["value"]>());
-    // Convert grouped ops back to array
-    // const consolidatedOps = Array.from(groupedOps.values());
-    const db = await this._dbPromise;
-    const tx = db.transaction("operations", "readonly");
-    const store = tx.objectStore("operations");
-    // Query by docId prefix using IDBKeyRange
-    const range = IDBKeyRange.bound([docId], [docId, []]);
-    const results = await store.getAll(range);
-    await tx.done;
-    return results; // Already O[], no transformation needed
-  }
-
-  async deleteOperations({ docId, count }: { docId: string; count: number }) {
-    if (count <= 0) return;
-    const db = await this._dbPromise;
-    const tx = db.transaction("operations", "readwrite");
-    const store = tx.objectStore("operations");
-    const range = IDBKeyRange.bound([docId], [docId, []]);
-    try {
-      let cursor = await store.openCursor(range);
-      let deletedCount = 0;
-      while (cursor && deletedCount < count) {
-        await cursor.delete();
-        deletedCount++;
-        cursor = await cursor.continue();
-      }
-      await tx.done;
-    } catch (error) {
-      tx.abort();
-      throw error;
-    }
   }
 }
