@@ -265,9 +265,11 @@ export class DocSyncClient<
   }
 
   async onLocalOperations({ docId, operations }: OpsPayload<O>) {
+    // 1. Save locally
     await this._local?.provider.transaction("readwrite", (ctx) =>
       ctx.saveOperations({ docId, operations }),
     );
-    this._serverSync?.onSaved({ docId });
+    // 2. Save remotely
+    this._serverSync?.saveRemote({ docId });
   }
 }

@@ -33,23 +33,20 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
   type O = InferO<T>;
 
   // can't do this safely because can run on server during SSR
-  // const client = new DocSyncClient(config as ClientConfig<D, S, O>);
+  const docSyncClient =
+    typeof window !== "undefined"
+      ? new DocSyncClient(config as ClientConfig<D, S, O>)
+      : undefined;
 
   const DocSyncClientContext = createContext<
     DocSyncClient<D, S, O> | undefined
-  >(undefined);
+  >(docSyncClient);
 
   function DocSyncClientProvider({ children }: { children: React.ReactNode }) {
-    const [client, setClient] = useState<DocSyncClient<D, S, O> | undefined>(
-      undefined,
-    );
-
-    useEffect(() => {
-      setClient(new DocSyncClient(config as ClientConfig<D, S, O>));
-    }, []);
-
     return (
-      <DocSyncClientContext value={client}>{children}</DocSyncClientContext>
+      <DocSyncClientContext value={docSyncClient}>
+        {children}
+      </DocSyncClientContext>
     );
   }
 
@@ -85,7 +82,6 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
   }
 
   return {
-    DocSyncClientContext,
     DocSyncClientProvider,
     useDoc,
   };

@@ -13,11 +13,14 @@ export type ServerSyncConfig<
   docBinding: DocBinding<D, S, O>;
 };
 
+type PushStatus = "idle" | "pushing" | "pushing-with-pending";
+
 export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
   private _provider: ClientProvider<S, O>;
   private _api: API<S, O>;
   private _docBinding: DocBinding<D, S, O>;
-  private _pushStatus: "idle" | "pushing" | "pushing-with-pending" = "idle";
+  // Per-docId push status to allow concurrent pushes for different docs
+  private _pushStatusByDocId = new Map<string, PushStatus>();
 
   constructor(config: ServerSyncConfig<D, S, O>) {
     this._provider = config.provider;
@@ -26,37 +29,44 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
   }
 
   /**
-   * Called when operations are saved to local storage.
-   * Triggers sync with the server.
-   * This is the only public method or property of the class.
+   * Push local operations to the server for a specific document.
+   * Uses a per-docId queue to prevent concurrent pushes for the same doc.
    */
-  onSaved({ docId }: { docId: string }) {
-    if (this._pushStatus !== "idle") {
-      this._pushStatus = "pushing-with-pending";
+  saveRemote({ docId }: { docId: string }) {
+    const status = this._pushStatusByDocId.get(docId) ?? "idle";
+    if (status !== "idle") {
+      this._pushStatusByDocId.set(docId, "pushing-with-pending");
       return;
     }
-    void this._push({ docId });
+    void this._doPush({ docId });
   }
 
-  private async _push({ docId }: { docId: string }) {
-    if (this._pushStatus !== "idle")
-      throw new Error("Push already in progress");
-    this._pushStatus = "pushing";
+  private async _doPush({ docId }: { docId: string }) {
+    this._pushStatusByDocId.set(docId, "pushing");
 
     // Get operations to sync (separate transaction - we need them for API call)
     const allOperations = await this._provider.transaction("readonly", (ctx) =>
       ctx.getOperations({ docId }),
     );
 
+    // Nothing to push - but check if more were queued during fetch
+    if (allOperations.length === 0) {
+      const currentStatus = this._pushStatusByDocId.get(docId);
+      const shouldRetry = currentStatus === "pushing-with-pending";
+      this._pushStatusByDocId.set(docId, "idle");
+      if (shouldRetry) void this._doPush({ docId });
+      return;
+    }
+
     try {
       await this._api.request("sync-operations", [
         // TODO: convert allOperations to proper format
-        { clock: 0, docId: "", operations: [] },
+        { clock: 0, docId, operations: allOperations },
       ]);
     } catch {
       // Retry on failure
-      this._pushStatus = "idle";
-      void this._push({ docId });
+      this._pushStatusByDocId.set(docId, "idle");
+      void this._doPush({ docId });
       return;
     }
 
@@ -85,9 +95,9 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
     });
 
     // Status may have changed to "pushing-with-pending" during async ops
-    // @ts-expect-error TS doesn't track async mutations to _pushStatus
-    const shouldRetry = this._pushStatus === "pushing-with-pending";
-    this._pushStatus = "idle";
-    if (shouldRetry) void this._push({ docId });
+    const currentStatus = this._pushStatusByDocId.get(docId);
+    const shouldRetry = currentStatus === "pushing-with-pending";
+    this._pushStatusByDocId.set(docId, "idle");
+    if (shouldRetry) void this._doPush({ docId });
   }
 }
