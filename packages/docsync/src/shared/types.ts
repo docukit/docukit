@@ -26,8 +26,8 @@ export type DocSyncEvents<S, O> = {
   };
   // prettier-ignore
   "sync-operations": {
-    request: Array<{ docId: string; operations: O[] | null, clock: number }>;
-    response: Array<{ docId: string; operations: O[] | null, serializedDoc: S, clock: number }>;
+    request: { docId: string; operations: O[] | null; clock: number };
+    response: { docId: string; operations: O[] | null; serializedDoc: S; clock: number };
   };
   "delete-doc": {
     request: { docId: string };

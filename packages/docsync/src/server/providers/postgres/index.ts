@@ -1,120 +1,123 @@
 import { queryClient } from "./schema.js";
 import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "./schema.js";
-import type {
-  ClientProvider,
-  TransactionContext,
-} from "../../../client/types.js";
-import { eq, asc } from "drizzle-orm";
+import type { ServerProvider } from "../../types.js";
+import type { DocSyncEvents } from "../../../shared/types.js";
+import { eq, gt, and } from "drizzle-orm";
+import type { Operations } from "docnode";
 
-export class PostgresProvider<S, O> implements ClientProvider<S, O> {
+export class PostgresProvider<S, O> implements ServerProvider<S, O> {
   private _db = drizzle(queryClient, { schema });
 
-  private _createContext(
-    tx: Parameters<Parameters<typeof this._db.transaction>[0]>[0],
-  ): TransactionContext<S, O> {
-    return {
-      async getSerializedDoc(docId: string) {
-        const row = await tx.query.documents.findFirst({
-          where: eq(schema.documents.docId, docId),
-          columns: { doc: true, clock: true },
-        });
-        if (!row) return undefined;
-        return {
-          serializedDoc: row.doc as S,
-          clock: row.clock.getTime(),
-        };
-      },
+  async sync(
+    req: DocSyncEvents<S, O>["sync-operations"]["request"],
+  ): Promise<DocSyncEvents<S, O>["sync-operations"]["response"]> {
+    const { docId, operations, clock: clientClock } = req;
+    const clientClockDate = new Date(clientClock);
 
-      async getOperations({ docId }: { docId: string }) {
-        const ops = await tx
-          .select({ o: schema.operations.o })
-          .from(schema.operations)
-          .where(eq(schema.operations.docId, docId))
-          .orderBy(asc(schema.operations.clock));
-        return ops.map((row) => row.o as O);
-      },
+    return await this._db.transaction(async (tx) => {
+      // 1. Get operations the client doesn't have
+      //    We query BEFORE inserting so we don't return the client's own operations
+      const serverOps = await tx
+        .select({ o: schema.operations.o })
+        .from(schema.operations)
+        .where(
+          and(
+            eq(schema.operations.docId, docId),
+            gt(schema.operations.clock, clientClockDate),
+          ),
+        )
+        .orderBy(schema.operations.clock);
 
-      async deleteOperations({
+      // 2. Get server document only if its clock > client clock
+      const serverDoc = await tx.query.documents.findFirst({
+        where: and(
+          eq(schema.documents.docId, docId),
+          gt(schema.documents.clock, clientClockDate),
+        ),
+      });
+
+      // 3. Save client operations if provided (single row with array, clock = NOW())
+      //    Use RETURNING to get the DB-generated timestamp
+      const inserted =
+        operations && operations.length > 0
+          ? await tx
+              .insert(schema.operations)
+              .values({
+                docId,
+                o: operations,
+              })
+              .returning({ clock: schema.operations.clock })
+          : [];
+      const newClock = inserted[0]!.clock.getTime();
+
+      // 4. Return data
+      return {
         docId,
-        count,
-      }: {
-        docId: string;
-        count: number;
-      }) {
-        if (count <= 0) return;
-        // Get the clock values of oldest `count` operations
-        const toDelete = await tx
-          .select({ clock: schema.operations.clock })
-          .from(schema.operations)
-          .where(eq(schema.operations.docId, docId))
-          .orderBy(asc(schema.operations.clock))
-          .limit(count);
-
-        if (toDelete.length > 0) {
-          // Delete by docId and clock (since there's no id column)
-          for (const { clock } of toDelete) {
-            await tx
-              .delete(schema.operations)
-              .where(eq(schema.operations.clock, clock));
-          }
-        }
-      },
-
-      async saveOperations({
-        docId,
-        operations,
-      }: {
-        docId: string;
-        operations: O;
-      }) {
-        await tx.insert(schema.operations).values({
-          docId,
-          o: operations,
-        });
-      },
-
-      async saveSerializedDoc({
-        docId,
-        serializedDoc,
-        clock,
-      }: {
-        docId: string;
-        serializedDoc: S;
-        clock: number;
-      }) {
-        // TODO: userId should come from auth context
-        const userId = "system";
-        await tx
-          .insert(schema.documents)
-          .values({
-            userId,
-            docId,
-            doc: serializedDoc,
-            clock: new Date(clock),
-          })
-          .onConflictDoUpdate({
-            target: [schema.documents.docId, schema.documents.userId],
-            set: {
-              doc: serializedDoc,
-              clock: new Date(clock),
-            },
-          });
-      },
-    };
+        operations:
+          serverOps.length > 0 ? (serverOps.map((r) => r.o) as O[]) : null,
+        serializedDoc: (serverDoc?.doc ?? null) as S,
+        clock: newClock,
+      };
+    });
   }
 
-  async transaction<T>(
-    mode: "readonly" | "readwrite",
-    callback: (ctx: TransactionContext<S, O>) => Promise<T>,
-  ): Promise<T> {
-    const accessMode = mode === "readonly" ? "read only" : "read write";
-    return await this._db.transaction(
-      async (tx) => {
-        const ctx = this._createContext(tx);
-        return await callback(ctx);
-      },
-      { accessMode },
+  async saveOperations(operations: Operations) {
+    const firstOp = operations[0][0];
+    let docId = "root";
+    if (firstOp) {
+      switch (firstOp[0]) {
+        case 0:
+          docId = firstOp[2] || "root";
+          break;
+        case 1:
+          docId = firstOp[1];
+          break;
+        case 2:
+          docId = firstOp[1];
+          break;
+      }
+    }
+    await this._db
+      .insert(schema.operations)
+      .values({
+        o: operations[0],
+        docId,
+      })
+      .execute();
+    await this.squashAndMergeOperations();
+  }
+
+  async squashAndMergeOperations() {
+    const operations = await this._db.execute(
+      sql`
+        WITH deleted_ops AS (
+          DELETE FROM ${schema.operations}
+          WHERE "docId" = (SELECT "docId" FROM ${schema.operations} ORDER BY clock LIMIT 1)
+          RETURNING "docId", o
+        )
+        SELECT "docId" AS doc_id, ARRAY_AGG(o ORDER BY clock) AS operations_list
+        FROM deleted_ops
+        GROUP BY "docId";
+      `,
     );
+
+    if (!operations[0]) return;
+    const docId = operations[0].doc_id as string;
+
+    const currentDoc = await this._db.query.documents.findFirst({
+      where: eq(schema.documents.docId, docId),
+    });
+
+    console.log("squashAndMergeOperations3", operations);
+    console.log("squashAndMergeOperations4", currentDoc);
+    // TODO: Apply operations to currentDoc and save
+  }
+
+  async getDocIdsChangedSince(_lastSync?: string) {
+    const docIds = await this._db
+      .select({ docId: schema.documents.docId })
+      .from(schema.documents);
+    return docIds.map((doc) => doc.docId);
   }
 }

@@ -59,10 +59,12 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
     }
 
     try {
-      await this._api.request("sync-operations", [
-        // TODO: convert allOperations to proper format
-        { clock: 0, docId, operations: allOperations },
-      ]);
+      // TODO: convert allOperations to proper format
+      await this._api.request("sync-operations", {
+        clock: 0,
+        docId,
+        operations: allOperations,
+      });
     } catch {
       // Retry on failure
       this._pushStatusByDocId.set(docId, "idle");
