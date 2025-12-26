@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { DocBinding, SerializedDoc } from "../shared/docBinding.js";
-import type { OpsPayload, SerializedDocPayload } from "../shared/types.js";
+import type { SerializedDocPayload } from "../shared/types.js";
 
 /**
  * Arguments for {@link DocSyncClient["getDoc"]}.
@@ -87,8 +87,8 @@ export type ClientConfig<
 export type TransactionContext<S, O> = {
   getSerializedDoc(docId: string): Promise<{ serializedDoc: S; clock: number } | undefined>;
   getOperations({ docId }: { docId: string }): Promise<O[]>;
-  deleteOperations({ docId, count }: { docId: string; count: number }): Promise<void>;
-  saveOperations(arg: OpsPayload<O>): Promise<void>;
+  deleteOperations(arg: { docId: string; count: number }): Promise<void>;
+  saveOperations(arg: { docId: string; operations: O }): Promise<void>;
   saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
   // TODO:   // getDocIdsChangedSince
 };
