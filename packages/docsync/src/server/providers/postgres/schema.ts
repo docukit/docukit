@@ -1,5 +1,4 @@
 import {
-  index,
   jsonb,
   pgTable,
   primaryKey,

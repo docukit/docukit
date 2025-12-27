@@ -8,7 +8,7 @@ import {
   type Extension,
 } from "docnode";
 import { boolean, number, string } from "docnode";
-import { type Diff, type JsonDoc, type NodeDefinition } from "docnode";
+import { type Diff, type JsonDoc } from "docnode";
 import { UndoManager } from "docnode";
 import { ULID_REGEX } from "valibot";
 import { expect } from "vitest";
