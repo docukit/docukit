@@ -35,25 +35,25 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
   const docConfigsMap = new Map<string, DocConfig>();
 
   docConfigs.forEach((docConfig) => {
-    const namespace = docConfig.namespace ?? "";
-    if (docConfigsMap.has(namespace)) {
-      throw new Error(`Duplicate namespace: ${namespace}`);
+    const type = docConfig.type ?? "";
+    if (docConfigsMap.has(type)) {
+      throw new Error(`Duplicate doc type: ${type}`);
     }
-    docConfigsMap.set(namespace, docConfig);
+    docConfigsMap.set(type, docConfig);
   });
 
   return createDocBinding({
     new: (type, id) => {
       const docConfig = docConfigsMap.get(type);
-      if (!docConfig) throw new Error(`Unknown namespace: ${type}`);
+      if (!docConfig) throw new Error(`Unknown type: ${type}`);
       const doc = new Doc({ ...docConfig, id });
       return { doc, id: doc.root.id };
     },
     serialize: (doc) => doc.toJSON({ unsafe: true }),
     deserialize: (serializedDoc) => {
-      const namespace = JSON.parse(serializedDoc[2].namespace!) as string;
-      const docConfig = docConfigsMap.get(namespace);
-      if (!docConfig) throw new Error(`Unknown namespace: ${namespace}`);
+      const type = serializedDoc[1];
+      const docConfig = docConfigsMap.get(type);
+      if (!docConfig) throw new Error(`Unknown type: ${type}`);
       const doc = Doc.fromJSON(docConfig, serializedDoc);
       doc.forceCommit();
       return doc;

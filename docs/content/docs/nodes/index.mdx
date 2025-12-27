@@ -7,7 +7,7 @@ import { TypeTable } from "fumadocs-ui/components/type-table";
 
 ## Nodes
 
-A node is the fundamental building block of a DocNode document. Each node has a type, an optional state object, and a position in a tree (parent, siblings, and children).
+A node is the fundamental building block of a DocNode document. Each node has an id, a type, an optional state object, and a position in a tree (parent, siblings, and children).
 
 ### NodeDefinitions
 
@@ -34,17 +34,36 @@ doc.root.append(paragraph);
 
 For a complete description of the properties and methods of the DocNode class, see the [API Overview](/docs/overview).
 
-### RootNode
+### Root node
 
-`RootNode` is the only `NodeDefinition` provided automatically by DocNode. Every document has exactly one root node, accessible via `doc.root`. You cannot insert a new root node. Attempting to do so will throw.
+The root node is the only one that DocNode automatically inserts. Every document has exactly one root node, accessible via `doc.root`. You cannot insert a new root node. Attempting to do so will throw.
+
+The root node's ID is considered the document ID, and its type is considered the document type. They are synonymous.
 
 ```ts
-import { Doc, RootNode } from "docnode";
+import { Doc } from "docnode";
 
+// 1. Default type and id
 const doc = new Doc();
 const root = doc.root;
-root.is(RootNode); // true
+console.log(root.id); // random ulid, e.g. '01kdfwt92h5jqa8a0tc7w3jfc8'
+console.log(root.type); // 'root' (default value)
+
+// 2. Custom type and id
+const doc2 = new Doc({
+  type: "richtext-editor",
+  id: "01kdfwy0qdzrq2ysfcpf8jgw0m",
+});
+const root2 = doc2.root;
+console.log(root2.id); // '01kdfwy0qdzrq2ysfcpf8jgw0m' -> the docId is considered the root node id
+console.log(root2.type); // 'richtext-editor' -> The doc type is considered the root node type
 ```
+
+<Callout type="info">
+  The other nodes do not use ulids as their default IDs. They use a more compact
+  base64 ID, composed of the number of milliseconds that have passed since the
+  document was created, 3 random characters, and a lamport timestamp.
+</Callout>
 
 ## Node State
 
@@ -155,4 +174,4 @@ if (node?.is(TextNode, ColoredTextNode)) {
 }
 ```
 
-This merging also applies to `type: "root"`, which allows enriching the state of the root node, useful for adding metadata to the document.
+This merging also applies to the type of your root node, which allows enriching the state of the root node, useful for adding metadata to the document.

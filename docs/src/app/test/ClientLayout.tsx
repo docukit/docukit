@@ -20,7 +20,7 @@ export const IndexNode = defineNode({
 });
 
 const IndexDocConfig: DocConfig = {
-  namespace: "indexDoc",
+  type: "indexDoc",
   extensions: [{ nodes: [IndexNode] }],
   nodeIdGenerator: "ulid",
 };

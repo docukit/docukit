@@ -16,10 +16,10 @@ import {
 } from "./types.js";
 import {
   detachRange,
-  RootNode,
   withTransaction,
   isObjectEmpty,
   ULID_REGEX,
+  defineNode,
 } from "./utils.js";
 import * as operations from "./operations.js";
 import { nodeIdFactory } from "./idGenerator.js";
@@ -226,7 +226,7 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
        */
       delete: () =>
         withTransaction(doc, () => {
-          if (this === (this.doc.root as DocNode))
+          if (this === this.doc.root)
             throw new Error("Root node cannot be deleted");
           operations.onDeleteRange(this.doc, this, laterSibling);
           this.to(laterSibling).forEach((node) => {
@@ -568,11 +568,16 @@ export class Doc {
     updated: new Set(),
   };
   protected _nodeIdGenerator: (doc: Doc) => string;
-  readonly root: DocNode<typeof RootNode>;
+  readonly root: DocNode;
 
   constructor(config: DocConfig) {
     this._nodeDefs = new Set();
     this._resolvedNodeDefs = new Map();
+    const type = config.type ?? "root";
+    const RootNode = defineNode({
+      type,
+      state: {},
+    });
     const nodeDefs: UnsafeDefinition[] = [
       RootNode,
       ...config.extensions.flatMap((extension) => extension.nodes ?? []),
@@ -744,9 +749,9 @@ export class Doc {
 
     const id = (config.id ?? ulid()).toLowerCase();
     // @ts-expect-error - private constructor
-    this.root = new DocNode(this, "root", id) as DocNode<typeof RootNode>;
-    if (config.namespace) this.root.state.namespace.set(config.namespace);
-    this._nodeMap.set(this.root.id, this.root);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    this.root = new DocNode(this, type, id);
+    this._nodeMap.set(id, this.root);
     this._nodeIdGenerator =
       config.nodeIdGenerator === "ulid"
         ? () => ulid().toLowerCase()
@@ -807,7 +812,7 @@ export class Doc {
             throw new Error(
               `Node '${node.id}' cannot be inserted because it already exists in the doc.`,
             );
-          if (node.type === "root")
+          if (node.type === this.root.type)
             throw new Error("You cannot insert nodes of type 'root'");
         });
       });

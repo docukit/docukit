@@ -1,7 +1,7 @@
 import type { DocConfig } from "docnode";
 
 export const docConfig: DocConfig = {
-  namespace: "test",
+  type: "test",
   extensions: [{ nodes: [{ type: "test", state: {} }] }],
 };
 

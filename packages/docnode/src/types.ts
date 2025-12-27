@@ -189,10 +189,10 @@ export type DocConfig = {
    */
   strictMode?: boolean;
   /**
-   * The namespace of the document, used to identify a document with its config.
-   * Used for deserialization.
+   * The type of the document, which is also the root node type.
+   * @default "root"
    */
-  namespace?: string;
+  type?: string;
   /**
    * The document id, which is also the root node id.
    * If not provided, a ulid will be generated (preferred).

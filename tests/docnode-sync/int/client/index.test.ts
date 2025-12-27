@@ -8,7 +8,7 @@ test.todo("DocSyncClient integration tests - placeholder");
 
 // Constructor tests
 // "should throw error when used outside browser environment"
-// "should throw error when duplicate namespace is provided"
+// "should throw error when duplicate type is provided"
 // "should initialize with valid config and create socket connection"
 // "should set up BroadcastChannel listener for cross-tab communication"
 
@@ -17,7 +17,7 @@ test.todo("DocSyncClient integration tests - placeholder");
 // "should return cached document when requested multiple times"
 // "should increment refCount when same document is requested multiple times"
 // "should load document from provider when not in cache"
-// "should throw error when namespace is unknown"
+// "should throw error when type is unknown"
 
 // getDoc tests - Create new document
 // "should create new document with auto-generated ID when createIfMissing is true and no id provided"
@@ -42,10 +42,10 @@ test.todo("DocSyncClient integration tests - placeholder");
 
 // _loadOrCreateDoc tests
 // "should load document from provider when jsonDoc exists"
-// "should parse namespace from loaded jsonDoc"
-// "should create new document when jsonDoc does not exist and namespace is provided"
-// "should return undefined when jsonDoc does not exist and namespace is not provided"
-// "should throw error when namespace from jsonDoc is unknown"
+// "should parse type from loaded jsonDoc"
+// "should create new document when jsonDoc does not exist and type is provided"
+// "should return undefined when jsonDoc does not exist and type is not provided"
+// "should throw error when type from jsonDoc is unknown"
 
 // _unloadDoc tests
 // "should decrement refCount when document has multiple references"

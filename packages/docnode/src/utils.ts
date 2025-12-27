@@ -1,5 +1,4 @@
 import type { Doc, DocNode } from "./main.js";
-import { string } from "./stateDefinitions.js";
 import type { NodeDefinition, StateRecord } from "./types.js";
 
 // /i means case-insensitive. Normalize to lowercase on runtime
@@ -10,13 +9,6 @@ export function defineNode<T extends string, S extends StateRecord>(
 ) {
   return nodeDefinition;
 }
-
-export const RootNode = defineNode({
-  type: "root",
-  state: {
-    namespace: string(""),
-  },
-});
 
 export function detachRange(startNode: DocNode, endNode: DocNode) {
   const oldPrev = startNode.prev;

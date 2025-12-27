@@ -74,9 +74,9 @@ export class DocSyncClient<
    * Subscribe to a document with reactive state updates.
    *
    * The behavior depends on which fields are provided:
-   * - `{ namespace, id }` → Try to get an existing doc. Returns `undefined` if not found.
-   * - `{ namespace, createIfMissing: true }` → Create a new doc with auto-generated ID (ulid).
-   * - `{ namespace, id, createIfMissing: true }` → Get existing doc or create it if not found.
+   * - `{ type, id }` → Try to get an existing doc. Returns `undefined` if not found.
+   * - `{ type, createIfMissing: true }` → Create a new doc with auto-generated ID (ulid).
+   * - `{ type, id, createIfMissing: true }` → Get existing doc or create it if not found.
    *
    * The callback will be invoked with state updates:
    * 1. `{ status: "loading" }` - Initial state while fetching
@@ -89,7 +89,7 @@ export class DocSyncClient<
    * ```ts
    * // Subscribe to doc changes
    * const unsubscribe = client.getDoc(
-   *   { namespace: "notes", id: "abc123" },
+   *   { type: "notes", id: "abc123" },
    *   (result) => {
    *     if (result.status === "loading") console.log("Loading...");
    *     if (result.status === "success") console.log("Doc:", result.data.doc);
@@ -111,7 +111,7 @@ export class DocSyncClient<
       >,
     ) => void,
   ): () => void {
-    const namespace = args.namespace;
+    const type = args.type;
     const argId = "id" in args ? args.id : undefined;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
     // Internal emit uses wider type; runtime logic ensures correct data per overload
@@ -120,9 +120,9 @@ export class DocSyncClient<
     ) => void;
     let docId: string | undefined;
 
-    // Case: { namespace, createIfMissing: true } → Create new doc with auto-generated ID (sync).
+    // Case: { type, createIfMissing: true } → Create new doc with auto-generated ID (sync).
     if (!argId && createIfMissing) {
-      const { doc, id } = this._docBinding.new(namespace);
+      const { doc, id } = this._docBinding.new(type);
       docId = id;
       this._docsCache.set(id, {
         promisedDoc: Promise.resolve(doc),
@@ -149,7 +149,7 @@ export class DocSyncClient<
     // Preparing for the async cases
     emit({ status: "loading", data: undefined, error: undefined });
 
-    // Case: { namespace, id } or { namespace, id, createIfMissing } → Load or create (async).
+    // Case: { type, id } or { type, id, createIfMissing } → Load or create (async).
     if (argId) {
       docId = argId;
       void (async () => {
@@ -162,7 +162,7 @@ export class DocSyncClient<
           } else {
             const promisedDoc = this._loadOrCreateDoc(
               docId,
-              createIfMissing ? namespace : undefined,
+              createIfMissing ? type : undefined,
             );
             this._docsCache.set(docId, { promisedDoc, clock: 0, refCount: 1 });
             doc = await promisedDoc;
@@ -204,7 +204,7 @@ export class DocSyncClient<
 
   private async _loadOrCreateDoc(
     docId: string,
-    namespace?: string,
+    type?: string,
   ): Promise<D | undefined> {
     if (!this._local) return undefined;
 
@@ -223,9 +223,9 @@ export class DocSyncClient<
         return doc;
       }
 
-      // Create new doc if namespace provided
-      if (namespace) {
-        const { doc } = this._docBinding.new(namespace, docId);
+      // Create new doc if type provided
+      if (type) {
+        const { doc } = this._docBinding.new(type, docId);
         this._shouldBroadcast = false;
         if (localOperations.length)
           throw new Error(

@@ -3,7 +3,6 @@ import {
   Doc,
   type DocNode,
   type DeepImmutable,
-  type RootNode,
   defineNode,
   string,
 } from "docnode";
@@ -108,7 +107,7 @@ describe("accessors & getters", () => {
 
     test("root", () => {
       expect(doc.root).toBe(root);
-      expectTypeOf(doc.root).toEqualTypeOf<DocNode<typeof RootNode>>();
+      expectTypeOf(doc.root).toEqualTypeOf<DocNode>();
     });
 
     test("getNodeById", () => {

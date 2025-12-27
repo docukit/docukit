@@ -12,7 +12,7 @@ export function IndexDoc({
   setActiveDoc?: (docId: string) => void;
 }) {
   const result = useDoc({
-    namespace: "indexDoc",
+    type: "indexDoc",
     id: activeDoc,
     createIfMissing: true,
   });

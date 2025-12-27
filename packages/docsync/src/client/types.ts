@@ -5,13 +5,13 @@ import type { SerializedDocPayload } from "../shared/types.js";
 /**
  * Arguments for {@link DocSyncClient["getDoc"]}.
  *
- * - `{ namespace, id }` → Try to get an existing doc by ID. Returns `undefined` if not found.
- * - `{ namespace, createIfMissing: true }` → Create a new doc with auto-generated ID (ulid).
- * - `{ namespace, id, createIfMissing: true }` → Get existing doc or create it if not found.
+ * - `{ type, id }` → Try to get an existing doc by ID. Returns `undefined` if not found.
+ * - `{ type, createIfMissing: true }` → Create a new doc with auto-generated ID (ulid).
+ * - `{ type, id, createIfMissing: true }` → Get existing doc or create it if not found.
  */
 export type GetDocArgs =
-  | { namespace: string; id: string; createIfMissing?: boolean }
-  | { namespace: string; createIfMissing: true };
+  | { type: string; id: string; createIfMissing?: boolean }
+  | { type: string; createIfMissing: true };
 
 export type DocData<D> = { doc: D; id: string };
 

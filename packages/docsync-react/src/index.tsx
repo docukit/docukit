@@ -53,12 +53,12 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
   type DocData = { doc: D; id: string };
 
   function useDoc(args: {
-    namespace: string;
+    type: string;
     createIfMissing: true;
     id?: string;
   }): QueryResult<DocData>;
   function useDoc(args: {
-    namespace: string;
+    type: string;
     id: string;
     createIfMissing?: false;
   }): QueryResult<DocData | undefined>;
@@ -71,12 +71,12 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
     const client = use(DocSyncClientContext);
     const id = "id" in args ? args.id : undefined;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
-    const namespace = args.namespace;
+    const type = args.type;
 
     useEffect(() => {
       if (!client) return;
       return client.getDoc(args, setResult);
-    }, [client, id, namespace, createIfMissing]);
+    }, [client, id, type, createIfMissing]);
 
     return result;
   }

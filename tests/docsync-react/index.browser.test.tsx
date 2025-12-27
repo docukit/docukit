@@ -32,7 +32,7 @@ test("createDocSyncClient", async () => {
   // Type check: useDoc returns QueryResult<Doc>
   expectTypeOf<ReturnType<typeof useDoc>>().toEqualTypeOf<MaybeDocResult>();
 
-  // @ts-expect-error - namespace is required
+  // @ts-expect-error - type is required
   await renderHook(() => useDoc({ createIfMissing: true, id: "123" }));
 
   // Create wrapper with provider
@@ -43,7 +43,7 @@ test("createDocSyncClient", async () => {
   // with id, without createIfMissing
   // prettier-ignore
   const {result: _1} = await renderHook(
-    () => useDoc({ namespace: "test", id: "1" }),
+    () => useDoc({ type: "test", id: "1" }),
     { wrapper }
   );
   expectTypeOf(_1.current).toEqualTypeOf<MaybeDocResult>();
@@ -57,7 +57,7 @@ test("createDocSyncClient", async () => {
   // prettier-ignore
   const id2 = id.ending("2");
   const { result: _2 } = await renderHook(
-    () => useDoc({ namespace: "test", id: id2, createIfMissing: true }),
+    () => useDoc({ type: "test", id: id2, createIfMissing: true }),
     { wrapper },
   );
   expectTypeOf(_2.current).toEqualTypeOf<DocResult>();
@@ -73,23 +73,23 @@ test("createDocSyncClient", async () => {
   // prettier-ignore
   const id3 = id.ending("3");
   const { result: _3 } = await renderHook(() =>
-    useDoc({ namespace: "test", id: id3, createIfMissing: true }),
+    useDoc({ type: "test", id: id3, createIfMissing: true }),
   );
   expectTypeOf(_3.current).toEqualTypeOf<DocResult>();
 
   // @ts-expect-error - without id, without createIfMissing
-  await renderHook(() => useDoc({ namespace: "test" }));
+  await renderHook(() => useDoc({ type: "test" }));
 
   // without id, with createIfMissing false
   // @ts-expect-error - required id
   // prettier-ignore
-  await renderHook(() => useDoc({ namespace: "test", createIfMissing: false }));
+  await renderHook(() => useDoc({ type: "test", createIfMissing: false }));
 
   // with id, with createIfMissing false
   // prettier-ignore
   const id4 = id.ending("4");
   const { result: _4 } = await renderHook(() =>
-    useDoc({ namespace: "test", id: id4, createIfMissing: false }),
+    useDoc({ type: "test", id: id4, createIfMissing: false }),
   );
   expectTypeOf(_4.current).toEqualTypeOf<MaybeDocResult>();
 

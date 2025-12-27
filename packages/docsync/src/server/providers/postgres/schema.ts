@@ -12,21 +12,13 @@ if (!process.env.DOCNODE_DB_URL)
   throw new Error("env var DOCNODE_DB_URL not found");
 export const queryClient = postgres(process.env.DOCNODE_DB_URL);
 
-// wip
-export const documents = pgTable(
-  "docsync-documents",
-  {
-    userId: varchar("userId", { length: 26 }).notNull(), // ??
-    docId: varchar("docId", { length: 26 }).notNull(),
-    doc: jsonb("doc").notNull(),
-    clock: timestamp("clock", { withTimezone: true, mode: "date" }).notNull(),
-    permissions: jsonb("permissions"), // ??
-  },
-  (table) => [
-    primaryKey({ columns: [table.docId, table.userId] }),
-    index("docs_clock_idx").on(table.clock),
-  ],
-);
+export const documents = pgTable("docsync-documents", {
+  userId: varchar("userId", { length: 26 }).notNull(),
+  docId: varchar("docId", { length: 26 }).notNull().primaryKey(),
+  doc: jsonb("doc").notNull(),
+  clock: timestamp("clock", { withTimezone: true, mode: "date" }).notNull(),
+  permissions: jsonb("permissions"), // ??
+});
 
 export const operations = pgTable(
   "docsync-operations",
@@ -37,10 +29,7 @@ export const operations = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [
-    index("ops_docId_idx").on(table.docId),
-    index("ops_clock_idx").on(table.clock),
-  ],
+  (table) => [primaryKey({ columns: [table.docId, table.clock] })],
 );
 
 export const snapshots_deltas = pgTable(

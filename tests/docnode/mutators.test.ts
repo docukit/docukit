@@ -11,14 +11,7 @@ import {
   emptyUpdate,
   assertError,
 } from "./utils.js";
-import {
-  type DocNode,
-  Doc,
-  defineNode,
-  UndoManager,
-  string,
-  RootNode,
-} from "docnode";
+import { type DocNode, Doc, defineNode, UndoManager, string } from "docnode";
 
 //common to all mutators
 describe("base", () => {
@@ -1368,13 +1361,31 @@ describe("to", () => {
 });
 
 test("A root node cannot be inserted (there cannot be two root nodes)", () => {
-  const doc = new Doc({ extensions: [TextExtension] });
+  const RootNode = defineNode({
+    type: "docType",
+    state: {},
+  });
+  const doc = new Doc({ extensions: [TextExtension], type: "docType" });
   checkUndoManager(0, doc, () => {
-    const root2 = doc.createNode(RootNode);
     assertError(
       doc,
       () => {
-        doc.root.append(root2);
+        doc.createNode(RootNode);
+      },
+      "You attempted to create a node of type 'docType' with a node definition that was not registered.",
+    );
+  });
+
+  const doc2 = new Doc({
+    extensions: [TextExtension, { nodes: [RootNode] }],
+    type: "docType",
+  });
+  checkUndoManager(0, doc2, () => {
+    const root2 = doc2.createNode(RootNode);
+    assertError(
+      doc2,
+      () => {
+        doc2.root.append(root2);
       },
       "You cannot insert nodes of type 'root'",
     );

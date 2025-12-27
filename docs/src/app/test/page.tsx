@@ -5,7 +5,7 @@ import { IndexDoc } from "./IndexDoc";
 
 function SubPage({ id }: { id: string }) {
   const result = useDoc({
-    namespace: "indexDoc",
+    type: "indexDoc",
     id: "01KCFHZZ66V3393XHGGX6AEB6T",
     createIfMissing: true,
   });

@@ -3,7 +3,6 @@ import {
   type ChangeEvent,
   type DocNode,
   defineNode,
-  type RootNode,
   type Operations,
   defineState,
   type Extension,
@@ -103,7 +102,7 @@ export function assertJson(doc: Doc, expected: JsonWithoutId) {
 export function init(
   fn: (ctx: {
     doc: Doc;
-    root: DocNode<typeof RootNode>;
+    root: DocNode;
     node1: DocNode<typeof Text>;
     node2: DocNode<typeof Text>;
     node3: DocNode<typeof Text>;
@@ -285,9 +284,7 @@ export function checkUndoManager(
 ) {
   const IS_TEST_NODE = false;
   const jsonDoc = doc.toJSON();
-  const nodes = Array.from(doc["_nodeDefs"]).filter(
-    (nodeDef) => !(nodeDef.type === "root" && "namespace" in nodeDef.state),
-  ) as unknown as [NodeDefinition, ...NodeDefinition[]];
+  const nodes = Array.from(doc["_nodeDefs"]);
   // This document will replay all doc operations in a single update
   const doc2 = Doc.fromJSON({ extensions: [{ nodes }] }, jsonDoc);
   const undoManager2 = new UndoManager(doc2, { maxUndoSteps: 1 });
