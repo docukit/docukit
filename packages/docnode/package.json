@@ -23,6 +23,7 @@
   ],
   "exports": {
     ".": {
+      "vitest": "./src/exports/index.ts",
       "types": "./dist/src/exports/index.d.ts",
       "default": "./dist/src/exports/index.js"
     }

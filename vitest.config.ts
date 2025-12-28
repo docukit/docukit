@@ -3,6 +3,17 @@ import { playwright } from "@vitest/browser-playwright";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
+  resolve: {
+    // Resolve to source files instead of dist for faster testing without building
+    // see https://nx.dev/docs/technologies/test-tools/vitest/guides/testing-without-building-dependencies
+    conditions: ["vitest"],
+  },
+  // SSR mode is used by Vitest for Node environment tests
+  ssr: {
+    resolve: {
+      conditions: ["vitest"],
+    },
+  },
   test: {
     coverage: {
       reportsDirectory: ".test-results/vitest",
@@ -17,6 +28,7 @@ export default defineConfig({
     },
     projects: [
       {
+        extends: true, // Extends root config to include resolve.conditions
         test: {
           // typecheck: {
           //   enabled: true, // I prefer to use tsc for typechecking (pnpm check)
@@ -34,6 +46,7 @@ export default defineConfig({
         },
       },
       {
+        extends: true, // Extends root config to include resolve.conditions
         plugins: [react()],
         test: {
           include: ["**/*.browser.test.ts", "**/*.browser.test.tsx"],

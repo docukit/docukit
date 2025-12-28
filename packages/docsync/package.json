@@ -34,10 +34,12 @@
   },
   "exports": {
     ".": {
+      "vitest": "./src/exports/index.ts",
       "types": "./dist/src/exports/index.d.ts",
       "default": "./dist/src/exports/index.js"
     },
     "./*": {
+      "vitest": "./src/exports/*.ts",
       "types": "./dist/src/exports/*.d.ts",
       "default": "./dist/src/exports/*.js"
     }
