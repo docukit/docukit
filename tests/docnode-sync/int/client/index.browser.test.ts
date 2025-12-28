@@ -212,6 +212,31 @@ describe("DocSyncClient", () => {
         const cachedDoc = getSuccessData(callback2);
         expect(cachedDoc?.doc).toBe(createdDoc!.doc);
       });
+
+      test("should resolve cache hit on next microtask (no setTimeout needed)", async () => {
+        const client = createClient(true);
+        const callback1 = createCallback();
+        const callback2 = createCallback();
+
+        // Create a doc first (sync path)
+        client.getDoc({ type: "test", createIfMissing: true }, callback1);
+        const createdDoc = getSuccessData(callback1);
+        expect(createdDoc).toBeDefined();
+
+        // Request the same doc - cache hit
+        client.getDoc({ type: "test", id: createdDoc!.id }, callback2);
+
+        // First call is loading (sync)
+        expect(callback2.mock.calls[0]?.[0]?.status).toBe("loading");
+
+        // Wait just one microtask (not setTimeout like tick())
+        await Promise.resolve();
+
+        // Should already have success from cache
+        expect(callback2.mock.calls.length).toBe(2);
+        expect(callback2.mock.calls[1]?.[0]?.status).toBe("success");
+        expect(getSuccessData(callback2)?.doc).toBe(createdDoc!.doc);
+      });
     });
 
     describe("Create new document", () => {
