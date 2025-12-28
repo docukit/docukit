@@ -1,12 +1,13 @@
-name: Check
+name: Vitest Tests
 
-# Always make sure that direct pushes to main are not allowed!
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
 
 jobs:
-  lint-format-types:
+  test:
     runs-on: ubuntu-latest
 
     steps:
@@ -25,8 +26,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build packages
-        run: pnpm build
+      - name: Install Playwright browsers (for browser tests)
+        run: pnpm exec playwright install chromium
 
-      - name: Check lint, format, and types
-        run: pnpm run check
+      - name: Run tests (builds packages and runs tests against dist)
+        run: pnpm test:ci

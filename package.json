@@ -18,8 +18,10 @@
     "check": "concurrently \"prettier --check . --log-level warn\" \"eslint\" \"tsc --noEmit\" \"turbo typecheck --log-order=grouped\" --prefixColors \"yellow,magenta,green,cyan\" --group --names \"prettier,eslint,tsc-root,tsc-packages\" --prefix name",
     "test": "vitest watch",
     "test:once": "vitest --watch=false",
+    "test:ci": "turbo build --filter='!@docnode/docs' && CI=true vitest --watch=false",
     "test:coverage": "vitest --coverage --ui",
     "test:coverage:once": "vitest --coverage --watch=false",
+    "test:coverage:ci": "turbo build --filter='!@docnode/docs' && CI=true vitest --coverage --watch=false",
     "test:e2e": "playwright test --project=chromium",
     "clean": "concurrently \"turbo clean\" \"rm -rf .test-results node_modules dist .turbo tsconfig.tsbuildinfo\" || rmdir /s /q .test-results node_modules dist .turbo tsconfig.tsbuildinfo",
     "prepare": "git config --local core.hooksPath .github/hooks && echo 'githooks installed' || echo 'githooks install failed'",
@@ -27,7 +29,7 @@
     "bench:vitest": "vitest bench",
     "bench:bun": "MITATA=1 bun run tests/core/benchmarks/iterators.bench.ts",
     "dev:docnode": "pnpm --filter docnode dev",
-    "publish-npm": "pnpm check && pnpm vitest --watch=false && pnpm build && pnpm publish --filter docnode"
+    "publish-npm": "pnpm check && pnpm test:ci && pnpm build && pnpm publish --filter docnode"
   },
   "packageManager": "pnpm@9.10.0",
   "lint-staged": {

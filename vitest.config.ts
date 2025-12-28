@@ -2,17 +2,16 @@ import { defineConfig } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 import react from "@vitejs/plugin-react";
 
+// In development: resolve to source files for faster testing without building
+// In CI: use dist files to test what actually gets published
+// see https://nx.dev/docs/technologies/test-tools/vitest/guides/testing-without-building-dependencies
+const resolveConfig = !process.env.CI ? { conditions: ["vitest"] } : {};
+
 export default defineConfig({
-  resolve: {
-    // Resolve to source files instead of dist for faster testing without building
-    // see https://nx.dev/docs/technologies/test-tools/vitest/guides/testing-without-building-dependencies
-    conditions: ["vitest"],
-  },
+  resolve: resolveConfig,
   // SSR mode is used by Vitest for Node environment tests
   ssr: {
-    resolve: {
-      conditions: ["vitest"],
-    },
+    resolve: resolveConfig,
   },
   test: {
     coverage: {
