@@ -21,13 +21,16 @@ export type DocCallback = Mock<
 // ============================================================================
 
 export const TestNode = defineNode({ type: "test", state: {} });
+export const ChildNode = defineNode({ type: "child", state: {} });
 
 // ============================================================================
 // Config Factories
 // ============================================================================
 
 export const createMockDocBinding = () =>
-  DocNodeBinding([{ type: "test", extensions: [{ nodes: [TestNode] }] }]);
+  DocNodeBinding([
+    { type: "test", extensions: [{ nodes: [TestNode, ChildNode] }] },
+  ]);
 
 export const createValidConfig = () => ({
   url: "ws://localhost:8081",

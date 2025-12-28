@@ -83,11 +83,10 @@ export class DocSyncClient<
    * 2. `{ status: "success", data: { doc, id } }` - Document loaded successfully
    * 3. `{ status: "error", error }` - Failed to load document
    *
-   * Subsequent updates will be sent whenever the document changes.
+   * To observe document content changes, use `doc.onChange()` directly on the returned doc.
    *
    * @example
    * ```ts
-   * // Subscribe to doc changes
    * const unsubscribe = client.getDoc(
    *   { type: "notes", id: "abc123" },
    *   (result) => {
@@ -129,7 +128,7 @@ export class DocSyncClient<
         clock: 0,
         refCount: 1,
       });
-      this._setupChangeListener(doc, id, emit);
+      this._setupChangeListener(doc, id);
       emit({ status: "success", data: { doc, id }, error: undefined });
       void this._local?.provider.transaction("readwrite", (ctx) =>
         ctx.saveSerializedDoc({
@@ -167,7 +166,7 @@ export class DocSyncClient<
             this._docsCache.set(docId, { promisedDoc, clock: 0, refCount: 1 });
             doc = await promisedDoc;
             // Register listener only for new docs (not cache hits)
-            if (doc) this._setupChangeListener(doc, docId, emit);
+            if (doc) this._setupChangeListener(doc, docId);
           }
           emit({
             status: "success",
@@ -187,18 +186,13 @@ export class DocSyncClient<
     };
   }
 
-  private _setupChangeListener(
-    doc: D,
-    docId: string,
-    emit: (result: QueryResult<DocData<D> | undefined>) => void,
-  ) {
+  private _setupChangeListener(doc: D, docId: string) {
     this._docBinding.onChange(doc, ({ operations }) => {
       if (this._shouldBroadcast) {
         this._sendMessage({ type: "OPERATIONS", operations, docId });
         void this.onLocalOperations({ docId, operations });
       }
       this._shouldBroadcast = true;
-      emit({ status: "success", data: { doc, id: docId }, error: undefined });
     });
   }
 

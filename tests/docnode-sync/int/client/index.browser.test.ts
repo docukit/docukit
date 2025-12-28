@@ -5,6 +5,7 @@ import { defineNode } from "docnode";
 import { ulid } from "ulid";
 import {
   TestNode,
+  ChildNode,
   createClient,
   createClientWithRemoveListenersSpy,
   createCallback,
@@ -339,6 +340,26 @@ describe("DocSyncClient", () => {
 
         // Same instance
         expect(doc1).toBe(doc2);
+      });
+
+      test("should NOT notify callback when document content changes", async () => {
+        const client = createClient(true);
+        const callback = createCallback();
+
+        // Create doc
+        client.getDoc({ type: "test", createIfMissing: true }, callback);
+        const doc = getSuccessData(callback)!.doc;
+
+        // Initial call count (1 for success)
+        expect(callback.mock.calls.length).toBe(1);
+
+        // Trigger a document change
+        doc.root.append(doc.createNode(ChildNode));
+        await tick(); // Changes are committed in a microtask
+
+        // Callback should NOT be called on doc changes
+        // User observes doc changes via doc.onChange() directly
+        expect(callback.mock.calls.length).toBe(1);
       });
     });
 
