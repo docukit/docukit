@@ -1,9 +1,12 @@
+/* eslint-disable @typescript-eslint/no-empty-object-type */
 import { vi, type Mock } from "vitest";
 import {
   DocSyncClient,
   IndexedDBProvider,
   type QueryResult,
   type DocData,
+  type SerializedDoc,
+  type ClientConfig,
 } from "@docnode/docsync/client";
 import { DocNodeBinding } from "@docnode/docsync/docnode";
 import { type Doc, defineNode } from "docnode";
@@ -27,29 +30,53 @@ export const ChildNode = defineNode({ type: "child", state: {} });
 // Config Factories
 // ============================================================================
 
+/**
+ * Helper to create a ClientConfig with type inference and excess property checking.
+ *
+ * Using this wrapper forces inline object literals, which enables TypeScript's
+ * excess property checking - catching typos and invalid properties at compile time.
+ */
+const createClientConfig = <
+  D extends {},
+  S extends SerializedDoc,
+  O extends {},
+>(
+  config: ClientConfig<D, S, O>,
+): ClientConfig<D, S, O> => config;
+
 export const createMockDocBinding = () =>
   DocNodeBinding([
     { type: "test", extensions: [{ nodes: [TestNode, ChildNode] }] },
   ]);
 
-export const createValidConfig = () => ({
-  url: "ws://localhost:8081",
-  docBinding: createMockDocBinding(),
-  auth: {
-    getToken: async () => "test-token",
-  },
-});
+export const createValidConfig = () =>
+  createClientConfig({
+    server: {
+      url: "ws://localhost:8081",
+      auth: {
+        getToken: async () => "test-token",
+      },
+    },
+    docBinding: createMockDocBinding(),
+  });
 
-export const createValidConfigWithLocal = () => ({
-  ...createValidConfig(),
-  local: {
-    provider: IndexedDBProvider,
-    getIdentity: async () => ({
-      userId: "test-user",
-      secret: "test-secret",
-    }),
-  },
-});
+export const createValidConfigWithLocal = () =>
+  createClientConfig({
+    server: {
+      url: "ws://localhost:8081",
+      auth: {
+        getToken: async () => "test-token",
+      },
+    },
+    docBinding: createMockDocBinding(),
+    local: {
+      provider: IndexedDBProvider,
+      getIdentity: async () => ({
+        userId: "test-user",
+        secret: "test-secret",
+      }),
+    },
+  });
 
 // ============================================================================
 // Client Factory
@@ -69,8 +96,13 @@ export const createClientWithRemoveListenersSpy = (withLocal = false) => {
   const removeListenersSpy = vi.spyOn(docBinding, "removeListeners");
 
   const config = withLocal
-    ? {
-        ...createValidConfig(),
+    ? createClientConfig({
+        server: {
+          url: "ws://localhost:8081",
+          auth: {
+            getToken: async () => "test-token",
+          },
+        },
         docBinding,
         local: {
           provider: IndexedDBProvider,
@@ -79,8 +111,16 @@ export const createClientWithRemoveListenersSpy = (withLocal = false) => {
             secret: "test-secret",
           }),
         },
-      }
-    : { ...createValidConfig(), docBinding };
+      })
+    : createClientConfig({
+        server: {
+          url: "ws://localhost:8081",
+          auth: {
+            getToken: async () => "test-token",
+          },
+        },
+        docBinding,
+      });
 
   const client = new DocSyncClient(config);
   return { client, removeListenersSpy };
@@ -128,8 +168,14 @@ export const createFailingProvider = (errorMessage: string) => {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const createClientWithProvider = (ProviderClass: new () => any) => {
-  const config = {
-    ...createValidConfig(),
+  const config = createClientConfig({
+    server: {
+      url: "ws://localhost:8081",
+      auth: {
+        getToken: async () => "test-token",
+      },
+    },
+    docBinding: createMockDocBinding(),
     local: {
       provider: ProviderClass,
       getIdentity: async () => ({
@@ -137,6 +183,6 @@ export const createClientWithProvider = (ProviderClass: new () => any) => {
         secret: "test-secret",
       }),
     },
-  };
+  });
   return new DocSyncClient(config);
 };

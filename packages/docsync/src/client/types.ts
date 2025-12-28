@@ -43,17 +43,19 @@ export type ClientConfig<
   S extends SerializedDoc,
   O extends {},
 > = {
-  url: string;
   docBinding: DocBinding<D, S, O>;
-  auth: {
-    /**
-     * Server authentication token.
-     *
-     * - Passed verbatim to the server on connection.
-     * - Validation is delegated to the server via `onAuth`.
-     * - This library does not issue, refresh, or rotate tokens.
-     */
-    getToken: () => Promise<string>;
+  server?: {
+    url: string;
+    auth: {
+      /**
+       * Server authentication token.
+       *
+       * - Passed verbatim to the server on connection.
+       * - Validation is delegated to the server via `onAuth`.
+       * - This library does not issue, refresh, or rotate tokens.
+       */
+      getToken: () => Promise<string>;
+    };
   };
   local?: {
     // We want D, S, O to be inferred from the docBinding, not

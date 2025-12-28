@@ -24,7 +24,8 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
 
   constructor(config: ServerSyncConfig<D, S, O>) {
     this._provider = config.provider;
-    this._api = new API({ url: config.url });
+    const { url } = config;
+    this._api = new API({ url });
     this._docBinding = config.docBinding;
   }
 

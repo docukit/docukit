@@ -40,11 +40,13 @@ export class DocSyncClient<
         secret: local.getIdentity().then((identity) => identity.secret),
         provider,
       };
-      this._serverSync = new ServerSync({
-        provider,
-        url: config.url,
-        docBinding: this._docBinding,
-      });
+      if (config.server) {
+        this._serverSync = new ServerSync({
+          provider,
+          url: config.server.url,
+          docBinding: this._docBinding,
+        });
+      }
     }
 
     // Listen for operations from other tabs.

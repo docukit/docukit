@@ -4,7 +4,12 @@ import { test } from "vitest";
 
 test.todo("localFirst", async () => {
   const _localFirst = new DocSyncClient({
-    url: "ws://localhost:8081",
+    server: {
+      url: "ws://localhost:8081",
+      auth: {
+        getToken: async () => "1234567890" as string,
+      },
+    },
     docBinding: DocNodeBinding([]),
     local: {
       provider: IndexedDBProvider,
@@ -12,15 +17,12 @@ test.todo("localFirst", async () => {
         userId: "John",
         secret: "asdasdasd",
       }),
-    },
-    auth: {
-      getToken: async () => "1234567890" as string,
     },
   });
   // get doc first retrieves from local storage, and then from the server
 
+  // omits server
   const _localOnly = new DocSyncClient({
-    url: "ws://localhost:8081",
     docBinding: DocNodeBinding([]),
     local: {
       provider: IndexedDBProvider,
@@ -28,21 +30,19 @@ test.todo("localFirst", async () => {
         userId: "John",
         secret: "asdasdasd",
       }),
-    },
-    // @ts-expect-error - not implemented yet
-    connect: false,
-    auth: {
-      getToken: async () => "1234567890" as string,
     },
   });
   // It's as if there's no internet. It simply does not connect to the ws server.
   // Operations pile up in the operations store, but they never squash in the doc store.
 
+  // does not have local key
   const _serverOnly = new DocSyncClient({
-    url: "ws://localhost:8081",
-    docBinding: DocNodeBinding([]),
-    auth: {
-      getToken: async () => "1234567890" as string,
+    server: {
+      url: "ws://localhost:8081",
+      auth: {
+        getToken: async () => "1234567890" as string,
+      },
     },
+    docBinding: DocNodeBinding([]),
   });
 });
