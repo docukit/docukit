@@ -732,18 +732,15 @@ export class Doc {
       };
     });
 
-    // Validate ULID format only when using the ULID generator explicitly.
-    // When using the default nodeIdFactory, it can handle non-ULID root IDs.
-    // Note:
+    // Reasons why root id is required to be lowercase ulid:
     // - The ulid timestamp is used by nodeIdFactory to generate small IDs on other nodes.
     // - Database providers can be optimized by using ULIDs column type.
-    if (
-      config.id &&
-      config.nodeIdGenerator === "ulid" &&
-      !ULID_REGEX.test(config.id)
-    ) {
+    // I could allow it when using a custom nodeIdFactory, but that's not supported
+    // and is complex, error-prone, and confusing. For example, a user might want
+    // to use ulid but accidentally make a mistake (e.g., uppercase).
+    if (config.id && !ULID_REGEX.test(config.id)) {
       throw new Error(
-        `Invalid document id: ${config.id}. It must be a valid ULID when using nodeIdGenerator: "ulid".`,
+        `Invalid document id: ${config.id}. It must be a lowercase ULID.`,
       );
     }
 
@@ -1042,7 +1039,13 @@ export class Doc {
    * afterward, you must first call doc.forceCommit().
    */
   static fromJSON(config: DocConfig, jsonDoc: JsonDoc): Doc {
-    const doc = new Doc(config);
+    const id = jsonDoc[0];
+    if (config.id && config.id !== id) {
+      throw new Error(
+        `Attempted to create a document with id '${config.id}' that does not match the root node id '${id}'.`,
+      );
+    }
+    const doc = new Doc({ ...config, id });
     const jsonDocToDocNode = (node: DocNode, childrenJsonDoc: JsonDoc[]) => {
       const childrenNodes = childrenJsonDoc?.map((child) => {
         const childNode = doc._createNodeFromJson(child);

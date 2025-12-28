@@ -6,7 +6,7 @@ import { IndexDoc } from "./IndexDoc";
 function SubPage({ id }: { id: string }) {
   const result = useDoc({
     type: "indexDoc",
-    id: "01KCFHZZ66V3393XHGGX6AEB6T",
+    id: "01kcfhzz66v3393xhggx6aeb6t",
     createIfMissing: true,
   });
   const indexDoc = result.status === "success" ? result.data.doc : undefined;

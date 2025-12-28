@@ -52,7 +52,7 @@ console.log(root.type); // 'root' (default value)
 // 2. Custom type and id
 const doc2 = new Doc({
   type: "richtext-editor",
-  id: "01kdfwy0qdzrq2ysfcpf8jgw0m",
+  id: "01kdfwy0qdzrq2ysfcpf8jgw0m", // must be a lowercase ulid
 });
 const root2 = doc2.root;
 console.log(root2.id); // '01kdfwy0qdzrq2ysfcpf8jgw0m' -> the docId is considered the root node id

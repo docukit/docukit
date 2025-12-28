@@ -325,6 +325,43 @@ describe("new Doc", () => {
         "repeated states in either of the two node definitions.",
     );
   });
+
+  describe("document id validation", () => {
+    test("should throw for invalid ULID (wrong characters)", () => {
+      expect(
+        () => new Doc({ extensions: [TextExtension], id: "invalid-id" }),
+      ).toThrowError(
+        "Invalid document id: invalid-id. It must be a lowercase ULID.",
+      );
+    });
+
+    test("should throw for uppercase ULID", () => {
+      // Uppercase ULIDs should be rejected - user should normalize to lowercase
+      expect(
+        () =>
+          new Doc({
+            extensions: [TextExtension],
+            id: "01KCFHZZ66V3393XHGGX6AEB6T",
+          }),
+      ).toThrowError(
+        "Invalid document id: 01KCFHZZ66V3393XHGGX6AEB6T. It must be a lowercase ULID.",
+      );
+    });
+
+    test("should accept valid lowercase ULID", () => {
+      const doc = new Doc({
+        extensions: [TextExtension],
+        id: "01kcfhzz66v3393xhggx6aeb6t",
+      });
+      expect(doc.root.id).toBe("01kcfhzz66v3393xhggx6aeb6t");
+    });
+
+    test("should auto-generate lowercase ULID when id is not provided", () => {
+      const doc = new Doc({ extensions: [TextExtension] });
+      // Generated ULIDs should be lowercase and 26 characters
+      expect(doc.root.id).toMatch(/^[0-7][0-9a-hjkmnp-tv-z]{25}$/);
+    });
+  });
 });
 
 describe("createNode", () => {

@@ -124,7 +124,7 @@ describe("json serialization", () => {
 
   test("fromJSON", () => {
     const doc = Doc.fromJSON({ extensions: [TextExtension] }, [
-      "rootID",
+      "01kdjkhm2wkfkcw7xkjdjrd1cc",
       "root",
       {},
       [
@@ -147,7 +147,7 @@ describe("json serialization", () => {
 
   test("fromJSON with invalid state should not be imported", () => {
     const doc = Doc.fromJSON({ extensions: [TextExtension] }, [
-      "rootID",
+      "01kdjkhm2wkfkcw7xkjdjrd1cc",
       "root",
       {},
       [
@@ -196,7 +196,7 @@ describe("json serialization", () => {
   test("fromJSON contains a node that is not registered should throw", () => {
     expect(() =>
       Doc.fromJSON({ extensions: [TextExtension] }, [
-        "rootID",
+        "01kdjkhm2wkfkcw7xkjdjrd1cc",
         "root",
         {},
         [["1", "node-not-registered", { value: '"1"' }]],
@@ -209,7 +209,7 @@ describe("json serialization", () => {
   test("fromJSON contains a state that is not registered should throw", () => {
     expect(() =>
       Doc.fromJSON({ extensions: [TextExtension] }, [
-        "rootID",
+        "01kdjkhm2wkfkcw7xkjdjrd1cc",
         "root",
         {},
         [["1", "text", { notRegistered: '"1"' }]],
@@ -217,5 +217,32 @@ describe("json serialization", () => {
     ).toThrowError(
       "Attempted to create a node of type 'text' with a state that is not registered: notRegistered",
     );
+  });
+
+  test("fromJSON with config.id that does not match root node id should throw", () => {
+    const jsonWithId = "01kcfhzz66v3393xhggx6aeb6t";
+    const configId = "01jjjjjjjjjjjjjjjjjjjjjjjj";
+
+    expect(() =>
+      Doc.fromJSON({ extensions: [TextExtension], id: configId }, [
+        jsonWithId,
+        "root",
+        {},
+      ]),
+    ).toThrowError(
+      `Attempted to create a document with id '${configId}' that does not match the root node id '${jsonWithId}'.`,
+    );
+  });
+
+  test("fromJSON with matching config.id and root node id should succeed", () => {
+    const id = "01kcfhzz66v3393xhggx6aeb6t";
+
+    const doc = Doc.fromJSON({ extensions: [TextExtension], id }, [
+      id,
+      "root",
+      {},
+    ]);
+
+    expect(doc.root.id).toBe(id);
   });
 });

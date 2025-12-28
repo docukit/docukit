@@ -1,8 +1,8 @@
 import type { Doc, DocNode } from "./main.js";
 import type { NodeDefinition, StateRecord } from "./types.js";
 
-// /i means case-insensitive. Normalize to lowercase on runtime
-export const ULID_REGEX = /^[0-7][0-9a-hjkmnp-tv-z]{25}$/i;
+// lowercase ulid
+export const ULID_REGEX = /^[0-7][0-9a-hjkmnp-tv-z]{25}$/;
 
 export function defineNode<T extends string, S extends StateRecord>(
   nodeDefinition: NodeDefinition<T, S>,
