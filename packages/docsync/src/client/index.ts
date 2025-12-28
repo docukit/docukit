@@ -177,7 +177,6 @@ export class DocSyncClient<
         } catch (e) {
           const error = e instanceof Error ? e : new Error(String(e));
           emit({ status: "error", data: undefined, error });
-          throw error;
         }
       })();
     }

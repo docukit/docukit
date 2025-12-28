@@ -120,7 +120,8 @@ export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
       await tx.done;
       return result;
     } catch (error) {
-      tx.abort();
+      // Transaction auto-aborts on error; swallow tx.done rejection
+      tx.done.catch(() => void 0);
       throw error;
     }
   }
