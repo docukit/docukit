@@ -17,6 +17,7 @@ import {
   DOCNODE_ID,
   checkUndoManager,
 } from "./utils.js";
+import { ULID_REGEX } from "valibot";
 
 describe("accessors & getters", () => {
   init(({ doc, root, node1, node2, node4 }) => {
@@ -54,6 +55,16 @@ describe("accessors & getters", () => {
       assertTimeId(64, "0-");
       assertTimeId(64 ** 3 - 1, "zzz");
       assertTimeId(64 ** 3, "0---");
+    });
+
+    test("id generator with nodeIdGenerator: 'ulid' generates lowercase ULIDs for all nodes", () => {
+      const doc = new Doc({
+        extensions: [TextExtension],
+        nodeIdGenerator: "ulid",
+      });
+      expect(doc.root.id).toMatch(ULID_REGEX);
+      const node = doc.createNode(Text);
+      expect(node.id).toMatch(ULID_REGEX);
     });
 
     test("type", () => {
