@@ -1,7 +1,11 @@
-import { describe, test, expect, vi } from "vitest";
-import { DocSyncClient } from "@docnode/docsync/client";
+import { describe, test, expect, vi, expectTypeOf } from "vitest";
+import {
+  DocSyncClient,
+  type DocData,
+  type QueryResult,
+} from "@docnode/docsync/client";
 import { DocNodeBinding } from "@docnode/docsync/docnode";
-import { defineNode } from "docnode";
+import { defineNode, type Doc } from "docnode";
 import { ulid } from "ulid";
 import {
   TestNode,
@@ -77,6 +81,84 @@ describe("DocSyncClient", () => {
       } finally {
         globalThis.BroadcastChannel = originalBroadcastChannel;
       }
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Type tests
+  // ──────────────────────────────────────────────────────────────────────────
+
+  describe("getDoc types", () => {
+    type DocResult = QueryResult<DocData<Doc>>;
+    type MaybeDocResult = QueryResult<DocData<Doc> | undefined>;
+
+    // These tests only verify types at compile time, no runtime assertions needed
+    test("callback receives correct types based on args", () => {
+      const client = createClient(true);
+      const id = ulid().toLowerCase();
+
+      // with id, without createIfMissing → MaybeDocResult
+      client.getDoc({ type: "test", id }, (result) => {
+        expectTypeOf(result).toEqualTypeOf<MaybeDocResult>();
+      });
+
+      // with id, createIfMissing: true → DocResult
+      client.getDoc({ type: "test", id, createIfMissing: true }, (result) => {
+        expectTypeOf(result).toEqualTypeOf<DocResult>();
+      });
+
+      // without id, createIfMissing: true → DocResult
+      client.getDoc({ type: "test", createIfMissing: true }, (result) => {
+        expectTypeOf(result).toEqualTypeOf<DocResult>();
+      });
+
+      // with id, createIfMissing: false → MaybeDocResult
+      client.getDoc({ type: "test", id, createIfMissing: false }, (result) => {
+        expectTypeOf(result).toEqualTypeOf<MaybeDocResult>();
+      });
+    });
+
+    test("type errors for invalid arguments", () => {
+      // These are compile-time checks only - we use a function that's never called
+      // to avoid runtime execution while still getting TypeScript to check the types
+      const typeCheck = (client: ReturnType<typeof createClient>) => {
+        const callback = createCallback();
+
+        // @ts-expect-error - type is required (even with id)
+        client.getDoc({ id: "123" }, callback);
+
+        // @ts-expect-error - type is required (even with createIfMissing and id)
+        client.getDoc({ createIfMissing: true, id: "123" }, callback);
+
+        // @ts-expect-error - without id, createIfMissing must be true
+        client.getDoc({ type: "test" }, callback);
+
+        // @ts-expect-error - without id, createIfMissing: false is invalid
+        client.getDoc({ type: "test", createIfMissing: false }, callback);
+      };
+
+      // Verify the function exists (never called, just for type checking)
+      expect(typeCheck).toBeDefined();
+    });
+
+    test("QueryResult has expected structure", () => {
+      expectTypeOf<DocResult>().toEqualTypeOf<
+        | {
+            status: "loading";
+            data: undefined;
+            error: undefined;
+          }
+        | {
+            status: "success";
+            data: DocData<Doc>;
+            error: undefined;
+          }
+        | {
+            status: "error";
+            data: undefined;
+            error: Error;
+          }
+      >();
     });
   });
 
