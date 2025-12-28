@@ -137,6 +137,7 @@ export class DocSyncClient<
           clock: 0,
         }),
       );
+      // TODO: review this
       // This forces a fetch if the document exists on the server.
       void this.onLocalOperations({
         docId: id,
