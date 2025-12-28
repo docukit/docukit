@@ -105,3 +105,38 @@ export const tick = (ms = 50) =>
 export const getSuccessData = (callback: DocCallback) =>
   callback.mock.calls.find((c) => c[0].status === "success" && c[0].data)?.[0]
     ?.data;
+
+/**
+ * Extracts the error result from a callback mock.
+ */
+export const getErrorResult = (callback: DocCallback) =>
+  callback.mock.calls.find((c) => c[0].status === "error")?.[0];
+
+/**
+ * Creates a mock provider that throws on transaction.
+ */
+export const createFailingProvider = (errorMessage: string) => {
+  return class FailingProvider {
+    async transaction() {
+      throw new Error(errorMessage);
+    }
+  };
+};
+
+/**
+ * Creates a client with a custom provider class.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const createClientWithProvider = (ProviderClass: new () => any) => {
+  const config = {
+    ...createValidConfig(),
+    local: {
+      provider: ProviderClass,
+      getIdentity: async () => ({
+        userId: "test-user",
+        secret: "test-secret",
+      }),
+    },
+  };
+  return new DocSyncClient(config);
+};

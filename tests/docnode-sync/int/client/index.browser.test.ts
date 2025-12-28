@@ -12,9 +12,12 @@ import {
   ChildNode,
   createClient,
   createClientWithRemoveListenersSpy,
+  createClientWithProvider,
+  createFailingProvider,
   createCallback,
   tick,
   getSuccessData,
+  getErrorResult,
 } from "./utils.js";
 
 // Mock socket.io-client to avoid real connections
@@ -500,6 +503,147 @@ describe("DocSyncClient", () => {
         const cache = client["_docsCache"];
         expect(cache.get(customId)?.refCount).toBe(2);
       });
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Error handling tests
+  // ──────────────────────────────────────────────────────────────────────────
+
+  describe("Error handling", () => {
+    // Note: DocSyncClient re-throws errors after emitting to callback (for monitoring).
+    // We suppress these expected unhandled rejections in each test.
+
+    // Helper to check if rejection matches expected error
+    const matchesError = (reason: unknown, expected: string): boolean => {
+      if (reason instanceof Error) return reason.message === expected;
+      return false;
+    };
+
+    const matchesErrorContains = (
+      reason: unknown,
+      substring: string,
+    ): boolean => {
+      if (reason instanceof Error) return reason.message.includes(substring);
+      return false;
+    };
+
+    test("should emit error status when provider throws", async () => {
+      const errorMessage = "IndexedDB connection failed";
+      const FailingProvider = createFailingProvider(errorMessage);
+      const client = createClientWithProvider(FailingProvider);
+      const callback = createCallback();
+
+      // Suppress expected unhandled rejection
+      const handler = (e: PromiseRejectionEvent) => {
+        if (matchesError(e.reason, errorMessage)) e.preventDefault();
+      };
+      window.addEventListener("unhandledrejection", handler);
+
+      try {
+        client.getDoc(
+          { type: "test", id: "test-id", createIfMissing: true },
+          callback,
+        );
+        await tick();
+
+        const errorResult = getErrorResult(callback);
+        expect(errorResult).toBeDefined();
+        expect(errorResult?.status).toBe("error");
+        expect(errorResult?.error?.message).toBe(errorMessage);
+        expect(errorResult?.data).toBeUndefined();
+      } finally {
+        window.removeEventListener("unhandledrejection", handler);
+      }
+    });
+
+    test("should emit error status when docBinding.new throws for unknown type", async () => {
+      const client = createClient(true);
+      const callback = createCallback();
+
+      // Suppress expected unhandled rejection
+      const handler = (e: PromiseRejectionEvent) => {
+        if (matchesErrorContains(e.reason, "Unknown type")) e.preventDefault();
+      };
+      window.addEventListener("unhandledrejection", handler);
+
+      try {
+        // "unknown-type" is not registered in the docBinding
+        client.getDoc(
+          { type: "unknown-type", id: "test-id", createIfMissing: true },
+          callback,
+        );
+        await tick();
+
+        const errorResult = getErrorResult(callback);
+        expect(errorResult).toBeDefined();
+        expect(errorResult?.status).toBe("error");
+        expect(errorResult?.error?.message).toContain("Unknown type");
+      } finally {
+        window.removeEventListener("unhandledrejection", handler);
+      }
+    });
+
+    test("should emit loading then error (not just error)", async () => {
+      const errorMessage = "Provider failed";
+      const FailingProvider = createFailingProvider(errorMessage);
+      const client = createClientWithProvider(FailingProvider);
+      const callback = createCallback();
+
+      // Suppress expected unhandled rejection
+      const handler = (e: PromiseRejectionEvent) => {
+        if (matchesError(e.reason, errorMessage)) e.preventDefault();
+      };
+      window.addEventListener("unhandledrejection", handler);
+
+      try {
+        client.getDoc(
+          { type: "test", id: "test-id", createIfMissing: true },
+          callback,
+        );
+
+        // First call should be loading
+        expect(callback.mock.calls[0]?.[0]?.status).toBe("loading");
+
+        await tick();
+
+        // Second call should be error
+        expect(callback.mock.calls[1]?.[0]?.status).toBe("error");
+      } finally {
+        window.removeEventListener("unhandledrejection", handler);
+      }
+    });
+
+    test("should convert non-Error throws to Error objects", async () => {
+      // Create a provider that throws a string instead of an Error
+      const StringThrowingProvider = class {
+        async transaction() {
+          // eslint-disable-next-line @typescript-eslint/only-throw-error
+          throw "string error message";
+        }
+      };
+      const client = createClientWithProvider(StringThrowingProvider);
+      const callback = createCallback();
+
+      // Suppress expected unhandled rejection
+      const handler = (e: PromiseRejectionEvent) => {
+        if (matchesError(e.reason, "string error message")) e.preventDefault();
+      };
+      window.addEventListener("unhandledrejection", handler);
+
+      try {
+        client.getDoc(
+          { type: "test", id: "test-id", createIfMissing: true },
+          callback,
+        );
+        await tick();
+
+        const errorResult = getErrorResult(callback);
+        expect(errorResult?.error).toBeInstanceOf(Error);
+        expect(errorResult?.error?.message).toBe("string error message");
+      } finally {
+        window.removeEventListener("unhandledrejection", handler);
+      }
     });
   });
 
