@@ -57,6 +57,32 @@ export const createClient = (withLocal = false) =>
     withLocal ? createValidConfigWithLocal() : createValidConfig(),
   );
 
+/**
+ * Creates a client with a spy on docBinding.removeListeners.
+ * Useful for testing that listeners are properly cleaned up.
+ */
+export const createClientWithRemoveListenersSpy = (withLocal = false) => {
+  const docBinding = createMockDocBinding();
+  const removeListenersSpy = vi.spyOn(docBinding, "removeListeners");
+
+  const config = withLocal
+    ? {
+        ...createValidConfig(),
+        docBinding,
+        local: {
+          provider: IndexedDBProvider,
+          getIdentity: async () => ({
+            userId: "test-user",
+            secret: "test-secret",
+          }),
+        },
+      }
+    : { ...createValidConfig(), docBinding };
+
+  const client = new DocSyncClient(config);
+  return { client, removeListenersSpy };
+};
+
 // ============================================================================
 // Test Helpers
 // ============================================================================

@@ -6,6 +6,7 @@ import { ulid } from "ulid";
 import {
   TestNode,
   createClient,
+  createClientWithRemoveListenersSpy,
   createCallback,
   tick,
   getSuccessData,
@@ -194,6 +195,182 @@ describe("DocSyncClient", () => {
         await tick();
 
         expect(getSuccessData(callback)?.id).toBe(customId);
+      });
+    });
+
+    describe("Sync vs async behavior", () => {
+      test("should NOT emit loading when creating new doc without id", () => {
+        const client = createClient(true);
+        const callback = createCallback();
+
+        client.getDoc({ type: "test", createIfMissing: true }, callback);
+
+        // First call should be success, not loading
+        expect(callback.mock.calls[0]?.[0]?.status).toBe("success");
+        expect(callback).toHaveBeenCalledTimes(1);
+      });
+
+      test("should emit loading before success when fetching by id", async () => {
+        const client = createClient(true);
+        const callback = createCallback();
+        const customId = ulid().toLowerCase();
+
+        client.getDoc({ type: "test", id: customId }, callback);
+
+        // First call should be loading
+        expect(callback.mock.calls[0]?.[0]?.status).toBe("loading");
+
+        await tick();
+
+        // Second call should be success
+        expect(callback.mock.calls[1]?.[0]?.status).toBe("success");
+      });
+    });
+
+    describe("Unsubscribe", () => {
+      test("should remove doc from cache and call removeListeners when last subscriber unsubscribes", async () => {
+        const { client, removeListenersSpy } =
+          createClientWithRemoveListenersSpy(true);
+        const callback = createCallback();
+
+        const unsubscribe = client.getDoc(
+          { type: "test", createIfMissing: true },
+          callback,
+        );
+        const doc = getSuccessData(callback)!.doc;
+        const docId = getSuccessData(callback)!.id;
+        const cache = client["_docsCache"];
+
+        expect(cache.has(docId)).toBe(true);
+        expect(cache.get(docId)?.refCount).toBe(1);
+        expect(removeListenersSpy).not.toHaveBeenCalled();
+
+        unsubscribe();
+        await tick(); // _unloadDoc is async
+
+        expect(cache.has(docId)).toBe(false);
+        expect(removeListenersSpy).toHaveBeenCalledOnce();
+        expect(removeListenersSpy).toHaveBeenCalledWith(doc);
+      });
+
+      test("should NOT call removeListeners when non-last subscriber unsubscribes", async () => {
+        const { client, removeListenersSpy } =
+          createClientWithRemoveListenersSpy(true);
+        const callback1 = createCallback();
+        const callback2 = createCallback();
+
+        // First subscription creates the doc
+        const unsubscribe1 = client.getDoc(
+          { type: "test", createIfMissing: true },
+          callback1,
+        );
+        const doc = getSuccessData(callback1)!.doc;
+        const docId = getSuccessData(callback1)!.id;
+
+        // Second subscription to same doc
+        const unsubscribe2 = client.getDoc(
+          { type: "test", id: docId },
+          callback2,
+        );
+        await tick();
+
+        const cache = client["_docsCache"];
+        expect(cache.get(docId)?.refCount).toBe(2);
+
+        // Unsubscribe first one - should NOT call removeListeners
+        unsubscribe1();
+        await tick();
+
+        expect(cache.get(docId)?.refCount).toBe(1);
+        expect(cache.has(docId)).toBe(true);
+        expect(removeListenersSpy).not.toHaveBeenCalled();
+
+        // Unsubscribe second one - should call removeListeners
+        unsubscribe2();
+        await tick();
+
+        expect(cache.has(docId)).toBe(false);
+        expect(removeListenersSpy).toHaveBeenCalledOnce();
+        expect(removeListenersSpy).toHaveBeenCalledWith(doc);
+      });
+    });
+
+    describe("refCount / multiple subscriptions", () => {
+      test("should increment refCount for each subscription to same doc", async () => {
+        const client = createClient(true);
+        const callback1 = createCallback();
+        const callback2 = createCallback();
+        const callback3 = createCallback();
+
+        // Create doc
+        client.getDoc({ type: "test", createIfMissing: true }, callback1);
+        const docId = getSuccessData(callback1)!.id;
+
+        const cache = client["_docsCache"];
+        expect(cache.get(docId)?.refCount).toBe(1);
+
+        // Second subscription
+        client.getDoc({ type: "test", id: docId }, callback2);
+        await tick();
+        expect(cache.get(docId)?.refCount).toBe(2);
+
+        // Third subscription
+        client.getDoc({ type: "test", id: docId }, callback3);
+        await tick();
+        expect(cache.get(docId)?.refCount).toBe(3);
+      });
+
+      test("should share same doc instance across multiple subscriptions", async () => {
+        const client = createClient(true);
+        const callback1 = createCallback();
+        const callback2 = createCallback();
+
+        // Create doc
+        client.getDoc({ type: "test", createIfMissing: true }, callback1);
+        const doc1 = getSuccessData(callback1)!.doc;
+
+        // Second subscription
+        client.getDoc(
+          { type: "test", id: getSuccessData(callback1)!.id },
+          callback2,
+        );
+        await tick();
+        const doc2 = getSuccessData(callback2)!.doc;
+
+        // Same instance
+        expect(doc1).toBe(doc2);
+      });
+    });
+
+    describe("Concurrency", () => {
+      test("should share promise when multiple requests for same doc happen simultaneously", async () => {
+        const client = createClient(true);
+        const callback1 = createCallback();
+        const callback2 = createCallback();
+        const customId = ulid().toLowerCase();
+
+        // Two simultaneous requests for the same non-existent doc
+        client.getDoc(
+          { type: "test", id: customId, createIfMissing: true },
+          callback1,
+        );
+        client.getDoc(
+          { type: "test", id: customId, createIfMissing: true },
+          callback2,
+        );
+
+        await tick();
+
+        // Both should get the same doc instance
+        const doc1 = getSuccessData(callback1)?.doc;
+        const doc2 = getSuccessData(callback2)?.doc;
+
+        expect(doc1).toBeDefined();
+        expect(doc1).toBe(doc2);
+
+        // refCount should be 2
+        const cache = client["_docsCache"];
+        expect(cache.get(customId)?.refCount).toBe(2);
       });
     });
   });

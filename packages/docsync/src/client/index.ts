@@ -17,7 +17,7 @@ export class DocSyncClient<
   O extends {},
 > {
   private _docBinding: DocBinding<D, S, O>;
-  private _docsCache = new Map<
+  protected _docsCache = new Map<
     string,
     { promisedDoc: Promise<D | undefined>; clock: number; refCount: number }
   >();
