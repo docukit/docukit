@@ -744,7 +744,7 @@ export class Doc {
       );
     }
 
-    const id = (config.id ?? ulid()).toLowerCase();
+    const id = config.id ?? ulid().toLowerCase();
     // @ts-expect-error - private constructor
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     this.root = new DocNode(this, type, id);

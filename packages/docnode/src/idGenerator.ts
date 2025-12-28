@@ -77,6 +77,7 @@ export const nodeIdFactory = (doc: Doc) => {
     // Convert to uppercase because ulid's decodeTime expects uppercase Crockford Base32
     createdAt = decodeTime(rootId.toUpperCase());
   } catch (error) {
+    /* v8 ignore next -- @preserve */
     throw new Error(
       `Invalid doc/root id: ${rootId}. It must be a valid ULID. ${error instanceof Error ? error.message : String(error)}`,
     );
