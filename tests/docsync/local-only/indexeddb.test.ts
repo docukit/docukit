@@ -36,7 +36,3 @@ test.todo("IndexedDBProvider integration tests - placeholder");
 // "should do nothing when count is 0 or negative"
 // "should delete all operations when count exceeds total operations"
 // "should abort transaction on error"
-
-// cleanDB tests
-// "should clear all documents from docs store"
-// "should not affect operations store when cleaning docs"

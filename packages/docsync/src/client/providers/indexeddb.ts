@@ -129,13 +129,4 @@ export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
       throw error;
     }
   }
-
-  // TODO: this should be derived from other methods
-  async cleanDB() {
-    const db = await this._dbPromise;
-    const tx = db.transaction(["docs", "operations"], "readwrite");
-    await tx.objectStore("docs").clear();
-    await tx.objectStore("operations").clear();
-    await tx.done;
-  }
 }
