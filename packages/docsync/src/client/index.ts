@@ -53,6 +53,7 @@ export class DocSyncClient<
         void this._applyOperations(ev.data.operations, ev.data.docId);
         return;
       }
+      /* v8 ignore next -- @preserve */
       ev.data.type satisfies never;
     };
   }
