@@ -5,19 +5,26 @@ import type {
   DocSyncEvents,
 } from "../shared/types.js";
 
+export type APIOptions = {
+  url: string;
+  getToken: () => Promise<string>;
+};
+
 export class API<S, O> {
   private _socket: ClientSocket<S, O>;
 
-  constructor(options: { url: string }) {
+  constructor(options: APIOptions) {
     this._socket = io(options.url, {
-      auth: { userId: "John", token: "1234567890" },
+      auth: (cb) => {
+        void options.getToken().then((token) => cb({ token }));
+      },
     });
     // prettier-ignore
     {
       this._socket.on("connect", () => console.log("Connected to Socket.io server"));
       this._socket.on("connect_error", err => console.error("Socket.io connection error:", err));
       this._socket.on("disconnect", reason => console.error("Socket.io disconnected:", reason));
-      }
+    }
   }
 
   request<E extends DocSyncEventName>(

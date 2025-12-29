@@ -11,6 +11,16 @@ import {
 
 const TEST_PORT = 8082;
 
+/**
+ * Test token format: "test-token-{userId}"
+ * This allows tests to authenticate as different users.
+ */
+const parseTestToken = (token: string): string | undefined => {
+  const prefix = "test-token-";
+  if (!token.startsWith(prefix)) return undefined;
+  return token.slice(prefix.length);
+};
+
 let server: DocSyncServer<unknown, unknown, unknown> | undefined;
 
 export async function setup() {
@@ -19,7 +29,11 @@ export async function setup() {
   server = new DocSyncServer({
     port: TEST_PORT,
     provider: InMemoryServerProvider,
-    authenticate: async () => ({ userId: "test-user" }),
+    authenticate: async ({ token }) => {
+      const userId = parseTestToken(token);
+      if (!userId) return undefined;
+      return { userId };
+    },
   });
 
   // Give the server a moment to start

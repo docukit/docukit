@@ -11,6 +11,7 @@ export type ServerSyncConfig<
   provider: ClientProvider<S, O>;
   url: string;
   docBinding: DocBinding<D, S, O>;
+  getToken: () => Promise<string>;
 };
 
 type PushStatus = "idle" | "pushing" | "pushing-with-pending";
@@ -24,8 +25,8 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
 
   constructor(config: ServerSyncConfig<D, S, O>) {
     this._provider = config.provider;
-    const { url } = config;
-    this._api = new API({ url });
+    const { url, getToken } = config;
+    this._api = new API({ url, getToken });
     this._docBinding = config.docBinding;
   }
 

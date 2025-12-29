@@ -75,6 +75,7 @@ export class DocSyncClient<
           provider,
           url: this._serverConfig.url,
           docBinding: this._docBinding,
+          getToken: this._serverConfig.auth.getToken,
         });
       }
       return { provider, identity };

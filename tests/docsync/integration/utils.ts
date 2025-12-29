@@ -41,12 +41,23 @@ export const generateUserId = () =>
 export const generateDocId = () => ulid().toLowerCase();
 
 // ============================================================================
+// Token Helpers
+// ============================================================================
+
+/**
+ * Creates a test token for authentication.
+ * Token format: "test-token-{userId}"
+ */
+export const createTestToken = (userId: string) => `test-token-${userId}`;
+
+// ============================================================================
 // Client Factory
 // ============================================================================
 
 /**
  * Creates a DocSyncClient connected to the test server.
  * Each client gets a unique userId for IndexedDB isolation.
+ * The token encodes the userId for server authentication.
  */
 export const createClient = (userId?: string) => {
   const docBinding = createDocBinding();
@@ -55,7 +66,7 @@ export const createClient = (userId?: string) => {
   const config: ClientConfig<Doc, JsonDoc, Operations> = {
     server: {
       url: TEST_SERVER_URL,
-      auth: { getToken: async () => "test-token" },
+      auth: { getToken: async () => createTestToken(actualUserId) },
     },
     docBinding,
     local: {
