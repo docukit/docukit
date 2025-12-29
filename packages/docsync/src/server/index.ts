@@ -46,4 +46,11 @@ export class DocSyncServer<TContext, S, O> {
       }
     });
   }
+
+  /**
+   * Close the server and all connections.
+   */
+  async close(): Promise<void> {
+    await this._io.close();
+  }
 }

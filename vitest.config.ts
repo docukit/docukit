@@ -48,11 +48,35 @@ export default defineConfig({
         extends: true, // Extends root config to include resolve.conditions
         plugins: [react()],
         test: {
-          include: ["**/*.browser.test.ts", "**/*.browser.test.tsx"],
+          include: [
+            "**/*.browser.test.ts",
+            "**/*.browser.test.tsx",
+            "!**/integration/**", // Exclude integration tests (they have their own config)
+          ],
           benchmark: {
             include: ["**/*browser.bench.ts"],
           },
           name: "browser",
+          browser: {
+            screenshotFailures: false,
+            headless: true,
+            enabled: true,
+            provider: playwright(),
+            instances: [
+              {
+                browser: "chromium",
+              },
+            ],
+          },
+        },
+      },
+      {
+        extends: true, // Extends root config to include resolve.conditions
+        plugins: [react()],
+        test: {
+          include: ["**/integration/**/*.browser.test.ts"],
+          name: "integration",
+          globalSetup: ["./tests/docsync/integration/globalSetup.ts"],
           browser: {
             screenshotFailures: false,
             headless: true,
