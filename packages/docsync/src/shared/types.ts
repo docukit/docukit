@@ -33,6 +33,16 @@ export type DocSyncEvents<S, O> = {
     request: { docId: string };
     response: { success: boolean };
   };
+  // Client subscribes to document updates
+  "subscribe-doc": {
+    request: { docId: string };
+    response: { success: boolean };
+  };
+  // Client unsubscribes from document updates
+  "unsubscribe-doc": {
+    request: { docId: string };
+    response: { success: boolean };
+  };
 };
 
 export type DocSyncEventName = keyof DocSyncEvents<unknown, unknown>;
@@ -58,7 +68,10 @@ type ClientToServerEvents<S, O> = {
   ) => void;
 };
 
-type ServerToClientEvents = Record<string, never>;
+type ServerToClientEvents = {
+  // Server notifies clients that a document has been modified
+  dirty: (payload: { docId: string }) => void;
+};
 
 export type ServerSocket<S, O> = Server<
   ClientToServerEvents<S, O>,

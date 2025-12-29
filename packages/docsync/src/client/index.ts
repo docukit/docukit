@@ -34,14 +34,16 @@ export class DocSyncClient<
   private _shouldBroadcast = true;
   private _broadcastChannel: BroadcastChannel;
   protected _serverSync?: ServerSync<D, S, O>;
+  private _realTime: boolean;
 
   constructor(config: ClientConfig<D, S, O>) {
     if (typeof window === "undefined")
       throw new Error("DocSyncClient can only be used in the browser");
-    const { docBinding, local, server } = config;
+    const { docBinding, local, server, realTime = true } = config;
     this._docBinding = docBinding;
     this._localConfig = local;
     this._serverConfig = server;
+    this._realTime = realTime;
 
     // Listen for operations from other tabs.
     this._broadcastChannel = new BroadcastChannel("docsync");
@@ -76,6 +78,7 @@ export class DocSyncClient<
           url: this._serverConfig.url,
           docBinding: this._docBinding,
           getToken: this._serverConfig.auth.getToken,
+          realTime: this._realTime,
         });
       }
       return { provider, identity };
@@ -151,6 +154,8 @@ export class DocSyncClient<
         refCount: 1,
       });
       this._setupChangeListener(doc, id);
+      // Subscribe to real-time updates
+      void this._serverSync?.subscribeDoc(id);
       emit({ status: "success", data: { doc, id }, error: undefined });
       void (async () => {
         const local = await this._getLocal();
@@ -193,7 +198,11 @@ export class DocSyncClient<
             this._docsCache.set(docId, { promisedDoc, clock: 0, refCount: 1 });
             doc = await promisedDoc;
             // Register listener only for new docs (not cache hits)
-            if (doc) this._setupChangeListener(doc, docId);
+            if (doc) {
+              this._setupChangeListener(doc, docId);
+              // Subscribe to real-time updates when first document reference is created
+              void this._serverSync?.subscribeDoc(docId);
+            }
           }
           emit({
             status: "success",
@@ -272,8 +281,11 @@ export class DocSyncClient<
   async _unloadDoc(docId: string) {
     const cacheEntry = this._docsCache.get(docId);
     if (!cacheEntry) return;
-    if (cacheEntry.refCount > 1) cacheEntry.refCount -= 1;
-    else {
+    if (cacheEntry.refCount > 1) {
+      cacheEntry.refCount -= 1;
+    } else {
+      // Unsubscribe from real-time updates when last reference is removed
+      await this._serverSync?.unsubscribeDoc(docId);
       this._docsCache.delete(docId);
       const doc = await cacheEntry.promisedDoc;
       if (!doc) return;

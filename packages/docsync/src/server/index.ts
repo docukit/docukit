@@ -119,6 +119,13 @@ export class DocSyncServer<TContext, S, O> {
           }
           const result = await this._provider.sync(payload);
           cb(result);
+
+          // If client sent operations, notify other clients in the room (excluding sender)
+          if (payload.operations && payload.operations.length > 0) {
+            socket.broadcast.to(`doc:${payload.docId}`).emit("dirty", {
+              docId: payload.docId,
+            });
+          }
         },
         "delete-doc": async (payload, cb) => {
           const authorized = await checkAuth({
@@ -135,6 +142,18 @@ export class DocSyncServer<TContext, S, O> {
             cb({ success: false });
             return;
           }
+          cb({ success: true });
+        },
+        "subscribe-doc": async (payload, cb) => {
+          // Join the room for this document
+          await socket.join(`doc:${payload.docId}`);
+          console.log(`User ${userId} subscribed to doc:${payload.docId}`);
+          cb({ success: true });
+        },
+        "unsubscribe-doc": async (payload, cb) => {
+          // Leave the room for this document
+          await socket.leave(`doc:${payload.docId}`);
+          console.log(`User ${userId} unsubscribed from doc:${payload.docId}`);
           cb({ success: true });
         },
       };

@@ -8,6 +8,8 @@ import type {
 export type APIOptions = {
   url: string;
   getToken: () => Promise<string>;
+  onDirty?: (payload: { docId: string }) => void;
+  onReconnect?: () => void;
 };
 
 export class API<S, O> {
@@ -21,9 +23,18 @@ export class API<S, O> {
     });
     // prettier-ignore
     {
-      this._socket.on("connect", () => console.log("Connected to Socket.io server"));
+      this._socket.on("connect", () => {
+        console.log("Connected to Socket.io server");
+        // Notify reconnection so subscriptions can be restored
+        if (options.onReconnect) options.onReconnect();
+      });
       this._socket.on("connect_error", err => console.error("Socket.io connection error:", err));
       this._socket.on("disconnect", reason => console.error("Socket.io disconnected:", reason));
+    }
+
+    // Listen for dirty notifications from server
+    if (options.onDirty) {
+      this._socket.on("dirty", options.onDirty);
     }
   }
 

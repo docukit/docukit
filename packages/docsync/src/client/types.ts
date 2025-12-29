@@ -55,6 +55,19 @@ export type ClientConfig<
   O extends {},
 > = {
   docBinding: DocBinding<D, S, O>;
+  /**
+   * If it is `true` and there is an open connection to the server,
+   * clients will receive real-time updates from other clients.
+   *
+   * When `false`, a page refresh is usually required to see
+   * changes from other clients.
+   *
+   * Tabs and windows within the same device will synchronize in
+   * real-time regardless of this setting or even having a
+   * connection to the server, due to the use of BroadcastChannel.
+   * @default true
+   */
+  realTime?: boolean;
   server?: {
     url: string;
     auth: {

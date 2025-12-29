@@ -1,6 +1,6 @@
 import type { DocBinding, SerializedDoc } from "../shared/docBinding.js";
 import type { ClientProvider } from "./types.js";
-import { API } from "./utils.js";
+import { API, type APIOptions } from "./utils.js";
 
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 export type ServerSyncConfig<
@@ -12,6 +12,7 @@ export type ServerSyncConfig<
   url: string;
   docBinding: DocBinding<D, S, O>;
   getToken: () => Promise<string>;
+  realTime: boolean;
 };
 
 type PushStatus = "idle" | "pushing" | "pushing-with-pending";
@@ -22,12 +23,66 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
   private _docBinding: DocBinding<D, S, O>;
   // Per-docId push status to allow concurrent pushes for different docs
   protected _pushStatusByDocId = new Map<string, PushStatus>();
+  private _subscribedDocs = new Set<string>();
+  private _realTime: boolean;
 
   constructor(config: ServerSyncConfig<D, S, O>) {
     this._provider = config.provider;
+    this._realTime = config.realTime;
     const { url, getToken } = config;
-    this._api = new API({ url, getToken });
+
+    // Build API options conditionally based on realTime flag
+    const apiOptions: APIOptions = { url, getToken };
+    if (this._realTime) {
+      apiOptions.onDirty = (payload) => {
+        // When server notifies us of changes, trigger a sync (reuse saveRemote)
+        this.saveRemote({ docId: payload.docId });
+      };
+      apiOptions.onReconnect = () => {
+        // Re-subscribe to all documents after reconnection
+        void this._resubscribeAll();
+      };
+    }
+
+    this._api = new API(apiOptions);
     this._docBinding = config.docBinding;
+  }
+
+  /**
+   * Re-subscribe to all documents after reconnection.
+   */
+  private async _resubscribeAll(): Promise<void> {
+    const docIds = Array.from(this._subscribedDocs);
+    console.log(`Reconnected - resubscribing to ${docIds.length} documents`);
+    for (const docId of docIds) {
+      try {
+        await this._api.request("subscribe-doc", { docId });
+      } catch (err) {
+        console.error(`Failed to resubscribe to ${docId}:`, err);
+      }
+    }
+  }
+
+  /**
+   * Subscribe to real-time updates for a document.
+   * Should be called when a document is first loaded (refCount 0 → 1).
+   */
+  async subscribeDoc(docId: string): Promise<void> {
+    if (!this._realTime) return;
+    if (this._subscribedDocs.has(docId)) return;
+    await this._api.request("subscribe-doc", { docId });
+    this._subscribedDocs.add(docId);
+  }
+
+  /**
+   * Unsubscribe from real-time updates for a document.
+   * Should be called when a document is unloaded (refCount 1 → 0).
+   */
+  async unsubscribeDoc(docId: string): Promise<void> {
+    if (!this._realTime) return;
+    if (!this._subscribedDocs.has(docId)) return;
+    await this._api.request("unsubscribe-doc", { docId });
+    this._subscribedDocs.delete(docId);
   }
 
   /**
