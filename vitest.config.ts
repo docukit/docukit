@@ -74,9 +74,9 @@ export default defineConfig({
         extends: true, // Extends root config to include resolve.conditions
         plugins: [react()],
         test: {
-          include: ["**/integration/**/*.browser.test.ts"],
-          name: "integration",
-          globalSetup: ["./tests/docsync/integration/globalSetup.ts"],
+          include: ["**/local-first/**/*.browser.test.ts"],
+          name: "local-first",
+          globalSetup: ["./tests/docsync/local-first/globalSetup.ts"],
           browser: {
             screenshotFailures: false,
             headless: true,

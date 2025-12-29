@@ -59,14 +59,15 @@ export const createTestToken = (userId: string) => `test-token-${userId}`;
  * Each client gets a unique userId for IndexedDB isolation.
  * The token encodes the userId for server authentication.
  */
-export const createClient = (userId?: string) => {
+export const createClient = (userId?: string, token?: string) => {
   const docBinding = createDocBinding();
   const actualUserId = userId ?? generateUserId();
+  const actualToken = token ?? createTestToken(actualUserId);
 
   const config: ClientConfig<Doc, JsonDoc, Operations> = {
     server: {
       url: TEST_SERVER_URL,
-      auth: { getToken: async () => createTestToken(actualUserId) },
+      auth: { getToken: async () => actualToken },
     },
     docBinding,
     local: {
