@@ -7,6 +7,7 @@ import {
   type DocData,
   type SerializedDoc,
   type ClientConfig,
+  type Identity,
 } from "@docnode/docsync/client";
 import { DocNodeBinding } from "@docnode/docsync/docnode";
 import { type Doc, defineNode } from "docnode";
@@ -60,7 +61,14 @@ export const createValidConfig = () =>
     docBinding: createMockDocBinding(),
   });
 
-export const createValidConfigWithLocal = () =>
+/**
+ * Generates a unique userId for test isolation.
+ * Each test can use its own userId to get an isolated IndexedDB database.
+ */
+let testUserCounter = 0;
+export const generateTestUserId = () => `test-user-${++testUserCounter}`;
+
+export const createValidConfigWithLocal = (userId?: string) =>
   createClientConfig({
     server: {
       url: "ws://localhost:8081",
@@ -72,7 +80,7 @@ export const createValidConfigWithLocal = () =>
     local: {
       provider: IndexedDBProvider,
       getIdentity: async () => ({
-        userId: "test-user",
+        userId: userId ?? generateTestUserId(),
         secret: "test-secret",
       }),
     },
@@ -82,16 +90,19 @@ export const createValidConfigWithLocal = () =>
 // Client Factory
 // ============================================================================
 
-export const createClient = (withLocal = false) =>
+export const createClient = (withLocal = false, userId?: string) =>
   new DocSyncClient(
-    withLocal ? createValidConfigWithLocal() : createValidConfig(),
+    withLocal ? createValidConfigWithLocal(userId) : createValidConfig(),
   );
 
 /**
  * Creates a client with a spy on docBinding.removeListeners.
  * Useful for testing that listeners are properly cleaned up.
  */
-export const createClientWithRemoveListenersSpy = (withLocal = false) => {
+export const createClientWithRemoveListenersSpy = (
+  withLocal = false,
+  userId?: string,
+) => {
   const docBinding = createMockDocBinding();
   const removeListenersSpy = vi.spyOn(docBinding, "removeListeners");
 
@@ -107,7 +118,7 @@ export const createClientWithRemoveListenersSpy = (withLocal = false) => {
         local: {
           provider: IndexedDBProvider,
           getIdentity: async () => ({
-            userId: "test-user",
+            userId: userId ?? generateTestUserId(),
             secret: "test-secret",
           }),
         },
@@ -157,6 +168,9 @@ export const getErrorResult = (callback: DocCallback) =>
  */
 export const createFailingProvider = (errorMessage: string) => {
   return class FailingProvider {
+    constructor(_identity: Identity) {
+      // Identity accepted but not used in failing provider
+    }
     async transaction() {
       throw new Error(errorMessage);
     }
@@ -166,8 +180,10 @@ export const createFailingProvider = (errorMessage: string) => {
 /**
  * Creates a client with a custom provider class.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const createClientWithProvider = (ProviderClass: new () => any) => {
+export const createClientWithProvider = (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ProviderClass: new (identity: Identity) => any,
+) => {
   const config = createClientConfig({
     server: {
       url: "ws://localhost:8081",

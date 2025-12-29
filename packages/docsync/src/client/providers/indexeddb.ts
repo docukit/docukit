@@ -1,5 +1,5 @@
 import { openDB, type IDBPDatabase, type IDBPTransaction } from "idb";
-import type { ClientProvider, TransactionContext } from "../types.js";
+import type { ClientProvider, Identity, TransactionContext } from "../types.js";
 import { type DBSchema } from "idb";
 import type { OpsPayload, SerializedDocPayload } from "../../shared/types.js";
 
@@ -20,9 +20,13 @@ type IDBTx<S, O> = IDBPTransaction<DocNodeIDB<S, O>, StoreNames, "readwrite">;
 export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
   private _dbPromise: Promise<IDBPDatabase<DocNodeIDB<S, O>>>;
   private _seqGeneratorPromise: Promise<() => number>;
+  private _identity: Identity;
 
-  constructor() {
-    this._dbPromise = openDB("docsync", 1, {
+  constructor(identity: Identity) {
+    this._identity = identity;
+    // Each user gets their own database for isolation and performance
+    const dbName = `docsync-${identity.userId}`;
+    this._dbPromise = openDB(dbName, 1, {
       upgrade(db) {
         db.createObjectStore("docs", { keyPath: "docId" });
         db.createObjectStore("operations");

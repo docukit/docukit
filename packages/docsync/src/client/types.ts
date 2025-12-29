@@ -38,6 +38,17 @@ export type BroadcastMessage<O> = {
   docId: string;
 };
 
+/**
+ * Identity used for local persistence.
+ *
+ * - `userId`: Used to namespace the IndexedDB database (one DB per user).
+ * - `secret`: Used to derive encryption keys for data at rest (future).
+ */
+export type Identity = {
+  userId: string;
+  secret: string;
+};
+
 export type ClientConfig<
   D extends {},
   S extends SerializedDoc,
@@ -61,7 +72,7 @@ export type ClientConfig<
     // We want D, S, O to be inferred from the docBinding, not
     // from the provider
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    provider: new () => ClientProvider<any, any>;
+    provider: new (identity: Identity) => ClientProvider<any, any>;
     /**
      * Resolves the local storage identity.
      *
@@ -74,10 +85,7 @@ export type ClientConfig<
      * - Re-encryption is not supported, so losing the secret makes local data permanently unrecoverable.
      *
      */
-    getIdentity: () => Promise<{
-      userId: string;
-      secret: string;
-    }>;
+    getIdentity: () => Promise<Identity>;
   };
 };
 

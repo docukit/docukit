@@ -20,7 +20,7 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
   private _api: API<S, O>;
   private _docBinding: DocBinding<D, S, O>;
   // Per-docId push status to allow concurrent pushes for different docs
-  private _pushStatusByDocId = new Map<string, PushStatus>();
+  protected _pushStatusByDocId = new Map<string, PushStatus>();
 
   constructor(config: ServerSyncConfig<D, S, O>) {
     this._provider = config.provider;
@@ -42,7 +42,7 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
     void this._doPush({ docId });
   }
 
-  private async _doPush({ docId }: { docId: string }) {
+  protected async _doPush({ docId }: { docId: string }) {
     this._pushStatusByDocId.set(docId, "pushing");
 
     const operations = await this._provider.transaction("readonly", (ctx) =>

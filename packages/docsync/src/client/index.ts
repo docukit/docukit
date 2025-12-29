@@ -7,9 +7,15 @@ import type {
   ClientProvider,
   DocData,
   GetDocArgs,
+  Identity,
   QueryResult,
 } from "./types.js";
 import { ServerSync } from "./serverSync.js";
+
+type LocalResolved<S, O> = {
+  provider: ClientProvider<S, O>;
+  identity: Identity;
+};
 
 export class DocSyncClient<
   D extends {},
@@ -21,33 +27,21 @@ export class DocSyncClient<
     string,
     { promisedDoc: Promise<D | undefined>; clock: number; refCount: number }
   >();
-  private _local?: {
-    provider: ClientProvider<S, O>;
-    secret: Promise<string>;
-  };
+  // Lazy-initialized local storage (provider created after identity is resolved)
+  private _localPromise?: Promise<LocalResolved<S, O>>;
+  private _localConfig?: ClientConfig<D, S, O>["local"];
+  private _serverConfig?: ClientConfig<D, S, O>["server"];
   private _shouldBroadcast = true;
   private _broadcastChannel: BroadcastChannel;
-  private _serverSync?: ServerSync<D, S, O>;
+  protected _serverSync?: ServerSync<D, S, O>;
 
   constructor(config: ClientConfig<D, S, O>) {
     if (typeof window === "undefined")
       throw new Error("DocSyncClient can only be used in the browser");
-    const { docBinding, local } = config;
+    const { docBinding, local, server } = config;
     this._docBinding = docBinding;
-    if (local) {
-      const provider = new local.provider() as ClientProvider<S, O>;
-      this._local = {
-        secret: local.getIdentity().then((identity) => identity.secret),
-        provider,
-      };
-      if (config.server) {
-        this._serverSync = new ServerSync({
-          provider,
-          url: config.server.url,
-          docBinding: this._docBinding,
-        });
-      }
-    }
+    this._localConfig = local;
+    this._serverConfig = server;
 
     // Listen for operations from other tabs.
     this._broadcastChannel = new BroadcastChannel("docsync");
@@ -61,6 +55,30 @@ export class DocSyncClient<
       }
       ev.data.type satisfies never;
     };
+  }
+
+  /**
+   * Lazily initialize the local provider.
+   * The provider is created only when first needed, with identity already resolved.
+   */
+  protected _getLocal(): Promise<LocalResolved<S, O>> | undefined {
+    if (!this._localConfig) return undefined;
+    this._localPromise ??= (async () => {
+      const identity = await this._localConfig!.getIdentity();
+      const provider = new this._localConfig!.provider(
+        identity,
+      ) as ClientProvider<S, O>;
+      // Initialize ServerSync now that we have the provider
+      if (this._serverConfig && !this._serverSync) {
+        this._serverSync = new ServerSync({
+          provider,
+          url: this._serverConfig.url,
+          docBinding: this._docBinding,
+        });
+      }
+      return { provider, identity };
+    })();
+    return this._localPromise;
   }
 
   async _applyOperations(operations: O, docId: string) {
@@ -132,13 +150,17 @@ export class DocSyncClient<
       });
       this._setupChangeListener(doc, id);
       emit({ status: "success", data: { doc, id }, error: undefined });
-      void this._local?.provider.transaction("readwrite", (ctx) =>
-        ctx.saveSerializedDoc({
-          serializedDoc: this._docBinding.serialize(doc),
-          docId: id,
-          clock: 0,
-        }),
-      );
+      void (async () => {
+        const local = await this._getLocal();
+        if (!local) return;
+        await local.provider.transaction("readwrite", (ctx) =>
+          ctx.saveSerializedDoc({
+            serializedDoc: this._docBinding.serialize(doc),
+            docId: id,
+            clock: 0,
+          }),
+        );
+      })();
       // TODO: review this
       // This forces a fetch if the document exists on the server.
       void this.onLocalOperations({
@@ -202,9 +224,10 @@ export class DocSyncClient<
     docId: string,
     type?: string,
   ): Promise<D | undefined> {
-    if (!this._local) return undefined;
+    const local = await this._getLocal();
+    if (!local) return undefined;
 
-    return this._local.provider.transaction("readwrite", async (ctx) => {
+    return local.provider.transaction("readwrite", async (ctx) => {
       // Try to load existing doc
       const stored = await ctx.getSerializedDoc(docId);
       const localOperations = await ctx.getOperations({ docId });
@@ -262,7 +285,8 @@ export class DocSyncClient<
 
   async onLocalOperations({ docId, operations }: OpsPayload<O>) {
     // 1. Save locally
-    await this._local?.provider.transaction("readwrite", (ctx) =>
+    const local = await this._getLocal();
+    await local?.provider.transaction("readwrite", (ctx) =>
       ctx.saveOperations({ docId, operations }),
     );
     // 2. Save remotely

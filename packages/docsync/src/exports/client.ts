@@ -5,5 +5,6 @@ export type {
   ClientConfig,
   GetDocArgs,
   DocData,
+  Identity,
   QueryResult,
 } from "../client/types.js";
