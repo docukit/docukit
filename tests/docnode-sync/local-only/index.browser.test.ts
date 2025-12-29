@@ -18,7 +18,7 @@ import {
   tick,
   getSuccessData,
   getErrorResult,
-} from "./utils.js";
+} from "../utils.js";
 
 // Mock socket.io-client to avoid real connections
 vi.mock("socket.io-client", () => ({
