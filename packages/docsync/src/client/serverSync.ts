@@ -106,16 +106,23 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
   protected async _doPush({ docId }: { docId: string }) {
     this._pushStatusByDocId.set(docId, "pushing");
 
-    const operationsBatches = await this._provider.transaction(
+    // Get the current clock value and operations from provider
+    const [operationsBatches, stored] = await this._provider.transaction(
       "readonly",
-      (ctx) => ctx.getOperations({ docId }),
+      async (ctx) => {
+        return Promise.all([
+          ctx.getOperations({ docId }),
+          ctx.getSerializedDoc(docId),
+        ]);
+      },
     );
     const operations = operationsBatches.flat();
+    const clientClock = stored?.clock ?? 0;
 
     let response;
     try {
       response = await this._api.request("sync-operations", {
-        clock: 0,
+        clock: clientClock,
         docId,
         operations,
       });
@@ -158,14 +165,17 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
       await ctx.saveSerializedDoc({
         serializedDoc,
         docId,
-        clock: stored.clock + 1, // TODO: proper clock from server
+        clock: response.clock, // Use clock from server
       });
     });
 
     // Notify that the doc has been updated with server operations
-    // This will apply the operations to the in-memory cached document
-    if (this._onServerOperations && response.operations) {
-      this._onServerOperations({ docId, operations: response.operations });
+    // This will apply ONLY the server operations to the in-memory cached document
+    if (response?.operations) {
+      this._onServerOperations?.({
+        docId,
+        operations: response.operations,
+      });
     }
 
     // Status may have changed to "pushing-with-pending" during async ops

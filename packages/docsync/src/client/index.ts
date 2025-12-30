@@ -24,7 +24,7 @@ export class DocSyncClient<
   private _docBinding: DocBinding<D, S, O>;
   protected _docsCache = new Map<
     string,
-    { promisedDoc: Promise<D | undefined>; clock: number; refCount: number }
+    { promisedDoc: Promise<D | undefined>; refCount: number }
   >();
   private _localPromise?: Promise<LocalResolved<S, O>>;
   private _shouldBroadcast = true;
@@ -104,14 +104,13 @@ export class DocSyncClient<
     if (!cacheEntry) return;
 
     // Replace the cached document with the new one
-    // Keep the same refCount and clock
+    // Keep the same refCount
     // Note: We don't setup a new change listener here because:
     // 1. The doc already has all operations applied from the sync
     // 2. A listener will be setup when the doc is loaded via getDoc
     // 3. Multiple listeners would cause operations to be applied multiple times
     this._docsCache.set(docId, {
-      promisedDoc: Promise.resolve(doc),
-      clock: cacheEntry.clock,
+      promisedDoc: Promise.resolve(newDoc),
       refCount: cacheEntry.refCount,
     });
   }
@@ -126,7 +125,7 @@ export class DocSyncClient<
     const cacheEntry = this._docsCache.get(docId);
     if (!cacheEntry) return;
 
-    // Get the cached document and apply server operations to it
+    // Get the cached document and apply ONLY server operations to it
     const doc = await cacheEntry.promisedDoc;
     if (!doc) return;
 
@@ -192,7 +191,6 @@ export class DocSyncClient<
       docId = id;
       this._docsCache.set(id, {
         promisedDoc: Promise.resolve(doc),
-        clock: 0,
         refCount: 1,
       });
       this._setupChangeListener(doc, id);

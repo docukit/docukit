@@ -60,7 +60,10 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
     },
     onChange: (doc, cb: (ev: { operations: Operations }) => void) =>
       doc.onChange(cb),
-    applyOperations: (doc, operations) => doc.applyOperations(operations),
+    applyOperations: (doc, operations) => {
+      doc.applyOperations(operations);
+      doc.forceCommit();
+    },
     removeListeners: (doc) => {
       // TODO: maybe doc should have a removeListeners method?
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access

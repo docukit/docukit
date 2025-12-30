@@ -65,11 +65,15 @@ export interface MockApi {
 }
 
 export const createMockApi = (): MockApi => ({
-  request: vi.fn().mockResolvedValue({
-    docId: "test-doc",
-    operations: [],
-    serializedDoc: null,
-    clock: 1,
+  request: vi.fn().mockImplementation(async (_endpoint, payload) => {
+    // Return the next clock value (client clock + 1)
+    const clientClock = (payload as { clock?: number }).clock ?? 0;
+    return {
+      docId: "test-doc",
+      operations: [],
+      serializedDoc: null,
+      clock: clientClock + 1,
+    };
   }),
   _socket: null,
 });
