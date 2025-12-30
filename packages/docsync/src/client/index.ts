@@ -99,9 +99,21 @@ export class DocSyncClient<
     this._docBinding.applyOperations(doc, operations);
   }
 
-  async _replaceDocInCache({ docId, doc }: { docId: string; doc: D }) {
+  // TODO: used when server responds with a new doc (squashing)
+  async _replaceDocInCache({
+    docId,
+    doc,
+    serializedDoc,
+  }: {
+    docId: string;
+    doc?: D;
+    serializedDoc?: S;
+  }) {
     const cacheEntry = this._docsCache.get(docId);
     if (!cacheEntry) return;
+
+    // Deserialize if needed
+    const newDoc = doc ?? this._docBinding.deserialize(serializedDoc!);
 
     // Replace the cached document with the new one
     // Keep the same refCount
@@ -235,21 +247,20 @@ export class DocSyncClient<
               docId,
               createIfMissing ? type : undefined,
             );
-            this._docsCache.set(docId, { promisedDoc, clock: 0, refCount: 1 });
+            this._docsCache.set(docId, { promisedDoc, refCount: 1 });
             doc = await promisedDoc;
-            // Register listener only for new docs (not cache hits)
             if (doc) {
+              // Register listener only for new docs (not cache hits)
               this._setupChangeListener(doc, docId);
               // Subscribe to real-time updates when first document reference is created
               void this._serverSync?.subscribeDoc(docId);
+              // Force a sync when loading a document for the first time (pull from server)
+              void this.onLocalOperations({
+                docId,
+                operations: [] as O[],
+              });
             }
-            // Force a sync when loading a document for the first time (pull from server)
-            void this.onLocalOperations({
-              docId,
-              operations: [] as O[],
-            });
           }
-
           emit({
             status: "success",
             data: doc ? { doc, id: docId } : undefined,
