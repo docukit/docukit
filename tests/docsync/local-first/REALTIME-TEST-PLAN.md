@@ -1,385 +1,408 @@
 # Real-Time Synchronization Test Plan
 
-## Configuration Variables (3)
-
-1. **broadcastChannel**: `true` | `false` - Client config for intra-device sync
-2. **realTime**: `true` | `false` - Client config for server dirty events
-3. **Same User**: `yes` | `no` - Whether clients share IndexedDB (same userId)
-
-**Total config combinations**: 2^3 = 8
-
-## Runtime States (2)
-
-4. **Client sends ops**: `yes` (push) | `no` (pull-only) - Whether client has local changes to push
-5. **Server has ops**: `yes` | `no` (up-to-date) - Whether server has operations client doesn't have
+## Overview
 
-**Total state combinations per config**: 2^2 = 4
-
-**Grand total**: 8 configs × 4 states = 32 scenarios
+This document defines the comprehensive test strategy for real-time synchronization in docsync. We test **all 32 possible combinations** of configurations and runtime states to verify correct behavior or expected failures.
 
-## Mechanism Matrix
+## Test Space: 32 Total Scenarios
 
-| Mechanism           | Same User        | Different Users        | Requires Server |
-| ------------------- | ---------------- | ---------------------- | --------------- |
-| BroadcastChannel    | ✅ Works         | ❌ Doesn't cross users | ❌ No           |
-| Server Dirty Events | ⚠️ Problematic\* | ✅ Works               | ✅ Yes          |
-| Shared IndexedDB    | ✅ Implicit      | ❌ Different DBs       | ❌ No           |
+### Configuration Variables (8 combinations)
 
-\*Problematic because both clients share the same clock in IndexedDB, so server won't return operations.
+| #   | BC  | RT  | Same User | Label                             |
+| --- | --- | --- | --------- | --------------------------------- |
+| 1   | ✅  | ✅  | ✅        | Same user + Both mechanisms       |
+| 2   | ✅  | ✅  | ❌        | Different users + Both mechanisms |
+| 3   | ✅  | ❌  | ✅        | Same user + BC only               |
+| 4   | ✅  | ❌  | ❌        | Different users + BC only         |
+| 5   | ❌  | ✅  | ✅        | Same user + RT only (BROKEN)      |
+| 6   | ❌  | ✅  | ❌        | Different users + RT only         |
+| 7   | ❌  | ❌  | ✅        | Same user + No sync               |
+| 8   | ❌  | ❌  | ❌        | Different users + No sync         |
 
-## Feasible Scenarios
+### Runtime States (4 per configuration)
 
-### A. Same User Scenarios (Shared IndexedDB)
+| #   | Client Sends Ops | Server Has Ops | Scenario            |
+| --- | ---------------- | -------------- | ------------------- |
+| A   | ❌ No (pull)     | ❌ No          | Up-to-date check    |
+| B   | ❌ No (pull)     | ✅ Yes         | Pull new operations |
+| C   | ✅ Yes (push)    | ❌ No          | Push-only           |
+| D   | ✅ Yes (push)    | ✅ Yes         | Bidirectional sync  |
 
-#### A1. BroadcastChannel: ON, RealTime: ON
+**Total: 8 configs × 4 states = 32 test scenarios**
 
-- **Mechanism**: BroadcastChannel (primary), Server Dirty (secondary)
-- **Flow**:
-  1. Client1 makes change → saves to IndexedDB → broadcasts via BroadcastChannel
-  2. Client2 receives broadcast → applies operations immediately
-  3. Client1 pushes to server → dirty event to client2 (redundant)
-- **Result**: ✅ **Works perfectly** - Client2 sees change immediately
-- **Test**: Config 1
+---
 
-#### A2. BroadcastChannel: ON, RealTime: OFF
+## Sync Mechanisms Explained
 
-- **Mechanism**: BroadcastChannel only
-- **Flow**:
-  1. Client1 makes change → saves to IndexedDB → broadcasts via BroadcastChannel
-  2. Client2 receives broadcast → applies operations immediately
-  3. NO dirty event (realTime: false)
-- **Result**: ✅ **Works** - Client2 sees change immediately via BroadcastChannel
-- **Test**: Config 3
+### 1. BroadcastChannel (Browser API)
 
-#### A3. BroadcastChannel: OFF, RealTime: ON
+- **Scope**: Same user, same device, same browser origin
+- **Mechanism**: In-process communication between tabs
+- **Speed**: Instant
+- **Limitation**: Cannot cross users or devices
 
-- **Mechanism**: Server Dirty Events only
-- **Flow**:
-  1. Client1 makes change → saves to IndexedDB (clock: 0) → pushes to server
-  2. Server saves with clock: 1, updates IndexedDB via consolidation
-  3. Client2 shares IndexedDB, so now has clock: 1
-  4. Dirty event fires → Client2 pulls with clock: 1
-  5. Server says "no ops with clock > 1" → returns empty
-  6. Client2's in-memory doc is stale (still doesn't have the change)
-- **Result**: ❌ **BROKEN** - Client2 never sees the change in memory
-- **Problem**: Shared IndexedDB means shared clock, preventing server from returning ops
-- **Test**: Config 2 (currently failing)
-- **Status**: 🚫 **NOT SUPPORTED** - Requires architectural changes
+### 2. Server Dirty Events (WebSocket)
 
-#### A4. BroadcastChannel: OFF, RealTime: OFF
+- **Scope**: Any users, any devices
+- **Mechanism**: Server notifies subscribed clients
+- **Speed**: Network latency (~10-50ms)
+- **Limitation**: Requires server + has "shared clock problem" for same-user configs
 
-- **Mechanism**: None (manual sync only)
-- **Flow**:
-  1. Client1 makes change → saves to IndexedDB
-  2. Client2 has no mechanism to be notified
-  3. Client2 would need to manually call `saveRemote()` or reload doc
-- **Result**: ✅ **Expected behavior** - No automatic sync
-- **Test**: Config 4
+### 3. Shared IndexedDB (Implicit)
 
-### B. Different User Scenarios (Separate IndexedDB)
+- **Scope**: Same user only (keyed by `userId`)
+- **Mechanism**: Direct read from shared storage
+- **Effect**: Persistence only, not in-memory updates
 
-#### B1. BroadcastChannel: ON, RealTime: ON
+---
 
-- **Mechanism**: Server Dirty Events (BroadcastChannel doesn't cross users)
-- **Flow**:
-  1. Client1 makes change → saves to IndexedDB1 (clock: 0) → pushes to server
-  2. Server saves with clock: 1
-  3. Dirty event fires → Client2 pulls with clock: 0 (from IndexedDB2)
-  4. Server returns operations (clock: 1 > 0)
-  5. Client2 applies operations to in-memory doc
-- **Result**: ✅ **Works** - Client2 sees change via server
-- **Test**: "realTime=true - server dirty events work across users"
-- **Note**: BroadcastChannel config is irrelevant for different users
-
-#### B2. BroadcastChannel: ON, RealTime: OFF
-
-- **Mechanism**: None effective (BroadcastChannel doesn't cross users)
-- **Flow**:
-  1. Client1 makes change → saves to IndexedDB1
-  2. BroadcastChannel doesn't reach Client2 (different user)
-  3. No dirty event (realTime: false)
-  4. Client2 has no notification mechanism
-- **Result**: ✅ **Expected behavior** - No automatic sync across users
-- **Test**: "realTime=false - no automatic sync across users"
-
-#### B3. BroadcastChannel: OFF, RealTime: ON
-
-- **Mechanism**: Server Dirty Events
-- **Flow**: Same as B1
-- **Result**: ✅ **Works** - Server dirty events work correctly
-- **Test**: Covered by B1 (broadcastChannel config doesn't matter for different users)
-
-#### B4. BroadcastChannel: OFF, RealTime: OFF
-
-- **Mechanism**: None
-- **Flow**: Same as B2
-- **Result**: ✅ **Expected behavior** - No automatic sync
-- **Test**: Covered by B2
-
-## Valid Test Scenarios (9 total)
-
-### Same User Tests (4)
-
-1. ✅ **Config 1**: BC=ON, RT=ON - Both mechanisms active
-2. 🚫 **Config 2**: BC=OFF, RT=ON - **NOT SUPPORTED** (broken by design)
-3. ✅ **Config 3**: BC=OFF, RT=ON - Only BroadcastChannel
-4. ✅ **Config 4**: BC=OFF, RT=OFF - No automatic sync
-
-### Different User Tests (2)
-
-5. ✅ **Cross-user RT=ON**: Server dirty events work
-6. ✅ **Cross-user RT=OFF**: No automatic sync
-
-### Edge Cases (3)
-
-7. ✅ **BroadcastChannel guard**: Sending when BC disabled doesn't throw
-8. ✅ **Auto-subscribe RT=ON**: Documents subscribe automatically
-9. ✅ **No subscribe RT=OFF**: Documents don't subscribe
-
-## Runtime State Matrix
-
-### All Possible Runtime States
-
-| Client Sends Ops | Server Has Ops | Scenario Description                           | Server Response        | Client Action                  |
-| ---------------- | -------------- | ---------------------------------------------- | ---------------------- | ------------------------------ |
-| ❌ No (pull)     | ❌ No          | Client checks for updates, none available      | Empty ops, same clock  | No-op                          |
-| ❌ No (pull)     | ✅ Yes         | Client pulls new operations                    | Returns ops, new clock | Apply ops to doc               |
-| ✅ Yes (push)    | ❌ No          | Client pushes changes, server has nothing new  | Empty ops, new clock   | Consolidate local ops          |
-| ✅ Yes (push)    | ✅ Yes         | Client pushes changes, server also has new ops | Returns ops, new clock | Apply server ops + consolidate |
-
-### Common Scenarios Explained
-
-#### Scenario 1: Pull-only, Up-to-date
-
-**State**: Client sends 0 ops, Server has 0 ops
-
-```
-Client → Server: { clock: 5, operations: [] }
-Server → Client: { clock: 5, operations: [] }
-```
-
-**Result**: No changes needed
-
-#### Scenario 2: Pull-only, Behind
-
-**State**: Client sends 0 ops, Server has ops
-
-```
-Client → Server: { clock: 3, operations: [] }
-Server → Client: { clock: 5, operations: [op4, op5] }
-```
-
-**Result**: Client applies op4 and op5
-
-#### Scenario 3: Push-only, Server up-to-date
-
-**State**: Client sends ops, Server has 0 ops
-
-```
-Client → Server: { clock: 5, operations: [clientOp] }
-Server → Client: { clock: 6, operations: [] }
-```
-
-**Result**: Client consolidates local op into serialized doc
-
-#### Scenario 4: Push-Pull, Both have changes
-
-**State**: Client sends ops, Server has ops
-
-```
-Client → Server: { clock: 3, operations: [clientOp] }
-Server → Client: { clock: 5, operations: [serverOp4, serverOp5] }
-```
-
-**Result**: Client applies server ops first, then consolidates local op
-
-## Server Operation Response Scenarios
-
-When client syncs with server:
-
-| Scenario          | Client Clock | Server Has Ops  | Server Response | Client Action  |
-| ----------------- | ------------ | --------------- | --------------- | -------------- |
-| Fresh pull        | 0            | Yes (clock: 1+) | Returns ops     | Apply to doc   |
-| Up to date        | 5            | No (clock: 5)   | Empty ops       | No-op          |
-| Behind            | 3            | Yes (clock: 5)  | Returns ops 4,5 | Apply to doc   |
-| Same user, synced | 5            | Yes (clock: 5)  | Empty ops       | 🚫 **PROBLEM** |
-
-**The "Same user, synced" problem:**
-
-- Client1 pushes ops → Server stores with clock: 5 → Updates IndexedDB
-- Client2 shares IndexedDB → Also has clock: 5 now
-- Dirty event → Client2 pulls with clock: 5
-- Server: "No ops with clock > 5" → Returns empty
-- Client2's in-memory doc never updates ❌
-
-## Solutions for Config 2 (Same User, No BC, RealTime ON)
-
-### Option 1: Don't Support This Config ✅ RECOMMENDED
-
-- Mark as `.todo()` or `.skip()`
-- Document in README that same-user realTime requires BroadcastChannel
-- This is a reasonable limitation
-
-### Option 2: Storage Events API
-
-- Listen to `storage` events (only works for `localStorage`, not IndexedDB)
-- Would require refactoring storage layer
-- Limited browser support for IndexedDB storage events
-
-### Option 3: Polling IndexedDB
-
-- Periodically check IndexedDB for changes
-- Performance overhead
-- Not true "real-time"
-
-### Option 4: Server Tracks "Dirty" State Per User
-
-- Server keeps separate clocks for each client session
-- Much more complex server logic
-- Still doesn't solve the in-memory update problem
-
-### Option 5: Force Full Reload on Dirty
-
-- When dirty event fires and server returns empty ops
-- Reload entire document from IndexedDB
-- Loses in-memory references (breaks existing doc instances)
-
-## Recommendations
-
-1. **Mark Config 2 as NOT SUPPORTED** ✅
-   - Add `.skip()` to the test with explanation
-   - Document in README: "Same-user real-time sync requires `broadcastChannel: true`"
-2. **Keep Current Tests** (5 passing + 3 skipped = 8)
-
-   - Config 1: ✅ Same user, both mechanisms
-   - Config 2: ⏭️ **SKIP** (not supported)
-   - Config 3: ✅ Same user, only BC
-   - Config 4: ✅ Same user, no sync
-   - Cross-user RT=ON: ✅ Server dirty works
-   - Cross-user RT=OFF: ✅ No sync
-   - BC guard: ✅ No errors
-   - Auto-subscribe: ✅ Works with RT=ON
-   - No subscribe: ✅ Works with RT=OFF
-
-3. **Future Enhancement**
-   - Consider WebLocks API for cross-tab coordination
-   - Or SharedWorker for same-origin synchronization
-   - These would enable Config 2 support
-
-## Config Validity Table
-
-| BC  | RT  | Same User | Valid? | Sync Method | Status     |
-| --- | --- | --------- | ------ | ----------- | ---------- |
-| ✅  | ✅  | ✅        | ✅     | BC + Dirty  | Working    |
-| ✅  | ✅  | ❌        | ✅     | Dirty only  | Working    |
-| ✅  | ❌  | ✅        | ✅     | BC only     | Working    |
-| ✅  | ❌  | ❌        | ✅     | None        | Working    |
-| ❌  | ✅  | ✅        | 🚫     | Dirty only  | **BROKEN** |
-| ❌  | ✅  | ❌        | ✅     | Dirty only  | Working    |
-| ❌  | ❌  | ✅        | ✅     | None        | Working    |
-| ❌  | ❌  | ❌        | ✅     | None        | Working    |
-
-**Key Insight**: The only broken config is `BC=OFF, RT=ON, Same User` because:
-
-- BroadcastChannel is disabled (can't notify client2)
-- Server dirty events don't work (shared clock problem)
-- No viable sync mechanism remains
-
-## Complete Scenario Matrix (32 Total)
+## The 32 Test Scenarios
 
 ### Legend
 
 - ✅ Works correctly
-- 🚫 Broken by design
-- ⚠️ Edge case (works but unusual)
-- 💤 No-op (expected behavior)
+- 🚫 Broken (negative test)
+- 💤 No-op (expected)
+- ⚠️ Edge case
 
-### Config 1: Same User + BC=ON + RT=ON
+---
 
-| Client Ops | Server Ops | Result | Behavior                                                   |
-| ---------- | ---------- | ------ | ---------------------------------------------------------- |
-| No         | No         | ✅     | Client2 pulls, nothing changes                             |
-| No         | Yes        | ✅     | Client2 pulls ops, applies via BroadcastChannel            |
-| Yes        | No         | ✅     | Client1 pushes, Client2 gets via BroadcastChannel + dirty  |
-| Yes        | Yes        | ✅     | Client1 pushes, Client2 gets server ops + local ops via BC |
+## Config 1: Same User + BC=ON + RT=ON (Both mechanisms)
 
-### Config 2: Same User + BC=OFF + RT=ON 🚫 BROKEN
+**Sync mechanism**: BroadcastChannel (primary) + Server Dirty (secondary)
 
-| Client Ops | Server Ops | Result | Behavior                                                                              |
-| ---------- | ---------- | ------ | ------------------------------------------------------------------------------------- |
-| No         | No         | 💤     | Nothing happens (no changes)                                                          |
-| No         | Yes        | ⚠️     | Dirty event fires but client has wrong clock                                          |
-| Yes        | No         | 🚫     | **BROKEN**: Client1 pushes, Client2 dirty fires but server returns empty (same clock) |
-| Yes        | Yes        | 🚫     | **BROKEN**: Same as above, client2 never sees client1's changes                       |
+| #   | Client Ops | Server Ops | Expected Behavior                                | Test Type   |
+| --- | ---------- | ---------- | ------------------------------------------------ | ----------- |
+| 1A  | ❌ No      | ❌ No      | Client2 polls, no changes                        | ✅ Positive |
+| 1B  | ❌ No      | ✅ Yes     | Client2 gets server ops via dirty event          | ✅ Positive |
+| 1C  | ✅ Yes     | ❌ No      | Client1 pushes, Client2 gets via BC instantly    | ✅ Positive |
+| 1D  | ✅ Yes     | ✅ Yes     | Client1 pushes, Client2 gets both via BC + dirty | ✅ Positive |
 
-**Why broken**: Shared IndexedDB means both clients have same clock after client1 pushes, so server won't return ops to client2.
+---
 
-### Config 3: Same User + BC=ON + RT=OFF
+## Config 2: Different Users + BC=ON + RT=ON (Both mechanisms, but BC ineffective)
 
-| Client Ops | Server Ops | Result | Behavior                                                               |
-| ---------- | ---------- | ------ | ---------------------------------------------------------------------- |
-| No         | No         | 💤     | Nothing happens                                                        |
-| No         | Yes        | 💤     | Server has ops but no dirty event, no pull                             |
-| Yes        | No         | ✅     | Client1 pushes, Client2 gets via BroadcastChannel only                 |
-| Yes        | Yes        | ✅     | Client1 pushes, Client2 gets via BroadcastChannel (server ops ignored) |
+**Sync mechanism**: Server Dirty only (BC doesn't cross users)
 
-### Config 4: Same User + BC=OFF + RT=OFF
+| #   | Client Ops | Server Ops | Expected Behavior                              | Test Type   |
+| --- | ---------- | ---------- | ---------------------------------------------- | ----------- |
+| 2A  | ❌ No      | ❌ No      | No changes                                     | 💤 No-op    |
+| 2B  | ❌ No      | ✅ Yes     | Client2 gets server ops via dirty event        | ✅ Positive |
+| 2C  | ✅ Yes     | ❌ No      | Client1 pushes, Client2 gets via dirty         | ✅ Positive |
+| 2D  | ✅ Yes     | ✅ Yes     | Client1 pushes, Client2 gets all ops via dirty | ✅ Positive |
 
-| Client Ops | Server Ops | Result | Behavior                                     |
-| ---------- | ---------- | ------ | -------------------------------------------- |
-| No         | No         | 💤     | Nothing happens (manual sync only)           |
-| No         | Yes        | 💤     | Server has ops but no notification mechanism |
-| Yes        | No         | 💤     | Client1 pushes, Client2 has no notification  |
-| Yes        | Yes        | 💤     | No automatic sync (expected)                 |
+---
 
-### Config 5: Different Users + BC=ON + RT=ON
+## Config 3: Same User + BC=ON + RT=OFF (BC only)
 
-| Client Ops | Server Ops | Result | Behavior                                                          |
-| ---------- | ---------- | ------ | ----------------------------------------------------------------- |
-| No         | No         | 💤     | Nothing happens                                                   |
-| No         | Yes        | ✅     | Client2 pulls ops via dirty event                                 |
-| Yes        | No         | ✅     | Client1 pushes, dirty fires, Client2 pulls (gets client1's ops)   |
-| Yes        | Yes        | ✅     | Client1 pushes, Client2 gets server ops + client1's ops via dirty |
+**Sync mechanism**: BroadcastChannel only
 
-**Note**: BroadcastChannel config is irrelevant (doesn't cross users)
+| #   | Client Ops | Server Ops | Expected Behavior                                                    | Test Type   |
+| --- | ---------- | ---------- | -------------------------------------------------------------------- | ----------- |
+| 3A  | ❌ No      | ❌ No      | No changes                                                           | 💤 No-op    |
+| 3B  | ❌ No      | ✅ Yes     | Server has ops but no dirty event, Client2 doesn't see               | 💤 No-op    |
+| 3C  | ✅ Yes     | ❌ No      | Client1 pushes, Client2 gets via BC instantly                        | ✅ Positive |
+| 3D  | ✅ Yes     | ✅ Yes     | Client1 pushes, Client2 gets client1 ops via BC (server ops ignored) | ✅ Positive |
 
-### Config 6: Different Users + BC=OFF + RT=ON
+---
 
-| Client Ops | Server Ops | Result | Behavior                                                 |
-| ---------- | ---------- | ------ | -------------------------------------------------------- |
-| No         | No         | 💤     | Nothing happens                                          |
-| No         | Yes        | ✅     | Client2 pulls ops via dirty event                        |
-| Yes        | No         | ✅     | Client1 pushes, dirty fires, Client2 pulls               |
-| Yes        | Yes        | ✅     | Same as Config 5 (BC doesn't matter for different users) |
+## Config 4: Different Users + BC=ON + RT=OFF (No effective mechanism)
 
-### Config 7: Different Users + BC=ON + RT=OFF
+**Sync mechanism**: None (BC doesn't work, RT disabled)
 
-| Client Ops | Server Ops | Result | Behavior                                |
-| ---------- | ---------- | ------ | --------------------------------------- |
-| No         | No         | 💤     | Nothing happens                         |
-| No         | Yes        | 💤     | Server has ops but no dirty event       |
-| Yes        | No         | 💤     | Client1 pushes but Client2 not notified |
-| Yes        | Yes        | 💤     | No automatic sync across users          |
+| #   | Client Ops | Server Ops | Expected Behavior                                | Test Type |
+| --- | ---------- | ---------- | ------------------------------------------------ | --------- |
+| 4A  | ❌ No      | ❌ No      | No changes                                       | 💤 No-op  |
+| 4B  | ❌ No      | ✅ Yes     | Server has ops but Client2 doesn't see (no sync) | 💤 No-op  |
+| 4C  | ✅ Yes     | ❌ No      | Client1 pushes, Client2 doesn't see (no sync)    | 💤 No-op  |
+| 4D  | ✅ Yes     | ✅ Yes     | No automatic sync                                | 💤 No-op  |
 
-### Config 8: Different Users + BC=OFF + RT=OFF
+**Enhancement**: Add manual sync test - after 4D, call `onLocalOperations()` and verify Client2 then sees changes.
 
-| Client Ops | Server Ops | Result | Behavior                           |
-| ---------- | ---------- | ------ | ---------------------------------- |
-| No         | No         | 💤     | Nothing happens                    |
-| No         | Yes        | 💤     | Server has ops but no notification |
-| Yes        | No         | 💤     | No automatic sync                  |
-| Yes        | Yes        | 💤     | No automatic sync (expected)       |
+---
 
-## Summary Statistics
+## Config 5: Same User + BC=OFF + RT=ON (BROKEN CONFIG)
 
-- **Total scenarios**: 32
-- **Working correctly**: 23 ✅
-- **Broken by design**: 2 🚫 (Config 2 with client ops)
-- **No-op (expected)**: 7 💤
+**Sync mechanism**: Server Dirty only (broken by shared clock problem)
 
-**Only broken scenarios**:
+| #   | Client Ops | Server Ops | Expected Behavior                                               | Test Type   |
+| --- | ---------- | ---------- | --------------------------------------------------------------- | ----------- |
+| 5A  | ❌ No      | ❌ No      | No changes                                                      | 💤 No-op    |
+| 5B  | ❌ No      | ✅ Yes     | Dirty fires, but shared clock causes empty response             | 🚫 Negative |
+| 5C  | ✅ Yes     | ❌ No      | Client1 pushes, dirty fires, but Client2 has same clock → empty | 🚫 Negative |
+| 5D  | ✅ Yes     | ✅ Yes     | Same as 5C - Client2 never sees client1's changes               | 🚫 Negative |
 
-1. Same User + BC=OFF + RT=ON + Client1 sends ops + Server has no ops
-2. Same User + BC=OFF + RT=ON + Client1 sends ops + Server has ops
+**All scenarios 5B-5D must verify**:
 
-Both fail for the same reason: shared clock problem.
+1. ❌ Client2 in-memory doc doesn't update
+2. ❌ BroadcastChannel is not used (it's disabled)
+3. ✅ After reload, Client2 sees changes (IndexedDB has them)
+
+---
+
+## Config 6: Different Users + BC=OFF + RT=ON (Server Dirty only)
+
+**Sync mechanism**: Server Dirty Events
+
+| #   | Client Ops | Server Ops | Expected Behavior                              | Test Type   |
+| --- | ---------- | ---------- | ---------------------------------------------- | ----------- |
+| 6A  | ❌ No      | ❌ No      | No changes                                     | 💤 No-op    |
+| 6B  | ❌ No      | ✅ Yes     | Client2 pulls ops via dirty event              | ✅ Positive |
+| 6C  | ✅ Yes     | ❌ No      | Client1 pushes, Client2 gets via dirty         | ✅ Positive |
+| 6D  | ✅ Yes     | ✅ Yes     | Client1 pushes, Client2 gets all ops via dirty | ✅ Positive |
+
+---
+
+## Config 7: Same User + BC=OFF + RT=OFF (No automatic sync)
+
+**Sync mechanism**: None (manual sync only)
+
+| #   | Client Ops | Server Ops | Expected Behavior                             | Test Type |
+| --- | ---------- | ---------- | --------------------------------------------- | --------- |
+| 7A  | ❌ No      | ❌ No      | No changes                                    | 💤 No-op  |
+| 7B  | ❌ No      | ✅ Yes     | Server has ops but Client2 doesn't see        | 💤 No-op  |
+| 7C  | ✅ Yes     | ❌ No      | Client1 pushes, Client2 doesn't see (no sync) | 💤 No-op  |
+| 7D  | ✅ Yes     | ✅ Yes     | No automatic sync                             | 💤 No-op  |
+
+**Enhancement**: For 7C and 7D, add reload verification:
+
+1. ❌ Verify Client2 in-memory doc is out of sync
+2. Unload Client2's doc
+3. Reload from IndexedDB
+4. ✅ Verify Client2 now sees changes
+
+---
+
+## Config 8: Different Users + BC=OFF + RT=OFF (No automatic sync)
+
+**Sync mechanism**: None (manual sync only)
+
+| #   | Client Ops | Server Ops | Expected Behavior                      | Test Type |
+| --- | ---------- | ---------- | -------------------------------------- | --------- |
+| 8A  | ❌ No      | ❌ No      | No changes                             | 💤 No-op  |
+| 8B  | ❌ No      | ✅ Yes     | Server has ops but Client2 doesn't see | 💤 No-op  |
+| 8C  | ✅ Yes     | ❌ No      | Client1 pushes, Client2 doesn't see    | 💤 No-op  |
+| 8D  | ✅ Yes     | ✅ Yes     | No automatic sync                      | 💤 No-op  |
+
+**Enhancement**: For 8D, add manual sync test:
+
+1. ❌ Verify Client2 doesn't see changes
+2. Call `client2.onLocalOperations({ docId, operations: [] })`
+3. ✅ Verify Client2 now sees changes
+
+---
+
+## Test Summary Matrix
+
+### By Config
+
+| Config    | Valid?    | Positive Tests | Negative Tests | No-op Tests | Total  |
+| --------- | --------- | -------------- | -------------- | ----------- | ------ |
+| 1         | ✅ Yes    | 4              | 0              | 0           | 4      |
+| 2         | ✅ Yes    | 3              | 0              | 1           | 4      |
+| 3         | ✅ Yes    | 2              | 0              | 2           | 4      |
+| 4         | ✅ Yes    | 0              | 0              | 4           | 4      |
+| 5         | 🚫 Broken | 0              | 3              | 1           | 4      |
+| 6         | ✅ Yes    | 3              | 0              | 1           | 4      |
+| 7         | ✅ Yes    | 0              | 0              | 4           | 4      |
+| 8         | ✅ Yes    | 0              | 0              | 4           | 4      |
+| **Total** |           | **12**         | **3**          | **17**      | **32** |
+
+### By Test Type
+
+- ✅ **Positive tests** (12): Verify sync works as expected
+- 🚫 **Negative tests** (3): Verify broken config fails predictably
+- 💤 **No-op tests** (17): Verify no sync happens when expected
+
+---
+
+## Implementation Roadmap
+
+### Phase 1: Core Configs (Currently Implemented)
+
+- [x] Config 1 - Test 1C (Same user + both mechanisms + client pushes)
+- [x] Config 3 - Test 3C (Same user + BC only + client pushes)
+- [x] Config 6 - Test 6C (Different users + RT only + client pushes)
+- [x] Config 7 - Test 7C (Same user + no sync + verify no sync)
+- [x] Config 8 - Test 8C (Different users + no sync + verify no sync)
+
+**Current coverage: 5 tests** (focusing on 1C scenarios)
+
+### Phase 2: Expand Runtime States
+
+Add tests for A, B, and D scenarios for each config:
+
+- [ ] 1A, 1B, 1D (Config 1 - all states)
+- [ ] 2A, 2B, 2C, 2D (Config 2 - all states)
+- [ ] 3A, 3B, 3D (Config 3 - remaining states)
+- [ ] 4A, 4B, 4C, 4D (Config 4 - all states)
+- [ ] 6A, 6B, 6D (Config 6 - remaining states)
+- [ ] 7A, 7B, 7D (Config 7 - remaining states)
+- [ ] 8A, 8B, 8D (Config 8 - remaining states)
+
+**Target: 27 additional tests → 32 total**
+
+### Phase 3: Negative Tests for Config 5
+
+- [ ] 5B - Server has ops, dirty fires, empty response
+- [ ] 5C - Client pushes, dirty fires, empty response
+- [ ] 5D - Both have ops, dirty fires, empty response
+
+All three must verify:
+
+1. In-memory doc doesn't sync
+2. BC not used (it's disabled)
+3. Reload from IndexedDB works
+
+**Target: 3 negative tests**
+
+### Phase 4: Enhanced Verifications
+
+- [ ] Config 4D: Add manual sync after no-op
+- [ ] Config 7C/7D: Add reload verification
+- [ ] Config 8D: Add manual sync verification
+
+---
+
+## Technical Details
+
+### Runtime State Setup
+
+#### State A: No ops either side
+
+```typescript
+// Client1 creates doc, waits for initial sync
+// Client2 loads doc
+// Neither makes changes
+// Verify: No sync activity
+```
+
+#### State B: Server has ops
+
+```typescript
+// Client1 creates doc
+// Client2 loads doc
+// External change happens on server (simulate via Client3)
+// Verify: Client2 receives server ops
+```
+
+#### State C: Client sends ops
+
+```typescript
+// Client1 creates doc
+// Client2 loads doc
+// Client1 makes change
+// Verify: Client2 receives change (or doesn't, for no-sync configs)
+```
+
+#### State D: Both have ops
+
+```typescript
+// Client1 creates doc
+// Client2 loads doc
+// External change on server (via Client3)
+// Client1 makes change concurrently
+// Verify: Client2 receives both (or doesn't, for no-sync configs)
+```
+
+### The Shared Clock Problem (Config 5)
+
+**Why Config 5 is broken:**
+
+```
+Initial state:
+  Client1 IndexedDB: { docId, clock: 5 }
+  Client2 IndexedDB: { docId, clock: 5 } // SHARED!
+  Server: { docId, clock: 5 }
+
+Client1 makes change:
+  1. Client1 pushes operations to server
+  2. Server increments clock to 6, saves operations
+  3. Server consolidates, saves to IndexedDB
+  4. Now IndexedDB has: { docId, clock: 6 }
+
+Dirty event fires:
+  5. Client2 receives dirty notification
+  6. Client2 reads IndexedDB: clock = 6 // Already updated!
+  7. Client2 pulls from server with clock: 6
+  8. Server: "SELECT * WHERE clock > 6" → empty results
+  9. Client2's in-memory doc never updates ❌
+```
+
+**Solution**: Config 5 requires BroadcastChannel. Use Config 1 instead.
+
+### Reload vs Manual Sync
+
+**Reload** (unload + getDoc):
+
+- Loads entire document from IndexedDB
+- Applies any pending operations
+- Use for: Same-user no-sync scenarios (Config 7)
+
+**Manual Sync** (onLocalOperations with empty ops):
+
+- Triggers server pull/push
+- Gets operations from server
+- Use for: Different-user no-sync scenarios (Config 8)
+
+---
+
+## Quick Reference
+
+### When to Use Each Config
+
+```
+Need real-time sync between same-user tabs?
+  → Config 1 (BC + RT) - Best, redundant mechanisms
+
+Need real-time sync across different users?
+  → Config 2 (BC + RT) or Config 6 (RT only) - BC is harmless but unused
+
+Want offline-first, same-user only?
+  → Config 3 (BC only) - Works offline
+
+Manual sync only, same user?
+  → Config 7 (No auto-sync) - Use reload pattern
+
+Manual sync only, different users?
+  → Config 8 (No auto-sync) - Use manual sync API
+
+DON'T USE: Config 5 (Same user + RT only) - Broken by design
+```
+
+### Decision Tree
+
+```
+Same user tabs?
+├─ Yes → Need real-time?
+│         ├─ Yes → Config 1 (BC + RT)
+│         └─ No → Config 7 (Manual)
+│
+└─ No → Need real-time?
+          ├─ Yes → Config 6 (RT only)
+          └─ No → Config 8 (Manual)
+```
+
+---
+
+## Appendix: Future Enhancements
+
+### Option A: Fix Config 5
+
+- Implement per-client-session clocks on server
+- Use WebLocks API for tab coordination
+- Requires architectural changes
+
+### Option B: Simplify to 3 Recommended Configs
+
+- Config 1: Same user + real-time
+- Config 6: Different users + real-time
+- Config 7/8: Manual sync
+- Mark others as "not recommended"
+
+### Option C: Add Explicit "Mode" Setting
+
+```typescript
+mode: "same-user" | "multi-user" | "manual";
+// Automatically sets BC + RT appropriately
+```

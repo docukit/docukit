@@ -4,6 +4,7 @@ import {
   generateUserId,
   generateDocId,
   getDoc,
+  getDocWithCleanup,
   tick,
   ChildNode,
   spyOnBroadcastChannel,
@@ -102,8 +103,8 @@ describe.sequential("Real-Time Collaboration", () => {
       expect(dirtySpy2.mock.calls.length).toBeGreaterThan(0);
     });
 
-    test.skip("Config 2: realTime=true + broadcastChannel=false - only server dirty events", async () => {
-      // SKIPPED: This configuration is not supported due to architectural limitation
+    test("Config 2: realTime=true + broadcastChannel=false - verify broken behavior (negative test)", async () => {
+      // NEGATIVE TEST: This configuration is known to be broken
       //
       // Problem: Same-user clients share IndexedDB (same userId), which includes the clock.
       // When client1 pushes operations, the server updates the clock to N.
@@ -112,8 +113,10 @@ describe.sequential("Real-Time Collaboration", () => {
       // Server responds with empty operations (no ops with clock > N).
       // Client2's in-memory document never updates.
       //
-      // Solution: Same-user real-time sync requires broadcastChannel: true
-      // See: tests/docsync/local-first/REALTIME-TEST-PLAN.md for full analysis
+      // This test verifies:
+      // 1. Documents remain out of sync (in-memory state differs)
+      // 2. BroadcastChannel is NOT accidentally used (it's disabled)
+      // 3. After reload, documents sync (IndexedDB has the changes)
 
       const userId = generateUserId();
       const docId = generateDocId();
@@ -140,36 +143,43 @@ describe.sequential("Real-Time Collaboration", () => {
 
       await tick(5);
 
-      // Client 2 loads document
-      const doc2 = await getDoc(client2, { type: "test", id: docId });
+      // Client 2 loads document with cleanup
+      const { doc: doc2, cleanup: cleanup2 } = await getDocWithCleanup(
+        client2,
+        { type: "test", id: docId },
+      );
 
       await tick(5);
-
-      // Verify subscriptions are active (realTime: true)
-      const serverSync2 = client2["_serverSync"];
-      expect(serverSync2!["_subscribedDocs"].size).toBeGreaterThan(0);
-
-      // Spy on dirty event AFTER initial load
-      const dirtySpy2 = spyOnDirtyEvent(client2);
-      dirtySpy2.mockClear();
 
       // Client 1 makes a change
       const child = doc1.createNode(ChildNode);
       doc1.root.append(child);
 
-      // Wait for onChange to trigger (async microtask) + server dirty event
-      await tick(50);
+      // Wait for onChange to trigger + server sync + dirty event
+      await tick(15);
 
-      // Verify dirty event was triggered
-      expect(dirtySpy2.mock.calls.length).toBeGreaterThan(0);
-
-      // Wait for operations to be synced and applied
-      await tick(100);
-
-      // Client 2 should see the change via server dirty notification
+      // ❌ NEGATIVE ASSERTION: Client 2 should NOT see the change in memory
+      // (This verifies the broken behavior)
       let count = 0;
       doc2.root.children().forEach(() => count++);
-      expect(count).toBe(1);
+      expect(count).toBe(0); // Broken: in-memory doc is stale
+
+      // ✅ Verify BroadcastChannel was not used (we can't spy on it since it's disabled)
+      // Already verified above that _broadcastChannel is undefined
+
+      // Now unload and reload Client2's document
+      cleanup2(); // Unload the stale document
+      await tick(5);
+
+      // Reload from IndexedDB
+      const doc2Reloaded = await getDoc(client2, { type: "test", id: docId });
+
+      await tick(5);
+
+      // ✅ POSITIVE ASSERTION: After reload, Client2 sees the changes (from IndexedDB)
+      let countAfterReload = 0;
+      doc2Reloaded.root.children().forEach(() => countAfterReload++);
+      expect(countAfterReload).toBe(1); // IndexedDB has the change!
     });
 
     test("Config 3: realTime=false + broadcastChannel=true - only BroadcastChannel", async () => {
@@ -238,7 +248,7 @@ describe.sequential("Real-Time Collaboration", () => {
       expect(count).toBe(1);
     });
 
-    test("Config 4: realTime=false + broadcastChannel=false - no automatic sync", async () => {
+    test("Config 4: realTime=false + broadcastChannel=false - no automatic sync, verify reload", async () => {
       const userId = generateUserId();
       const docId = generateDocId();
 
@@ -264,8 +274,11 @@ describe.sequential("Real-Time Collaboration", () => {
 
       await tick(5);
 
-      // Client 2 loads document
-      const doc2 = await getDoc(client2, { type: "test", id: docId });
+      // Client 2 loads document with cleanup
+      const { doc: doc2, cleanup: cleanup2 } = await getDocWithCleanup(
+        client2,
+        { type: "test", id: docId },
+      );
 
       await tick(5);
 
@@ -290,6 +303,20 @@ describe.sequential("Real-Time Collaboration", () => {
       let count = 0;
       doc2.root.children().forEach(() => count++);
       expect(count).toBe(0);
+
+      // Unload and reload Client2's document
+      cleanup2();
+      await tick(5);
+
+      // Reload from IndexedDB (should have Client1's changes now)
+      const doc2Reloaded = await getDoc(client2, { type: "test", id: docId });
+
+      await tick(5);
+
+      // After reload, Client2 should see the changes (persisted in IndexedDB)
+      let countAfterReload = 0;
+      doc2Reloaded.root.children().forEach(() => countAfterReload++);
+      expect(countAfterReload).toBe(1);
     });
   });
 
@@ -348,7 +375,7 @@ describe.sequential("Real-Time Collaboration", () => {
       expect(count).toBe(1);
     });
 
-    test("realTime=false - no automatic sync across users", async () => {
+    test("realTime=false - no automatic sync across users, verify manual sync", async () => {
       const userId1 = generateUserId();
       const userId2 = generateUserId();
       const docId = generateDocId();
@@ -400,10 +427,27 @@ describe.sequential("Real-Time Collaboration", () => {
       // No server dirty event (realTime: false)
       expect(dirtySpy2.mock.calls.length).toBe(0);
 
-      // Client 2 should NOT see the change
-      let count = 0;
-      doc2.root.children().forEach(() => count++);
-      expect(count).toBe(0);
+      // Client 2 should NOT see the change automatically
+      let countNoSync = 0;
+      doc2.root.children().forEach(() => countNoSync++);
+      expect(countNoSync).toBe(0);
+
+      // Wait for client1 to push changes to server
+      await tick(200);
+
+      // Client 2 manually triggers sync (pull from server)
+      await client2.onLocalOperations({
+        docId,
+        operations: [],
+      });
+
+      // Wait for sync to complete
+      await tick(200);
+
+      // After manual sync, Client2 should see the changes
+      let countAfterManualSync = 0;
+      doc2.root.children().forEach(() => countAfterManualSync++);
+      expect(countAfterManualSync).toBe(1);
     });
   });
 

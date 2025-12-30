@@ -119,6 +119,29 @@ export const getDoc = (
   });
 };
 
+/**
+ * Gets a document and returns both the doc and a cleanup function.
+ * The cleanup function should be called to unload the document.
+ */
+export const getDocWithCleanup = (
+  client: DocSyncClient<Doc, JsonDoc, Operations>,
+  args: { type: string; id: string; createIfMissing?: boolean },
+): Promise<{ doc: Doc; cleanup: () => void }> => {
+  return new Promise((resolve, reject) => {
+    const cleanup = client.getDoc(
+      args as Parameters<typeof client.getDoc>[0],
+      (result) => {
+        if (result.status === "success" && result.data) {
+          resolve({ doc: result.data.doc, cleanup });
+        }
+        if (result.status === "error") {
+          reject(result.error);
+        }
+      },
+    );
+  });
+};
+
 // ============================================================================
 // Spy Helpers
 // ============================================================================
