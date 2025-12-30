@@ -205,6 +205,11 @@ export class DocSyncClient<
               // Subscribe to real-time updates when first document reference is created
               void this._serverSync?.subscribeDoc(docId);
             }
+            // Force a sync when loading a document for the first time (pull from server)
+            void this.onLocalOperations({
+              docId,
+              operations: [] as unknown as O,
+            });
           }
 
           emit({

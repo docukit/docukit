@@ -134,14 +134,15 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
       if (!stored) return;
 
       const doc = this._docBinding.deserialize(stored.serializedDoc);
-      // Apply server operations to the stored doc first (following server order)
+
+      // Apply server operations first (following server's authoritative order)
       if (response.operations) {
         for (const op of response.operations) {
           this._docBinding.applyOperations(doc, op);
         }
       }
 
-      // Then, apply client operations last
+      // Then apply client operations
       for (const op of operations) {
         this._docBinding.applyOperations(doc, op);
       }
