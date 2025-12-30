@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type { OpsPayload } from "../shared/types.js";
 import type { DocBinding, SerializedDoc } from "../shared/docBinding.js";
 import type {
   BroadcastMessage,
@@ -65,6 +64,9 @@ export class DocSyncClient<
             docBinding: _docBinding,
             getToken: server.auth.getToken,
             realTime: _realTime,
+            onServerUpdate: ({ docId, doc }) => {
+              void this._replaceDocInCache({ docId, doc });
+            },
           });
         }
         return { provider, identity };
@@ -95,6 +97,23 @@ export class DocSyncClient<
     if (!doc) return;
     this._shouldBroadcast = false;
     this._docBinding.applyOperations(doc, operations);
+  }
+
+  async _replaceDocInCache({ docId, doc }: { docId: string; doc: D }) {
+    const cacheEntry = this._docsCache.get(docId);
+    if (!cacheEntry) return;
+
+    // Replace the cached document with the new one
+    // Keep the same refCount and clock
+    // Note: We don't setup a new change listener here because:
+    // 1. The doc already has all operations applied from the sync
+    // 2. A listener will be setup when the doc is loaded via getDoc
+    // 3. Multiple listeners would cause operations to be applied multiple times
+    this._docsCache.set(docId, {
+      promisedDoc: Promise.resolve(doc),
+      clock: cacheEntry.clock,
+      refCount: cacheEntry.refCount,
+    });
   }
 
   /**
@@ -174,7 +193,7 @@ export class DocSyncClient<
       // This forces a fetch if the document exists on the server.
       void this.onLocalOperations({
         docId: id,
-        operations: [] as unknown as O,
+        operations: [] as O[],
       });
       return () => void this._unloadDoc(id);
     }
@@ -208,7 +227,7 @@ export class DocSyncClient<
             // Force a sync when loading a document for the first time (pull from server)
             void this.onLocalOperations({
               docId,
-              operations: [] as unknown as O,
+              operations: [] as O[],
             });
           }
 
@@ -233,7 +252,7 @@ export class DocSyncClient<
     this._docBinding.onChange(doc, ({ operations }) => {
       if (this._shouldBroadcast) {
         this._sendMessage({ type: "OPERATIONS", operations, docId });
-        void this.onLocalOperations({ docId, operations });
+        void this.onLocalOperations({ docId, operations: [operations] });
       }
       this._shouldBroadcast = true;
     });
@@ -286,7 +305,7 @@ export class DocSyncClient<
   /**
    * Decrease the reference count of a document and, if it is 0, delete the document from the cache.
    */
-  async _unloadDoc(docId: string) {
+  protected async _unloadDoc(docId: string) {
     const cacheEntry = this._docsCache.get(docId);
     if (!cacheEntry) return;
     if (cacheEntry.refCount > 1) {
@@ -307,7 +326,13 @@ export class DocSyncClient<
     }
   }
 
-  async onLocalOperations({ docId, operations }: OpsPayload<O>) {
+  async onLocalOperations({
+    docId,
+    operations,
+  }: {
+    docId: string;
+    operations: O[];
+  }) {
     // 1. Save locally
     const local = await this._localPromise;
     await local?.provider.transaction("readwrite", (ctx) =>

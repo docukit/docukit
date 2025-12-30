@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase, type IDBPTransaction } from "idb";
 import type { ClientProvider, Identity, TransactionContext } from "../types.js";
 import { type DBSchema } from "idb";
-import type { OpsPayload, SerializedDocPayload } from "../../shared/types.js";
+import type { SerializedDocPayload } from "../../shared/types.js";
 
 interface DocNodeIDB<S, O> extends DBSchema {
   docs: {
@@ -10,7 +10,7 @@ interface DocNodeIDB<S, O> extends DBSchema {
   };
   operations: {
     key: [string, number]; // [docId, seq] - compound key
-    value: O; // Just the operations, no wrapper
+    value: O[];
   };
 }
 
@@ -74,10 +74,16 @@ export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
         // TODO: maybe I should add a docbinding.mergeOperations call here?
         const store = tx.objectStore("operations");
         const range = IDBKeyRange.bound([docId], [docId, []]);
-        return await store.getAll(range);
+        return (await store.getAll(range)).flat();
       },
 
-      async saveOperations({ docId, operations }: OpsPayload<O>) {
+      async saveOperations({
+        docId,
+        operations,
+      }: {
+        docId: string;
+        operations: O[];
+      }) {
         const store = tx.objectStore("operations");
         await store.add(operations, [docId, getSeq()]);
       },

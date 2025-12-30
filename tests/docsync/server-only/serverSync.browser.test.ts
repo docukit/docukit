@@ -76,8 +76,8 @@ describe("ServerSync", () => {
       const docId2 = generateDocId();
 
       await provider.transaction("readwrite", async (ctx) => {
-        await ctx.saveOperations({ docId: docId1, operations: emptyOps() });
-        await ctx.saveOperations({ docId: docId2, operations: emptyOps() });
+        await ctx.saveOperations({ docId: docId1, operations: [emptyOps()] });
+        await ctx.saveOperations({ docId: docId2, operations: [emptyOps()] });
       });
 
       serverSync.saveRemote({ docId: docId1 });
@@ -121,7 +121,7 @@ describe("ServerSync", () => {
         return Promise.resolve({
           docId,
           operations: [],
-          serializedDoc: {},
+          serializedDoc: null,
           clock: callCount,
         });
       });
@@ -161,7 +161,7 @@ describe("ServerSync", () => {
         });
         await ctx.saveOperations({
           docId,
-          operations: [[], { nodeId: { key: "value" } }],
+          operations: [],
         });
       });
 
@@ -183,7 +183,7 @@ describe("ServerSync", () => {
         await createServerSync(mockApi);
       mockApi.request.mockImplementation(async () => {
         statusDuringPush = serverSync["_pushStatusByDocId"].get(docId);
-        return { docId, operations: [], serializedDoc: {}, clock: 1 };
+        return { docId, operations: [], serializedDoc: null, clock: 1 };
       });
 
       await setupDocWithOperations(docBinding, provider, docId);
@@ -236,7 +236,7 @@ describe("ServerSync", () => {
       mockApi.request.mockResolvedValue({
         docId: "test-doc",
         operations: null,
-        serializedDoc: {},
+        serializedDoc: null,
         clock: 1,
       });
       const { serverSync, docBinding, provider } =
@@ -272,7 +272,7 @@ describe("ServerSync", () => {
       mockApi.request.mockResolvedValue({
         docId,
         operations: serverOperations,
-        serializedDoc: {},
+        serializedDoc: null,
         clock: 1,
       });
 
@@ -302,7 +302,7 @@ describe("ServerSync", () => {
       mockApi.request.mockResolvedValue({
         docId: "test-doc",
         operations: null,
-        serializedDoc: {},
+        serializedDoc: null,
         clock: 1,
       });
       const { serverSync, docBinding, provider } =
@@ -361,7 +361,7 @@ describe("ServerSync", () => {
       mockApi.request.mockResolvedValue({
         docId,
         operations: serverOperations,
-        serializedDoc: {},
+        serializedDoc: null,
         clock: 1,
       });
 
@@ -435,7 +435,12 @@ describe("ServerSync", () => {
           new Promise((resolve) =>
             setTimeout(
               () =>
-                resolve({ docId, operations: [], serializedDoc: {}, clock: 1 }),
+                resolve({
+                  docId,
+                  operations: [],
+                  serializedDoc: null,
+                  clock: 1,
+                }),
               30,
             ),
           ),
@@ -450,7 +455,7 @@ describe("ServerSync", () => {
       serverSync.saveRemote({ docId });
       await tick(5);
 
-      await saveOperations(provider, docId, ops({ batch: "2" }));
+      await saveOperations(provider, docId, [ops({ batch: "2" })]);
       serverSync.saveRemote({ docId });
 
       await tick(100);
@@ -476,7 +481,7 @@ describe("ServerSync", () => {
           docId,
           clock: 0,
         });
-        await ctx.saveOperations({ docId, operations: emptyOps() });
+        await ctx.saveOperations({ docId, operations: [emptyOps()] });
       });
 
       serverSync.saveRemote({ docId });
@@ -525,7 +530,12 @@ describe("ServerSync", () => {
           new Promise((resolve) =>
             setTimeout(
               () =>
-                resolve({ docId, operations: [], serializedDoc: {}, clock: 1 }),
+                resolve({
+                  docId,
+                  operations: [],
+                  serializedDoc: null,
+                  clock: 1,
+                }),
               20,
             ),
           ),
@@ -555,7 +565,7 @@ describe("ServerSync", () => {
         return Promise.resolve({
           docId,
           operations: [],
-          serializedDoc: {},
+          serializedDoc: null,
           clock: 1,
         });
       });
@@ -583,7 +593,7 @@ describe("ServerSync", () => {
         return Promise.resolve({
           docId,
           operations: [],
-          serializedDoc: {},
+          serializedDoc: null,
           clock: 1,
         });
       });
@@ -605,7 +615,7 @@ describe("ServerSync", () => {
           return Promise.resolve({
             docId,
             operations: [],
-            serializedDoc: {},
+            serializedDoc: null,
             clock: receivedOperations.length,
           });
         },
@@ -619,7 +629,7 @@ describe("ServerSync", () => {
       serverSync.saveRemote({ docId });
       await tick(5);
 
-      await saveOperations(provider, docId, ops({ op: "2" }));
+      await saveOperations(provider, docId, [ops({ op: "2" })]);
       serverSync.saveRemote({ docId });
 
       await tick(50);
@@ -645,7 +655,7 @@ describe("ServerSync", () => {
         maxConcurrent = Math.max(maxConcurrent, concurrentCalls);
         await tick(20);
         concurrentCalls--;
-        return { docId, operations: [], serializedDoc: {}, clock: 1 };
+        return { docId, operations: [], serializedDoc: null, clock: 1 };
       });
       const { serverSync, docBinding, provider } =
         await createServerSync(mockApi);
@@ -668,7 +678,12 @@ describe("ServerSync", () => {
           new Promise((resolve) =>
             setTimeout(
               () =>
-                resolve({ docId, operations: [], serializedDoc: {}, clock: 1 }),
+                resolve({
+                  docId,
+                  operations: [],
+                  serializedDoc: null,
+                  clock: 1,
+                }),
               30,
             ),
           ),
@@ -683,9 +698,9 @@ describe("ServerSync", () => {
       serverSync.saveRemote({ docId });
       await tick(5);
 
-      await saveOperations(provider, docId, ops({ second: "true" }));
+      await saveOperations(provider, docId, [ops({ second: "true" })]);
       serverSync.saveRemote({ docId });
-      await saveOperations(provider, docId, ops({ third: "true" }));
+      await saveOperations(provider, docId, [ops({ third: "true" })]);
       serverSync.saveRemote({ docId });
 
       await tick(100);
@@ -709,7 +724,7 @@ describe("ServerSync", () => {
           return {
             docId: payload.docId,
             operations: [],
-            serializedDoc: {},
+            serializedDoc: null,
             clock: 1,
           };
         },
@@ -739,7 +754,12 @@ describe("ServerSync", () => {
           new Promise((resolve) =>
             setTimeout(
               () =>
-                resolve({ docId, operations: [], serializedDoc: {}, clock: 1 }),
+                resolve({
+                  docId,
+                  operations: [],
+                  serializedDoc: null,
+                  clock: 1,
+                }),
               20,
             ),
           ),

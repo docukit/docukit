@@ -67,7 +67,7 @@ export const createMockApi = (): MockApi => ({
   request: vi.fn().mockResolvedValue({
     docId: "test-doc",
     operations: [],
-    serializedDoc: {},
+    serializedDoc: null,
     clock: 1,
   }),
 });
@@ -158,9 +158,7 @@ export const setupDocWithOperations = async (
       docId,
       clock,
     });
-    for (const op of operations) {
-      await ctx.saveOperations({ docId, operations: op });
-    }
+    await ctx.saveOperations({ docId, operations });
   });
 
   return { doc };
@@ -173,7 +171,7 @@ export const setupDocWithOperations = async (
 export const saveOperations = async (
   provider: IndexedDBProvider<JsonDoc, Operations>,
   docId: string,
-  operations: Operations = emptyOps(),
+  operations: Operations[] = [emptyOps()],
 ) => {
   await provider.transaction("readwrite", (ctx) =>
     ctx.saveOperations({ docId, operations }),

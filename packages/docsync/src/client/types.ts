@@ -121,7 +121,7 @@ export type TransactionContext<S, O> = {
   getSerializedDoc(docId: string): Promise<{ serializedDoc: S; clock: number } | undefined>;
   getOperations({ docId }: { docId: string }): Promise<O[]>;
   deleteOperations(arg: { docId: string; count: number }): Promise<void>;
-  saveOperations(arg: { docId: string; operations: O }): Promise<void>;
+  saveOperations(arg: { docId: string; operations: O[] }): Promise<void>;
   saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
   // TODO:   // getDocIdsChangedSince
 };
