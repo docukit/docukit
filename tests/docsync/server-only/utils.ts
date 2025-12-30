@@ -61,6 +61,7 @@ export const emptyOps = (): Operations => [[], {}] as Operations;
 
 export interface MockApi {
   request: Mock;
+  _socket: unknown;
 }
 
 export const createMockApi = (): MockApi => ({
@@ -70,6 +71,7 @@ export const createMockApi = (): MockApi => ({
     serializedDoc: null,
     clock: 1,
   }),
+  _socket: null,
 });
 
 // ============================================================================
@@ -118,8 +120,7 @@ export const createServerSync = async (
   // Access the internal ServerSync and replace its API with our mock
   const serverSync = client["_serverSync"];
   if (!serverSync) throw new Error("ServerSync not initialized");
-  // @ts-expect-error - TODO: fix this
-  serverSync["_api"] = mockApi;
+  serverSync["_api"] = mockApi as unknown as (typeof serverSync)["_api"];
 
   return { serverSync, docBinding, provider, client };
 };

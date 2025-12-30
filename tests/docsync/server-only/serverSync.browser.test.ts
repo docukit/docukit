@@ -152,6 +152,8 @@ describe("ServerSync", () => {
         await createServerSync(mockApi);
       const docId = generateDocId();
 
+      const testOperations = [ops({ test: "data1" }), ops({ test: "data2" })];
+
       const { doc } = docBinding.new("test", docId);
       await provider.transaction("readwrite", async (ctx) => {
         await ctx.saveSerializedDoc({
@@ -161,7 +163,7 @@ describe("ServerSync", () => {
         });
         await ctx.saveOperations({
           docId,
-          operations: [],
+          operations: testOperations,
         });
       });
 
@@ -171,7 +173,7 @@ describe("ServerSync", () => {
       expect(mockApi.request).toHaveBeenCalledWith("sync-operations", {
         clock: 0,
         docId,
-        operations: [[[], { nodeId: { key: "value" } }]],
+        operations: testOperations,
       });
     });
 
