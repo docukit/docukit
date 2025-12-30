@@ -105,17 +105,9 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
       ctx.getOperations({ docId }),
     );
 
-    // Nothing to push - but check if more were queued during fetch
-    if (operations.length === 0) {
-      const currentStatus = this._pushStatusByDocId.get(docId);
-      const shouldRetry = currentStatus === "pushing-with-pending";
-      this._pushStatusByDocId.set(docId, "idle");
-      if (shouldRetry) void this._doPush({ docId });
-      return;
-    }
-
+    let response;
     try {
-      await this._api.request("sync-operations", {
+      response = await this._api.request("sync-operations", {
         clock: 0,
         docId,
         operations,
@@ -129,16 +121,27 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
 
     // Atomically: delete synced operations + consolidate into serialized doc
     await this._provider.transaction("readwrite", async (ctx) => {
-      await ctx.deleteOperations({
-        docId,
-        count: operations.length,
-      });
+      // Delete client operations that were synced
+      if (operations.length > 0) {
+        await ctx.deleteOperations({
+          docId,
+          count: operations.length,
+        });
+      }
 
       // Consolidate operations into serialized doc
       const stored = await ctx.getSerializedDoc(docId);
       if (!stored) return;
 
       const doc = this._docBinding.deserialize(stored.serializedDoc);
+      // Apply server operations to the stored doc first (following server order)
+      if (response.operations) {
+        for (const op of response.operations) {
+          this._docBinding.applyOperations(doc, op);
+        }
+      }
+
+      // Then, apply client operations last
       for (const op of operations) {
         this._docBinding.applyOperations(doc, op);
       }
