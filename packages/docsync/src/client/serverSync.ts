@@ -171,7 +171,7 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
 
     // Notify that the doc has been updated with server operations
     // This will apply ONLY the server operations to the in-memory cached document
-    if (response?.operations) {
+    if (response?.operations && response.operations.length > 0) {
       this._onServerOperations?.({
         docId,
         operations: response.operations,

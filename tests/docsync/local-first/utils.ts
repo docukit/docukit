@@ -118,3 +118,68 @@ export const getDoc = (
     });
   });
 };
+
+// ============================================================================
+// Spy Helpers
+// ============================================================================
+
+/**
+ * Creates a spy on BroadcastChannel.postMessage for a client.
+ * Returns the spy instance to verify calls.
+ */
+export const spyOnBroadcastChannel = (
+  client: DocSyncClient<Doc, JsonDoc, Operations>,
+) => {
+  const broadcastChannel = client["_broadcastChannel"];
+  if (!broadcastChannel) {
+    throw new Error(
+      "Cannot spy on BroadcastChannel - it's disabled or not initialized",
+    );
+  }
+
+  // Manual spy wrapper because vi.spyOn doesn't work with BroadcastChannel in Playwright
+  const calls: unknown[][] = [];
+  const originalPostMessage =
+    broadcastChannel.postMessage.bind(broadcastChannel);
+
+  broadcastChannel.postMessage = (message: unknown) => {
+    calls.push([message]);
+    originalPostMessage(message);
+  };
+
+  return {
+    mock: { calls },
+    mockClear: () => {
+      calls.length = 0;
+    },
+  };
+};
+
+/**
+ * Creates a spy on ServerSync.saveRemote to verify dirty events trigger syncs.
+ * Returns the spy instance to verify calls.
+ */
+export const spyOnDirtyEvent = (
+  client: DocSyncClient<Doc, JsonDoc, Operations>,
+) => {
+  const serverSync = client["_serverSync"];
+  if (!serverSync) {
+    throw new Error("Client has no server sync configured");
+  }
+
+  // Manual spy wrapper because vi.spyOn doesn't work reliably in Playwright browser
+  const calls: unknown[][] = [];
+  const originalSaveRemote = serverSync.saveRemote.bind(serverSync);
+
+  serverSync.saveRemote = (payload: { docId: string }) => {
+    calls.push([payload]);
+    originalSaveRemote(payload);
+  };
+
+  return {
+    mock: { calls },
+    mockClear: () => {
+      calls.length = 0;
+    },
+  };
+};

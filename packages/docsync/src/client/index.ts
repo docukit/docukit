@@ -52,6 +52,7 @@ export class DocSyncClient<
       // Capture values for async context
       const _docBinding = docBinding;
       const _realTime = realTime;
+      const _useBroadcastChannel = this._useBroadcastChannel;
 
       this._localPromise = (async () => {
         const identity = await local.getIdentity();
@@ -69,24 +70,28 @@ export class DocSyncClient<
             },
           });
         }
+
+        // Initialize BroadcastChannel with user-specific channel name
+        // This ensures only tabs of the same user share operations
+        if (_useBroadcastChannel) {
+          this._broadcastChannel = new BroadcastChannel(
+            `docsync:${identity.userId}`,
+          );
+          this._broadcastChannel.onmessage = async (
+            ev: MessageEvent<BroadcastMessage<O>>,
+          ) => {
+            // RECEIVED MESSAGES
+            if (ev.data.type === "OPERATIONS") {
+              void this._applyOperations(ev.data.operations, ev.data.docId);
+              return;
+            }
+            /* v8 ignore next -- @preserve */
+            ev.data.type satisfies never;
+          };
+        }
+
         return { provider, identity };
       })();
-    }
-
-    // Listen for operations from other tabs (if enabled).
-    if (this._useBroadcastChannel) {
-      this._broadcastChannel = new BroadcastChannel("docsync");
-      this._broadcastChannel.onmessage = async (
-        ev: MessageEvent<BroadcastMessage<O>>,
-      ) => {
-        // RECEIVED MESSAGES
-        if (ev.data.type === "OPERATIONS") {
-          void this._applyOperations(ev.data.operations, ev.data.docId);
-          return;
-        }
-        /* v8 ignore next -- @preserve */
-        ev.data.type satisfies never;
-      };
     }
   }
 
@@ -97,6 +102,7 @@ export class DocSyncClient<
     if (!doc) return;
     this._shouldBroadcast = false;
     this._docBinding.applyOperations(doc, operations);
+    this._shouldBroadcast = true;
   }
 
   // TODO: used when server responds with a new doc (squashing)
@@ -137,7 +143,7 @@ export class DocSyncClient<
     const cacheEntry = this._docsCache.get(docId);
     if (!cacheEntry) return;
 
-    // Get the cached document and apply ONLY server operations to it
+    // Get the cached document and apply server operations to it
     const doc = await cacheEntry.promisedDoc;
     if (!doc) return;
 
@@ -284,7 +290,8 @@ export class DocSyncClient<
         this._sendMessage({ type: "OPERATIONS", operations, docId });
         void this.onLocalOperations({ docId, operations: [operations] });
       }
-      this._shouldBroadcast = true;
+      // Don't automatically reset _shouldBroadcast here!
+      // Let the caller explicitly control when to re-enable broadcasting
     });
   }
 

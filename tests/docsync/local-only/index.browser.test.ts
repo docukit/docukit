@@ -61,7 +61,7 @@ describe("DocSyncClient", () => {
       expect(client).toBeInstanceOf(DocSyncClient);
     });
 
-    test("should set up BroadcastChannel for cross-tab communication", () => {
+    test("should set up BroadcastChannel for cross-tab communication", async () => {
       const originalBroadcastChannel = globalThis.BroadcastChannel;
       const constructorSpy = vi.fn();
 
@@ -79,8 +79,21 @@ describe("DocSyncClient", () => {
         MockBroadcastChannel as unknown as typeof BroadcastChannel;
 
       try {
-        const client = createClient();
-        expect(constructorSpy).toHaveBeenCalledWith("docsync");
+        // Need local config to initialize BroadcastChannel
+        const client = createClient(true);
+        const callback = createCallback();
+
+        // Trigger _localPromise resolution by calling getDoc
+        client.getDoc({ type: "test", createIfMissing: true }, callback);
+
+        // Wait for async initialization
+        await tick(10);
+
+        expect(constructorSpy).toHaveBeenCalledOnce();
+        // BroadcastChannel name should be user-specific: "docsync:{userId}"
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        const channelName = constructorSpy.mock.calls[0]?.[0];
+        expect(channelName).toMatch(/^docsync:test-user-/);
         expect(client).toBeInstanceOf(DocSyncClient);
       } finally {
         globalThis.BroadcastChannel = originalBroadcastChannel;
@@ -780,9 +793,15 @@ describe("DocSyncClient", () => {
         const client = createClient(true);
         const callback = createCallback();
 
-        // Create a doc
+        // Create a doc - this will resolve _localPromise and initialize BroadcastChannel
         client.getDoc({ type: "test", createIfMissing: true }, callback);
         const docId = getSuccessData(callback)!.id;
+
+        // Wait for BroadcastChannel to be initialized
+        await tick(10);
+
+        // messageHandler should now be set
+        expect(messageHandler).toBeDefined();
 
         // Clear any previous postMessage calls from doc creation
         postMessageSpy.mockClear();
