@@ -189,7 +189,7 @@ export const getOperationsCount = async (
   const ops = await provider.transaction("readonly", (ctx) =>
     ctx.getOperations({ docId }),
   );
-  return ops.length;
+  return ops.flat().length;
 };
 
 /**

@@ -101,11 +101,11 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
   protected async _doPush({ docId }: { docId: string }) {
     this._pushStatusByDocId.set(docId, "pushing");
 
-    const operations = (
-      await this._provider.transaction("readonly", (ctx) =>
-        ctx.getOperations({ docId }),
-      )
-    ).flat();
+    const operationsBatches = await this._provider.transaction(
+      "readonly",
+      (ctx) => ctx.getOperations({ docId }),
+    );
+    const operations = operationsBatches.flat();
 
     let response;
     try {
@@ -123,11 +123,11 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
 
     // Atomically: delete synced operations + consolidate into serialized doc
     await this._provider.transaction("readwrite", async (ctx) => {
-      // Delete client operations that were synced
-      if (operations.length > 0) {
+      // Delete client operations that were synced (delete batches, not individual ops)
+      if (operationsBatches.length > 0) {
         await ctx.deleteOperations({
           docId,
-          count: operations.length,
+          count: operationsBatches.length,
         });
       }
 
