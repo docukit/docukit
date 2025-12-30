@@ -322,7 +322,7 @@ describe("Client/Server Operation Sync", () => {
     await tick(200);
 
     // Unload doc1 from cache so we can reload it fresh
-    await (client1 as never)["_unloadDoc"](docId);
+    await client1["_unloadDoc"](docId);
 
     // Reload doc1 to get child2 from server
     const doc1Reloaded = await getDoc(client1, {

@@ -98,12 +98,7 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
     void this._doPush({ docId });
   }
 
-  protected async _doPush({ docId }: { docId: string }): Promise<{
-    // eslint-disable-next-line @typescript-eslint/no-restricted-types
-    serverOperations: O[] | null;
-    // eslint-disable-next-line @typescript-eslint/no-restricted-types
-    serverSerializedDoc: S | null;
-  }> {
+  protected async _doPush({ docId }: { docId: string }) {
     this._pushStatusByDocId.set(docId, "pushing");
 
     const operations = await this._provider.transaction("readonly", (ctx) =>

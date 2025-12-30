@@ -64,9 +64,6 @@ export class DocSyncClient<
             docBinding: _docBinding,
             getToken: server.auth.getToken,
             realTime: _realTime,
-            onServerUpdate: ({ docId, doc }) => {
-              void this._replaceDocInCache({ docId, doc });
-            },
           });
         }
         return { provider, identity };

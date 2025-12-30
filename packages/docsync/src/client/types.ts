@@ -64,7 +64,7 @@ export type ClientConfig<
    *
    * @default true
    */
-  realTime?: boolean;
+  realTime?: boolean | undefined;
   /**
    * If it is `true`, tabs and windows within the same device will
    * synchronize in real-time using BroadcastChannel API.
@@ -77,7 +77,7 @@ export type ClientConfig<
    *
    * @default true
    */
-  broadcastChannel?: boolean;
+  broadcastChannel?: boolean | undefined;
   server?: {
     url: string;
     auth: {
