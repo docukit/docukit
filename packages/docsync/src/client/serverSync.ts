@@ -13,6 +13,7 @@ export type ServerSyncConfig<
   docBinding: DocBinding<D, S, O>;
   getToken: () => Promise<string>;
   realTime: boolean;
+  onServerOperations?: (payload: { docId: string; operations: O[] }) => void;
 };
 
 type PushStatus = "idle" | "pushing" | "pushing-with-pending";
@@ -25,10 +26,14 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
   protected _pushStatusByDocId = new Map<string, PushStatus>();
   protected _subscribedDocs = new Set<string>();
   private _realTime: boolean;
+  private _onServerOperations?:
+    | ((payload: { docId: string; operations: O[] }) => void)
+    | undefined;
 
   constructor(config: ServerSyncConfig<D, S, O>) {
     this._provider = config.provider;
     this._realTime = config.realTime;
+    this._onServerOperations = config.onServerOperations;
     const { url, getToken } = config;
 
     // Build API options conditionally based on realTime flag
@@ -156,6 +161,12 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
         clock: stored.clock + 1, // TODO: proper clock from server
       });
     });
+
+    // Notify that the doc has been updated with server operations
+    // This will apply the operations to the in-memory cached document
+    if (this._onServerOperations && response.operations) {
+      this._onServerOperations({ docId, operations: response.operations });
+    }
 
     // Status may have changed to "pushing-with-pending" during async ops
     const currentStatus = this._pushStatusByDocId.get(docId);

@@ -64,6 +64,9 @@ export class DocSyncClient<
             docBinding: _docBinding,
             getToken: server.auth.getToken,
             realTime: _realTime,
+            onServerOperations: ({ docId, operations }) => {
+              void this._applyServerOperations({ docId, operations });
+            },
           });
         }
         return { provider, identity };
@@ -111,6 +114,27 @@ export class DocSyncClient<
       clock: cacheEntry.clock,
       refCount: cacheEntry.refCount,
     });
+  }
+
+  async _applyServerOperations({
+    docId,
+    operations,
+  }: {
+    docId: string;
+    operations: O[];
+  }) {
+    const cacheEntry = this._docsCache.get(docId);
+    if (!cacheEntry) return;
+
+    // Get the cached document and apply server operations to it
+    const doc = await cacheEntry.promisedDoc;
+    if (!doc) return;
+
+    this._shouldBroadcast = false;
+    for (const op of operations) {
+      this._docBinding.applyOperations(doc, op);
+    }
+    this._shouldBroadcast = true;
   }
 
   /**
