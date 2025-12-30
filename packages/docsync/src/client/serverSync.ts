@@ -19,11 +19,11 @@ type PushStatus = "idle" | "pushing" | "pushing-with-pending";
 
 export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
   private _provider: ClientProvider<S, O>;
-  private _api: API<S, O>;
+  protected _api: API<S, O>;
   private _docBinding: DocBinding<D, S, O>;
   // Per-docId push status to allow concurrent pushes for different docs
   protected _pushStatusByDocId = new Map<string, PushStatus>();
-  private _subscribedDocs = new Set<string>();
+  protected _subscribedDocs = new Set<string>();
   private _realTime: boolean;
 
   constructor(config: ServerSyncConfig<D, S, O>) {

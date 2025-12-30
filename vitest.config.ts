@@ -14,6 +14,10 @@ export default defineConfig({
     resolve: resolveConfig,
   },
   test: {
+    // Global timeouts - prevent tests from hanging indefinitely
+    // Node tests should be fast (2s max)
+    testTimeout: 2000, // 2 seconds max per test
+    hookTimeout: 2000, // 2 seconds max per hook (beforeAll, afterEach, etc)
     coverage: {
       reportsDirectory: ".test-results/vitest",
       reporter: ["text", "html"],
@@ -48,10 +52,15 @@ export default defineConfig({
         extends: true, // Extends root config to include resolve.conditions
         plugins: [react()],
         test: {
+          // Browser tests need more time due to Playwright startup overhead
+          // This prevents false failures from browser launch timeouts
+          testTimeout: 3000, // (includes Playwright launch time?)
+          hookTimeout: 10000,
           include: [
             "**/*.browser.test.ts",
             "**/*.browser.test.tsx",
             "!**/integration/**", // Exclude integration tests (they have their own config)
+            "!**/local-first/**", // Exclude local-first tests (they have their own project)
           ],
           benchmark: {
             include: ["**/*browser.bench.ts"],
@@ -74,6 +83,9 @@ export default defineConfig({
         extends: true, // Extends root config to include resolve.conditions
         plugins: [react()],
         test: {
+          // Browser tests with Socket.IO need more time for network operations
+          testTimeout: 3000, // (includes Playwright launch time?)
+          hookTimeout: 10000,
           include: ["**/local-first/**/*.browser.test.ts"],
           name: "local-first",
           globalSetup: ["./tests/docsync/local-first/globalSetup.ts"],

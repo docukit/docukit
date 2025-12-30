@@ -13,7 +13,7 @@ export type APIOptions = {
 };
 
 export class API<S, O> {
-  private _socket: ClientSocket<S, O>;
+  protected _socket: ClientSocket<S, O>;
 
   constructor(options: APIOptions) {
     this._socket = io(options.url, {

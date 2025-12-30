@@ -27,63 +27,65 @@ export class DocSyncClient<
     string,
     { promisedDoc: Promise<D | undefined>; clock: number; refCount: number }
   >();
-  // Lazy-initialized local storage (provider created after identity is resolved)
   private _localPromise?: Promise<LocalResolved<S, O>>;
-  private _localConfig?: ClientConfig<D, S, O>["local"];
-  private _serverConfig?: ClientConfig<D, S, O>["server"];
   private _shouldBroadcast = true;
-  private _broadcastChannel: BroadcastChannel;
+  protected _broadcastChannel?: BroadcastChannel;
   protected _serverSync?: ServerSync<D, S, O>;
   private _realTime: boolean;
+  private _useBroadcastChannel: boolean;
 
   constructor(config: ClientConfig<D, S, O>) {
     if (typeof window === "undefined")
       throw new Error("DocSyncClient can only be used in the browser");
-    const { docBinding, local, server, realTime = true } = config;
+    const {
+      docBinding,
+      local,
+      server,
+      realTime = true,
+      broadcastChannel = true,
+    } = config;
     this._docBinding = docBinding;
-    this._localConfig = local;
-    this._serverConfig = server;
     this._realTime = realTime;
+    this._useBroadcastChannel = broadcastChannel;
 
-    // Listen for operations from other tabs.
-    this._broadcastChannel = new BroadcastChannel("docsync");
-    this._broadcastChannel.onmessage = async (
-      ev: MessageEvent<BroadcastMessage<O>>,
-    ) => {
-      // RECEIVED MESSAGES
-      if (ev.data.type === "OPERATIONS") {
-        void this._applyOperations(ev.data.operations, ev.data.docId);
-        return;
-      }
-      /* v8 ignore next -- @preserve */
-      ev.data.type satisfies never;
-    };
-  }
+    // Initialize local provider (if configured)
+    if (local) {
+      // Capture values for async context
+      const _docBinding = docBinding;
+      const _realTime = realTime;
 
-  /**
-   * Lazily initialize the local provider.
-   * The provider is created only when first needed, with identity already resolved.
-   */
-  protected _getLocal(): Promise<LocalResolved<S, O>> | undefined {
-    if (!this._localConfig) return undefined;
-    this._localPromise ??= (async () => {
-      const identity = await this._localConfig!.getIdentity();
-      const provider = new this._localConfig!.provider(
-        identity,
-      ) as ClientProvider<S, O>;
-      // Initialize ServerSync now that we have the provider
-      if (this._serverConfig && !this._serverSync) {
-        this._serverSync = new ServerSync({
-          provider,
-          url: this._serverConfig.url,
-          docBinding: this._docBinding,
-          getToken: this._serverConfig.auth.getToken,
-          realTime: this._realTime,
-        });
-      }
-      return { provider, identity };
-    })();
-    return this._localPromise;
+      this._localPromise = (async () => {
+        const identity = await local.getIdentity();
+        const provider = new local.provider(identity) as ClientProvider<S, O>;
+        // Initialize ServerSync now that we have the provider
+        if (server) {
+          this._serverSync = new ServerSync({
+            provider,
+            url: server.url,
+            docBinding: _docBinding,
+            getToken: server.auth.getToken,
+            realTime: _realTime,
+          });
+        }
+        return { provider, identity };
+      })();
+    }
+
+    // Listen for operations from other tabs (if enabled).
+    if (this._useBroadcastChannel) {
+      this._broadcastChannel = new BroadcastChannel("docsync");
+      this._broadcastChannel.onmessage = async (
+        ev: MessageEvent<BroadcastMessage<O>>,
+      ) => {
+        // RECEIVED MESSAGES
+        if (ev.data.type === "OPERATIONS") {
+          void this._applyOperations(ev.data.operations, ev.data.docId);
+          return;
+        }
+        /* v8 ignore next -- @preserve */
+        ev.data.type satisfies never;
+      };
+    }
   }
 
   async _applyOperations(operations: O, docId: string) {
@@ -158,7 +160,7 @@ export class DocSyncClient<
       void this._serverSync?.subscribeDoc(id);
       emit({ status: "success", data: { doc, id }, error: undefined });
       void (async () => {
-        const local = await this._getLocal();
+        const local = await this._localPromise;
         if (!local) return;
         await local.provider.transaction("readwrite", (ctx) =>
           ctx.saveSerializedDoc({
@@ -204,6 +206,7 @@ export class DocSyncClient<
               void this._serverSync?.subscribeDoc(docId);
             }
           }
+
           emit({
             status: "success",
             data: doc ? { doc, id: docId } : undefined,
@@ -235,7 +238,7 @@ export class DocSyncClient<
     docId: string,
     type?: string,
   ): Promise<D | undefined> {
-    const local = await this._getLocal();
+    const local = await this._localPromise;
     if (!local) return undefined;
 
     return local.provider.transaction("readwrite", async (ctx) => {
@@ -294,12 +297,14 @@ export class DocSyncClient<
   }
 
   _sendMessage(message: BroadcastMessage<O>) {
-    this._broadcastChannel.postMessage(message);
+    if (this._broadcastChannel) {
+      this._broadcastChannel.postMessage(message);
+    }
   }
 
   async onLocalOperations({ docId, operations }: OpsPayload<O>) {
     // 1. Save locally
-    const local = await this._getLocal();
+    const local = await this._localPromise;
     await local?.provider.transaction("readwrite", (ctx) =>
       ctx.saveOperations({ docId, operations }),
     );

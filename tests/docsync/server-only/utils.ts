@@ -107,15 +107,18 @@ export const createServerSync = async (
 
   const client = new DocSyncClient(config);
 
-  // Force lazy initialization to create the provider and ServerSync
-  const local = await client["_getLocal"]?.();
+  // Wait for lazy initialization to create the provider and ServerSync
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const local = await client["_localPromise"];
   if (!local) throw new Error("Local not initialized");
 
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
   const provider = local.provider as IndexedDBProvider<JsonDoc, Operations>;
 
   // Access the internal ServerSync and replace its API with our mock
   const serverSync = client["_serverSync"];
   if (!serverSync) throw new Error("ServerSync not initialized");
+  // @ts-expect-error - TODO: fix this
   serverSync["_api"] = mockApi;
 
   return { serverSync, docBinding, provider, client };
