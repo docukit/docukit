@@ -270,8 +270,10 @@ export class DocSyncClient<
       if (stored) {
         const doc = this._docBinding.deserialize(stored.serializedDoc);
         this._shouldBroadcast = false;
-        localOperations.forEach((operations) => {
-          this._docBinding.applyOperations(doc, operations);
+        localOperations.forEach((operationsArray) => {
+          operationsArray.forEach((operations) => {
+            this._docBinding.applyOperations(doc, operations);
+          });
         });
         this._shouldBroadcast = true;
         return doc;

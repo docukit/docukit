@@ -101,9 +101,11 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
   protected async _doPush({ docId }: { docId: string }) {
     this._pushStatusByDocId.set(docId, "pushing");
 
-    const operations = await this._provider.transaction("readonly", (ctx) =>
-      ctx.getOperations({ docId }),
-    );
+    const operations = (
+      await this._provider.transaction("readonly", (ctx) =>
+        ctx.getOperations({ docId }),
+      )
+    ).flat();
 
     let response;
     try {

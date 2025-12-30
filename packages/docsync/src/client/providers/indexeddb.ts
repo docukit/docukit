@@ -74,7 +74,7 @@ export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
         // TODO: maybe I should add a docbinding.mergeOperations call here?
         const store = tx.objectStore("operations");
         const range = IDBKeyRange.bound([docId], [docId, []]);
-        return (await store.getAll(range)).flat();
+        return await store.getAll(range);
       },
 
       async saveOperations({
