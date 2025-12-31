@@ -28,7 +28,6 @@ export class DocSyncServer<TContext, S, O> {
     this._authenticate = config.authenticate;
     this._authorize = config.authorize;
     this._setupSocketServer();
-    console.log(`Socket.io server listening on ${config.port}`);
   }
 
   private _setupSocketServer() {
@@ -53,7 +52,6 @@ export class DocSyncServer<TContext, S, O> {
             context: authResult.context ?? ({} as TContext),
           } satisfies AuthenticatedContext<TContext>;
 
-          console.log("Client authenticated", { userId: authResult.userId });
           next();
         })
         .catch((err: unknown) => {
@@ -64,10 +62,10 @@ export class DocSyncServer<TContext, S, O> {
     this._io.on("connection", (socket) => {
       const { userId, context } = socket.data as AuthenticatedContext<TContext>;
 
-      socket.on("disconnect", (reason) =>
-        console.log(`Client disconnected: ${reason}`),
-      );
-      socket.on("error", (err) => console.error("Socket.io error:", err));
+      // socket.on("disconnect", (reason) =>
+      //   console.log(`Client disconnected: ${reason}`),
+      // );
+      // socket.on("error", (err) => console.error("Socket.io error:", err));
 
       // Helper to check authorization
       const checkAuth = async (
@@ -87,10 +85,10 @@ export class DocSyncServer<TContext, S, O> {
             context,
           });
           if (!authorized) {
-            console.log("Authorization denied for get-doc", {
-              userId,
-              payload,
-            });
+            // console.log("Authorization denied for get-doc", {
+            //   userId,
+            //   payload,
+            // });
             cb(undefined);
             return;
           }
@@ -104,10 +102,10 @@ export class DocSyncServer<TContext, S, O> {
             context,
           });
           if (!authorized) {
-            console.log("Authorization denied for sync-operations", {
-              userId,
-              payload,
-            });
+            // console.log("Authorization denied for sync-operations", {
+            //   userId,
+            //   payload,
+            // });
             // Return empty response on auth failure
             cb({
               docId: payload.docId,
@@ -135,10 +133,10 @@ export class DocSyncServer<TContext, S, O> {
             context,
           });
           if (!authorized) {
-            console.log("Authorization denied for delete-doc", {
-              userId,
-              payload,
-            });
+            // console.log("Authorization denied for delete-doc", {
+            //   userId,
+            //   payload,
+            // });
             cb({ success: false });
             return;
           }
@@ -147,13 +145,13 @@ export class DocSyncServer<TContext, S, O> {
         "subscribe-doc": async (payload, cb) => {
           // Join the room for this document
           await socket.join(`doc:${payload.docId}`);
-          console.log(`User ${userId} subscribed to doc:${payload.docId}`);
+          // console.log(`User ${userId} subscribed to doc:${payload.docId}`);
           cb({ success: true });
         },
         "unsubscribe-doc": async (payload, cb) => {
           // Leave the room for this document
           await socket.leave(`doc:${payload.docId}`);
-          console.log(`User ${userId} unsubscribed from doc:${payload.docId}`);
+          // console.log(`User ${userId} unsubscribed from doc:${payload.docId}`);
           cb({ success: true });
         },
       };

@@ -58,13 +58,8 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
    */
   private async _resubscribeAll(): Promise<void> {
     const docIds = Array.from(this._subscribedDocs);
-    console.log(`Reconnected - resubscribing to ${docIds.length} documents`);
     for (const docId of docIds) {
-      try {
-        await this._api.request("subscribe-doc", { docId });
-      } catch (err) {
-        console.error(`Failed to resubscribe to ${docId}:`, err);
-      }
+      await this._api.request("subscribe-doc", { docId });
     }
   }
 

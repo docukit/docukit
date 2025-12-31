@@ -24,8 +24,6 @@ const parseTestToken = (token: string): string | undefined => {
 let server: DocSyncServer<unknown, unknown, unknown> | undefined;
 
 export async function setup() {
-  console.log(`\n🚀 Starting test server on port ${TEST_PORT}...`);
-
   server = new DocSyncServer({
     port: TEST_PORT,
     provider: InMemoryServerProvider,
@@ -42,9 +40,6 @@ export async function setup() {
 }
 
 export async function teardown() {
-  console.log("\n🛑 Stopping test server...");
-  if (server) {
-    await server.close();
-  }
+  if (server) await server.close();
   console.log("✅ Test server stopped\n");
 }

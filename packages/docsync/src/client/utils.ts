@@ -24,12 +24,12 @@ export class API<S, O> {
     // prettier-ignore
     {
       this._socket.on("connect", () => {
-        console.log("Connected to Socket.io server");
+        // console.log("Connected to Socket.io server");
         // Notify reconnection so subscriptions can be restored
         if (options.onReconnect) options.onReconnect();
       });
-      this._socket.on("connect_error", err => console.error("Socket.io connection error:", err));
-      this._socket.on("disconnect", reason => console.error("Socket.io disconnected:", reason));
+      // this._socket.on("connect_error", err => console.error("Socket.io connection error:", err));
+      // this._socket.on("disconnect", reason => console.error("Socket.io disconnected:", reason));
     }
 
     // Listen for dirty notifications from server
