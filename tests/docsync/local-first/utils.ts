@@ -97,7 +97,7 @@ export const createClient = (
 // ============================================================================
 
 /** Wait for async operations */
-export const tick = (ms = 50) =>
+export const tick = (ms = 10) =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 /**

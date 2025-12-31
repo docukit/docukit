@@ -180,11 +180,11 @@ describe.sequential("Real-Time Synchronization - All 32 Scenarios", () => {
         createIfMissing: true,
       });
 
-      await tick(10);
+      await tick();
 
       const doc2 = await getTrackedDoc(client2, { type: "test", id: docId });
 
-      await tick(10);
+      await tick();
 
       // Spy on mechanisms
       const bc1Spy = spyOnBroadcastChannel(client1);
@@ -207,7 +207,7 @@ describe.sequential("Real-Time Synchronization - All 32 Scenarios", () => {
       doc2.root.children().forEach(() => count++);
       expect(count).toBe(1);
 
-      await tick(10);
+      await tick();
 
       // Verify dirty event also triggered (redundant)
       expect(dirtySpy2.mock.calls.length).toBeGreaterThan(0);

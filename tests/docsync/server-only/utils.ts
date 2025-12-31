@@ -134,7 +134,7 @@ export const createServerSync = async (
 // ============================================================================
 
 /** Wait for async operations to complete */
-export const tick = (ms = 5) =>
+export const tick = (ms = 3) =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 // ============================================================================
