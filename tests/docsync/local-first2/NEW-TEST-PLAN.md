@@ -23,7 +23,7 @@ type ClientUtils = {
   assertMemoryDoc: (children: string[]) => void;
 };
 
-type D = {
+type ClientsSetup = {
   reference: ClientUtils;
   otherTab: ClientUtils;
   otherTabAndUser: ClientUtils;
@@ -35,7 +35,7 @@ Example of a test:
 
 ```ts
 test("otherTab", async () => {
-  const d = await createD();
+  const d = await setupClients();
   await d.reference.loadDoc();
   await d.otherTab.loadDoc();
   await d.otherTab.addChild("Hello");

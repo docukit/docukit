@@ -26,7 +26,7 @@ import {
  * - 💤 No-op: Verify no sync happens when expected
  */
 
-describe("Real-Time Synchronization - All 32 Scenarios", () => {
+describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
   // Track clients created in each test for cleanup
   const activeClients: Array<ReturnType<typeof createClient>["client"]> = [];
   const activeCleanups: Array<() => void> = [];

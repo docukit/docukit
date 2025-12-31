@@ -56,39 +56,12 @@ export default defineConfig({
           // This prevents false failures from browser launch timeouts
           testTimeout: 3000, // (includes Playwright launch time?)
           hookTimeout: 10000,
-          include: [
-            "**/*.browser.test.ts",
-            "**/*.browser.test.tsx",
-            "!**/integration/**", // Exclude integration tests (they have their own config)
-            "!**/local-first/**", // Exclude local-first tests (they have their own project)
-          ],
+          include: ["**/*.browser.test.ts", "**/*.browser.test.tsx"],
+          globalSetup: ["./tests/docsync/local-first/globalSetup.ts"],
           benchmark: {
             include: ["**/*browser.bench.ts"],
           },
           name: "browser",
-          browser: {
-            screenshotFailures: false,
-            headless: true,
-            enabled: true,
-            provider: playwright(),
-            instances: [
-              {
-                browser: "chromium",
-              },
-            ],
-          },
-        },
-      },
-      {
-        extends: true, // Extends root config to include resolve.conditions
-        plugins: [react()],
-        test: {
-          // Browser tests with Socket.IO need more time for network operations
-          testTimeout: 3000, // (includes Playwright launch time?)
-          hookTimeout: 10000,
-          include: ["**/local-first/**/*.browser.test.ts"],
-          name: "local-first",
-          globalSetup: ["./tests/docsync/local-first/globalSetup.ts"],
           browser: {
             screenshotFailures: false,
             headless: true,
