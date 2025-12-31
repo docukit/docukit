@@ -75,9 +75,13 @@ describe("Local-First 2.0", () => {
     // Add a child
     clients.reference.addChild("Hello");
 
-    // Count children
-    let count = 0;
-    clients.reference.doc!.root.children().forEach(() => count++);
-    expect(count).toBe(1);
+    // Verify in memory
+    clients.reference.assertMemoryDoc(["Hello"]);
+
+    // Wait for IndexedDB sync
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // Verify in IndexedDB
+    await clients.reference.assertIDBDoc(["Hello"]);
   });
 });

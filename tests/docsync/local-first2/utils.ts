@@ -4,8 +4,16 @@ import {
   type ClientConfig,
 } from "@docnode/docsync/client";
 import { DocNodeBinding } from "@docnode/docsync/docnode";
-import { defineNode, type Doc, type JsonDoc, type Operations } from "docnode";
+import {
+  defineNode,
+  string,
+  type Doc,
+  type JsonDoc,
+  type Operations,
+  type DocNode,
+} from "docnode";
 import { ulid } from "ulid";
+import { expect } from "vitest";
 
 // ============================================================================
 // Constants
@@ -29,17 +37,19 @@ const getTestServerUrl = (): string => {
 // Node Definitions
 // ============================================================================
 
-const TestNode = defineNode({ type: "test", state: {} });
-const ChildNode = defineNode({ type: "child", state: {} });
+const ChildNode = defineNode({
+  type: "child",
+  state: {
+    value: string(""),
+  },
+});
 
 // ============================================================================
 // Doc Binding
 // ============================================================================
 
 const createDocBinding = () =>
-  DocNodeBinding([
-    { type: "test", extensions: [{ nodes: [TestNode, ChildNode] }] },
-  ]);
+  DocNodeBinding([{ type: "test", extensions: [{ nodes: [ChildNode] }] }]);
 
 // ============================================================================
 // Generators
@@ -72,7 +82,7 @@ type ClientUtils = {
   loadDoc: () => Promise<void>;
   unLoadDoc: () => void;
   addChild: (text: string) => void;
-  assertIDBDoc: (children: string[]) => void;
+  assertIDBDoc: (children: string[]) => Promise<void>;
   assertMemoryDoc: (children: string[]) => void;
 };
 
@@ -176,10 +186,14 @@ export const setupClients = async (): Promise<ClientsSetup> => {
 
   return {
     docId,
-    reference: createClientUtils(referenceClient, docId),
-    otherTab: createClientUtils(otherTabClient, docId),
-    otherTabAndUser: createClientUtils(otherTabAndUserClient, docId),
-    otherDevice: createClientUtils(otherDeviceClient, docId),
+    reference: createClientUtils(referenceClient, docId, referenceUserId),
+    otherTab: createClientUtils(otherTabClient, docId, referenceUserId),
+    otherTabAndUser: createClientUtils(
+      otherTabAndUserClient,
+      docId,
+      otherTabAndUserUserId,
+    ),
+    otherDevice: createClientUtils(otherDeviceClient, docId, otherDeviceUserId),
   };
 };
 
@@ -190,6 +204,7 @@ export const setupClients = async (): Promise<ClientsSetup> => {
 const createClientUtils = (
   client: DocSyncClient<Doc, JsonDoc, Operations>,
   docId: string,
+  userId: string,
 ): ClientUtils => {
   let doc: Doc | undefined;
   let cleanup: (() => void) | undefined;
@@ -222,16 +237,58 @@ const createClientUtils = (
       }
       doc = undefined;
     },
-    addChild: (_text: string) => {
+    addChild: (text: string) => {
       if (!doc) throw new Error("Doc not loaded");
       const child = doc.createNode(ChildNode);
+      child.state.value.set(text);
       doc.root.append(child);
     },
-    assertIDBDoc: (_children: string[]) => {
-      throw new Error("Not implemented yet");
+    assertIDBDoc: async (expectedChildren: string[]) => {
+      // Get the provider from the client's internal state
+      const local = await client["_localPromise"];
+      if (!local) {
+        throw new Error("Client has no local provider configured");
+      }
+
+      // Read the document from IndexedDB using the provider
+      const result = await local.provider.transaction(
+        "readonly",
+        async (ctx) => {
+          return await ctx.getSerializedDoc(docId);
+        },
+      );
+
+      if (!result) {
+        throw new Error(
+          `Document ${docId} not found in IndexedDB for user ${userId}`,
+        );
+      }
+
+      // Deserialize using the client's docBinding
+      const deserializedDoc = client["_docBinding"].deserialize(
+        result.serializedDoc,
+      );
+
+      // TODO: assert also operations
+
+      const actualChildren: string[] = [];
+      deserializedDoc.root.children().forEach((child) => {
+        const typedChild = child as unknown as DocNode<typeof ChildNode>;
+        actualChildren.push(typedChild.state.value.get());
+      });
+
+      expect(actualChildren).toStrictEqual(expectedChildren);
     },
-    assertMemoryDoc: (_children: string[]) => {
-      throw new Error("Not implemented yet");
+    assertMemoryDoc: (expectedChildren: string[]) => {
+      if (!doc) throw new Error("Doc not loaded - cannot assert memory doc");
+
+      const actualChildren: string[] = [];
+      doc.root.children().forEach((child) => {
+        const typedChild = child as unknown as DocNode<typeof ChildNode>;
+        actualChildren.push(typedChild.state.value.get());
+      });
+
+      expect(actualChildren).toStrictEqual(expectedChildren);
     },
   };
 };

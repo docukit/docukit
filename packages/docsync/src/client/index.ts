@@ -21,12 +21,12 @@ export class DocSyncClient<
   S extends SerializedDoc,
   O extends {},
 > {
-  private _docBinding: DocBinding<D, S, O>;
+  protected _docBinding: DocBinding<D, S, O>;
   protected _docsCache = new Map<
     string,
     { promisedDoc: Promise<D | undefined>; refCount: number }
   >();
-  private _localPromise?: Promise<LocalResolved<S, O>>;
+  protected _localPromise?: Promise<LocalResolved<S, O>>;
   private _shouldBroadcast = true;
   protected _broadcastChannel?: BroadcastChannel;
   protected _serverSync?: ServerSync<D, S, O>;
