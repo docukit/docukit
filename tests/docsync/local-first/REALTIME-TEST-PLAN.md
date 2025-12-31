@@ -21,12 +21,14 @@ This document defines the comprehensive test strategy for real-time synchronizat
 
 ### Runtime States (4 per configuration)
 
-| #   | Client Sends Ops | Server Has Ops | Scenario            |
-| --- | ---------------- | -------------- | ------------------- |
-| A   | ❌ No (pull)     | ❌ No          | Up-to-date check    |
-| B   | ❌ No (pull)     | ✅ Yes         | Pull new operations |
-| C   | ✅ Yes (push)    | ❌ No          | Push-only           |
-| D   | ✅ Yes (push)    | ✅ Yes         | Bidirectional sync  |
+| #   | Client Sends Ops        | Server Has Ops         | Scenario                                 |
+| --- | ----------------------- | ---------------------- | ---------------------------------------- |
+| A   | ❌ No (sync with 0 ops) | ❌ No (responds 0 ops) | Up-to-date check - sync event with 0 ops |
+| B   | ❌ No (pull/0 ops)      | ✅ Yes (responds ops)  | Pull new operations - client syncs 0 ops |
+| C   | ✅ Yes (push with ops)  | ❌ No (responds 0 ops) | Push-only - server responds 0 ops        |
+| D   | ✅ Yes (push with ops)  | ✅ Yes (responds ops)  | Bidirectional sync - both sides have ops |
+
+**Key Concept**: "No ops" means a sync happens but with 0 operations. It's NOT the absence of sync.
 
 **Total: 8 configs × 4 states = 32 test scenarios**
 
@@ -71,12 +73,12 @@ This document defines the comprehensive test strategy for real-time synchronizat
 
 **Sync mechanism**: BroadcastChannel (primary) + Server Dirty (secondary)
 
-| #   | Client Ops | Server Ops | Expected Behavior                                | Test Type   |
-| --- | ---------- | ---------- | ------------------------------------------------ | ----------- |
-| 1A  | ❌ No      | ❌ No      | Client2 polls, no changes                        | ✅ Positive |
-| 1B  | ❌ No      | ✅ Yes     | Client2 gets server ops via dirty event          | ✅ Positive |
-| 1C  | ✅ Yes     | ❌ No      | Client1 pushes, Client2 gets via BC instantly    | ✅ Positive |
-| 1D  | ✅ Yes     | ✅ Yes     | Client1 pushes, Client2 gets both via BC + dirty | ✅ Positive |
+| #   | Client Ops (Client1) | Server Ops         | Expected Behavior                                     | Test Type   |
+| --- | -------------------- | ------------------ | ----------------------------------------------------- | ----------- |
+| 1A  | ❌ No (sync w/ 0)    | ❌ No (0 response) | Client1 syncs 0 ops, server responds 0, BC event w/ 0 | ✅ Positive |
+| 1B  | ❌ No (sync w/ 0)    | ✅ Yes (has ops)   | Client2 syncs 0, gets server ops via dirty event      | ✅ Positive |
+| 1C  | ✅ Yes (push ops)    | ❌ No (0 response) | Client1 pushes ops, Client2 gets via BC instantly     | ✅ Positive |
+| 1D  | ✅ Yes (push ops)    | ✅ Yes (has ops)   | Client1 pushes ops, Client2 gets both via BC + dirty  | ✅ Positive |
 
 ---
 
@@ -84,12 +86,12 @@ This document defines the comprehensive test strategy for real-time synchronizat
 
 **Sync mechanism**: Server Dirty only (BC doesn't cross users)
 
-| #   | Client Ops | Server Ops | Expected Behavior                              | Test Type   |
-| --- | ---------- | ---------- | ---------------------------------------------- | ----------- |
-| 2A  | ❌ No      | ❌ No      | No changes                                     | 💤 No-op    |
-| 2B  | ❌ No      | ✅ Yes     | Client2 gets server ops via dirty event        | ✅ Positive |
-| 2C  | ✅ Yes     | ❌ No      | Client1 pushes, Client2 gets via dirty         | ✅ Positive |
-| 2D  | ✅ Yes     | ✅ Yes     | Client1 pushes, Client2 gets all ops via dirty | ✅ Positive |
+| #   | Client Ops (Client1) | Server Ops         | Expected Behavior                                        | Test Type   |
+| --- | -------------------- | ------------------ | -------------------------------------------------------- | ----------- |
+| 2A  | ❌ No (sync w/ 0)    | ❌ No (0 response) | Client1 syncs 0, server responds 0, no dirty event       | 💤 No-op    |
+| 2B  | ❌ No (sync w/ 0)    | ✅ Yes (has ops)   | Client2 syncs 0, gets server ops via dirty event         | ✅ Positive |
+| 2C  | ✅ Yes (push ops)    | ❌ No (0 response) | Client1 pushes ops, Client2 gets via dirty event         | ✅ Positive |
+| 2D  | ✅ Yes (push ops)    | ✅ Yes (has ops)   | Client1 pushes ops, Client2 gets all ops via dirty event | ✅ Positive |
 
 ---
 
@@ -97,12 +99,12 @@ This document defines the comprehensive test strategy for real-time synchronizat
 
 **Sync mechanism**: BroadcastChannel only
 
-| #   | Client Ops | Server Ops | Expected Behavior                                                    | Test Type   |
-| --- | ---------- | ---------- | -------------------------------------------------------------------- | ----------- |
-| 3A  | ❌ No      | ❌ No      | No changes                                                           | 💤 No-op    |
-| 3B  | ❌ No      | ✅ Yes     | Server has ops but no dirty event, Client2 doesn't see               | 💤 No-op    |
-| 3C  | ✅ Yes     | ❌ No      | Client1 pushes, Client2 gets via BC instantly                        | ✅ Positive |
-| 3D  | ✅ Yes     | ✅ Yes     | Client1 pushes, Client2 gets client1 ops via BC (server ops ignored) | ✅ Positive |
+| #   | Client Ops (Client1) | Server Ops         | Expected Behavior                                                        | Test Type   |
+| --- | -------------------- | ------------------ | ------------------------------------------------------------------------ | ----------- |
+| 3A  | ❌ No (sync w/ 0)    | ❌ No (0 response) | Client1 syncs 0, server responds 0, BC event w/ 0                        | 💤 No-op    |
+| 3B  | ❌ No (sync w/ 0)    | ✅ Yes (has ops)   | Client2 syncs 0, server has ops but no dirty event, Client2 doesn't see  | 💤 No-op    |
+| 3C  | ✅ Yes (push ops)    | ❌ No (0 response) | Client1 pushes ops, Client2 gets via BC instantly                        | ✅ Positive |
+| 3D  | ✅ Yes (push ops)    | ✅ Yes (has ops)   | Client1 pushes ops, Client2 gets client1 ops via BC (server ops ignored) | ✅ Positive |
 
 ---
 
@@ -110,12 +112,12 @@ This document defines the comprehensive test strategy for real-time synchronizat
 
 **Sync mechanism**: None (BC doesn't work, RT disabled)
 
-| #   | Client Ops | Server Ops | Expected Behavior                                | Test Type |
-| --- | ---------- | ---------- | ------------------------------------------------ | --------- |
-| 4A  | ❌ No      | ❌ No      | No changes                                       | 💤 No-op  |
-| 4B  | ❌ No      | ✅ Yes     | Server has ops but Client2 doesn't see (no sync) | 💤 No-op  |
-| 4C  | ✅ Yes     | ❌ No      | Client1 pushes, Client2 doesn't see (no sync)    | 💤 No-op  |
-| 4D  | ✅ Yes     | ✅ Yes     | No automatic sync                                | 💤 No-op  |
+| #   | Client Ops (Client1) | Server Ops         | Expected Behavior                                            | Test Type |
+| --- | -------------------- | ------------------ | ------------------------------------------------------------ | --------- |
+| 4A  | ❌ No (sync w/ 0)    | ❌ No (0 response) | Client1 syncs 0, server responds 0, no realtime notification | 💤 No-op  |
+| 4B  | ❌ No (sync w/ 0)    | ✅ Yes (has ops)   | Client2 syncs 0, server has ops but Client2 doesn't see      | 💤 No-op  |
+| 4C  | ✅ Yes (push ops)    | ❌ No (0 response) | Client1 pushes ops, Client2 doesn't see (no sync mechanism)  | 💤 No-op  |
+| 4D  | ✅ Yes (push ops)    | ✅ Yes (has ops)   | Both have ops but no automatic sync mechanism                | 💤 No-op  |
 
 **Enhancement**: Add manual sync test - after 4D, call `onLocalOperations()` and verify Client2 then sees changes.
 
@@ -125,12 +127,12 @@ This document defines the comprehensive test strategy for real-time synchronizat
 
 **Sync mechanism**: Server Dirty only (broken by shared clock problem)
 
-| #   | Client Ops | Server Ops | Expected Behavior                                               | Test Type   |
-| --- | ---------- | ---------- | --------------------------------------------------------------- | ----------- |
-| 5A  | ❌ No      | ❌ No      | No changes                                                      | 💤 No-op    |
-| 5B  | ❌ No      | ✅ Yes     | Dirty fires, but shared clock causes empty response             | 🚫 Negative |
-| 5C  | ✅ Yes     | ❌ No      | Client1 pushes, dirty fires, but Client2 has same clock → empty | 🚫 Negative |
-| 5D  | ✅ Yes     | ✅ Yes     | Same as 5C - Client2 never sees client1's changes               | 🚫 Negative |
+| #   | Client Ops (Client1) | Server Ops         | Expected Behavior                                                 | Test Type   |
+| --- | -------------------- | ------------------ | ----------------------------------------------------------------- | ----------- |
+| 5A  | ❌ No (sync w/ 0)    | ❌ No (0 response) | Client1 syncs 0, server responds 0, no dirty needed               | 💤 No-op    |
+| 5B  | ❌ No (sync w/ 0)    | ✅ Yes (has ops)   | Client2 syncs 0, dirty fires but shared clock causes empty result | 🚫 Negative |
+| 5C  | ✅ Yes (push ops)    | ❌ No (0 response) | Client1 pushes ops, dirty fires but Client2 has same clock        | 🚫 Negative |
+| 5D  | ✅ Yes (push ops)    | ✅ Yes (has ops)   | Same as 5C - Client2 never sees client1's changes                 | 🚫 Negative |
 
 **All scenarios 5B-5D must verify**:
 
@@ -144,12 +146,12 @@ This document defines the comprehensive test strategy for real-time synchronizat
 
 **Sync mechanism**: Server Dirty Events
 
-| #   | Client Ops | Server Ops | Expected Behavior                              | Test Type   |
-| --- | ---------- | ---------- | ---------------------------------------------- | ----------- |
-| 6A  | ❌ No      | ❌ No      | No changes                                     | 💤 No-op    |
-| 6B  | ❌ No      | ✅ Yes     | Client2 pulls ops via dirty event              | ✅ Positive |
-| 6C  | ✅ Yes     | ❌ No      | Client1 pushes, Client2 gets via dirty         | ✅ Positive |
-| 6D  | ✅ Yes     | ✅ Yes     | Client1 pushes, Client2 gets all ops via dirty | ✅ Positive |
+| #   | Client Ops (Client1) | Server Ops         | Expected Behavior                                         | Test Type   |
+| --- | -------------------- | ------------------ | --------------------------------------------------------- | ----------- |
+| 6A  | ❌ No (sync w/ 0)    | ❌ No (0 response) | Client1 syncs 0, server responds 0, no dirty event needed | 💤 No-op    |
+| 6B  | ❌ No (sync w/ 0)    | ✅ Yes (has ops)   | Client2 syncs 0, pulls ops via dirty event                | ✅ Positive |
+| 6C  | ✅ Yes (push ops)    | ❌ No (0 response) | Client1 pushes ops, Client2 gets via dirty event          | ✅ Positive |
+| 6D  | ✅ Yes (push ops)    | ✅ Yes (has ops)   | Client1 pushes ops, Client2 gets all ops via dirty event  | ✅ Positive |
 
 ---
 
@@ -157,12 +159,12 @@ This document defines the comprehensive test strategy for real-time synchronizat
 
 **Sync mechanism**: None (manual sync only)
 
-| #   | Client Ops | Server Ops | Expected Behavior                             | Test Type |
-| --- | ---------- | ---------- | --------------------------------------------- | --------- |
-| 7A  | ❌ No      | ❌ No      | No changes                                    | 💤 No-op  |
-| 7B  | ❌ No      | ✅ Yes     | Server has ops but Client2 doesn't see        | 💤 No-op  |
-| 7C  | ✅ Yes     | ❌ No      | Client1 pushes, Client2 doesn't see (no sync) | 💤 No-op  |
-| 7D  | ✅ Yes     | ✅ Yes     | No automatic sync                             | 💤 No-op  |
+| #   | Client Ops (Client1) | Server Ops         | Expected Behavior                                          | Test Type |
+| --- | -------------------- | ------------------ | ---------------------------------------------------------- | --------- |
+| 7A  | ❌ No (sync w/ 0)    | ❌ No (0 response) | Client1 syncs 0, server responds 0, no automatic mechanism | 💤 No-op  |
+| 7B  | ❌ No (sync w/ 0)    | ✅ Yes (has ops)   | Client2 syncs 0, server has ops but Client2 doesn't see    | 💤 No-op  |
+| 7C  | ✅ Yes (push ops)    | ❌ No (0 response) | Client1 pushes ops, Client2 doesn't see (no sync)          | 💤 No-op  |
+| 7D  | ✅ Yes (push ops)    | ✅ Yes (has ops)   | Both have ops but no automatic sync                        | 💤 No-op  |
 
 **Enhancement**: For 7C and 7D, add reload verification:
 
@@ -177,12 +179,12 @@ This document defines the comprehensive test strategy for real-time synchronizat
 
 **Sync mechanism**: None (manual sync only)
 
-| #   | Client Ops | Server Ops | Expected Behavior                      | Test Type |
-| --- | ---------- | ---------- | -------------------------------------- | --------- |
-| 8A  | ❌ No      | ❌ No      | No changes                             | 💤 No-op  |
-| 8B  | ❌ No      | ✅ Yes     | Server has ops but Client2 doesn't see | 💤 No-op  |
-| 8C  | ✅ Yes     | ❌ No      | Client1 pushes, Client2 doesn't see    | 💤 No-op  |
-| 8D  | ✅ Yes     | ✅ Yes     | No automatic sync                      | 💤 No-op  |
+| #   | Client Ops (Client1) | Server Ops         | Expected Behavior                                   | Test Type |
+| --- | -------------------- | ------------------ | --------------------------------------------------- | --------- |
+| 8A  | ❌ No (sync w/ 0)    | ❌ No (0 response) | Client1 syncs 0, server responds 0, no notification | 💤 No-op  |
+| 8B  | ❌ No (sync w/ 0)    | ✅ Yes (has ops)   | Client2 syncs 0, server has ops but no notification | 💤 No-op  |
+| 8C  | ✅ Yes (push ops)    | ❌ No (0 response) | Client1 pushes ops, Client2 doesn't see             | 💤 No-op  |
+| 8D  | ✅ Yes (push ops)    | ✅ Yes (has ops)   | Both have ops but no automatic sync                 | 💤 No-op  |
 
 **Enhancement**: For 8D, add manual sync test:
 
@@ -268,41 +270,47 @@ All three must verify:
 
 ### Runtime State Setup
 
-#### State A: No ops either side
+#### State A: No ops either side (sync with 0 ops)
 
 ```typescript
-// Client1 creates doc, waits for initial sync
-// Client2 loads doc
-// Neither makes changes
-// Verify: No sync activity
+// Client1 creates doc, waits for initial sync to complete
+// Client2 loads doc, waits for sync to complete
+// Neither makes changes after sync
+// Client1 (or Client2) triggers sync with 0 operations
+// Verify: Sync event happens with 0 ops, appropriate realtime notification
 ```
 
-#### State B: Server has ops
+#### State B: Server has ops, client sends 0
 
 ```typescript
-// Client1 creates doc
-// Client2 loads doc
+// Client1 creates doc, syncs
+// Client2 loads doc, syncs
 // External change happens on server (simulate via Client3)
-// Verify: Client2 receives server ops
+// Client2 triggers sync with 0 ops (pull)
+// Verify: Client2 receives server ops via appropriate mechanism
 ```
 
-#### State C: Client sends ops
+#### State C: Client sends ops, server responds 0
 
 ```typescript
-// Client1 creates doc
-// Client2 loads doc
-// Client1 makes change
-// Verify: Client2 receives change (or doesn't, for no-sync configs)
+// Client1 creates doc, syncs
+// Client2 loads doc, syncs
+// Client1 makes change (generates ops)
+// Client1 triggers sync, pushing those ops
+// Server has no new ops, responds with 0
+// Verify: Client2 receives change via appropriate mechanism
 ```
 
 #### State D: Both have ops
 
 ```typescript
-// Client1 creates doc
-// Client2 loads doc
+// Client1 creates doc, syncs
+// Client2 loads doc, syncs
 // External change on server (via Client3)
-// Client1 makes change concurrently
-// Verify: Client2 receives both (or doesn't, for no-sync configs)
+// Client1 makes change concurrently (generates ops)
+// Client1 triggers sync, pushing ops
+// Server responds with its ops
+// Verify: Client2 receives both client1's and server's ops
 ```
 
 ### The Shared Clock Problem (Config 5)

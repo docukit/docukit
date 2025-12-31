@@ -10,6 +10,7 @@
 - Keep refining until:
   - In `pnpm test:coverage:once` all tests and pass, and coverage is 100% in the docnode package (you can ignore docsync coverage)
   - In `pnpm fix` all pass.
+- Vitest tests should never take more than 4 seconds. If this happens, investigate the regression and let us know so we can fix it.
 
 ## Tests
 
