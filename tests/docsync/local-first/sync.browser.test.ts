@@ -1,24 +1,73 @@
-import { describe, test, expect, beforeAll } from "vitest";
+import { describe, test, expect, beforeAll, afterEach } from "vitest";
 import {
   createClient,
   generateUserId,
   generateDocId,
-  getDoc,
+  getDocWithCleanup,
   tick,
   ChildNode,
 } from "./utils.js";
 
 describe.skip("Local-First Sync", () => {
+  // Track clients created in each test for cleanup
+  const activeClients: Array<ReturnType<typeof createClient>["client"]> = [];
+  const activeCleanups: Array<() => void> = [];
+
+  // Helper to create client and auto-track for cleanup
+  const createTrackedClient = (
+    userId?: string,
+    token?: string,
+    config?: { realTime?: boolean; broadcastChannel?: boolean },
+  ) => {
+    const result = createClient(userId, token, config);
+    activeClients.push(result.client);
+    return result;
+  };
+
+  // Helper to get doc and auto-track cleanup
+  const getTrackedDoc = async (
+    client: ReturnType<typeof createClient>["client"],
+    args: { type: string; id: string; createIfMissing?: boolean },
+  ) => {
+    const { doc, cleanup } = await getDocWithCleanup(client, args);
+    activeCleanups.push(cleanup);
+    return doc;
+  };
+
   beforeAll(async () => {
     await tick();
   });
 
+  afterEach(async () => {
+    // Clean up all docs
+    for (const cleanup of activeCleanups) {
+      cleanup();
+    }
+    activeCleanups.length = 0;
+
+    // Close all client connections
+    for (const client of activeClients) {
+      // Close socket if exists
+      if (client["_serverSync"]) {
+        const socket = client["_serverSync"]["_api"]["_socket"];
+        socket?.connected && socket.disconnect();
+      }
+      // Close broadcast channel if exists
+      if (client["_broadcastChannel"]) {
+        client["_broadcastChannel"].close();
+      }
+    }
+    activeClients.length = 0;
+
+    await tick(); // Give time for cleanup to complete
+  });
+
   describe("Authentication", () => {
     test("client with valid token connects successfully", async () => {
-      const { client } = createClient();
+      const { client } = createTrackedClient();
       const docId = generateDocId();
 
-      const doc = await getDoc(client, {
+      const doc = await getTrackedDoc(client, {
         type: "test",
         id: docId,
         createIfMissing: true,
@@ -34,16 +83,24 @@ describe.skip("Local-First Sync", () => {
       const userId1 = generateUserId();
       const userId2 = generateUserId();
 
-      const { client: client1 } = createClient(userId1);
-      const { client: client2 } = createClient(userId2);
+      const { client: client1 } = createTrackedClient(userId1);
+      const { client: client2 } = createTrackedClient(userId2);
 
       const docId1 = generateDocId();
       const docId2 = generateDocId();
 
       // Both should be able to create docs independently
       const [doc1, doc2] = await Promise.all([
-        getDoc(client1, { type: "test", id: docId1, createIfMissing: true }),
-        getDoc(client2, { type: "test", id: docId2, createIfMissing: true }),
+        getTrackedDoc(client1, {
+          type: "test",
+          id: docId1,
+          createIfMissing: true,
+        }),
+        getTrackedDoc(client2, {
+          type: "test",
+          id: docId2,
+          createIfMissing: true,
+        }),
       ]);
 
       expect(doc1).toBeDefined();
@@ -56,11 +113,11 @@ describe.skip("Local-First Sync", () => {
       const docId = generateDocId();
       const sharedUserId = generateUserId();
 
-      const { client: client1 } = createClient(sharedUserId);
-      const { client: client2 } = createClient(sharedUserId);
+      const { client: client1 } = createTrackedClient(sharedUserId);
+      const { client: client2 } = createTrackedClient(sharedUserId);
 
       // Client 1 creates document
-      const doc1 = await getDoc(client1, {
+      const doc1 = await getTrackedDoc(client1, {
         type: "test",
         id: docId,
         createIfMissing: true,
@@ -73,7 +130,7 @@ describe.skip("Local-First Sync", () => {
       await tick();
 
       // Client 2 loads from shared IndexedDB
-      const doc2 = await getDoc(client2, { type: "test", id: docId });
+      const doc2 = await getTrackedDoc(client2, { type: "test", id: docId });
 
       expect(doc1.root.first).toBeDefined();
       expect(doc2.root.first).toBeDefined();
@@ -83,11 +140,11 @@ describe.skip("Local-First Sync", () => {
       const docId = generateDocId();
       const sharedUserId = generateUserId();
 
-      const { client: client1 } = createClient(sharedUserId);
-      const { client: client2 } = createClient(sharedUserId);
+      const { client: client1 } = createTrackedClient(sharedUserId);
+      const { client: client2 } = createTrackedClient(sharedUserId);
 
       // Client 1 creates and saves
-      await getDoc(client1, {
+      await getTrackedDoc(client1, {
         type: "test",
         id: docId,
         createIfMissing: true,
@@ -96,7 +153,7 @@ describe.skip("Local-First Sync", () => {
       await tick();
 
       // Client 2 should see it
-      const doc2 = await getDoc(client2, { type: "test", id: docId });
+      const doc2 = await getTrackedDoc(client2, { type: "test", id: docId });
       expect(doc2).toBeDefined();
       expect(doc2.root).toBeDefined();
     });
@@ -105,11 +162,11 @@ describe.skip("Local-First Sync", () => {
       const docId = generateDocId();
       const sharedUserId = generateUserId();
 
-      const { client: client1 } = createClient(sharedUserId);
-      const { client: client2 } = createClient(sharedUserId);
+      const { client: client1 } = createTrackedClient(sharedUserId);
+      const { client: client2 } = createTrackedClient(sharedUserId);
 
       // Client 1 creates and adds first child
-      const doc1 = await getDoc(client1, {
+      const doc1 = await getTrackedDoc(client1, {
         type: "test",
         id: docId,
         createIfMissing: true,
@@ -121,7 +178,7 @@ describe.skip("Local-First Sync", () => {
       await tick();
 
       // Client 2 loads and adds second child
-      const doc2 = await getDoc(client2, { type: "test", id: docId });
+      const doc2 = await getTrackedDoc(client2, { type: "test", id: docId });
       const child2 = doc2.createNode(ChildNode);
       doc2.root.append(child2);
 
@@ -140,15 +197,15 @@ describe.skip("Local-First Sync", () => {
 
     test("client 1 creates multiple docs, client 2 can load all", async () => {
       const sharedUserId = generateUserId();
-      const { client: client1 } = createClient(sharedUserId);
-      const { client: client2 } = createClient(sharedUserId);
+      const { client: client1 } = createTrackedClient(sharedUserId);
+      const { client: client2 } = createTrackedClient(sharedUserId);
 
       // Client 1 creates 3 documents
       const docIds = [generateDocId(), generateDocId(), generateDocId()];
 
       await Promise.all(
         docIds.map((id) =>
-          getDoc(client1, { type: "test", id, createIfMissing: true }),
+          getTrackedDoc(client1, { type: "test", id, createIfMissing: true }),
         ),
       );
 
@@ -156,7 +213,7 @@ describe.skip("Local-First Sync", () => {
 
       // Client 2 should be able to load all
       const docs = await Promise.all(
-        docIds.map((id) => getDoc(client2, { type: "test", id })),
+        docIds.map((id) => getTrackedDoc(client2, { type: "test", id })),
       );
 
       expect(docs).toHaveLength(3);
@@ -178,11 +235,11 @@ describe.skip("Local-First Sync", () => {
       const sharedUserId = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createClient(sharedUserId);
-      const { client: client2 } = createClient(sharedUserId);
+      const { client: client1 } = createTrackedClient(sharedUserId);
+      const { client: client2 } = createTrackedClient(sharedUserId);
 
       // Both clients load the same document
-      const doc1 = await getDoc(client1, {
+      const doc1 = await getTrackedDoc(client1, {
         type: "test",
         id: docId,
         createIfMissing: true,
@@ -190,7 +247,7 @@ describe.skip("Local-First Sync", () => {
 
       await tick();
 
-      const doc2 = await getDoc(client2, { type: "test", id: docId });
+      const doc2 = await getTrackedDoc(client2, { type: "test", id: docId });
 
       // Client 1 makes a change
       const child = doc1.createNode(ChildNode);
@@ -212,8 +269,8 @@ describe.skip("Local-First Sync", () => {
       const docId = generateDocId();
 
       // Session 1: Create document
-      const { client: client1 } = createClient(userId);
-      const doc1 = await getDoc(client1, {
+      const { client: client1 } = createTrackedClient(userId);
+      const doc1 = await getTrackedDoc(client1, {
         type: "test",
         id: docId,
         createIfMissing: true,
@@ -225,10 +282,10 @@ describe.skip("Local-First Sync", () => {
       await tick();
 
       // Simulate disconnect (create new client instance)
-      const { client: client2 } = createClient(userId);
+      const { client: client2 } = createTrackedClient(userId);
 
       // Should load from IndexedDB
-      const doc2 = await getDoc(client2, { type: "test", id: docId });
+      const doc2 = await getTrackedDoc(client2, { type: "test", id: docId });
 
       expect(doc2).toBeDefined();
       expect(doc2.root.first).toBeDefined();
@@ -237,8 +294,57 @@ describe.skip("Local-First Sync", () => {
 });
 
 describe("Client/Server Operation Sync", () => {
+  // Track clients created in each test for cleanup
+  const activeClients: Array<ReturnType<typeof createClient>["client"]> = [];
+  const activeCleanups: Array<() => void> = [];
+
+  // Helper to create client and auto-track for cleanup
+  const createTrackedClient = (
+    userId?: string,
+    token?: string,
+    config?: { realTime?: boolean; broadcastChannel?: boolean },
+  ) => {
+    const result = createClient(userId, token, config);
+    activeClients.push(result.client);
+    return result;
+  };
+
+  // Helper to get doc and auto-track cleanup
+  const getTrackedDoc = async (
+    client: ReturnType<typeof createClient>["client"],
+    args: { type: string; id: string; createIfMissing?: boolean },
+  ) => {
+    const { doc, cleanup } = await getDocWithCleanup(client, args);
+    activeCleanups.push(cleanup);
+    return doc;
+  };
+
   beforeAll(async () => {
     await tick();
+  });
+
+  afterEach(async () => {
+    // Clean up all docs
+    for (const cleanup of activeCleanups) {
+      cleanup();
+    }
+    activeCleanups.length = 0;
+
+    // Close all client connections
+    for (const client of activeClients) {
+      // Close socket if exists
+      if (client["_serverSync"]) {
+        const socket = client["_serverSync"]["_api"]["_socket"];
+        socket?.connected && socket.disconnect();
+      }
+      // Close broadcast channel if exists
+      if (client["_broadcastChannel"]) {
+        client["_broadcastChannel"].close();
+      }
+    }
+    activeClients.length = 0;
+
+    await tick(); // Give time for cleanup to complete
   });
 
   test("should handle client sends operations + server returns no operations", async () => {
@@ -246,11 +352,11 @@ describe("Client/Server Operation Sync", () => {
     const docId = generateDocId();
 
     // Create client with realTime and broadcastChannel disabled to avoid duplicate operations
-    const { client } = createClient(userId, undefined, {
+    const { client } = createTrackedClient(userId, undefined, {
       realTime: false,
       broadcastChannel: false,
     });
-    const doc = await getDoc(client, {
+    const doc = await getTrackedDoc(client, {
       type: "test",
       id: docId,
       createIfMissing: true,
@@ -277,17 +383,17 @@ describe("Client/Server Operation Sync", () => {
 
     // Create two clients with DIFFERENT userIds (separate IndexedDB)
     // and realTime/broadcastChannel disabled to test explicit sync
-    const { client: client1 } = createClient(userId1, undefined, {
+    const { client: client1 } = createTrackedClient(userId1, undefined, {
       realTime: false,
       broadcastChannel: false,
     });
-    const { client: client2 } = createClient(userId2, undefined, {
+    const { client: client2 } = createTrackedClient(userId2, undefined, {
       realTime: false,
       broadcastChannel: false,
     });
 
     // Client 1 creates document
-    const doc1 = await getDoc(client1, {
+    const doc1 = await getTrackedDoc(client1, {
       type: "test",
       id: docId,
       createIfMissing: true,
@@ -300,7 +406,7 @@ describe("Client/Server Operation Sync", () => {
     await tick();
 
     // Client 2 loads the document from server (not from IndexedDB since different user)
-    const doc2 = await getDoc(client2, {
+    const doc2 = await getTrackedDoc(client2, {
       type: "test",
       id: docId,
       createIfMissing: true,
@@ -325,7 +431,7 @@ describe("Client/Server Operation Sync", () => {
     await client1["_unloadDoc"](docId);
 
     // Reload doc1 to get child2 from server
-    const doc1Reloaded = await getDoc(client1, {
+    const doc1Reloaded = await getTrackedDoc(client1, {
       type: "test",
       id: docId,
       createIfMissing: true,
@@ -349,11 +455,11 @@ describe("Client/Server Operation Sync", () => {
     const docId = generateDocId();
 
     // Create client with realTime and broadcastChannel disabled
-    const { client } = createClient(userId, undefined, {
+    const { client } = createTrackedClient(userId, undefined, {
       realTime: false,
       broadcastChannel: false,
     });
-    const doc = await getDoc(client, {
+    const doc = await getTrackedDoc(client, {
       type: "test",
       id: docId,
       createIfMissing: true,
@@ -376,17 +482,17 @@ describe("Client/Server Operation Sync", () => {
     const docId = generateDocId();
 
     // Create two clients with DIFFERENT userIds and realTime/broadcastChannel disabled
-    const { client: client1 } = createClient(userId1, undefined, {
+    const { client: client1 } = createTrackedClient(userId1, undefined, {
       realTime: false,
       broadcastChannel: false,
     });
-    const { client: client2 } = createClient(userId2, undefined, {
+    const { client: client2 } = createTrackedClient(userId2, undefined, {
       realTime: false,
       broadcastChannel: false,
     });
 
     // Client 1 creates document and adds children
-    const doc1 = await getDoc(client1, {
+    const doc1 = await getTrackedDoc(client1, {
       type: "test",
       id: docId,
       createIfMissing: true,
@@ -402,7 +508,7 @@ describe("Client/Server Operation Sync", () => {
 
     // Client 2 loads document - this is a "pull" since it has no local operations
     // but should receive the operations from the server
-    const doc2 = await getDoc(client2, {
+    const doc2 = await getTrackedDoc(client2, {
       type: "test",
       id: docId,
       createIfMissing: true,
