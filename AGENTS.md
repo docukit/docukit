@@ -22,7 +22,7 @@
 
 ### Playwright Browser Tests Failing with "Target page, context or browser has been closed"
 
-**Cause:** Zombie Playwright processes from previous runs interfere with new browser instances.
+**Cause 1:** Zombie Playwright processes from previous runs interfere with new browser instances.
 
 **Solution:**
 
@@ -35,3 +35,52 @@ pnpm vitest --run tests/docsync/local-first/realtime.browser.test.ts
 ```
 
 **Prevention:** Use Ctrl+C (not `kill -9`) to stop tests.
+
+---
+
+**Cause 2:** The error appears at the END of test execution when closing the browser, but tests actually ran successfully.
+
+**How to verify tests ran:**
+
+1. Look for test results BEFORE the error:
+
+   ```
+   Test Files  15 passed | 2 skipped (18)
+        Tests  5 failed | 333 passed | 9 skipped
+   ```
+
+2. Check for "Duration" in the output (e.g., `Duration 24.68s`)
+
+3. If you see test results, the tests RAN. The "Target page closed" error is just a cleanup issue.
+
+**When this happens:**
+
+- ✅ Tests executed successfully
+- ✅ Results are valid
+- ❌ Browser cleanup failed (cosmetic issue)
+
+**If you see the error IMMEDIATELY with "no tests" and Duration < 1s:**
+
+- This is a real problem (browser crashed before loading tests)
+- Try the cleanup solution above
+- May need to reinstall Playwright: `pnpm exec playwright install chromium --with-deps`
+
+---
+
+### Common Test Failures
+
+**ConstraintError: Key already exists in the object store**
+
+**Cause:** Multiple tests using the same IndexedDB key (usually same docId).
+
+**Solution:** Ensure each test uses unique IDs:
+
+```typescript
+const docId = generateDocId(); // Generates unique ID each time
+```
+
+**Node already exists in the doc**
+
+**Cause:** ID conflicts when creating nodes, usually from shared state between tests.
+
+**Solution:** Ensure proper test isolation and unique document IDs per test.

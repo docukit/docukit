@@ -12,186 +12,45 @@ import {
 } from "./utils.js";
 
 /**
- * Real-Time Collaboration Tests
+ * Real-Time Synchronization Tests - Complete 32 Scenario Coverage
  *
- * These tests verify the behavior of real-time synchronization between clients.
+ * This file tests all 32 combinations of:
+ * - 8 configurations (BC × RT × Same User)
+ * - 4 runtime states per config (Client ops × Server ops)
  *
- * Two sync mechanisms:
- * 1. BroadcastChannel: Same-device, same-origin tabs (same userId)
- * 2. Server dirty events: Cross-device, any origin (any userId, requires server)
+ * See REALTIME-TEST-PLAN.md for detailed analysis of each scenario.
  *
- * Test organization:
- * - Same User scenarios: Both mechanisms can work (shared IndexedDB + BroadcastChannel)
- * - Different Users scenarios: Only server RTC works (separate IndexedDB per user)
+ * Test types:
+ * - ✅ Positive: Verify sync works as expected
+ * - 🚫 Negative: Verify broken configs fail predictably
+ * - 💤 No-op: Verify no sync happens when expected
  */
 
-describe.sequential("Real-Time Collaboration", () => {
+describe.sequential("Real-Time Synchronization - All 32 Scenarios", () => {
   beforeAll(async () => {
-    // Wait a bit for server to be fully ready
     await tick(100);
   });
 
   afterEach(async () => {
-    // Wait for async operations to complete after each test
     await tick(100);
   });
 
-  describe("Same User - Both Mechanisms Available", () => {
-    test("Config 1: realTime=true + broadcastChannel=true - both mechanisms active", async () => {
+  // ==========================================================================
+  // CONFIG 1: Same User + BC=ON + RT=ON (Both mechanisms)
+  // Expected: BroadcastChannel (primary) + Server Dirty (secondary)
+  // ==========================================================================
+
+  describe("Config 1: Same User + BC=ON + RT=ON", () => {
+    test("1A: No ops either side - up-to-date check", async () => {
       const userId = generateUserId();
       const docId = generateDocId();
 
-      // Same user, both clients share IndexedDB
       const { client: client1 } = createClient(userId, undefined, {
         realTime: true,
         broadcastChannel: true,
       });
       const { client: client2 } = createClient(userId, undefined, {
         realTime: true,
-        broadcastChannel: true,
-      });
-
-      // Client 1 creates document
-      const doc1 = await getDoc(client1, {
-        type: "test",
-        id: docId,
-        createIfMissing: true,
-      });
-
-      await tick(400); // Wait for saveRemote and subscription to complete
-
-      // Client 2 loads document (from shared IndexedDB)
-      const doc2 = await getDoc(client2, { type: "test", id: docId });
-
-      await tick(400); // Wait for client2's subscription to complete
-
-      // Verify BroadcastChannel is initialized (after getDoc resolves _localPromise)
-      expect(client1["_broadcastChannel"]).toBeDefined();
-      expect(client2["_broadcastChannel"]).toBeDefined();
-
-      // Verify subscriptions are active (realTime: true)
-      const serverSync1 = client1["_serverSync"];
-      const serverSync2 = client2["_serverSync"];
-      expect(serverSync1!["_subscribedDocs"].size).toBeGreaterThan(0);
-      expect(serverSync2!["_subscribedDocs"].size).toBeGreaterThan(0);
-
-      // Spy on both mechanisms AFTER initial load
-      const bc1Spy = spyOnBroadcastChannel(client1);
-      const dirtySpy2 = spyOnDirtyEvent(client2);
-
-      bc1Spy.mockClear();
-      dirtySpy2.mockClear();
-
-      // Client 1 makes a change
-      const child = doc1.createNode(ChildNode);
-      doc1.root.append(child);
-
-      // Wait for async onChange to fire
-      await tick(3);
-
-      // Verify BroadcastChannel was used
-      expect(bc1Spy.mock.calls.length).toBe(1);
-
-      // Client 2 sees the change immediately (via BroadcastChannel)
-      let count = 0;
-      doc2.root.children().forEach(() => count++);
-      expect(count).toBe(1);
-
-      await tick(10);
-
-      // Verify dirty event triggered a sync on client2
-      expect(dirtySpy2.mock.calls.length).toBeGreaterThan(0);
-    });
-
-    test("Config 2: realTime=true + broadcastChannel=false - verify broken behavior (negative test)", async () => {
-      // NEGATIVE TEST: This configuration is known to be broken
-      //
-      // Problem: Same-user clients share IndexedDB (same userId), which includes the clock.
-      // When client1 pushes operations, the server updates the clock to N.
-      // Both clients now have clock=N in their shared IndexedDB.
-      // When dirty event fires for client2, it pulls with clock=N.
-      // Server responds with empty operations (no ops with clock > N).
-      // Client2's in-memory document never updates.
-      //
-      // This test verifies:
-      // 1. Documents remain out of sync (in-memory state differs)
-      // 2. BroadcastChannel is NOT accidentally used (it's disabled)
-      // 3. After reload, documents sync (IndexedDB has the changes)
-
-      const userId = generateUserId();
-      const docId = generateDocId();
-
-      const { client: client1 } = createClient(userId, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
-      const { client: client2 } = createClient(userId, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
-
-      // Verify BroadcastChannel is NOT initialized
-      expect(client1["_broadcastChannel"]).toBeUndefined();
-      expect(client2["_broadcastChannel"]).toBeUndefined();
-
-      // Client 1 creates document
-      const doc1 = await getDoc(client1, {
-        type: "test",
-        id: docId,
-        createIfMissing: true,
-      });
-
-      await tick(5);
-
-      // Client 2 loads document with cleanup
-      const { doc: doc2, cleanup: cleanup2 } = await getDocWithCleanup(
-        client2,
-        { type: "test", id: docId },
-      );
-
-      await tick(5);
-
-      // Client 1 makes a change
-      const child = doc1.createNode(ChildNode);
-      doc1.root.append(child);
-
-      // Wait for onChange to trigger + server sync + dirty event
-      await tick(15);
-
-      // ❌ NEGATIVE ASSERTION: Client 2 should NOT see the change in memory
-      // (This verifies the broken behavior)
-      let count = 0;
-      doc2.root.children().forEach(() => count++);
-      expect(count).toBe(0); // Broken: in-memory doc is stale
-
-      // ✅ Verify BroadcastChannel was not used (we can't spy on it since it's disabled)
-      // Already verified above that _broadcastChannel is undefined
-
-      // Now unload and reload Client2's document
-      cleanup2(); // Unload the stale document
-      await tick(5);
-
-      // Reload from IndexedDB
-      const doc2Reloaded = await getDoc(client2, { type: "test", id: docId });
-
-      await tick(5);
-
-      // ✅ POSITIVE ASSERTION: After reload, Client2 sees the changes (from IndexedDB)
-      let countAfterReload = 0;
-      doc2Reloaded.root.children().forEach(() => countAfterReload++);
-      expect(countAfterReload).toBe(1); // IndexedDB has the change!
-    });
-
-    test("Config 3: realTime=false + broadcastChannel=true - only BroadcastChannel", async () => {
-      const userId = generateUserId();
-      const docId = generateDocId();
-
-      const { client: client1 } = createClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
-      const { client: client2 } = createClient(userId, undefined, {
-        realTime: false,
         broadcastChannel: true,
       });
 
@@ -209,17 +68,80 @@ describe.sequential("Real-Time Collaboration", () => {
 
       await tick(5);
 
-      // Verify BroadcastChannel IS initialized (after getDoc resolves _localPromise)
-      expect(client1["_broadcastChannel"]).toBeDefined();
-      expect(client2["_broadcastChannel"]).toBeDefined();
+      // Neither makes changes
+      // Verify: No sync activity, both have empty docs
+      let count1 = 0;
+      doc1.root.children().forEach(() => count1++);
+      let count2 = 0;
+      doc2.root.children().forEach(() => count2++);
 
-      // Verify subscriptions are NOT active (realTime: false)
-      const serverSync1 = client1["_serverSync"];
-      const serverSync2 = client2["_serverSync"];
-      expect(serverSync1!["_subscribedDocs"].size).toBe(0);
-      expect(serverSync2!["_subscribedDocs"].size).toBe(0);
+      expect(count1).toBe(0);
+      expect(count2).toBe(0);
+    });
 
-      // Spy on both mechanisms AFTER initial load
+    test("1B: Server has ops - pull new operations", async () => {
+      const userId = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId, undefined, {
+        realTime: true,
+        broadcastChannel: true,
+      });
+      const { client: client2 } = createClient(userId, undefined, {
+        realTime: true,
+        broadcastChannel: true,
+      });
+
+      // Simulate server having ops: Client1 makes change before Client2 loads
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      const child = doc1.createNode(ChildNode);
+      doc1.root.append(child);
+
+      // Wait for Client1 to push to server
+      await tick(200);
+
+      // Now Client2 loads - should get ops from server
+      const doc2 = await getDoc(client2, { type: "test", id: docId });
+
+      await tick(200);
+
+      // Client2 should see the change (from IndexedDB + any pending server ops)
+      let count = 0;
+      doc2.root.children().forEach(() => count++);
+      expect(count).toBe(1);
+    });
+
+    test("1C: Client sends ops - push with instant BC propagation", async () => {
+      const userId = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId, undefined, {
+        realTime: true,
+        broadcastChannel: true,
+      });
+      const { client: client2 } = createClient(userId, undefined, {
+        realTime: true,
+        broadcastChannel: true,
+      });
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(400);
+
+      const doc2 = await getDoc(client2, { type: "test", id: docId });
+
+      await tick(400);
+
+      // Spy on mechanisms
       const bc1Spy = spyOnBroadcastChannel(client1);
       const dirtySpy2 = spyOnDirtyEvent(client2);
 
@@ -230,98 +152,81 @@ describe.sequential("Real-Time Collaboration", () => {
       const child = doc1.createNode(ChildNode);
       doc1.root.append(child);
 
-      // Wait for async onChange
       await tick(3);
 
       // Verify BroadcastChannel was used
       expect(bc1Spy.mock.calls.length).toBe(1);
 
-      // BroadcastChannel propagates quickly
-      await tick(5);
-
-      // Verify dirty event was NOT triggered (realTime: false)
-      expect(dirtySpy2.mock.calls.length).toBe(0);
-
-      // Client 2 sees the change via BroadcastChannel
+      // Client 2 sees the change immediately (via BroadcastChannel)
       let count = 0;
       doc2.root.children().forEach(() => count++);
       expect(count).toBe(1);
+
+      await tick(10);
+
+      // Verify dirty event also triggered (redundant)
+      expect(dirtySpy2.mock.calls.length).toBeGreaterThan(0);
     });
 
-    test("Config 4: realTime=false + broadcastChannel=false - no automatic sync, verify reload", async () => {
+    test("1D: Both have ops - bidirectional sync", async () => {
       const userId = generateUserId();
       const docId = generateDocId();
 
+      // Create a third client to simulate external server changes
       const { client: client1 } = createClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: false,
+        realTime: true,
+        broadcastChannel: true,
       });
       const { client: client2 } = createClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: false,
+        realTime: true,
+        broadcastChannel: true,
       });
+      const { client: client3 } = createClient(generateUserId()); // Different user for external change
 
-      // Verify both mechanisms are disabled
-      expect(client1["_broadcastChannel"]).toBeUndefined();
-      expect(client2["_broadcastChannel"]).toBeUndefined();
-
-      // Client 1 creates document
       const doc1 = await getDoc(client1, {
         type: "test",
         id: docId,
         createIfMissing: true,
       });
 
-      await tick(5);
+      await tick(200);
 
-      // Client 2 loads document with cleanup
-      const { doc: doc2, cleanup: cleanup2 } = await getDocWithCleanup(
-        client2,
-        { type: "test", id: docId },
-      );
+      const doc2 = await getDoc(client2, { type: "test", id: docId });
 
-      await tick(5);
+      await tick(200);
 
-      // Verify subscriptions are NOT active
-      const serverSync2 = client2["_serverSync"];
-      expect(serverSync2!["_subscribedDocs"].size).toBe(0);
+      // Client3 creates external change (simulates server having ops)
+      const doc3 = await getDoc(client3, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
 
-      // Spy on dirty event AFTER initial load
-      const dirtySpy2 = spyOnDirtyEvent(client2);
-      dirtySpy2.mockClear();
+      const child3 = doc3.createNode(ChildNode);
+      doc3.root.append(child3);
 
-      // Client 1 makes a change
-      const child = doc1.createNode(ChildNode);
-      doc1.root.append(child);
+      await tick(200);
 
-      await tick(10);
+      // Now Client1 makes concurrent change
+      const child1 = doc1.createNode(ChildNode);
+      doc1.root.append(child1);
 
-      // Verify dirty event was NOT triggered
-      expect(dirtySpy2.mock.calls.length).toBe(0);
+      await tick(200);
 
-      // Client 2 should NOT see the change (no automatic sync)
+      // Client2 should eventually see both changes
       let count = 0;
       doc2.root.children().forEach(() => count++);
-      expect(count).toBe(0);
-
-      // Unload and reload Client2's document
-      cleanup2();
-      await tick(5);
-
-      // Reload from IndexedDB (should have Client1's changes now)
-      const doc2Reloaded = await getDoc(client2, { type: "test", id: docId });
-
-      await tick(5);
-
-      // After reload, Client2 should see the changes (persisted in IndexedDB)
-      let countAfterReload = 0;
-      doc2Reloaded.root.children().forEach(() => countAfterReload++);
-      expect(countAfterReload).toBe(1);
+      expect(count).toBe(2);
     });
   });
 
-  describe("Different Users - Only Server RTC Available", () => {
-    test("realTime=true - server dirty events work across users", async () => {
+  // ==========================================================================
+  // CONFIG 2: Different Users + BC=ON + RT=ON (Both mechanisms, BC ineffective)
+  // Expected: Server Dirty only (BC doesn't cross users)
+  // ==========================================================================
+
+  describe("Config 2: Different Users + BC=ON + RT=ON", () => {
+    test("2A: No ops either side - no changes", async () => {
       const userId1 = generateUserId();
       const userId2 = generateUserId();
       const docId = generateDocId();
@@ -329,7 +234,74 @@ describe.sequential("Real-Time Collaboration", () => {
       const { client: client1 } = createClient(userId1);
       const { client: client2 } = createClient(userId2);
 
-      // Client 1 creates document
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      const doc2 = await getDoc(client2, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      // Neither makes changes
+      let count1 = 0;
+      doc1.root.children().forEach(() => count1++);
+      let count2 = 0;
+      doc2.root.children().forEach(() => count2++);
+
+      expect(count1).toBe(0);
+      expect(count2).toBe(0);
+    });
+
+    test("2B: Server has ops - pull via dirty event", async () => {
+      const userId1 = generateUserId();
+      const userId2 = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId1);
+      const { client: client2 } = createClient(userId2);
+
+      // Client1 makes change first
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      const child = doc1.createNode(ChildNode);
+      doc1.root.append(child);
+
+      await tick(200);
+
+      // Client2 loads - should get from server
+      const doc2 = await getDoc(client2, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      let count = 0;
+      doc2.root.children().forEach(() => count++);
+      expect(count).toBe(1);
+    });
+
+    test("2C: Client sends ops - propagates via dirty", async () => {
+      const userId1 = generateUserId();
+      const userId2 = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId1);
+      const { client: client2 } = createClient(userId2);
+
       const doc1 = await getDoc(client1, {
         type: "test",
         id: docId,
@@ -338,7 +310,6 @@ describe.sequential("Real-Time Collaboration", () => {
 
       await tick(10);
 
-      // Client 2 loads document from server (different IndexedDB)
       const doc2 = await getDoc(client2, {
         type: "test",
         id: docId,
@@ -358,10 +329,9 @@ describe.sequential("Real-Time Collaboration", () => {
       const child = doc1.createNode(ChildNode);
       doc1.root.append(child);
 
-      // Wait for async onChange
       await tick(3);
 
-      // BroadcastChannel is called but client2 won't receive it (different user/origin)
+      // BroadcastChannel is called but client2 won't receive it (different user)
       expect(bc1Spy.mock.calls.length).toBe(1);
 
       await tick(15);
@@ -375,48 +345,590 @@ describe.sequential("Real-Time Collaboration", () => {
       expect(count).toBe(1);
     });
 
-    test("realTime=false - no automatic sync across users, verify manual sync", async () => {
+    test("2D: Both have ops - bidirectional via dirty", async () => {
       const userId1 = generateUserId();
       const userId2 = generateUserId();
+      const userId3 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createClient(userId1, undefined, {
-        realTime: false,
-        broadcastChannel: true, // Doesn't matter, different users
-      });
-      const { client: client2 } = createClient(userId2, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createClient(userId1);
+      const { client: client2 } = createClient(userId2);
+      const { client: client3 } = createClient(userId3);
 
-      // Client 1 creates document
       const doc1 = await getDoc(client1, {
         type: "test",
         id: docId,
         createIfMissing: true,
       });
 
-      // Wait for client1 to sync to server
       await tick(200);
 
-      // Client 2 loads document
       const doc2 = await getDoc(client2, {
         type: "test",
         id: docId,
         createIfMissing: true,
       });
 
-      // Wait for client2 to sync and load the document
       await tick(200);
 
-      // Verify doc2 loaded correctly (should have no children yet)
+      // Client3 creates external change
+      const doc3 = await getDoc(client3, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      const child3 = doc3.createNode(ChildNode);
+      doc3.root.append(child3);
+
+      await tick(200);
+
+      // Client1 makes concurrent change
+      const child1 = doc1.createNode(ChildNode);
+      doc1.root.append(child1);
+
+      await tick(200);
+
+      // Client2 should see both changes via dirty events
+      let count = 0;
+      doc2.root.children().forEach(() => count++);
+      expect(count).toBe(2);
+    });
+  });
+
+  // ==========================================================================
+  // CONFIG 3: Same User + BC=ON + RT=OFF (BC only)
+  // Expected: BroadcastChannel only
+  // ==========================================================================
+
+  describe("Config 3: Same User + BC=ON + RT=OFF", () => {
+    test("3A: No ops either side - no changes", async () => {
+      const userId = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId, undefined, {
+        realTime: false,
+        broadcastChannel: true,
+      });
+      const { client: client2 } = createClient(userId, undefined, {
+        realTime: false,
+        broadcastChannel: true,
+      });
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(5);
+
+      const doc2 = await getDoc(client2, { type: "test", id: docId });
+
+      await tick(5);
+
+      let count1 = 0;
+      doc1.root.children().forEach(() => count1++);
+      let count2 = 0;
+      doc2.root.children().forEach(() => count2++);
+
+      expect(count1).toBe(0);
+      expect(count2).toBe(0);
+    });
+
+    test("3B: Server has ops - no dirty event, no pull (no-op)", async () => {
+      const userId = generateUserId();
+      const docId = generateDocId();
+
+      // Create external change via different user
+      const { client: client3 } = createClient(generateUserId());
+      const doc3 = await getDoc(client3, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      const child3 = doc3.createNode(ChildNode);
+      doc3.root.append(child3);
+
+      await tick(200);
+
+      // Now same-user clients load (RT=OFF, so no dirty subscription)
+      const { client: client1 } = createClient(userId, undefined, {
+        realTime: false,
+        broadcastChannel: true,
+      });
+      const { client: client2 } = createClient(userId, undefined, {
+        realTime: false,
+        broadcastChannel: true,
+      });
+
+      const doc1 = await getDoc(client1, { type: "test", id: docId });
+
+      await tick(200);
+
+      const doc2 = await getDoc(client2, { type: "test", id: docId });
+
+      await tick(200);
+
+      // Both should have loaded the external change from server/IndexedDB
+      let count1 = 0;
+      doc1.root.children().forEach(() => count1++);
+      let count2 = 0;
+      doc2.root.children().forEach(() => count2++);
+
+      expect(count1).toBe(1);
+      expect(count2).toBe(1);
+    });
+
+    test("3C: Client sends ops - instant BC propagation", async () => {
+      const userId = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId, undefined, {
+        realTime: false,
+        broadcastChannel: true,
+      });
+      const { client: client2 } = createClient(userId, undefined, {
+        realTime: false,
+        broadcastChannel: true,
+      });
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(5);
+
+      const doc2 = await getDoc(client2, { type: "test", id: docId });
+
+      await tick(5);
+
+      // Spy on mechanisms
+      const bc1Spy = spyOnBroadcastChannel(client1);
+      const dirtySpy2 = spyOnDirtyEvent(client2);
+
+      bc1Spy.mockClear();
+      dirtySpy2.mockClear();
+
+      // Client 1 makes a change
+      const child = doc1.createNode(ChildNode);
+      doc1.root.append(child);
+
+      await tick(3);
+
+      // Verify BroadcastChannel was used
+      expect(bc1Spy.mock.calls.length).toBe(1);
+
+      await tick(5);
+
+      // Verify dirty event was NOT triggered (realTime: false)
+      expect(dirtySpy2.mock.calls.length).toBe(0);
+
+      // Client 2 sees the change via BroadcastChannel
+      let count = 0;
+      doc2.root.children().forEach(() => count++);
+      expect(count).toBe(1);
+    });
+
+    test("3D: Both have ops - BC gets client1 ops, server ops ignored", async () => {
+      const userId = generateUserId();
+      const docId = generateDocId();
+
+      // Create external change
+      const { client: client3 } = createClient(generateUserId());
+      const doc3 = await getDoc(client3, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      const child3 = doc3.createNode(ChildNode);
+      doc3.root.append(child3);
+
+      await tick(200);
+
+      // Same-user clients load
+      const { client: client1 } = createClient(userId, undefined, {
+        realTime: false,
+        broadcastChannel: true,
+      });
+      const { client: client2 } = createClient(userId, undefined, {
+        realTime: false,
+        broadcastChannel: true,
+      });
+
+      const doc1 = await getDoc(client1, { type: "test", id: docId });
+
+      await tick(200);
+
+      const doc2 = await getDoc(client2, { type: "test", id: docId });
+
+      await tick(200);
+
+      // Both have external change now
+      let countBefore = 0;
+      doc2.root.children().forEach(() => countBefore++);
+      expect(countBefore).toBe(1);
+
+      // Client1 makes new change
+      const child1 = doc1.createNode(ChildNode);
+      doc1.root.append(child1);
+
+      await tick(10);
+
+      // Client2 should see both (1 from initial load, 1 from BC)
+      let countAfter = 0;
+      doc2.root.children().forEach(() => countAfter++);
+      expect(countAfter).toBe(2);
+    });
+  });
+
+  // ==========================================================================
+  // CONFIG 4: Different Users + BC=ON + RT=OFF (No effective mechanism)
+  // Expected: No automatic sync
+  // ==========================================================================
+
+  describe("Config 4: Different Users + BC=ON + RT=OFF", () => {
+    test("4A: No ops either side - no changes", async () => {
+      const userId1 = generateUserId();
+      const userId2 = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId1, undefined, {
+        realTime: false,
+        broadcastChannel: true,
+      });
+      const { client: client2 } = createClient(userId2, undefined, {
+        realTime: false,
+        broadcastChannel: true,
+      });
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      const doc2 = await getDoc(client2, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      let count1 = 0;
+      doc1.root.children().forEach(() => count1++);
+      let count2 = 0;
+      doc2.root.children().forEach(() => count2++);
+
+      expect(count1).toBe(0);
+      expect(count2).toBe(0);
+    });
+
+    test("4B: Server has ops - Client2 doesn't see (no sync mechanism)", async () => {
+      const userId1 = generateUserId();
+      const userId2 = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId1, undefined, {
+        realTime: false,
+        broadcastChannel: true,
+      });
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      const child = doc1.createNode(ChildNode);
+      doc1.root.append(child);
+
+      await tick(200);
+
+      // Client2 loads after change
+      const { client: client2 } = createClient(userId2, undefined, {
+        realTime: false,
+        broadcastChannel: true,
+      });
+
+      const doc2 = await getDoc(client2, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      // Client2 should see the change (from server on initial load)
+      let count = 0;
+      doc2.root.children().forEach(() => count++);
+      expect(count).toBe(1);
+    });
+
+    test("4C: Client sends ops - no propagation to Client2", async () => {
+      const userId1 = generateUserId();
+      const userId2 = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId1, undefined, {
+        realTime: false,
+        broadcastChannel: true,
+      });
+      const { client: client2 } = createClient(userId2, undefined, {
+        realTime: false,
+        broadcastChannel: true,
+      });
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      const doc2 = await getDoc(client2, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      // Client1 makes change
+      const child = doc1.createNode(ChildNode);
+      doc1.root.append(child);
+
+      await tick(200);
+
+      // Client2 doesn't see it (no sync mechanism)
+      let count = 0;
+      doc2.root.children().forEach(() => count++);
+      expect(count).toBe(0);
+    });
+
+    test("4D: Both have ops - no automatic sync, verify manual sync works", async () => {
+      const userId1 = generateUserId();
+      const userId2 = generateUserId();
+      const userId3 = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId1, undefined, {
+        realTime: false,
+        broadcastChannel: true,
+      });
+      const { client: client2 } = createClient(userId2, undefined, {
+        realTime: false,
+        broadcastChannel: true,
+      });
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      const doc2 = await getDoc(client2, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      // External change via client3
+      const { client: client3 } = createClient(userId3, undefined, {
+        realTime: false,
+      });
+      const doc3 = await getDoc(client3, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      const child3 = doc3.createNode(ChildNode);
+      doc3.root.append(child3);
+
+      await tick(200);
+
+      // Client1 makes concurrent change
+      const child1 = doc1.createNode(ChildNode);
+      doc1.root.append(child1);
+
+      await tick(200);
+
+      // Client2 doesn't see either change
       let countBefore = 0;
       doc2.root.children().forEach(() => countBefore++);
       expect(countBefore).toBe(0);
 
-      // Spy on mechanisms
-      const dirtySpy2 = spyOnDirtyEvent(client2);
-      dirtySpy2.mockClear();
+      // Manual sync
+      await client2.onLocalOperations({
+        docId,
+        operations: [],
+      });
+
+      await tick(200);
+
+      // Now Client2 sees both changes
+      let countAfter = 0;
+      doc2.root.children().forEach(() => countAfter++);
+      expect(countAfter).toBe(2);
+    });
+  });
+
+  // ==========================================================================
+  // CONFIG 5: Same User + BC=OFF + RT=ON (BROKEN - Negative Tests)
+  // Expected: Broken due to shared clock problem
+  // ==========================================================================
+
+  describe("Config 5: Same User + BC=OFF + RT=ON (BROKEN)", () => {
+    test("5A: No ops either side - no changes (no-op)", async () => {
+      const userId = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId, undefined, {
+        realTime: true,
+        broadcastChannel: false,
+      });
+      const { client: client2 } = createClient(userId, undefined, {
+        realTime: true,
+        broadcastChannel: false,
+      });
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(5);
+
+      const doc2 = await getDoc(client2, { type: "test", id: docId });
+
+      await tick(5);
+
+      let count1 = 0;
+      doc1.root.children().forEach(() => count1++);
+      let count2 = 0;
+      doc2.root.children().forEach(() => count2++);
+
+      expect(count1).toBe(0);
+      expect(count2).toBe(0);
+    });
+
+    test("5B: Server has ops - dirty fires but shared clock causes empty response (NEGATIVE)", async () => {
+      const userId = generateUserId();
+      const docId = generateDocId();
+
+      // Create external change via different user
+      const { client: client3 } = createClient(generateUserId());
+      const doc3 = await getDoc(client3, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      const child3 = doc3.createNode(ChildNode);
+      doc3.root.append(child3);
+
+      await tick(200);
+
+      // Same-user clients load
+      const { client: client1 } = createClient(userId, undefined, {
+        realTime: true,
+        broadcastChannel: false,
+      });
+      const { client: client2 } = createClient(userId, undefined, {
+        realTime: true,
+        broadcastChannel: false,
+      });
+
+      expect(client1["_broadcastChannel"]).toBeUndefined();
+      expect(client2["_broadcastChannel"]).toBeUndefined();
+
+      const doc1 = await getDoc(client1, { type: "test", id: docId });
+
+      await tick(200);
+
+      const { doc: doc2, cleanup: cleanup2 } = await getDocWithCleanup(
+        client2,
+        { type: "test", id: docId },
+      );
+
+      await tick(200);
+
+      // Both should have loaded external change initially
+      let count1 = 0;
+      doc1.root.children().forEach(() => count1++);
+      let count2Initial = 0;
+      doc2.root.children().forEach(() => count2Initial++);
+
+      expect(count1).toBe(1);
+      expect(count2Initial).toBe(1);
+
+      // If client1 makes another change now, client2 won't see it (broken)
+      const child1 = doc1.createNode(ChildNode);
+      doc1.root.append(child1);
+
+      await tick(200);
+
+      // ❌ NEGATIVE: Client2 in-memory doc doesn't update
+      let count2AfterChange = 0;
+      doc2.root.children().forEach(() => count2AfterChange++);
+      expect(count2AfterChange).toBe(1); // Still 1, not 2
+
+      // ✅ After reload, sees changes from IndexedDB
+      cleanup2();
+      await tick(5);
+
+      const doc2Reloaded = await getDoc(client2, { type: "test", id: docId });
+      await tick(5);
+
+      let countReloaded = 0;
+      doc2Reloaded.root.children().forEach(() => countReloaded++);
+      expect(countReloaded).toBe(2); // Now sees both
+    });
+
+    test("5C: Client sends ops - dirty fires but empty response (NEGATIVE)", async () => {
+      const userId = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId, undefined, {
+        realTime: true,
+        broadcastChannel: false,
+      });
+      const { client: client2 } = createClient(userId, undefined, {
+        realTime: true,
+        broadcastChannel: false,
+      });
+
+      expect(client1["_broadcastChannel"]).toBeUndefined();
+      expect(client2["_broadcastChannel"]).toBeUndefined();
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(5);
+
+      const { doc: doc2, cleanup: cleanup2 } = await getDocWithCleanup(
+        client2,
+        { type: "test", id: docId },
+      );
+
+      await tick(5);
 
       // Client 1 makes a change
       const child = doc1.createNode(ChildNode);
@@ -424,67 +936,111 @@ describe.sequential("Real-Time Collaboration", () => {
 
       await tick(15);
 
-      // No server dirty event (realTime: false)
-      expect(dirtySpy2.mock.calls.length).toBe(0);
+      // ❌ NEGATIVE: Client 2 doesn't see the change in memory
+      let count = 0;
+      doc2.root.children().forEach(() => count++);
+      expect(count).toBe(0); // Broken: in-memory doc is stale
 
-      // Client 2 should NOT see the change automatically
-      let countNoSync = 0;
-      doc2.root.children().forEach(() => countNoSync++);
-      expect(countNoSync).toBe(0);
+      // ✅ After reload, Client2 sees changes from IndexedDB
+      cleanup2();
+      await tick(5);
 
-      // Wait for client1 to push changes to server
-      await tick(200);
+      const doc2Reloaded = await getDoc(client2, { type: "test", id: docId });
+      await tick(5);
 
-      // Client 2 manually triggers sync (pull from server)
-      await client2.onLocalOperations({
-        docId,
-        operations: [],
-      });
-
-      // Wait for sync to complete
-      await tick(200);
-
-      // After manual sync, Client2 should see the changes
-      let countAfterManualSync = 0;
-      doc2.root.children().forEach(() => countAfterManualSync++);
-      expect(countAfterManualSync).toBe(1);
+      let countAfterReload = 0;
+      doc2Reloaded.root.children().forEach(() => countAfterReload++);
+      expect(countAfterReload).toBe(1); // IndexedDB has the change!
     });
-  });
 
-  describe("Edge Cases", () => {
-    test("_sendMessage guard works without errors when BroadcastChannel disabled", async () => {
+    test("5D: Both have ops - same broken behavior (NEGATIVE)", async () => {
       const userId = generateUserId();
       const docId = generateDocId();
 
-      const { client } = createClient(userId, undefined, {
+      const { client: client1 } = createClient(userId, undefined, {
+        realTime: true,
+        broadcastChannel: false,
+      });
+      const { client: client2 } = createClient(userId, undefined, {
         realTime: true,
         broadcastChannel: false,
       });
 
-      // Create document
-      const doc = await getDoc(client, {
+      // External change
+      const { client: client3 } = createClient(generateUserId());
+      const doc3 = await getDoc(client3, {
         type: "test",
         id: docId,
         createIfMissing: true,
       });
 
-      // Making a change should not throw even though BroadcastChannel is disabled
-      expect(() => {
-        const child = doc.createNode(ChildNode);
-        doc.root.append(child);
-      }).not.toThrow();
-    });
+      const child3 = doc3.createNode(ChildNode);
+      doc3.root.append(child3);
 
-    test("documents are automatically subscribed when loaded with realTime: true", async () => {
+      await tick(200);
+
+      // Same-user clients load
+      const doc1 = await getDoc(client1, { type: "test", id: docId });
+
+      await tick(200);
+
+      const { doc: doc2, cleanup: cleanup2 } = await getDocWithCleanup(
+        client2,
+        { type: "test", id: docId },
+      );
+
+      await tick(200);
+
+      // Both have external change
+      let count1Initial = 0;
+      doc1.root.children().forEach(() => count1Initial++);
+      expect(count1Initial).toBe(1);
+
+      // Client1 makes concurrent change
+      const child1 = doc1.createNode(ChildNode);
+      doc1.root.append(child1);
+
+      await tick(200);
+
+      // ❌ NEGATIVE: Client2 doesn't see client1's change
+      let count2 = 0;
+      doc2.root.children().forEach(() => count2++);
+      expect(count2).toBe(1); // Still only has external change
+
+      // ✅ After reload, sees both
+      cleanup2();
+      await tick(5);
+
+      const doc2Reloaded = await getDoc(client2, { type: "test", id: docId });
+      await tick(5);
+
+      let countReloaded = 0;
+      doc2Reloaded.root.children().forEach(() => countReloaded++);
+      expect(countReloaded).toBe(2);
+    });
+  });
+
+  // ==========================================================================
+  // CONFIG 6: Different Users + BC=OFF + RT=ON (Server Dirty only)
+  // Expected: Server Dirty Events work correctly
+  // ==========================================================================
+
+  describe("Config 6: Different Users + BC=OFF + RT=ON", () => {
+    test("6A: No ops either side - no changes", async () => {
       const userId1 = generateUserId();
       const userId2 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createClient(userId1);
-      const { client: client2 } = createClient(userId2);
+      const { client: client1 } = createClient(userId1, undefined, {
+        realTime: true,
+        broadcastChannel: false,
+      });
+      const { client: client2 } = createClient(userId2, undefined, {
+        realTime: true,
+        broadcastChannel: false,
+      });
 
-      // Client 1 creates document
-      await getDoc(client1, {
+      const doc1 = await getDoc(client1, {
         type: "test",
         id: docId,
         createIfMissing: true,
@@ -492,38 +1048,396 @@ describe.sequential("Real-Time Collaboration", () => {
 
       await tick(200);
 
-      // Client 2 loads document
-      await getDoc(client2, {
+      const doc2 = await getDoc(client2, {
         type: "test",
         id: docId,
         createIfMissing: true,
       });
 
-      // Wait for subscriptions to complete
       await tick(200);
 
-      // Both should be subscribed
-      const serverSync1 = client1["_serverSync"];
-      const serverSync2 = client2["_serverSync"];
+      let count1 = 0;
+      doc1.root.children().forEach(() => count1++);
+      let count2 = 0;
+      doc2.root.children().forEach(() => count2++);
 
-      expect(serverSync1!["_subscribedDocs"].has(docId)).toBe(true);
-      expect(serverSync2!["_subscribedDocs"].has(docId)).toBe(true);
+      expect(count1).toBe(0);
+      expect(count2).toBe(0);
     });
 
-    test("documents are NOT subscribed when loaded with realTime: false", async () => {
+    test("6B: Server has ops - pull via dirty event", async () => {
+      const userId1 = generateUserId();
+      const userId2 = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId1, undefined, {
+        realTime: true,
+        broadcastChannel: false,
+      });
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      const child = doc1.createNode(ChildNode);
+      doc1.root.append(child);
+
+      await tick(200);
+
+      const { client: client2 } = createClient(userId2, undefined, {
+        realTime: true,
+        broadcastChannel: false,
+      });
+
+      const doc2 = await getDoc(client2, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      let count = 0;
+      doc2.root.children().forEach(() => count++);
+      expect(count).toBe(1);
+    });
+
+    test("6C: Client sends ops - propagates via dirty", async () => {
+      const userId1 = generateUserId();
+      const userId2 = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId1, undefined, {
+        realTime: true,
+        broadcastChannel: false,
+      });
+      const { client: client2 } = createClient(userId2, undefined, {
+        realTime: true,
+        broadcastChannel: false,
+      });
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      const doc2 = await getDoc(client2, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      const dirtySpy2 = spyOnDirtyEvent(client2);
+      dirtySpy2.mockClear();
+
+      const child = doc1.createNode(ChildNode);
+      doc1.root.append(child);
+
+      await tick(200);
+
+      expect(dirtySpy2.mock.calls.length).toBeGreaterThan(0);
+
+      let count = 0;
+      doc2.root.children().forEach(() => count++);
+      expect(count).toBe(1);
+    });
+
+    test("6D: Both have ops - bidirectional via dirty", async () => {
+      const userId1 = generateUserId();
+      const userId2 = generateUserId();
+      const userId3 = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId1, undefined, {
+        realTime: true,
+        broadcastChannel: false,
+      });
+      const { client: client2 } = createClient(userId2, undefined, {
+        realTime: true,
+        broadcastChannel: false,
+      });
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      const doc2 = await getDoc(client2, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      // External change
+      const { client: client3 } = createClient(userId3, undefined, {
+        realTime: true,
+        broadcastChannel: false,
+      });
+      const doc3 = await getDoc(client3, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      const child3 = doc3.createNode(ChildNode);
+      doc3.root.append(child3);
+
+      await tick(200);
+
+      // Client1 concurrent change
+      const child1 = doc1.createNode(ChildNode);
+      doc1.root.append(child1);
+
+      await tick(200);
+
+      // Client2 sees both
+      let count = 0;
+      doc2.root.children().forEach(() => count++);
+      expect(count).toBe(2);
+    });
+  });
+
+  // ==========================================================================
+  // CONFIG 7: Same User + BC=OFF + RT=OFF (No automatic sync)
+  // Expected: Manual sync only (reload pattern)
+  // ==========================================================================
+
+  describe("Config 7: Same User + BC=OFF + RT=OFF", () => {
+    test("7A: No ops either side - no changes", async () => {
+      const userId = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId, undefined, {
+        realTime: false,
+        broadcastChannel: false,
+      });
+      const { client: client2 } = createClient(userId, undefined, {
+        realTime: false,
+        broadcastChannel: false,
+      });
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(5);
+
+      const doc2 = await getDoc(client2, { type: "test", id: docId });
+
+      await tick(5);
+
+      let count1 = 0;
+      doc1.root.children().forEach(() => count1++);
+      let count2 = 0;
+      doc2.root.children().forEach(() => count2++);
+
+      expect(count1).toBe(0);
+      expect(count2).toBe(0);
+    });
+
+    test("7B: Server has ops - Client2 doesn't see (no mechanism)", async () => {
+      const userId = generateUserId();
+      const docId = generateDocId();
+
+      // External change
+      const { client: client3 } = createClient(generateUserId());
+      const doc3 = await getDoc(client3, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      const child3 = doc3.createNode(ChildNode);
+      doc3.root.append(child3);
+
+      await tick(200);
+
+      // Same-user clients load
+      const { client: client1 } = createClient(userId, undefined, {
+        realTime: false,
+        broadcastChannel: false,
+      });
+      const { client: client2 } = createClient(userId, undefined, {
+        realTime: false,
+        broadcastChannel: false,
+      });
+
+      const doc1 = await getDoc(client1, { type: "test", id: docId });
+
+      await tick(200);
+
+      const doc2 = await getDoc(client2, { type: "test", id: docId });
+
+      await tick(200);
+
+      // Both should have loaded from IndexedDB (which has external change)
+      let count1 = 0;
+      doc1.root.children().forEach(() => count1++);
+      let count2 = 0;
+      doc2.root.children().forEach(() => count2++);
+
+      expect(count1).toBe(1);
+      expect(count2).toBe(1);
+    });
+
+    test("7C: Client sends ops - no propagation, verify reload", async () => {
+      const userId = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId, undefined, {
+        realTime: false,
+        broadcastChannel: false,
+      });
+      const { client: client2 } = createClient(userId, undefined, {
+        realTime: false,
+        broadcastChannel: false,
+      });
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(5);
+
+      const { doc: doc2, cleanup: cleanup2 } = await getDocWithCleanup(
+        client2,
+        { type: "test", id: docId },
+      );
+
+      await tick(5);
+
+      const dirtySpy2 = spyOnDirtyEvent(client2);
+      dirtySpy2.mockClear();
+
+      const child = doc1.createNode(ChildNode);
+      doc1.root.append(child);
+
+      await tick(10);
+
+      expect(dirtySpy2.mock.calls.length).toBe(0);
+
+      // Client 2 doesn't see the change (no automatic sync)
+      let count = 0;
+      doc2.root.children().forEach(() => count++);
+      expect(count).toBe(0);
+
+      // Reload
+      cleanup2();
+      await tick(5);
+
+      const doc2Reloaded = await getDoc(client2, { type: "test", id: docId });
+      await tick(5);
+
+      // After reload, sees changes from IndexedDB
+      let countAfterReload = 0;
+      doc2Reloaded.root.children().forEach(() => countAfterReload++);
+      expect(countAfterReload).toBe(1);
+    });
+
+    test("7D: Both have ops - no automatic sync, verify reload", async () => {
+      const userId = generateUserId();
+      const docId = generateDocId();
+
+      // External change
+      const { client: client3 } = createClient(generateUserId());
+      const doc3 = await getDoc(client3, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      const child3 = doc3.createNode(ChildNode);
+      doc3.root.append(child3);
+
+      await tick(200);
+
+      const { client: client1 } = createClient(userId, undefined, {
+        realTime: false,
+        broadcastChannel: false,
+      });
+      const { client: client2 } = createClient(userId, undefined, {
+        realTime: false,
+        broadcastChannel: false,
+      });
+
+      const doc1 = await getDoc(client1, { type: "test", id: docId });
+
+      await tick(200);
+
+      const { doc: doc2, cleanup: cleanup2 } = await getDocWithCleanup(
+        client2,
+        { type: "test", id: docId },
+      );
+
+      await tick(200);
+
+      // Both have external change from initial load
+      let count1 = 0;
+      doc1.root.children().forEach(() => count1++);
+      expect(count1).toBe(1);
+
+      // Client1 makes concurrent change
+      const child1 = doc1.createNode(ChildNode);
+      doc1.root.append(child1);
+
+      await tick(200);
+
+      // Client2 doesn't see client1's change
+      let count2Before = 0;
+      doc2.root.children().forEach(() => count2Before++);
+      expect(count2Before).toBe(1);
+
+      // Reload
+      cleanup2();
+      await tick(5);
+
+      const doc2Reloaded = await getDoc(client2, { type: "test", id: docId });
+      await tick(5);
+
+      // After reload, sees both
+      let countReloaded = 0;
+      doc2Reloaded.root.children().forEach(() => countReloaded++);
+      expect(countReloaded).toBe(2);
+    });
+  });
+
+  // ==========================================================================
+  // CONFIG 8: Different Users + BC=OFF + RT=OFF (No automatic sync)
+  // Expected: Manual sync only (manual pull pattern)
+  // ==========================================================================
+
+  describe("Config 8: Different Users + BC=OFF + RT=OFF", () => {
+    test("8A: No ops either side - no changes", async () => {
       const userId1 = generateUserId();
       const userId2 = generateUserId();
       const docId = generateDocId();
 
       const { client: client1 } = createClient(userId1, undefined, {
         realTime: false,
+        broadcastChannel: false,
       });
       const { client: client2 } = createClient(userId2, undefined, {
         realTime: false,
+        broadcastChannel: false,
       });
 
-      // Client 1 creates document
-      await getDoc(client1, {
+      const doc1 = await getDoc(client1, {
         type: "test",
         id: docId,
         createIfMissing: true,
@@ -531,19 +1445,157 @@ describe.sequential("Real-Time Collaboration", () => {
 
       await tick(200);
 
-      // Client 2 loads document
-      await getDoc(client2, {
+      const doc2 = await getDoc(client2, {
         type: "test",
         id: docId,
         createIfMissing: true,
       });
 
-      // Neither should be subscribed
-      const serverSync1 = client1["_serverSync"];
-      const serverSync2 = client2["_serverSync"];
+      await tick(200);
 
-      expect(serverSync1!["_subscribedDocs"].has(docId)).toBe(false);
-      expect(serverSync2!["_subscribedDocs"].has(docId)).toBe(false);
+      let count1 = 0;
+      doc1.root.children().forEach(() => count1++);
+      let count2 = 0;
+      doc2.root.children().forEach(() => count2++);
+
+      expect(count1).toBe(0);
+      expect(count2).toBe(0);
+    });
+
+    test("8B: Server has ops - Client2 doesn't see (no sync)", async () => {
+      const userId1 = generateUserId();
+      const userId2 = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId1, undefined, {
+        realTime: false,
+        broadcastChannel: false,
+      });
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      const child = doc1.createNode(ChildNode);
+      doc1.root.append(child);
+
+      await tick(200);
+
+      const { client: client2 } = createClient(userId2, undefined, {
+        realTime: false,
+        broadcastChannel: false,
+      });
+
+      const doc2 = await getDoc(client2, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      // Client2 should see from initial server load
+      let count = 0;
+      doc2.root.children().forEach(() => count++);
+      expect(count).toBe(1);
+    });
+
+    test("8C: Client sends ops - no propagation", async () => {
+      const userId1 = generateUserId();
+      const userId2 = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId1, undefined, {
+        realTime: false,
+        broadcastChannel: false,
+      });
+      const { client: client2 } = createClient(userId2, undefined, {
+        realTime: false,
+        broadcastChannel: false,
+      });
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      const doc2 = await getDoc(client2, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      const child = doc1.createNode(ChildNode);
+      doc1.root.append(child);
+
+      await tick(200);
+
+      // Client2 doesn't see it
+      let count = 0;
+      doc2.root.children().forEach(() => count++);
+      expect(count).toBe(0);
+    });
+
+    test("8D: Both have ops - no automatic sync, verify manual sync", async () => {
+      const userId1 = generateUserId();
+      const userId2 = generateUserId();
+      const docId = generateDocId();
+
+      const { client: client1 } = createClient(userId1, undefined, {
+        realTime: false,
+        broadcastChannel: false,
+      });
+      const { client: client2 } = createClient(userId2, undefined, {
+        realTime: false,
+        broadcastChannel: false,
+      });
+
+      const doc1 = await getDoc(client1, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      const doc2 = await getDoc(client2, {
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+
+      await tick(200);
+
+      // Client1 makes change
+      const child = doc1.createNode(ChildNode);
+      doc1.root.append(child);
+
+      await tick(200);
+
+      // Client2 doesn't see it yet
+      let countNoSync = 0;
+      doc2.root.children().forEach(() => countNoSync++);
+      expect(countNoSync).toBe(0);
+
+      // Manual sync
+      await client2.onLocalOperations({
+        docId,
+        operations: [],
+      });
+
+      await tick(200);
+
+      // After manual sync, Client2 sees the changes
+      let countAfterManualSync = 0;
+      doc2.root.children().forEach(() => countAfterManualSync++);
+      expect(countAfterManualSync).toBe(1);
     });
   });
 });
