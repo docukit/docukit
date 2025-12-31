@@ -11,7 +11,22 @@ import { ulid } from "ulid";
 // Constants
 // ============================================================================
 
-export const TEST_SERVER_URL = "ws://localhost:8082";
+// Extend globalThis to include test server port (set by globalSetup)
+declare global {
+  var __TEST_SERVER_PORT__: number | undefined;
+}
+
+/**
+ * Get the test server URL with the dynamically assigned port.
+ * The port is set by globalSetup.ts and stored in globalThis.
+ */
+export const getTestServerUrl = (): string => {
+  const port = globalThis.__TEST_SERVER_PORT__ ?? 8082;
+  return `ws://localhost:${port}`;
+};
+
+// Legacy export for backwards compatibility
+export const TEST_SERVER_URL = getTestServerUrl();
 
 // ============================================================================
 // Node Definitions
@@ -70,7 +85,7 @@ export const createClient = (
 
   const config: ClientConfig<Doc, JsonDoc, Operations> = {
     server: {
-      url: TEST_SERVER_URL,
+      url: getTestServerUrl(),
       auth: { getToken: async () => actualToken },
     },
     docBinding,

@@ -8,8 +8,36 @@ import {
   DocSyncServer,
   InMemoryServerProvider,
 } from "@docnode/docsync/testing";
+import { createServer } from "node:net";
 
-const TEST_PORT = 8082;
+const PREFERRED_PORT = 8082;
+
+// Extend globalThis to include test server port
+declare global {
+  var __TEST_SERVER_PORT__: number | undefined;
+}
+
+/**
+ * Find an available port starting from the preferred port.
+ */
+async function findAvailablePort(startPort: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.unref();
+    server.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        // Port is in use, try next one
+        resolve(findAvailablePort(startPort + 1));
+      } else {
+        reject(err);
+      }
+    });
+    server.listen(startPort, () => {
+      const { port } = server.address() as { port: number };
+      server.close(() => resolve(port));
+    });
+  });
+}
 
 /**
  * Test token format: "test-token-{userId}"
@@ -22,10 +50,14 @@ const parseTestToken = (token: string): string | undefined => {
 };
 
 let server: DocSyncServer<unknown, unknown, unknown> | undefined;
+let serverPort: number;
 
 export async function setup() {
+  // Find an available port
+  serverPort = await findAvailablePort(PREFERRED_PORT);
+
   server = new DocSyncServer({
-    port: TEST_PORT,
+    port: serverPort,
     provider: InMemoryServerProvider,
     authenticate: async ({ token }) => {
       const userId = parseTestToken(token);
@@ -36,7 +68,10 @@ export async function setup() {
 
   // Give the server a moment to start
   await new Promise((resolve) => setTimeout(resolve, 100));
-  console.log(`✅ Test server ready on port ${TEST_PORT}\n`);
+  console.log(`✅ Test server ready on port ${serverPort}\n`);
+
+  // Store the port in globalThis so tests can access it
+  globalThis.__TEST_SERVER_PORT__ = serverPort;
 }
 
 export async function teardown() {
