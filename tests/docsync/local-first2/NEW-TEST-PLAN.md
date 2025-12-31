@@ -2,15 +2,20 @@ We are going to make a new test plan that is simpler and easier to understand th
 
 We are going to replicate the 3 real scenarios that can happen in practice: otherTab, otherTabAndUser, otherDevice.
 
-| client/doc      |  broadcastChannel |  realTime | idb |
-| --------------- | ----------------- | --------- | --- |
-| reference       | N/A               | N/A       | N/A |
-| otherTab        | ✅                | ✅        | ✅  |
-| otherTabAndUser | ❌                | ✅        | ✅  |
-| otherDevice     | ❌                | ✅        | ❌  |
+| client/doc      | broadcastChannel | realTime | idb |
+| --------------- | ---------------- | -------- | --- |
+| reference       | N/A              | N/A      | N/A |
+| otherTab        | ✅               | ✅       | ✅  |
+| otherTabAndUser | ✅ (no messages) | ✅       | ✅  |
+| otherDevice     | ❌               | ✅       | ❌  |
 
 Each test will start with a utility function that initializes 4 pairs of clients/documents.
 The 4 clients will connect to the same document.
+
+- Reference: client should have local, RT y BC enabled.
+- OtherTab: client should have local, RT y BC enabled (same userId as reference).
+- OtherTabAndUser: client should have local, RT y BC enabled (different userId - won't receive BC messages due to namespacing).
+- OtherDevice: client should NOT have local. BC should be disabled y RT enabled.
 
 ```ts
 type ClientUtils = {
