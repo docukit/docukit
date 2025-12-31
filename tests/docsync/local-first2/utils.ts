@@ -95,6 +95,57 @@ export type ClientsSetup = {
 };
 
 // ============================================================================
+// Test Wrapper (Setup + Cleanup)
+// ============================================================================
+
+/**
+ * Test wrapper that creates clients, runs the test callback, and cleans up.
+ * This ensures cleanup always happens, even if the test fails.
+ */
+export const testWrapper = async (
+  callback: (clients: ClientsSetup) => Promise<void>,
+): Promise<void> => {
+  const clients = await setupClients();
+
+  try {
+    await callback(clients);
+  } finally {
+    // Cleanup: unload docs
+    clients.reference.unLoadDoc();
+    clients.otherTab.unLoadDoc();
+    clients.otherTabAndUser.unLoadDoc();
+    clients.otherDevice.unLoadDoc();
+
+    // Cleanup: close connections
+    const allClients = [
+      clients.reference.client,
+      clients.otherTab.client,
+      clients.otherTabAndUser.client,
+      clients.otherDevice.client,
+    ];
+
+    for (const client of allClients) {
+      // Close socket if exists
+      const serverSync = client["_serverSync"];
+      if (serverSync) {
+        const socket = serverSync["_api"]["_socket"];
+        if (socket?.connected) {
+          socket.disconnect();
+        }
+      }
+      // Close broadcast channel if exists
+      const bc = client["_broadcastChannel"];
+      if (bc) {
+        bc.close();
+      }
+    }
+
+    // Give time for cleanup to complete
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+};
+
+// ============================================================================
 // Client Factory
 // ============================================================================
 
@@ -134,10 +185,10 @@ const createClientWithConfig = (config: {
 };
 
 // ============================================================================
-// Setup Clients
+// Client Setup (Internal)
 // ============================================================================
 
-export const setupClients = async (): Promise<ClientsSetup> => {
+const setupClients = async (): Promise<ClientsSetup> => {
   const docId = generateDocId();
   const docBinding = createDocBinding();
 
@@ -250,26 +301,35 @@ const createClientUtils = (
         throw new Error("Client has no local provider configured");
       }
 
-      // Read the document from IndexedDB using the provider
+      // Read the document AND operations from IndexedDB
       const result = await local.provider.transaction(
         "readonly",
         async (ctx) => {
-          return await ctx.getSerializedDoc(docId);
+          const docResult = await ctx.getSerializedDoc(docId);
+          const operations = await ctx.getOperations({ docId });
+          return { docResult, operations };
         },
       );
 
-      if (!result) {
+      if (!result.docResult) {
         throw new Error(
           `Document ${docId} not found in IndexedDB for user ${userId}`,
         );
       }
 
-      // Deserialize using the client's docBinding
+      // Deserialize the doc and apply all operations (like the client does when loading)
       const deserializedDoc = client["_docBinding"].deserialize(
-        result.serializedDoc,
+        result.docResult.serializedDoc,
       );
 
-      // TODO: assert also operations
+      // Apply all stored operations to get the current state
+      for (const ops of result.operations) {
+        for (const op of ops) {
+          client["_docBinding"].applyOperations(deserializedDoc, op);
+        }
+      }
+
+      // TODO: assert operations separately
 
       const actualChildren: string[] = [];
       deserializedDoc.root.children().forEach((child) => {
