@@ -58,7 +58,7 @@ describe("ServerSync", () => {
 
       await saveOperations(provider, docId);
       serverSync.saveRemote({ docId });
-      await tick(1);
+      await tick();
       serverSync.saveRemote({ docId });
 
       expect(serverSync["_pushStatusByDocId"].get(docId)).toBe(
@@ -82,7 +82,7 @@ describe("ServerSync", () => {
 
       serverSync.saveRemote({ docId: docId1 });
       serverSync.saveRemote({ docId: docId2 });
-      await tick(1);
+      await tick();
 
       expect(serverSync["_pushStatusByDocId"].get(docId1)).toBe("pushing");
       expect(serverSync["_pushStatusByDocId"].get(docId2)).toBe("pushing");
@@ -104,7 +104,7 @@ describe("ServerSync", () => {
       serverSync.saveRemote({ docId });
       serverSync.saveRemote({ docId });
       serverSync.saveRemote({ docId });
-      await tick(1);
+      await tick();
 
       expect(doPushSpy).toHaveBeenCalledTimes(1);
       expect(serverSync["_pushStatusByDocId"].get(docId)).toBe(
@@ -134,7 +134,7 @@ describe("ServerSync", () => {
       await saveOperations(provider, docId);
       serverSync.saveRemote({ docId });
 
-      await tick(50);
+      await tick();
 
       expect(mockApi.request).toHaveBeenCalledTimes(2);
       expect(serverSync["_pushStatusByDocId"].get(docId)).toBe("idle");
@@ -168,7 +168,7 @@ describe("ServerSync", () => {
       });
 
       serverSync.saveRemote({ docId });
-      await tick(20);
+      await tick();
 
       expect(mockApi.request).toHaveBeenCalledWith("sync-operations", {
         clock: 0,
@@ -190,7 +190,7 @@ describe("ServerSync", () => {
 
       await setupDocWithOperations(docBinding, provider, docId);
       serverSync.saveRemote({ docId });
-      await tick(20);
+      await tick();
 
       expect(statusDuringPush).toBe("pushing");
     });
@@ -203,7 +203,7 @@ describe("ServerSync", () => {
 
       await setupDocWithOperations(docBinding, provider, docId);
       serverSync.saveRemote({ docId });
-      await tick(20);
+      await tick();
 
       expect(mockApi.request).toHaveBeenCalledWith(
         "sync-operations",
@@ -219,7 +219,7 @@ describe("ServerSync", () => {
 
       await setupDocWithOperations(docBinding, provider, docId);
       serverSync.saveRemote({ docId });
-      await tick(20);
+      await tick();
 
       expect(mockApi.request).toHaveBeenCalledWith(
         "sync-operations",
@@ -250,7 +250,7 @@ describe("ServerSync", () => {
       });
 
       serverSync.saveRemote({ docId });
-      await tick(30);
+      await tick();
 
       expect(mockApi.request).toHaveBeenCalledWith(
         "sync-operations",
@@ -286,7 +286,7 @@ describe("ServerSync", () => {
       });
 
       serverSync.saveRemote({ docId });
-      await tick(30);
+      await tick();
 
       expect(mockApi.request).toHaveBeenCalledWith(
         "sync-operations",
@@ -322,7 +322,7 @@ describe("ServerSync", () => {
       });
 
       serverSync.saveRemote({ docId });
-      await tick(20);
+      await tick();
 
       // Should call API even with no local operations (this is a pull)
       expect(mockApi.request).toHaveBeenCalledWith(
@@ -379,7 +379,7 @@ describe("ServerSync", () => {
 
       // Trigger pull - client has no operations but wants server's updates
       serverSync.saveRemote({ docId });
-      await tick(30);
+      await tick();
 
       // Should call API with empty operations (this is a pull)
       expect(mockApi.request).toHaveBeenCalledWith(
@@ -424,7 +424,7 @@ describe("ServerSync", () => {
       expect(await getOperationsCount(provider, docId)).toBe(2);
 
       serverSync.saveRemote({ docId });
-      await tick(30);
+      await tick();
 
       expect(await getOperationsCount(provider, docId)).toBe(0);
     });
@@ -455,7 +455,7 @@ describe("ServerSync", () => {
       });
 
       serverSync.saveRemote({ docId });
-      await tick(5);
+      await tick();
 
       await saveOperations(provider, docId, [ops({ batch: "2" })]);
       serverSync.saveRemote({ docId });
@@ -487,7 +487,7 @@ describe("ServerSync", () => {
       });
 
       serverSync.saveRemote({ docId });
-      await tick(30);
+      await tick();
 
       expect(await getStoredClock(provider, docId)).toBe(1);
     });
@@ -500,7 +500,7 @@ describe("ServerSync", () => {
 
       await setupDocWithOperations(docBinding, provider, docId, { clock: 5 });
       serverSync.saveRemote({ docId });
-      await tick(30);
+      await tick();
 
       expect(await getStoredClock(provider, docId)).toBe(6);
     });
@@ -513,7 +513,7 @@ describe("ServerSync", () => {
 
       await setupDocWithOperations(docBinding, provider, docId);
       serverSync.saveRemote({ docId });
-      await tick(30);
+      await tick();
 
       expect(serverSync["_pushStatusByDocId"].get(docId)).toBe("idle");
     });
@@ -547,7 +547,7 @@ describe("ServerSync", () => {
 
       await setupDocWithOperations(docBinding, provider, docId);
       serverSync.saveRemote({ docId });
-      await tick(5);
+      await tick();
 
       await saveOperations(provider, docId);
       serverSync.saveRemote({ docId });
@@ -576,7 +576,7 @@ describe("ServerSync", () => {
 
       await setupDocWithOperations(docBinding, provider, docId);
       serverSync.saveRemote({ docId });
-      await tick(50);
+      await tick();
 
       expect(mockApi.request).toHaveBeenCalledTimes(2);
       expect(serverSync["_pushStatusByDocId"].get(docId)).toBe("idle");
@@ -602,7 +602,7 @@ describe("ServerSync", () => {
 
       await setupDocWithOperations(docBinding, provider, docId);
       serverSync.saveRemote({ docId });
-      await tick(50);
+      await tick();
 
       expect(statusHistory).toStrictEqual(["pushing", "pushing"]);
     });
@@ -629,12 +629,12 @@ describe("ServerSync", () => {
         operations: [ops({ op: "1" })],
       });
       serverSync.saveRemote({ docId });
-      await tick(5);
+      await tick();
 
       await saveOperations(provider, docId, [ops({ op: "2" })]);
       serverSync.saveRemote({ docId });
 
-      await tick(50);
+      await tick();
 
       expect(receivedOperations).toHaveLength(2);
       expect(receivedOperations[0]).toStrictEqual([ops({ op: "1" })]);
@@ -655,7 +655,7 @@ describe("ServerSync", () => {
       mockApi.request.mockImplementation(async () => {
         concurrentCalls++;
         maxConcurrent = Math.max(maxConcurrent, concurrentCalls);
-        await tick(20);
+        await tick();
         concurrentCalls--;
         return { docId, operations: [], serializedDoc: null, clock: 1 };
       });
@@ -667,7 +667,7 @@ describe("ServerSync", () => {
       serverSync.saveRemote({ docId });
       serverSync.saveRemote({ docId });
 
-      await tick(100);
+      await tick();
 
       expect(maxConcurrent).toBe(1);
     });
@@ -698,7 +698,7 @@ describe("ServerSync", () => {
       });
 
       serverSync.saveRemote({ docId });
-      await tick(5);
+      await tick();
 
       await saveOperations(provider, docId, [ops({ second: "true" })]);
       serverSync.saveRemote({ docId });
@@ -722,7 +722,7 @@ describe("ServerSync", () => {
       mockApi.request.mockImplementation(
         async (_: unknown, payload: { docId: string }) => {
           callOrder.push(payload.docId);
-          await tick(10);
+          await tick();
           return {
             docId: payload.docId,
             operations: [],
@@ -741,7 +741,7 @@ describe("ServerSync", () => {
       serverSync.saveRemote({ docId: docId1 });
       serverSync.saveRemote({ docId: docId2 });
 
-      await tick(50);
+      await tick();
 
       expect(callOrder).toContain(docId1);
       expect(callOrder).toContain(docId2);
@@ -772,7 +772,7 @@ describe("ServerSync", () => {
       await setupDocWithOperations(docBinding, provider, docId);
 
       serverSync.saveRemote({ docId });
-      await tick(5);
+      await tick();
       expect(serverSync["_pushStatusByDocId"].get(docId)).toBe("pushing");
 
       serverSync.saveRemote({ docId });

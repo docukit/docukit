@@ -10,7 +10,7 @@ import {
 
 describe.skip("Local-First Sync", () => {
   beforeAll(async () => {
-    await tick(100);
+    await tick();
   });
 
   describe("Authentication", () => {
@@ -70,7 +70,7 @@ describe.skip("Local-First Sync", () => {
       doc1.root.append(child);
 
       // Wait for sync to server and IndexedDB
-      await tick(200);
+      await tick();
 
       // Client 2 loads from shared IndexedDB
       const doc2 = await getDoc(client2, { type: "test", id: docId });
@@ -93,7 +93,7 @@ describe.skip("Local-First Sync", () => {
         createIfMissing: true,
       });
 
-      await tick(100);
+      await tick();
 
       // Client 2 should see it
       const doc2 = await getDoc(client2, { type: "test", id: docId });
@@ -118,14 +118,14 @@ describe.skip("Local-First Sync", () => {
       const child1 = doc1.createNode(ChildNode);
       doc1.root.append(child1);
 
-      await tick(200);
+      await tick();
 
       // Client 2 loads and adds second child
       const doc2 = await getDoc(client2, { type: "test", id: docId });
       const child2 = doc2.createNode(ChildNode);
       doc2.root.append(child2);
 
-      await tick(200);
+      await tick();
 
       // Count children
       let count1 = 0;
@@ -152,7 +152,7 @@ describe.skip("Local-First Sync", () => {
         ),
       );
 
-      await tick(200);
+      await tick();
 
       // Client 2 should be able to load all
       const docs = await Promise.all(
@@ -188,7 +188,7 @@ describe.skip("Local-First Sync", () => {
         createIfMissing: true,
       });
 
-      await tick(100);
+      await tick();
 
       const doc2 = await getDoc(client2, { type: "test", id: docId });
 
@@ -197,7 +197,7 @@ describe.skip("Local-First Sync", () => {
       doc1.root.append(child);
 
       // Wait for BroadcastChannel message
-      await tick(100);
+      await tick();
 
       // Client 2 should see the change via BroadcastChannel
       let count = 0;
@@ -222,7 +222,7 @@ describe.skip("Local-First Sync", () => {
       const child = doc1.createNode(ChildNode);
       doc1.root.append(child);
 
-      await tick(200);
+      await tick();
 
       // Simulate disconnect (create new client instance)
       const { client: client2 } = createClient(userId);
@@ -238,7 +238,7 @@ describe.skip("Local-First Sync", () => {
 
 describe("Client/Server Operation Sync", () => {
   beforeAll(async () => {
-    await tick(100);
+    await tick();
   });
 
   test("should handle client sends operations + server returns no operations", async () => {
@@ -261,7 +261,7 @@ describe("Client/Server Operation Sync", () => {
     doc.root.append(child);
 
     // Wait for sync to complete
-    await tick(200);
+    await tick();
 
     // Verify document in memory has the child
     let childCount = 0;
@@ -297,7 +297,7 @@ describe("Client/Server Operation Sync", () => {
     const child1 = doc1.createNode(ChildNode);
     doc1.root.append(child1);
 
-    await tick(200);
+    await tick();
 
     // Client 2 loads the document from server (not from IndexedDB since different user)
     const doc2 = await getDoc(client2, {
@@ -307,7 +307,7 @@ describe("Client/Server Operation Sync", () => {
     });
 
     // Wait for the initial sync/pull to complete
-    await tick(200);
+    await tick();
 
     // Verify doc2 has child1 from server
     let count2Before = 0;
@@ -319,7 +319,7 @@ describe("Client/Server Operation Sync", () => {
     doc2.root.append(child2);
 
     // Wait for client2 to sync to server
-    await tick(200);
+    await tick();
 
     // Unload doc1 from cache so we can reload it fresh
     await client1["_unloadDoc"](docId);
@@ -332,7 +332,7 @@ describe("Client/Server Operation Sync", () => {
     });
 
     // Wait for the sync/pull to complete
-    await tick(200);
+    await tick();
 
     // Both documents should have both children
     let count1 = 0;
@@ -360,7 +360,7 @@ describe("Client/Server Operation Sync", () => {
     });
 
     // Don't make any changes, just wait for sync
-    await tick(200);
+    await tick();
 
     // Document should still be valid with no children
     expect(doc).toBeDefined();
@@ -398,7 +398,7 @@ describe("Client/Server Operation Sync", () => {
     doc1.root.append(child2);
 
     // Wait for client 1 to sync to server
-    await tick(200);
+    await tick();
 
     // Client 2 loads document - this is a "pull" since it has no local operations
     // but should receive the operations from the server
@@ -409,7 +409,7 @@ describe("Client/Server Operation Sync", () => {
     });
 
     // Wait for the sync/pull to complete
-    await tick(200);
+    await tick();
 
     // Client 2 should see both children from server
     let count2 = 0;

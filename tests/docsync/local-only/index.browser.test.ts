@@ -87,7 +87,7 @@ describe("DocSyncClient", () => {
         client.getDoc({ type: "test", createIfMissing: true }, callback);
 
         // Wait for async initialization
-        await tick(10);
+        await tick();
 
         expect(constructorSpy).toHaveBeenCalledOnce();
         // BroadcastChannel name should be user-specific: "docsync:{userId}"
@@ -798,7 +798,7 @@ describe("DocSyncClient", () => {
         const docId = getSuccessData(callback)!.id;
 
         // Wait for BroadcastChannel to be initialized
-        await tick(10);
+        await tick();
 
         // messageHandler should now be set
         expect(messageHandler).toBeDefined();

@@ -23,6 +23,8 @@ export class DocSyncServer<TContext, S, O> {
       cors: {
         origin: "*",
       },
+      // Performance: Only WebSocket transport, no polling
+      transports: ["websocket"],
     });
     this._provider = new config.provider();
     this._authenticate = config.authenticate;

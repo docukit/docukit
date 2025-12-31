@@ -20,6 +20,8 @@ export class API<S, O> {
       auth: (cb) => {
         void options.getToken().then((token) => cb({ token }));
       },
+      // Performance optimizations for testing
+      transports: ["websocket"], // Skip polling, go straight to WebSocket
     });
     // prettier-ignore
     {
