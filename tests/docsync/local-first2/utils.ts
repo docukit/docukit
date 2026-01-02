@@ -57,9 +57,10 @@ const createDocBinding = () =>
 // ============================================================================
 
 let clientCounter = 0;
+let testCounter = 0; // Add test counter for isolation
 
 const generateUserId = () =>
-  `integration-user-${Date.now()}-${++clientCounter}`;
+  `integration-user-${Date.now()}-test${++testCounter}-${++clientCounter}`;
 
 const generateDocId = () => ulid().toLowerCase();
 

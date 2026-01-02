@@ -40,7 +40,7 @@ export class API<S, O> {
     }
   }
 
-  request<E extends DocSyncEventName>(
+  async request<E extends DocSyncEventName>(
     event: E,
     payload: DocSyncEvents<S, O>[E]["request"],
   ): Promise<DocSyncEvents<S, O>[E]["response"]> {
@@ -49,6 +49,7 @@ export class API<S, O> {
       payload: DocSyncEvents<S, O>[K]["request"],
       cb: (res: DocSyncEvents<S, O>[K]["response"]) => void,
     ) => void;
+
     return new Promise((resolve) => {
       (this._socket.emit as Emit)(event, payload, resolve);
     });

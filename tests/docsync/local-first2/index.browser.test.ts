@@ -76,6 +76,10 @@ describe("Local-First 2.0", () => {
       await reference.addChild("Hello");
       reference.assertMemoryDoc(["Hello"]);
       await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
+      // Wait for sync to complete before checking IDB
+      await tick(50); // Give time for saveRemote to complete
+      // After sync: operations are consolidated into doc (clock varies by server state)
+      await reference.assertIDBDoc({ doc: ["Hello"], ops: [] });
 
       // LOAD OTHER TAB
       await otherTab.loadDoc();
@@ -86,9 +90,9 @@ describe("Local-First 2.0", () => {
 
       // LOAD OTHER DEVICE
       await otherDevice.loadDoc();
-      await tick();
+      await tick(100);
       await otherDevice.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
-      // otherDevice.assertMemoryDoc(["Hello"]);
+      otherDevice.assertMemoryDoc(["Hello"]);
     });
   });
 });

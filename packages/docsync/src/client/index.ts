@@ -260,11 +260,6 @@ export class DocSyncClient<
               this._setupChangeListener(doc, docId);
               // Subscribe to real-time updates when first document reference is created
               void this._serverSync?.subscribeDoc(docId);
-              // Force a sync when loading a document for the first time (pull from server)
-              void this.onLocalOperations({
-                docId,
-                operations: [] as O[],
-              });
             }
           }
           emit({
@@ -277,6 +272,11 @@ export class DocSyncClient<
           emit({ status: "error", data: undefined, error });
         }
       })();
+      // This forces a fetch if the document exists on the server.
+      void this.onLocalOperations({
+        docId,
+        operations: [] as O[],
+      });
     }
 
     return () => {
