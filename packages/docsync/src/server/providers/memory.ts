@@ -18,10 +18,13 @@ interface StoredOperation<O> {
 export class InMemoryServerProvider<S, O> implements ServerProvider<S, O> {
   private _docs = new Map<string, StoredDoc<S>>();
   private _operations = new Map<string, StoredOperation<O>[]>();
-  private _clockCounter = 0;
+  private _clockCounterByDocId = new Map<string, number>();
 
-  private _nextClock(): number {
-    return ++this._clockCounter;
+  private _nextClock(docId: string): number {
+    const current = this._clockCounterByDocId.get(docId) ?? 0;
+    const next = current + 1;
+    this._clockCounterByDocId.set(docId, next);
+    return next;
   }
 
   async sync(
@@ -43,7 +46,7 @@ export class InMemoryServerProvider<S, O> implements ServerProvider<S, O> {
         : null;
 
     // 3. Save client operations if provided
-    const newClock = this._nextClock();
+    const newClock = this._nextClock(docId);
     if (clientOps && clientOps.length > 0) {
       for (const op of clientOps) {
         const docOps = this._operations.get(docId) ?? [];
@@ -65,7 +68,7 @@ export class InMemoryServerProvider<S, O> implements ServerProvider<S, O> {
   clear(): void {
     this._docs.clear();
     this._operations.clear();
-    this._clockCounter = 0;
+    this._clockCounterByDocId.clear();
   }
 
   /** For testing: get stored operations count */

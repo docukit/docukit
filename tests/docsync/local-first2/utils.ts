@@ -284,7 +284,6 @@ const createClientUtils = (
       const child = cachedDoc.createNode(ChildNode);
       child.state.value.set(text);
       cachedDoc.root.append(child);
-      await tick();
     },
     assertIDBDoc: async (expected?: {
       clock: number;
