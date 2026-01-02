@@ -231,7 +231,6 @@ describe("types", () => {
         StateDefinition<Date, string, DefaultStateMethods<Date>>
       >();
     });
-    // eslint-disable-next-line vitest/expect-expect
     test("fromJSON cannot be assigned to anything other than unknown", () => {
       defineState({
         // @ts-expect-error - fromJSON cannot be assigned to anything other than unknown
@@ -379,7 +378,6 @@ describe("createNode", () => {
     expect(node).toBeDefined();
   });
 
-  // eslint-disable-next-line vitest/expect-expect
   test("private constructor", () => {
     const doc = new Doc({ extensions: [TextExtension] });
     // @ts-expect-error - private constructor

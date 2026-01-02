@@ -88,10 +88,6 @@ export const rootEslintConfig = tseslint.config(
       vitest,
     },
     rules: {
-      "vitest/expect-expect": [
-        "error",
-        { assertFunctionNames: ["expect*", "assert*"] },
-      ],
       "vitest/prefer-strict-equal": "error",
     },
     settings: {

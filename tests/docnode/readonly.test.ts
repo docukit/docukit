@@ -172,7 +172,6 @@ describe("is", () => {
   });
 
   // typeScript-only test. We don't verify this in runtime.
-  // eslint-disable-next-line vitest/expect-expect
   test("does not accept parameters of different types", () => {
     // @ts-expect-error - parameters need to have the same type
     unknownNode.is(TestNode, X);
