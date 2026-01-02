@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { testWrapper } from "./utils.js";
+import { emptyIDB, testWrapper } from "./utils.js";
 import { tick } from "../utils.js";
 
 describe("Local-First 2.0", () => {
@@ -34,17 +34,9 @@ describe("Local-First 2.0", () => {
 
       // 2. ONLY REFERENCE LOADS DOC
       await clients.reference.loadDoc();
-      await clients.reference.assertIDBDoc({
-        clock: 0,
-        doc: [],
-        ops: [],
-      });
+      await clients.reference.assertIDBDoc(emptyIDB);
       // Other tab shares the same IDB as reference
-      await clients.otherTab.assertIDBDoc({
-        clock: 0,
-        doc: [],
-        ops: [],
-      });
+      await clients.otherTab.assertIDBDoc(emptyIDB);
       await clients.otherDevice.assertIDBDoc();
       clients.reference.assertMemoryDoc([]);
       clients.otherTab.assertMemoryDoc();
@@ -52,13 +44,15 @@ describe("Local-First 2.0", () => {
 
       // 3. OTHER TAB LOADS DOC
       await clients.otherTab.loadDoc();
-      await clients.otherTab.assertIDBDoc({
-        clock: 0,
-        doc: [],
-        ops: [],
-      });
+      await clients.otherTab.assertIDBDoc(emptyIDB);
       await clients.otherDevice.assertIDBDoc();
+
       clients.reference.assertMemoryDoc([]);
+      clients.otherTab.assertMemoryDoc([]);
+      clients.otherDevice.assertMemoryDoc();
+
+      // 4. OTHER DEVICE LOADS DOC
+      await clients.otherDevice.loadDoc();
     });
   });
 

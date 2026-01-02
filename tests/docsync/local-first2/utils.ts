@@ -374,3 +374,5 @@ const createClientUtils = (
     },
   };
 };
+
+export const emptyIDB = { clock: 0, doc: [], ops: [] };
