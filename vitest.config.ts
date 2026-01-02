@@ -52,6 +52,8 @@ export default defineConfig({
         extends: true, // Extends root config to include resolve.conditions
         plugins: [react()],
         test: {
+          // Needed for server logs (in globalSetup) to be visible in tests
+          disableConsoleIntercept: true,
           // Browser tests need more time due to Playwright startup overhead
           // This prevents false failures from browser launch timeouts
           testTimeout: 3000, // (includes Playwright launch time?)
