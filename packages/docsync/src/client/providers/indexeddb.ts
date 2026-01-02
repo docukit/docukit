@@ -9,8 +9,11 @@ interface DocNodeIDB<S, O> extends DBSchema {
     value: SerializedDocPayload<S>;
   };
   operations: {
-    key: [string, number]; // [docId, seq] - compound key
-    value: O[];
+    key: number;
+    value: { operations: O[]; docId: string };
+    indexes: {
+      docId_idx: string;
+    };
   };
 }
 
@@ -19,46 +22,26 @@ type IDBTx<S, O> = IDBPTransaction<DocNodeIDB<S, O>, StoreNames, "readwrite">;
 
 export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
   private _dbPromise: Promise<IDBPDatabase<DocNodeIDB<S, O>>>;
-  private _seqGeneratorPromise: Promise<() => number>;
-  private _identity: Identity;
 
   constructor(identity: Identity) {
-    this._identity = identity;
     // Each user gets their own database for isolation and performance
     const dbName = `docsync-${identity.userId}`;
     this._dbPromise = openDB(dbName, 1, {
       upgrade(db) {
+        if (db.objectStoreNames.contains("docs")) return;
         db.createObjectStore("docs", { keyPath: "docId" });
-        db.createObjectStore("operations");
+        const operationsStore = db.createObjectStore("operations", {
+          autoIncrement: true,
+        });
+        operationsStore.createIndex("docId_idx", "docId");
       },
     });
-
-    // Initialize seq generator from max existing key (ensures no collisions after page refresh)
-    this._seqGeneratorPromise = this._initSeqGenerator();
-  }
-
-  /**
-   * Initialize the sequence generator by reading the max existing key.
-   * This ensures monotonic keys even after page refresh.
-   */
-  private async _initSeqGenerator(): Promise<() => number> {
-    const db = await this._dbPromise;
-    const tx = db.transaction("operations", "readonly");
-    const cursor = await tx.objectStore("operations").openCursor(null, "prev");
-    const maxSeq = cursor ? cursor.key[1] : 0;
-    await tx.done;
-
-    let seq = maxSeq;
-    return () => ++seq;
   }
 
   /**
    * Create a transaction context that wraps all operations in a single IDB transaction.
    */
-  private _createContext(
-    tx: IDBTx<S, O>,
-    getSeq: () => number,
-  ): TransactionContext<S, O> {
+  private _createContext(tx: IDBTx<S, O>): TransactionContext<S, O> {
     return {
       async getSerializedDoc(docId: string) {
         const store = tx.objectStore("docs");
@@ -73,8 +56,9 @@ export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
       async getOperations({ docId }: { docId: string }) {
         // TODO: maybe I should add a docbinding.mergeOperations call here?
         const store = tx.objectStore("operations");
-        const range = IDBKeyRange.bound([docId], [docId, []]);
-        return await store.getAll(range);
+        const index = store.index("docId_idx");
+        const result = await index.getAll(docId);
+        return result.map((r) => r.operations);
       },
 
       async saveOperations({
@@ -85,7 +69,7 @@ export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
         operations: O[];
       }) {
         const store = tx.objectStore("operations");
-        await store.add(operations, [docId, getSeq()]);
+        await store.add({ operations, docId });
       },
 
       async deleteOperations({
@@ -97,8 +81,8 @@ export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
       }) {
         if (count <= 0) return;
         const store = tx.objectStore("operations");
-        const range = IDBKeyRange.bound([docId], [docId, []]);
-        let cursor = await store.openCursor(range);
+        const index = store.index("docId_idx");
+        let cursor = await index.openCursor(IDBKeyRange.only(docId));
         let deletedCount = 0;
         while (cursor && deletedCount < count) {
           await cursor.delete();
@@ -117,13 +101,11 @@ export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
     mode: "readonly" | "readwrite",
     callback: (ctx: TransactionContext<S, O>) => Promise<T>,
   ): Promise<T> {
-    const [db, getSeq] = await Promise.all([
-      this._dbPromise,
-      this._seqGeneratorPromise,
-    ]);
-    // Always use readwrite to support all context operations
+    const db = await this._dbPromise;
+
+    // Cast as readwrite to support all context operations in compile time
     const tx = db.transaction(["docs", "operations"], mode as "readwrite");
-    const ctx = this._createContext(tx, getSeq);
+    const ctx = this._createContext(tx);
 
     try {
       const result = await callback(ctx);

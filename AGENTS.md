@@ -31,8 +31,8 @@
 # Clean up zombie processes
 pkill -f "playwright.*test-server"
 
-# Then run tests
-pnpm vitest --run tests/docsync/local-first/realtime.browser.test.ts
+# Or:
+killall -9 "headless_shell"
 ```
 
 **Prevention:** Use Ctrl+C (not `kill -9`) to stop tests.

@@ -51,14 +51,14 @@ describe("Local-First 2.0", () => {
       clients.otherDevice.assertMemoryDoc();
 
       // 3. OTHER TAB LOADS DOC
-      // await clients.otherTab.loadDoc();
-      // await clients.otherTab.assertIDBDoc({
-      //   clock: 0,
-      //   doc: [],
-      //   ops: [],
-      // });
-      // await clients.otherDevice.assertIDBDoc();
-      // clients.reference.assertMemoryDoc([]);
+      await clients.otherTab.loadDoc();
+      await clients.otherTab.assertIDBDoc({
+        clock: 0,
+        doc: [],
+        ops: [],
+      });
+      await clients.otherDevice.assertIDBDoc();
+      clients.reference.assertMemoryDoc([]);
     });
   });
 
