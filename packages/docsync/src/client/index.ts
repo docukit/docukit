@@ -267,16 +267,16 @@ export class DocSyncClient<
             data: doc ? { doc, id: docId } : undefined,
             error: undefined,
           });
+          // This forces a fetch if the document exists on the server.
+          void this.onLocalOperations({
+            docId,
+            operations: [] as O[],
+          });
         } catch (e) {
           const error = e instanceof Error ? e : new Error(String(e));
           emit({ status: "error", data: undefined, error });
         }
       })();
-      // This forces a fetch if the document exists on the server.
-      void this.onLocalOperations({
-        docId,
-        operations: [] as O[],
-      });
     }
 
     return () => {
