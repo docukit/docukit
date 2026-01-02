@@ -3,7 +3,7 @@ import { testWrapper } from "./utils.js";
 import { tick } from "../utils.js";
 
 describe("Local-First 2.0", () => {
-  test("load doc", async () => {
+  test("cannot load doc twice", async () => {
     await testWrapper(async (clients) => {
       // Initially doc is undefined
       expect(clients.reference.doc).toBeUndefined();
@@ -19,6 +19,46 @@ describe("Local-First 2.0", () => {
       // Can load again after unloading
       await clients.reference.loadDoc();
       expect(clients.reference.doc).toBeDefined();
+    });
+  });
+
+  test("before and after loading doc", async () => {
+    await testWrapper(async (clients) => {
+      // 1. NO CLIENT HAS DOC
+      await clients.reference.assertIDBDoc();
+      await clients.otherTab.assertIDBDoc();
+      await clients.otherDevice.assertIDBDoc();
+      clients.reference.assertMemoryDoc();
+      clients.otherTab.assertMemoryDoc();
+      clients.otherDevice.assertMemoryDoc();
+
+      // 2. ONLY REFERENCE LOADS DOC
+      await clients.reference.loadDoc();
+      await clients.reference.assertIDBDoc({
+        clock: 0,
+        doc: [],
+        ops: [],
+      });
+      // Other tab shares the same IDB as reference
+      await clients.otherTab.assertIDBDoc({
+        clock: 0,
+        doc: [],
+        ops: [],
+      });
+      await clients.otherDevice.assertIDBDoc();
+      clients.reference.assertMemoryDoc([]);
+      clients.otherTab.assertMemoryDoc();
+      clients.otherDevice.assertMemoryDoc();
+
+      // 3. OTHER TAB LOADS DOC
+      // await clients.otherTab.loadDoc();
+      // await clients.otherTab.assertIDBDoc({
+      //   clock: 0,
+      //   doc: [],
+      //   ops: [],
+      // });
+      // await clients.otherDevice.assertIDBDoc();
+      // clients.reference.assertMemoryDoc([]);
     });
   });
 

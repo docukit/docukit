@@ -82,19 +82,18 @@ type ClientUtils = {
   loadDoc: () => Promise<void>;
   unLoadDoc: () => void;
   addChild: (text: string) => void;
-  assertIDBDoc: (expected: {
+  assertIDBDoc: (expected?: {
     clock: number;
     doc: string[];
     ops: string[];
   }) => Promise<void>;
-  assertMemoryDoc: (children: string[]) => void;
+  assertMemoryDoc: (children?: string[]) => void;
 };
 
 export type ClientsSetup = {
   docId: string;
   reference: ClientUtils;
   otherTab: ClientUtils;
-  otherTabAndUser: ClientUtils;
   otherDevice: ClientUtils;
 };
 
@@ -117,14 +116,12 @@ export const testWrapper = async (
     // Cleanup: unload docs
     clients.reference.unLoadDoc();
     clients.otherTab.unLoadDoc();
-    clients.otherTabAndUser.unLoadDoc();
     clients.otherDevice.unLoadDoc();
 
     // Cleanup: close connections
     const allClients = [
       clients.reference.client,
       clients.otherTab.client,
-      clients.otherTabAndUser.client,
       clients.otherDevice.client,
     ];
 
@@ -196,7 +193,7 @@ const setupClients = async (): Promise<ClientsSetup> => {
   const docId = generateDocId();
   const docBinding = createDocBinding();
 
-  // Reference: local + RT + BC enabled
+  // Reference: local + RT + BC enabled (userId1)
   const referenceUserId = generateUserId();
   const referenceClient = createClientWithConfig({
     userId: referenceUserId,
@@ -207,9 +204,9 @@ const setupClients = async (): Promise<ClientsSetup> => {
     broadcastChannel: true,
   });
 
-  // OtherTab: local + RT + BC enabled (same user as reference)
+  // OtherTab: local + RT + BC enabled (same userId1 as reference)
   const otherTabClient = createClientWithConfig({
-    userId: referenceUserId, // Same user for broadcast channel
+    userId: referenceUserId, // Same user for broadcast channel and IDB sharing
     token: createTestToken(referenceUserId),
     docBinding,
     local: true,
@@ -217,24 +214,13 @@ const setupClients = async (): Promise<ClientsSetup> => {
     broadcastChannel: true,
   });
 
-  // OtherTabAndUser: local + RT + BC enabled (different user - namespacing prevents BC messages)
-  const otherTabAndUserUserId = generateUserId();
-  const otherTabAndUserClient = createClientWithConfig({
-    userId: otherTabAndUserUserId,
-    token: createTestToken(otherTabAndUserUserId),
-    docBinding,
-    local: true,
-    realTime: true,
-    broadcastChannel: true,
-  });
-
-  // OtherDevice: NO local, RT enabled, BC disabled (different user)
+  // OtherDevice: local enabled with different userId2, RT enabled, BC disabled
   const otherDeviceUserId = generateUserId();
   const otherDeviceClient = createClientWithConfig({
-    userId: otherDeviceUserId,
+    userId: otherDeviceUserId, // Different user = different IDB + BC namespace
     token: createTestToken(otherDeviceUserId),
     docBinding,
-    local: false,
+    local: true,
     realTime: true,
     broadcastChannel: false,
   });
@@ -243,11 +229,6 @@ const setupClients = async (): Promise<ClientsSetup> => {
     docId,
     reference: createClientUtils(referenceClient, docId, referenceUserId),
     otherTab: createClientUtils(otherTabClient, docId, referenceUserId),
-    otherTabAndUser: createClientUtils(
-      otherTabAndUserClient,
-      docId,
-      otherTabAndUserUserId,
-    ),
     otherDevice: createClientUtils(otherDeviceClient, docId, otherDeviceUserId),
   };
 };
@@ -302,7 +283,7 @@ const createClientUtils = (
       child.state.value.set(text);
       cachedDoc.root.append(child);
     },
-    assertIDBDoc: async (expected: {
+    assertIDBDoc: async (expected?: {
       clock: number;
       doc: string[];
       ops: string[];
@@ -322,6 +303,12 @@ const createClientUtils = (
           return { docResult, operations };
         },
       );
+
+      if (!expected) {
+        expect(result.docResult).toBeUndefined();
+        expect(result.operations).toStrictEqual([]);
+        return;
+      }
 
       if (!result.docResult) {
         throw new Error(
@@ -368,7 +355,12 @@ const createClientUtils = (
 
       expect(opsChildren).toStrictEqual(expected.ops);
     },
-    assertMemoryDoc: (expectedChildren: string[]) => {
+    assertMemoryDoc: (expectedChildren?: string[]) => {
+      if (!expectedChildren) {
+        expect(cachedDoc).toBeUndefined();
+        return;
+      }
+
       if (!cachedDoc)
         throw new Error("Doc not loaded - cannot assert memory doc");
 

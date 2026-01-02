@@ -1,21 +1,24 @@
 We are going to make a new test plan that is simpler and easier to understand than ../local-first/REALTIME-TEST-PLAN.md.
 
-We are going to replicate the 3 real scenarios that can happen in practice: otherTab, otherTabAndUser, otherDevice.
+We are going to replicate the 2 real scenarios that can happen in practice: otherTab and otherDevice.
 
-| client/doc      | broadcastChannel | realTime | idb |
-| --------------- | ---------------- | -------- | --- |
-| reference       | N/A              | N/A      | N/A |
-| otherTab        | ✅               | ✅       | ✅  |
-| otherTabAndUser | ✅ (no messages) | ✅       | ✅  |
-| otherDevice     | ❌               | ✅       | ❌  |
+| client/doc  | broadcastChannel | realTime | idb |
+| ----------- | ---------------- | -------- | --- |
+| reference   | N/A              | N/A      | N/A |
+| otherTab    | ✅               | ✅       | ✅  |
+| otherDevice | ❌               | ✅       | ❌  |
 
-Each test will use a wrapper function that initializes 4 pairs of clients/documents, runs the test, and cleans up automatically.
-The 4 clients will connect to the same document.
+**Note:** `otherDevice` uses a different userId, which automatically means:
 
-- Reference: client should have local, RT y BC enabled.
-- OtherTab: client should have local, RT y BC enabled (same userId as reference).
-- OtherTabAndUser: client should have local, RT y BC enabled (different userId - won't receive BC messages due to namespacing).
-- OtherDevice: client should NOT have local. BC should be disabled y RT enabled.
+- Different IDB namespace (won't share IndexedDB with reference/otherTab)
+- Different BC namespace (won't receive BroadcastChannel messages)
+
+Each test will use a wrapper function that initializes 3 pairs of clients/documents, runs the test, and cleans up automatically.
+The 3 clients will connect to the same document.
+
+- Reference: client should have local, RT and BC enabled (userId1).
+- OtherTab: client should have local, RT and BC enabled (same userId1 as reference).
+- OtherDevice: client should have local enabled but with different userId2, RT enabled, BC disabled.
 
 ```ts
 type ClientUtils = {
@@ -32,7 +35,6 @@ type ClientsSetup = {
   docId: string;
   reference: ClientUtils;
   otherTab: ClientUtils;
-  otherTabAndUser: ClientUtils;
   otherDevice: ClientUtils;
 };
 
