@@ -35,8 +35,7 @@ describe("Local-First 2.0", () => {
       // 2. ONLY REFERENCE LOADS DOC
       await clients.reference.loadDoc();
       await clients.reference.assertIDBDoc(emptyIDB);
-      // Other tab shares the same IDB as reference
-      await clients.otherTab.assertIDBDoc(emptyIDB);
+      await clients.otherTab.assertIDBDoc(emptyIDB); // OtherTab shares the same IDB as reference
       await clients.otherDevice.assertIDBDoc();
       clients.reference.assertMemoryDoc([]);
       clients.otherTab.assertMemoryDoc();
@@ -53,6 +52,13 @@ describe("Local-First 2.0", () => {
 
       // 4. OTHER DEVICE LOADS DOC
       await clients.otherDevice.loadDoc();
+
+      await clients.reference.assertIDBDoc(emptyIDB);
+      await clients.otherTab.assertIDBDoc(emptyIDB);
+      await clients.otherDevice.assertIDBDoc(emptyIDB);
+      clients.reference.assertMemoryDoc([]);
+      clients.otherTab.assertMemoryDoc([]);
+      clients.otherDevice.assertMemoryDoc([]);
     });
   });
 
