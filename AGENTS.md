@@ -21,50 +21,23 @@
 
 ## Troubleshooting
 
-### Playwright Browser Tests Failing with "Target page, context or browser has been closed"
+### Playwright Browser Tests Failing (For AI Agents)
 
-**Cause 1:** Zombie Playwright processes from previous runs interfere with new browser instances.
+⚠️ **This is an AI agent problem, not a user problem.** Users can run tests normally in their terminal.
 
-**Solution:**
+**Root Cause:** AI agents running tests while VSCode/Cursor Vitest extensions are also running causes browser resource conflicts.
+
+**Solution (run BEFORE executing browser tests):**
 
 ```bash
-# Clean up zombie processes
-pkill -f "playwright.*test-server"
-
-# Or:
-killall -9 "headless_shell"
+pkill -f "vitest" 2>/dev/null || true; killall -9 "headless_shell" 2>/dev/null || true
 ```
 
-**Prevention:** Use Ctrl+C (not `kill -9`) to stop tests.
+**DO NOT:**
 
----
-
-**Cause 2:** The error appears at the END of test execution when closing the browser, but tests actually ran successfully.
-
-**How to verify tests ran:**
-
-1. Look for test results BEFORE the error:
-
-   ```
-   Test Files  15 passed | 2 skipped (18)
-        Tests  5 failed | 333 passed | 9 skipped
-   ```
-
-2. Check for "Duration" in the output (e.g., `Duration 24.68s`)
-
-3. If you see test results, the tests RAN. The "Target page closed" error is just a cleanup issue.
-
-**When this happens:**
-
-- ✅ Tests executed successfully
-- ✅ Results are valid
-- ❌ Browser cleanup failed (cosmetic issue)
-
-**If you see the error IMMEDIATELY with "no tests" and Duration < 1s:**
-
-- This is a real problem (browser crashed before loading tests)
-- Try the cleanup solution above
-- May need to reinstall Playwright: `pnpm exec playwright install chromium --with-deps`
+- Reinstall Playwright or browsers (wastes time, doesn't fix the issue)
+- Run browser tests if user's watch mode is already working
+- Create npm scripts for this - it's an agent workflow issue, not a user issue
 
 ---
 
