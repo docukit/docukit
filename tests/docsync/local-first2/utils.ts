@@ -257,21 +257,25 @@ const createClientUtils = (
   docId: string,
   userId: string,
 ): ClientUtils => {
-  let doc: Doc | undefined;
   let cleanup: (() => void) | undefined;
+  let cachedDoc: Doc | undefined;
 
   return {
     client,
     get doc() {
-      return doc;
+      // Return our cached reference (matches what the client has)
+      return cachedDoc;
     },
     loadDoc: async () => {
+      if (cleanup) {
+        throw new Error("Doc already loaded. Call unLoadDoc() first.");
+      }
       await new Promise<void>((resolve, reject) => {
         cleanup = client.getDoc(
           { type: "test", id: docId, createIfMissing: true },
           (result) => {
             if (result.status === "success" && result.data) {
-              doc = result.data.doc;
+              cachedDoc = result.data.doc;
               resolve();
             }
             if (result.status === "error") {
@@ -285,14 +289,14 @@ const createClientUtils = (
       if (cleanup) {
         cleanup();
         cleanup = undefined;
+        cachedDoc = undefined; // Clear reference immediately
       }
-      doc = undefined;
     },
     addChild: (text: string) => {
-      if (!doc) throw new Error("Doc not loaded");
-      const child = doc.createNode(ChildNode);
+      if (!cachedDoc) throw new Error("Doc not loaded");
+      const child = cachedDoc.createNode(ChildNode);
       child.state.value.set(text);
-      doc.root.append(child);
+      cachedDoc.root.append(child);
     },
     assertIDBDoc: async (expectedChildren: string[]) => {
       // Get the provider from the client's internal state
@@ -340,10 +344,11 @@ const createClientUtils = (
       expect(actualChildren).toStrictEqual(expectedChildren);
     },
     assertMemoryDoc: (expectedChildren: string[]) => {
-      if (!doc) throw new Error("Doc not loaded - cannot assert memory doc");
+      if (!cachedDoc)
+        throw new Error("Doc not loaded - cannot assert memory doc");
 
       const actualChildren: string[] = [];
-      doc.root.children().forEach((child) => {
+      cachedDoc.root.children().forEach((child) => {
         const typedChild = child as unknown as DocNode<typeof ChildNode>;
         actualChildren.push(typedChild.state.value.get());
       });
