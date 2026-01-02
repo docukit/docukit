@@ -69,19 +69,26 @@ describe("Local-First 2.0", () => {
     });
   });
 
-  test("add child", async () => {
-    await testWrapper(async (clients) => {
-      await clients.reference.loadDoc();
-      expect(clients.reference.doc).toBeDefined();
-      expect(clients.reference.doc!.root).toBeDefined();
-      clients.reference.addChild("Hello");
-      clients.reference.assertMemoryDoc(["Hello"]);
+  test("load after adding child", async () => {
+    await testWrapper(async ({ reference, otherDevice, otherTab }) => {
+      await reference.loadDoc();
+      expect(reference.doc).toBeDefined();
+      await reference.addChild("Hello");
+      reference.assertMemoryDoc(["Hello"]);
+      await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
+
+      // LOAD OTHER TAB
+      await otherTab.loadDoc();
+      await otherTab.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
+      otherTab.assertMemoryDoc(["Hello"]);
+      otherDevice.assertMemoryDoc();
+      await otherDevice.assertIDBDoc();
+
+      // LOAD OTHER DEVICE
+      await otherDevice.loadDoc();
       await tick();
-      await clients.reference.assertIDBDoc({
-        clock: 0,
-        doc: [],
-        ops: ["Hello"],
-      });
+      await otherDevice.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
+      // otherDevice.assertMemoryDoc(["Hello"]);
     });
   });
 });
