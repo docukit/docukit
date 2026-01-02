@@ -19,15 +19,36 @@
 - The pattern for exporting private APIs is to use class methods and properties prefixed with `private`. TypeScript allows access to these from outside the class using bracket notation. If you don't recognize the method, you may need to change it to `protected` in your source code. Never export top-level internal modules, nor use assertions to cast an internal property.
   - **IMPORTANT**: When writing tests that need to access internal class properties, ALWAYS change those properties from `private` to `protected` in the source code. Then use bracket notation (e.g., `instance["_property"]`) in tests WITHOUT any type assertions (`as`, `as any`, `as unknown as`). Never use type assertions to access private/internal properties - change them to `protected` instead.
 
+## Critical Rules for Agents
+
+**If you cannot execute tests, you MUST fix that problem FIRST before working on anything else.**
+
+- DO NOT assume you fixed a problem if you couldn't run tests to verify
+- DO NOT ask the user to run tests and tell you what appears in console
+- DO NOT continue with the "original problem" if you can't execute tests
+- Tests MUST run successfully in the agent environment to iterate and verify fixes
+
+---
+
 ## Troubleshooting
 
 ### Playwright Browser Tests Failing (For AI Agents)
 
 ⚠️ **This is an AI agent problem, not a user problem.** Users can run tests normally in their terminal.
 
-**Root Cause:** AI agents running tests while VSCode/Cursor Vitest extensions are also running causes browser resource conflicts.
+**Root Cause:** Cursor's sandbox restricts Chromium's access to macOS display system.
 
-**Solution (run BEFORE executing browser tests):**
+**SOLUTION - ALWAYS use `required_permissions: ["all"]` for browser tests:**
+
+```typescript
+run_terminal_cmd({
+  command:
+    "cd /path/to/project && pnpm test:once tests/path/to/browser.test.ts",
+  required_permissions: ["all"], // <-- THIS IS REQUIRED FOR BROWSER TESTS
+});
+```
+
+**Before running browser tests, clean up processes:**
 
 ```bash
 pkill -f "vitest" 2>/dev/null || true; killall -9 "headless_shell" 2>/dev/null || true
@@ -35,6 +56,6 @@ pkill -f "vitest" 2>/dev/null || true; killall -9 "headless_shell" 2>/dev/null |
 
 **DO NOT:**
 
+- Run browser tests WITHOUT `required_permissions: ["all"]` - they will fail
 - Reinstall Playwright or browsers (wastes time, doesn't fix the issue)
-- Run browser tests if user's watch mode is already working
 - Create npm scripts for this - it's an agent workflow issue, not a user issue
