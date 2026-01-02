@@ -1,5 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { testWrapper } from "./utils.js";
+import { tick } from "../utils.js";
 
 describe("Local-First 2.0", () => {
   test("load doc", async () => {
@@ -26,18 +27,14 @@ describe("Local-First 2.0", () => {
       await clients.reference.loadDoc();
       expect(clients.reference.doc).toBeDefined();
       expect(clients.reference.doc!.root).toBeDefined();
-
-      // Add a child
       clients.reference.addChild("Hello");
-
-      // Verify in memory
       clients.reference.assertMemoryDoc(["Hello"]);
-
-      // Wait for IndexedDB sync
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      // Verify in IndexedDB
-      await clients.reference.assertIDBDoc(["Hello"]);
+      await tick();
+      await clients.reference.assertIDBDoc({
+        clock: 0,
+        doc: [],
+        ops: ["Hello"],
+      });
     });
   });
 });

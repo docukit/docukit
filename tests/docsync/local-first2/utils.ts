@@ -82,7 +82,11 @@ type ClientUtils = {
   loadDoc: () => Promise<void>;
   unLoadDoc: () => void;
   addChild: (text: string) => void;
-  assertIDBDoc: (children: string[]) => Promise<void>;
+  assertIDBDoc: (expected: {
+    clock: number;
+    doc: string[];
+    ops: string[];
+  }) => Promise<void>;
   assertMemoryDoc: (children: string[]) => void;
 };
 
@@ -298,7 +302,11 @@ const createClientUtils = (
       child.state.value.set(text);
       cachedDoc.root.append(child);
     },
-    assertIDBDoc: async (expectedChildren: string[]) => {
+    assertIDBDoc: async (expected: {
+      clock: number;
+      doc: string[];
+      ops: string[];
+    }) => {
       // Get the provider from the client's internal state
       const local = await client["_localPromise"];
       if (!local) {
@@ -321,27 +329,44 @@ const createClientUtils = (
         );
       }
 
-      // Deserialize the doc and apply all operations (like the client does when loading)
+      expect(result.docResult.clock).toBe(expected.clock);
+
       const deserializedDoc = client["_docBinding"].deserialize(
         result.docResult.serializedDoc,
       );
 
-      // Apply all stored operations to get the current state
-      for (const ops of result.operations) {
-        for (const op of ops) {
-          client["_docBinding"].applyOperations(deserializedDoc, op);
+      const actualDocChildren: string[] = [];
+      deserializedDoc.root.children().forEach((child) => {
+        const typedChild = child as unknown as DocNode<typeof ChildNode>;
+        actualDocChildren.push(typedChild.state.value.get());
+      });
+
+      expect(actualDocChildren).toStrictEqual(expected.doc);
+
+      const opsChildren: string[] = [];
+
+      for (const batch of result.operations) {
+        if (batch.length === 0) continue;
+        for (const item of batch) {
+          if (!Array.isArray(item) || item.length < 2) continue;
+          const stateUpdates = item[1];
+          if (!stateUpdates || typeof stateUpdates !== "object") continue;
+
+          for (const [, nodeState] of Object.entries(stateUpdates)) {
+            if (
+              nodeState &&
+              typeof nodeState === "object" &&
+              "value" in nodeState
+            ) {
+              const jsonValue = nodeState.value;
+              const parsedValue = JSON.parse(jsonValue) as string;
+              opsChildren.push(parsedValue);
+            }
+          }
         }
       }
 
-      // TODO: assert operations separately
-
-      const actualChildren: string[] = [];
-      deserializedDoc.root.children().forEach((child) => {
-        const typedChild = child as unknown as DocNode<typeof ChildNode>;
-        actualChildren.push(typedChild.state.value.get());
-      });
-
-      expect(actualChildren).toStrictEqual(expectedChildren);
+      expect(opsChildren).toStrictEqual(expected.ops);
     },
     assertMemoryDoc: (expectedChildren: string[]) => {
       if (!cachedDoc)
