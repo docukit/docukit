@@ -11,7 +11,7 @@ import type {
 } from "./types.js";
 import { ServerSync } from "./serverSync.js";
 
-type LocalResolved<S, O> = {
+export type LocalResolved<S, O> = {
   provider: ClientProvider<S, O>;
   identity: Identity;
 };
@@ -29,47 +29,23 @@ export class DocSyncClient<
   protected _localPromise?: Promise<LocalResolved<S, O>>;
   private _shouldBroadcast = true;
   protected _broadcastChannel?: BroadcastChannel;
-  protected _serverSync?: ServerSync<D, S, O>;
-  private _realTime: boolean;
+  protected _serverSync: ServerSync<D, S, O>;
   private _useBroadcastChannel: boolean;
 
   constructor(config: ClientConfig<D, S, O>) {
     if (typeof window === "undefined")
       throw new Error("DocSyncClient can only be used in the browser");
-    const {
-      docBinding,
-      local,
-      server,
-      realTime = true,
-      broadcastChannel = true,
-    } = config;
+    const { docBinding, local, broadcastChannel = true } = config;
     this._docBinding = docBinding;
-    this._realTime = realTime;
     this._useBroadcastChannel = broadcastChannel;
 
     // Initialize local provider (if configured)
     if (local) {
-      // Capture values for async context
-      const _docBinding = docBinding;
-      const _realTime = realTime;
       const _useBroadcastChannel = this._useBroadcastChannel;
 
       this._localPromise = (async () => {
         const identity = await local.getIdentity();
         const provider = new local.provider(identity) as ClientProvider<S, O>;
-        // Initialize ServerSync now that we have the provider
-        if (server) {
-          this._serverSync = new ServerSync({
-            provider,
-            url: server.url,
-            docBinding: _docBinding,
-            getToken: server.auth.getToken,
-            realTime: _realTime,
-            onServerOperations: ({ docId, operations }) => {
-              void this._applyServerOperations({ docId, operations });
-            },
-          });
-        }
 
         // Initialize BroadcastChannel with user-specific channel name
         // This ensures only tabs of the same user share operations
@@ -93,6 +69,14 @@ export class DocSyncClient<
         return { provider, identity };
       })();
     }
+
+    this._serverSync = new ServerSync({
+      ...config,
+      localPromise: this._localPromise!,
+      onServerOperations: ({ docId, operations }) => {
+        void this._applyServerOperations({ docId, operations });
+      },
+    });
   }
 
   async _applyOperations(operations: O, docId: string) {

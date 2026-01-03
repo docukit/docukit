@@ -1,44 +1,43 @@
 import type { DocBinding, SerializedDoc } from "../shared/docBinding.js";
-import type { ClientProvider } from "./types.js";
+import type { ClientConfig } from "./types.js";
 import { API, type APIOptions } from "./utils.js";
+import type { LocalResolved } from "./index.js";
 
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 export type ServerSyncConfig<
   D extends {},
   S extends SerializedDoc,
   O extends {},
-> = {
-  provider: ClientProvider<S, O>;
-  url: string;
-  docBinding: DocBinding<D, S, O>;
-  getToken: () => Promise<string>;
-  realTime: boolean;
+> = Exclude<ClientConfig<D, S, O>, "provider"> & {
+  localPromise: Promise<LocalResolved<S, O>>;
   onServerOperations?: (payload: { docId: string; operations: O[] }) => void;
 };
 
 type PushStatus = "idle" | "pushing" | "pushing-with-pending";
 
 export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
-  private _provider: ClientProvider<S, O>;
+  private _localPromise: Promise<LocalResolved<S, O>>;
   protected _api: API<S, O>;
   private _docBinding: DocBinding<D, S, O>;
   // Per-docId push status to allow concurrent pushes for different docs
   protected _pushStatusByDocId = new Map<string, PushStatus>();
   protected _subscribedDocs = new Set<string>();
-  private _realTime: boolean;
+  protected _realTime: boolean;
   private _onServerOperations?:
     | ((payload: { docId: string; operations: O[] }) => void)
     | undefined;
 
   constructor(config: ServerSyncConfig<D, S, O>) {
-    this._provider = config.provider;
-    this._realTime = config.realTime;
+    this._localPromise = config.localPromise;
+    this._realTime = config.realTime ?? true;
     this._onServerOperations = config.onServerOperations;
-    const { url, getToken } = config;
 
     // Build API options conditionally based on realTime flag
-    const apiOptions: APIOptions = { url, getToken };
-    if (this._realTime) {
+    const apiOptions: APIOptions = {
+      url: config.server!.url,
+      getToken: config.server!.auth.getToken,
+    };
+    if (config.realTime) {
       apiOptions.onDirty = (payload) => {
         // When server notifies us of changes, trigger a sync (reuse saveRemote)
         this.saveRemote({ docId: payload.docId });
@@ -100,9 +99,10 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
 
   protected async _doPush({ docId }: { docId: string }) {
     this._pushStatusByDocId.set(docId, "pushing");
+    const provider = (await this._localPromise).provider;
 
     // Get the current clock value and operations from provider
-    const [operationsBatches, stored] = await this._provider.transaction(
+    const [operationsBatches, stored] = await provider.transaction(
       "readonly",
       async (ctx) => {
         return Promise.all([
@@ -129,7 +129,7 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
     }
 
     // Atomically: delete synced operations + consolidate into serialized doc
-    await this._provider.transaction("readwrite", async (ctx) => {
+    await provider.transaction("readwrite", async (ctx) => {
       // Delete client operations that were synced (delete batches, not individual ops)
       if (operationsBatches.length > 0) {
         await ctx.deleteOperations({

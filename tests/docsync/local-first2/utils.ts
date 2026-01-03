@@ -13,8 +13,11 @@ import {
   type DocNode,
 } from "docnode";
 import { ulid } from "ulid";
-import { expect } from "vitest";
-import { tick } from "../utils.js";
+import { expect, vi, type Mock } from "vitest";
+import type {
+  DocSyncEventName,
+  DocSyncEvents,
+} from "../../../packages/docsync/dist/src/shared/types.js";
 
 // ============================================================================
 // Constants
@@ -90,6 +93,12 @@ type ClientUtils = {
     ops: string[];
   }) => Promise<void>;
   assertMemoryDoc: (children?: string[]) => void;
+  reqSpy: Mock<
+    <E extends DocSyncEventName>(
+      event: E,
+      payload: DocSyncEvents<JsonDoc, Operations>[E]["request"],
+    ) => Promise<DocSyncEvents<JsonDoc, Operations>[E]["response"]>
+  >;
 };
 
 export type ClientsSetup = {
@@ -247,12 +256,15 @@ const createClientUtils = (
   let cleanup: (() => void) | undefined;
   let cachedDoc: Doc | undefined;
 
+  const reqSpy = vi.spyOn(client["_serverSync"]["_api"], "request");
+
   return {
     client,
     get doc() {
       // Return our cached reference (matches what the client has)
       return cachedDoc;
     },
+    reqSpy,
     loadDoc: async () => {
       if (cleanup) {
         throw new Error("Doc already loaded. Call unLoadDoc() first.");

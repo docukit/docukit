@@ -78,6 +78,13 @@ describe("Local-First 2.0", () => {
       await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
       // Wait for sync to complete before checking IDB
       await tick(50); // Give time for saveRemote to complete
+
+      expect(reference.reqSpy).toHaveBeenCalledWith("sync-operations", {
+        docId: reference.doc!.root.id,
+        operations: [],
+        clock: 1,
+      });
+
       // After sync: operations are consolidated into doc
       // Clock = 2 because: 1) initial loadDoc sync, 2) addChild sync
       // TODO: this is wrong, clock should be 1 because addChild should not increment the clock
