@@ -99,6 +99,7 @@ type ClientUtils = {
       payload: DocSyncEvents<JsonDoc, Operations>[E]["request"],
     ) => Promise<DocSyncEvents<JsonDoc, Operations>[E]["response"]>
   >;
+  waitSync: () => Promise<void>;
 };
 
 export type ClientsSetup = {
@@ -296,6 +297,30 @@ const createClientUtils = (
       const child = cachedDoc.createNode(ChildNode);
       child.state.value.set(text);
       cachedDoc.root.append(child);
+    },
+    waitSync: async () => {
+      // Get current number of completed sync calls
+      const initialCount = reqSpy.mock.results.filter(
+        (_, i) => reqSpy.mock.calls[i]?.[0] === "sync-operations",
+      ).length;
+
+      // Wait for at least one more sync-operations to complete
+      await vi.waitFor(
+        async () => {
+          const currentResults = reqSpy.mock.results.filter(
+            (_, i) => reqSpy.mock.calls[i]?.[0] === "sync-operations",
+          );
+
+          expect(currentResults.length).toBeGreaterThan(initialCount);
+
+          // Ensure the last one has resolved
+          await currentResults[currentResults.length - 1]?.value;
+        },
+        { timeout: 200, interval: 2 },
+      );
+
+      // Small delay for IDB consolidation
+      await new Promise((resolve) => setTimeout(resolve, 10));
     },
     assertIDBDoc: async (expected?: {
       clock: number;

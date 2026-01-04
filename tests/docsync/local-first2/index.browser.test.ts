@@ -1,4 +1,4 @@
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, vi } from "vitest";
 import { emptyIDB, testWrapper } from "./utils.js";
 import { tick } from "../utils.js";
 
@@ -76,9 +76,8 @@ describe("Local-First 2.0", () => {
       await reference.addChild("Hello");
       reference.assertMemoryDoc(["Hello"]);
       await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
-      await tick(); // Give time for saveRemote to complete
 
-      // After sync: operations are consolidated into doc
+      await reference.waitSync();
       await reference.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
 
       // LOAD OTHER TAB
@@ -90,9 +89,10 @@ describe("Local-First 2.0", () => {
 
       // LOAD OTHER DEVICE
       await otherDevice.loadDoc();
-      await tick(50);
+      await otherDevice.waitSync();
       // otherDevice gets operations from server and applies them
       otherDevice.assertMemoryDoc(["Hello"]);
+      await otherDevice.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
     });
   });
 });
