@@ -46,7 +46,8 @@ export class InMemoryServerProvider<S, O> implements ServerProvider<S, O> {
         : null;
 
     // 3. Save client operations if provided
-    const newClock = this._nextClock(docId);
+    const newClock =
+      clientOps && clientOps.length > 0 ? this._nextClock(docId) : clientClock;
     if (clientOps && clientOps.length > 0) {
       for (const op of clientOps) {
         const docOps = this._operations.get(docId) ?? [];

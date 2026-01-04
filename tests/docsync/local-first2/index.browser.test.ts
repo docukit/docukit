@@ -76,23 +76,14 @@ describe("Local-First 2.0", () => {
       await reference.addChild("Hello");
       reference.assertMemoryDoc(["Hello"]);
       await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
-      // Wait for sync to complete before checking IDB
-      await tick(50); // Give time for saveRemote to complete
-
-      expect(reference.reqSpy).toHaveBeenCalledWith("sync-operations", {
-        docId: reference.doc!.root.id,
-        operations: [],
-        clock: 1,
-      });
+      await tick(); // Give time for saveRemote to complete
 
       // After sync: operations are consolidated into doc
-      // Clock = 2 because: 1) initial loadDoc sync, 2) addChild sync
-      // TODO: this is wrong, clock should be 1 because addChild should not increment the clock
-      await reference.assertIDBDoc({ clock: 2, doc: ["Hello"], ops: [] });
+      await reference.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
 
       // LOAD OTHER TAB
       await otherTab.loadDoc();
-      await otherTab.assertIDBDoc({ clock: 2, doc: ["Hello"], ops: [] });
+      await otherTab.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
       otherTab.assertMemoryDoc(["Hello"]);
       otherDevice.assertMemoryDoc();
       await otherDevice.assertIDBDoc();

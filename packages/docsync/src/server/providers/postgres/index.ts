@@ -48,7 +48,8 @@ export class PostgresProvider<S, O> implements ServerProvider<S, O> {
               })
               .returning({ clock: schema.operations.clock })
           : [];
-      const newClock = inserted[0]!.clock.getTime();
+      // TODO: If client is up to date, should I return the client clock or no clock?
+      const newClock = inserted[0]?.clock.getTime() ?? clientClock;
 
       // 4. Return data
       return {
