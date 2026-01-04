@@ -55,29 +55,6 @@ export type ClientConfig<
   O extends {},
 > = {
   docBinding: DocBinding<D, S, O>;
-  /**
-   * If it is `true` and there is an open connection to the server,
-   * clients will receive real-time updates from other clients.
-   *
-   * When `false`, changes from other users require a page refresh or
-   * manual sync operation to be seen.
-   *
-   * @default true
-   */
-  realTime?: boolean | undefined;
-  /**
-   * If it is `true`, tabs and windows within the same device will
-   * synchronize in real-time using BroadcastChannel API.
-   *
-   * This enables instant synchronization between tabs of the same
-   * browser, even when offline or without a server connection.
-   *
-   * When `false`, each tab operates independently and changes are
-   * only synchronized through the server or local storage.
-   *
-   * @default true
-   */
-  broadcastChannel?: boolean | undefined;
   server?: {
     url: string;
     auth: {

@@ -32,12 +32,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
   const activeCleanups: Array<() => void> = [];
 
   // Helper to create client and auto-track for cleanup
-  const createTrackedClient = (
-    userId: string,
-    token?: string,
-    config?: { realTime?: boolean; broadcastChannel?: boolean },
-  ) => {
-    const result = createClient(userId, token, config);
+  const createTrackedClient = (userId: string, token?: string) => {
+    const result = createClient(userId, token);
     activeClients.push(result.client);
     return result;
   };
@@ -90,14 +86,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId, undefined, {
-        realTime: true,
-        broadcastChannel: true,
-      });
-      const { client: client2 } = createTrackedClient(userId, undefined, {
-        realTime: true,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createTrackedClient(userId, undefined);
+      const { client: client2 } = createTrackedClient(userId, undefined);
 
       // Client 1 creates document and waits for initial sync
       const doc1 = await getTrackedDoc(client1, {
@@ -132,14 +122,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId, undefined, {
-        realTime: true,
-        broadcastChannel: true,
-      });
-      const { client: client2 } = createTrackedClient(userId, undefined, {
-        realTime: true,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createTrackedClient(userId, undefined);
+      const { client: client2 } = createTrackedClient(userId, undefined);
 
       // Client1 creates document
       const doc1 = await getTrackedDoc(client1, {
@@ -199,14 +183,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId, undefined, {
-        realTime: true,
-        broadcastChannel: true,
-      });
-      const { client: client2 } = createTrackedClient(userId, undefined, {
-        realTime: true,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createTrackedClient(userId, undefined);
+      const { client: client2 } = createTrackedClient(userId, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -251,14 +229,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId, undefined, {
-        realTime: true,
-        broadcastChannel: true,
-      });
-      const { client: client2 } = createTrackedClient(userId, undefined, {
-        realTime: true,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createTrackedClient(userId, undefined);
+      const { client: client2 } = createTrackedClient(userId, undefined);
       // Client3 simulates external server change (different user)
       const { client: client3 } = createClient(generateUserId());
 
@@ -327,14 +299,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId2 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId1, undefined, {
-        realTime: true,
-        broadcastChannel: true,
-      });
-      const { client: client2 } = createTrackedClient(userId2, undefined, {
-        realTime: true,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createTrackedClient(userId1, undefined);
+      const { client: client2 } = createTrackedClient(userId2, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -368,14 +334,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId2 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId1, undefined, {
-        realTime: true,
-        broadcastChannel: true,
-      });
-      const { client: client2 } = createTrackedClient(userId2, undefined, {
-        realTime: true,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createTrackedClient(userId1, undefined);
+      const { client: client2 } = createTrackedClient(userId2, undefined);
 
       // Client1 creates and syncs document
       const doc1 = await getTrackedDoc(client1, {
@@ -422,14 +382,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId2 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId1, undefined, {
-        realTime: true,
-        broadcastChannel: true,
-      });
-      const { client: client2 } = createTrackedClient(userId2, undefined, {
-        realTime: true,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createTrackedClient(userId1, undefined);
+      const { client: client2 } = createTrackedClient(userId2, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -480,14 +434,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId3 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId1, undefined, {
-        realTime: true,
-        broadcastChannel: true,
-      });
-      const { client: client2 } = createTrackedClient(userId2, undefined, {
-        realTime: true,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createTrackedClient(userId1, undefined);
+      const { client: client2 } = createTrackedClient(userId2, undefined);
       const { client: client3 } = createClient(userId3);
 
       const doc1 = await getTrackedDoc(client1, {
@@ -541,14 +489,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
-      const { client: client2 } = createTrackedClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createTrackedClient(userId, undefined);
+      const { client: client2 } = createTrackedClient(userId, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -591,14 +533,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       await tick();
 
       // Now same-user clients load (RT=OFF, so no dirty subscription)
-      const { client: client1 } = createTrackedClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
-      const { client: client2 } = createTrackedClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createTrackedClient(userId, undefined);
+      const { client: client2 } = createTrackedClient(userId, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -638,14 +574,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
-      const { client: client2 } = createTrackedClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createTrackedClient(userId, undefined);
+      const { client: client2 } = createTrackedClient(userId, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -704,14 +634,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       await tick();
 
       // Same-user clients load
-      const { client: client1 } = createTrackedClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
-      const { client: client2 } = createTrackedClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createTrackedClient(userId, undefined);
+      const { client: client2 } = createTrackedClient(userId, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -755,14 +679,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId2 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId1, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
-      const { client: client2 } = createTrackedClient(userId2, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createTrackedClient(userId1, undefined);
+      const { client: client2 } = createTrackedClient(userId2, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -796,10 +714,7 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId2 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId1, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createTrackedClient(userId1, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -813,10 +728,7 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       await tick();
 
       // Client2 loads after change (will get it from server on initial load)
-      const { client: client2 } = createTrackedClient(userId2, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
+      const { client: client2 } = createTrackedClient(userId2, undefined);
 
       const doc2 = await getTrackedDoc(client2, {
         type: "test",
@@ -840,14 +752,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId2 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId1, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
-      const { client: client2 } = createTrackedClient(userId2, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createTrackedClient(userId1, undefined);
+      const { client: client2 } = createTrackedClient(userId2, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -883,14 +789,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId3 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId1, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
-      const { client: client2 } = createTrackedClient(userId2, undefined, {
-        realTime: false,
-        broadcastChannel: true,
-      });
+      const { client: client1 } = createTrackedClient(userId1, undefined);
+      const { client: client2 } = createTrackedClient(userId2, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -909,9 +809,7 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       await tick();
 
       // External change via client3
-      const { client: client3 } = createClient(userId3, undefined, {
-        realTime: false,
-      });
+      const { client: client3 } = createClient(userId3, undefined);
       const doc3 = await getDoc(client3, {
         type: "test",
         id: docId,
@@ -959,14 +857,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
-      const { client: client2 } = createTrackedClient(userId, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
+      const { client: client1 } = createTrackedClient(userId, undefined);
+      const { client: client2 } = createTrackedClient(userId, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -1009,14 +901,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       await tick();
 
       // Same-user clients load
-      const { client: client1 } = createTrackedClient(userId, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
-      const { client: client2 } = createTrackedClient(userId, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
+      const { client: client1 } = createTrackedClient(userId, undefined);
+      const { client: client2 } = createTrackedClient(userId, undefined);
 
       expect(client1["_broadcastChannel"]).toBeUndefined();
       expect(client2["_broadcastChannel"]).toBeUndefined();
@@ -1073,14 +959,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
-      const { client: client2 } = createTrackedClient(userId, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
+      const { client: client1 } = createTrackedClient(userId, undefined);
+      const { client: client2 } = createTrackedClient(userId, undefined);
 
       expect(client1["_broadcastChannel"]).toBeUndefined();
       expect(client2["_broadcastChannel"]).toBeUndefined();
@@ -1135,14 +1015,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
         const userId = generateUserId();
         const docId = generateDocId();
 
-        const { client: client1 } = createTrackedClient(userId, undefined, {
-          realTime: true,
-          broadcastChannel: false,
-        });
-        const { client: client2 } = createTrackedClient(userId, undefined, {
-          realTime: true,
-          broadcastChannel: false,
-        });
+        const { client: client1 } = createTrackedClient(userId, undefined);
+        const { client: client2 } = createTrackedClient(userId, undefined);
 
         // External change
         const { client: client3 } = createTrackedClient(generateUserId());
@@ -1215,14 +1089,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId2 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId1, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
-      const { client: client2 } = createTrackedClient(userId2, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
+      const { client: client1 } = createTrackedClient(userId1, undefined);
+      const { client: client2 } = createTrackedClient(userId2, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -1256,10 +1124,7 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId2 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId1, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
+      const { client: client1 } = createTrackedClient(userId1, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -1272,10 +1137,7 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
 
       await tick();
 
-      const { client: client2 } = createTrackedClient(userId2, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
+      const { client: client2 } = createTrackedClient(userId2, undefined);
 
       const doc2 = await getTrackedDoc(client2, {
         type: "test",
@@ -1295,14 +1157,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId2 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId1, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
-      const { client: client2 } = createTrackedClient(userId2, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
+      const { client: client1 } = createTrackedClient(userId1, undefined);
+      const { client: client2 } = createTrackedClient(userId2, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -1341,14 +1197,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId3 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId1, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
-      const { client: client2 } = createTrackedClient(userId2, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
+      const { client: client1 } = createTrackedClient(userId1, undefined);
+      const { client: client2 } = createTrackedClient(userId2, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -1367,10 +1217,7 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       await tick();
 
       // External change
-      const { client: client3 } = createClient(userId3, undefined, {
-        realTime: true,
-        broadcastChannel: false,
-      });
+      const { client: client3 } = createClient(userId3, undefined);
       const doc3 = await getDoc(client3, {
         type: "test",
         id: docId,
@@ -1405,14 +1252,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: false,
-      });
-      const { client: client2 } = createTrackedClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: false,
-      });
+      const { client: client1 } = createTrackedClient(userId, undefined);
+      const { client: client2 } = createTrackedClient(userId, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -1455,14 +1296,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       await tick();
 
       // Same-user clients load
-      const { client: client1 } = createTrackedClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: false,
-      });
-      const { client: client2 } = createTrackedClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: false,
-      });
+      const { client: client1 } = createTrackedClient(userId, undefined);
+      const { client: client2 } = createTrackedClient(userId, undefined);
 
       const doc1 = await getTrackedDoc(client1, { type: "test", id: docId });
 
@@ -1486,14 +1321,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: false,
-      });
-      const { client: client2 } = createTrackedClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: false,
-      });
+      const { client: client1 } = createTrackedClient(userId, undefined);
+      const { client: client2 } = createTrackedClient(userId, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -1560,14 +1389,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
 
       await tick();
 
-      const { client: client1 } = createTrackedClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: false,
-      });
-      const { client: client2 } = createTrackedClient(userId, undefined, {
-        realTime: false,
-        broadcastChannel: false,
-      });
+      const { client: client1 } = createTrackedClient(userId, undefined);
+      const { client: client2 } = createTrackedClient(userId, undefined);
 
       const doc1 = await getTrackedDoc(client1, { type: "test", id: docId });
 
@@ -1626,14 +1449,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId2 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId1, undefined, {
-        realTime: false,
-        broadcastChannel: false,
-      });
-      const { client: client2 } = createTrackedClient(userId2, undefined, {
-        realTime: false,
-        broadcastChannel: false,
-      });
+      const { client: client1 } = createTrackedClient(userId1, undefined);
+      const { client: client2 } = createTrackedClient(userId2, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -1667,10 +1484,7 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId2 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId1, undefined, {
-        realTime: false,
-        broadcastChannel: false,
-      });
+      const { client: client1 } = createTrackedClient(userId1, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -1683,10 +1497,7 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
 
       await tick();
 
-      const { client: client2 } = createTrackedClient(userId2, undefined, {
-        realTime: false,
-        broadcastChannel: false,
-      });
+      const { client: client2 } = createTrackedClient(userId2, undefined);
 
       const doc2 = await getTrackedDoc(client2, {
         type: "test",
@@ -1707,14 +1518,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId2 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId1, undefined, {
-        realTime: false,
-        broadcastChannel: false,
-      });
-      const { client: client2 } = createTrackedClient(userId2, undefined, {
-        realTime: false,
-        broadcastChannel: false,
-      });
+      const { client: client1 } = createTrackedClient(userId1, undefined);
+      const { client: client2 } = createTrackedClient(userId2, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",
@@ -1748,14 +1553,8 @@ describe.skip("Real-Time Synchronization - All 32 Scenarios", () => {
       const userId2 = generateUserId();
       const docId = generateDocId();
 
-      const { client: client1 } = createTrackedClient(userId1, undefined, {
-        realTime: false,
-        broadcastChannel: false,
-      });
-      const { client: client2 } = createTrackedClient(userId2, undefined, {
-        realTime: false,
-        broadcastChannel: false,
-      });
+      const { client: client1 } = createTrackedClient(userId1, undefined);
+      const { client: client2 } = createTrackedClient(userId2, undefined);
 
       const doc1 = await getTrackedDoc(client1, {
         type: "test",

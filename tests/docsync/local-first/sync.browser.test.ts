@@ -14,12 +14,8 @@ describe.skip("Local-First Sync", () => {
   const activeCleanups: Array<() => void> = [];
 
   // Helper to create client and auto-track for cleanup
-  const createTrackedClient = (
-    userId?: string,
-    token?: string,
-    config?: { realTime?: boolean; broadcastChannel?: boolean },
-  ) => {
-    const result = createClient(userId, token, config);
+  const createTrackedClient = (userId?: string, token?: string) => {
+    const result = createClient(userId, token);
     activeClients.push(result.client);
     return result;
   };
@@ -299,12 +295,8 @@ describe("Client/Server Operation Sync", () => {
   const activeCleanups: Array<() => void> = [];
 
   // Helper to create client and auto-track for cleanup
-  const createTrackedClient = (
-    userId?: string,
-    token?: string,
-    config?: { realTime?: boolean; broadcastChannel?: boolean },
-  ) => {
-    const result = createClient(userId, token, config);
+  const createTrackedClient = (userId?: string, token?: string) => {
+    const result = createClient(userId, token);
     activeClients.push(result.client);
     return result;
   };
@@ -352,10 +344,7 @@ describe("Client/Server Operation Sync", () => {
     const docId = generateDocId();
 
     // Create client with realTime and broadcastChannel disabled to avoid duplicate operations
-    const { client } = createTrackedClient(userId, undefined, {
-      realTime: false,
-      broadcastChannel: false,
-    });
+    const { client } = createTrackedClient(userId, undefined);
     const doc = await getTrackedDoc(client, {
       type: "test",
       id: docId,
@@ -383,14 +372,8 @@ describe("Client/Server Operation Sync", () => {
 
     // Create two clients with DIFFERENT userIds (separate IndexedDB)
     // and realTime/broadcastChannel disabled to test explicit sync
-    const { client: client1 } = createTrackedClient(userId1, undefined, {
-      realTime: false,
-      broadcastChannel: false,
-    });
-    const { client: client2 } = createTrackedClient(userId2, undefined, {
-      realTime: false,
-      broadcastChannel: false,
-    });
+    const { client: client1 } = createTrackedClient(userId1, undefined);
+    const { client: client2 } = createTrackedClient(userId2, undefined);
 
     // Client 1 creates document
     const doc1 = await getTrackedDoc(client1, {
@@ -455,10 +438,7 @@ describe("Client/Server Operation Sync", () => {
     const docId = generateDocId();
 
     // Create client with realTime and broadcastChannel disabled
-    const { client } = createTrackedClient(userId, undefined, {
-      realTime: false,
-      broadcastChannel: false,
-    });
+    const { client } = createTrackedClient(userId, undefined);
     const doc = await getTrackedDoc(client, {
       type: "test",
       id: docId,
@@ -482,14 +462,8 @@ describe("Client/Server Operation Sync", () => {
     const docId = generateDocId();
 
     // Create two clients with DIFFERENT userIds and realTime/broadcastChannel disabled
-    const { client: client1 } = createTrackedClient(userId1, undefined, {
-      realTime: false,
-      broadcastChannel: false,
-    });
-    const { client: client2 } = createTrackedClient(userId2, undefined, {
-      realTime: false,
-      broadcastChannel: false,
-    });
+    const { client: client1 } = createTrackedClient(userId1, undefined);
+    const { client: client2 } = createTrackedClient(userId2, undefined);
 
     // Client 1 creates document and adds children
     const doc1 = await getTrackedDoc(client1, {

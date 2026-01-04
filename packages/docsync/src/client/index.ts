@@ -30,41 +30,35 @@ export class DocSyncClient<
   private _shouldBroadcast = true;
   protected _broadcastChannel?: BroadcastChannel;
   protected _serverSync: ServerSync<D, S, O>;
-  private _useBroadcastChannel: boolean;
 
   constructor(config: ClientConfig<D, S, O>) {
     if (typeof window === "undefined")
       throw new Error("DocSyncClient can only be used in the browser");
-    const { docBinding, local, broadcastChannel = true } = config;
+    const { docBinding, local } = config;
     this._docBinding = docBinding;
-    this._useBroadcastChannel = broadcastChannel;
 
     // Initialize local provider (if configured)
     if (local) {
-      const _useBroadcastChannel = this._useBroadcastChannel;
-
       this._localPromise = (async () => {
         const identity = await local.getIdentity();
         const provider = new local.provider(identity) as ClientProvider<S, O>;
 
         // Initialize BroadcastChannel with user-specific channel name
         // This ensures only tabs of the same user share operations
-        if (_useBroadcastChannel) {
-          this._broadcastChannel = new BroadcastChannel(
-            `docsync:${identity.userId}`,
-          );
-          this._broadcastChannel.onmessage = async (
-            ev: MessageEvent<BroadcastMessage<O>>,
-          ) => {
-            // RECEIVED MESSAGES
-            if (ev.data.type === "OPERATIONS") {
-              void this._applyOperations(ev.data.operations, ev.data.docId);
-              return;
-            }
-            /* v8 ignore next -- @preserve */
-            ev.data.type satisfies never;
-          };
-        }
+        this._broadcastChannel = new BroadcastChannel(
+          `docsync:${identity.userId}`,
+        );
+        this._broadcastChannel.onmessage = async (
+          ev: MessageEvent<BroadcastMessage<O>>,
+        ) => {
+          // RECEIVED MESSAGES
+          if (ev.data.type === "OPERATIONS") {
+            void this._applyOperations(ev.data.operations, ev.data.docId);
+            return;
+          }
+          /* v8 ignore next -- @preserve */
+          ev.data.type satisfies never;
+        };
 
         return { provider, identity };
       })();

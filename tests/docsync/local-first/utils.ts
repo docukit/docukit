@@ -74,11 +74,7 @@ export const createTestToken = (userId: string) => `test-token-${userId}`;
  * Each client gets a unique userId for IndexedDB isolation.
  * The token encodes the userId for server authentication.
  */
-export const createClient = (
-  userId?: string,
-  token?: string,
-  options?: { realTime?: boolean; broadcastChannel?: boolean },
-) => {
+export const createClient = (userId?: string, token?: string) => {
   const docBinding = createDocBinding();
   const actualUserId = userId ?? generateUserId();
   const actualToken = token ?? createTestToken(actualUserId);
@@ -89,8 +85,6 @@ export const createClient = (
       auth: { getToken: async () => actualToken },
     },
     docBinding,
-    realTime: options?.realTime,
-    broadcastChannel: options?.broadcastChannel,
     local: {
       provider: IndexedDBProvider,
       getIdentity: async () => ({

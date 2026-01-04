@@ -22,31 +22,27 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
   // Per-docId push status to allow concurrent pushes for different docs
   protected _pushStatusByDocId = new Map<string, PushStatus>();
   protected _subscribedDocs = new Set<string>();
-  protected _realTime: boolean;
   private _onServerOperations?:
     | ((payload: { docId: string; operations: O[] }) => void)
     | undefined;
 
   constructor(config: ServerSyncConfig<D, S, O>) {
     this._localPromise = config.localPromise;
-    this._realTime = config.realTime ?? true;
     this._onServerOperations = config.onServerOperations;
 
     // Build API options conditionally based on realTime flag
     const apiOptions: APIOptions = {
       url: config.server!.url,
       getToken: config.server!.auth.getToken,
-    };
-    if (config.realTime) {
-      apiOptions.onDirty = (payload) => {
+      onDirty: (payload) => {
         // When server notifies us of changes, trigger a sync (reuse saveRemote)
         this.saveRemote({ docId: payload.docId });
-      };
-      apiOptions.onReconnect = () => {
+      },
+      onReconnect: () => {
         // Re-subscribe to all documents after reconnection
         void this._resubscribeAll();
-      };
-    }
+      },
+    };
 
     this._api = new API(apiOptions);
     this._docBinding = config.docBinding;
@@ -67,7 +63,6 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
    * Should be called when a document is first loaded (refCount 0 → 1).
    */
   async subscribeDoc(docId: string): Promise<void> {
-    if (!this._realTime) return;
     if (this._subscribedDocs.has(docId)) return;
     await this._api.request("subscribe-doc", { docId });
     this._subscribedDocs.add(docId);
@@ -78,7 +73,6 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
    * Should be called when a document is unloaded (refCount 1 → 0).
    */
   async unsubscribeDoc(docId: string): Promise<void> {
-    if (!this._realTime) return;
     if (!this._subscribedDocs.has(docId)) return;
     await this._api.request("unsubscribe-doc", { docId });
     this._subscribedDocs.delete(docId);

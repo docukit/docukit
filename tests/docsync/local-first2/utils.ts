@@ -179,8 +179,6 @@ const createClientWithConfig = (config: {
       auth: { getToken: async () => config.token },
     },
     docBinding: config.docBinding,
-    realTime: config.realTime,
-    broadcastChannel: config.broadcastChannel,
   };
 
   // Add local config only if enabled
