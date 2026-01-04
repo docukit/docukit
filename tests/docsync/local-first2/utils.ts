@@ -100,6 +100,8 @@ type ClientUtils = {
     ) => Promise<DocSyncEvents<JsonDoc, Operations>[E]["response"]>
   >;
   waitSync: () => Promise<void>;
+  disconnect: () => void;
+  connect: () => void;
 };
 
 export type ClientsSetup = {
@@ -170,8 +172,6 @@ const createClientWithConfig = (config: {
   token: string;
   docBinding: ReturnType<typeof createDocBinding>;
   local: boolean;
-  realTime: boolean;
-  broadcastChannel: boolean;
 }): DocSyncClient<Doc, JsonDoc, Operations> => {
   const clientConfig: ClientConfig<Doc, JsonDoc, Operations> = {
     server: {
@@ -210,8 +210,6 @@ const setupClients = async (): Promise<ClientsSetup> => {
     token: createTestToken(referenceUserId),
     docBinding,
     local: true,
-    realTime: true,
-    broadcastChannel: true,
   });
 
   // OtherTab: local + RT + BC enabled (same userId1 as reference)
@@ -220,8 +218,6 @@ const setupClients = async (): Promise<ClientsSetup> => {
     token: createTestToken(referenceUserId),
     docBinding,
     local: true,
-    realTime: true,
-    broadcastChannel: true,
   });
 
   // OtherDevice: local enabled with different userId2, RT enabled, BC disabled
@@ -237,8 +233,6 @@ const setupClients = async (): Promise<ClientsSetup> => {
     token: createTestToken(otherDeviceUserId),
     docBinding,
     local: true,
-    realTime: true,
-    broadcastChannel: false,
   });
 
   return {
@@ -265,7 +259,9 @@ const createClientUtils = async (
   let cleanup: (() => void) | undefined;
   let cachedDoc: Doc | undefined;
 
-  const reqSpy = vi.spyOn(client["_serverSync"]["_api"], "request");
+  const api = client["_serverSync"]["_api"];
+
+  const reqSpy = vi.spyOn(api, "request");
   const local = await client["_localPromise"];
 
   return {
@@ -320,7 +316,10 @@ const createClientUtils = async (
             (_, i) => reqSpy.mock.calls[i]?.[0] === "sync-operations",
           );
 
-          expect(currentResults.length).toBeGreaterThan(initialCount);
+          expect(
+            currentResults.length,
+            "There should be at least one more sync-operations call",
+          ).toBeGreaterThan(initialCount);
 
           // Ensure the last one has resolved
           await currentResults[currentResults.length - 1]?.value;
@@ -336,7 +335,6 @@ const createClientUtils = async (
       doc: string[];
       ops: string[];
     }) => {
-      console.log("assertIDBDoc");
       // Get the provider from the client's internal state
       if (!local) {
         throw new Error("Client has no local provider configured");
@@ -419,6 +417,12 @@ const createClientUtils = async (
       });
 
       expect(actualChildren).toStrictEqual(expectedChildren);
+    },
+    disconnect: () => {
+      api.disconnect();
+    },
+    connect: () => {
+      api.connect();
     },
   };
 };

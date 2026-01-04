@@ -57,6 +57,14 @@ export class API<S, O> {
     }
   }
 
+  disconnect() {
+    this._socket.disconnect();
+  }
+
+  connect() {
+    this._socket.connect();
+  }
+
   async request<E extends DocSyncEventName>(
     event: E,
     payload: DocSyncEvents<S, O>[E]["request"],

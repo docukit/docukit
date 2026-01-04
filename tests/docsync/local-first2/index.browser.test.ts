@@ -69,7 +69,7 @@ describe("Local-First 2.0", () => {
     });
   });
 
-  test("load after adding child", async () => {
+  test("add child -> load", async () => {
     await testWrapper(async ({ reference, otherDevice, otherTab }) => {
       await reference.loadDoc();
       expect(reference.doc).toBeDefined();
@@ -97,7 +97,7 @@ describe("Local-First 2.0", () => {
     });
   });
 
-  test("load before adding child", async () => {
+  test("load -> add child", async () => {
     await testWrapper(async ({ reference, otherDevice, otherTab }) => {
       await reference.loadDoc();
       await otherTab.loadDoc();
@@ -121,6 +121,45 @@ describe("Local-First 2.0", () => {
       // websocket
       await otherDevice.waitSync();
       otherDevice.assertMemoryDoc(["Hello"]);
+    });
+  });
+
+  test("add child -> connect", async () => {
+    await testWrapper(async ({ reference, otherDevice, otherTab }) => {
+      await reference.loadDoc();
+      await otherTab.loadDoc();
+      await otherDevice.loadDoc();
+
+      // Wait for all clients to subscribe to the room
+      await tick();
+
+      reference.disconnect();
+      otherTab.disconnect();
+      otherDevice.disconnect();
+
+      // fastest operations - synchronous
+      reference.addChild("Hello");
+      reference.assertMemoryDoc(["Hello"]);
+      otherTab.assertMemoryDoc([]);
+      otherDevice.assertMemoryDoc([]);
+      await reference.assertIDBDoc({ clock: 0, doc: [], ops: [] });
+
+      // broadcastChannel
+      otherTab.assertMemoryDoc(["Hello"]);
+      otherDevice.assertMemoryDoc([]);
+      await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
+
+      // websocket
+      await expect(() => otherDevice.waitSync()).rejects.toThrow();
+      otherDevice.assertMemoryDoc([]);
+      await otherDevice.assertIDBDoc({ clock: 0, doc: [], ops: [] });
+      await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
+
+      // connect
+      otherDevice.connect();
+      await otherDevice.waitSync();
+      otherDevice.assertMemoryDoc(["Hello"]);
+      await otherDevice.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
     });
   });
 });
