@@ -46,14 +46,18 @@ export class InMemoryServerProvider<S, O> implements ServerProvider<S, O> {
         : null;
 
     // 3. Save client operations if provided
-    const newClock =
-      clientOps && clientOps.length > 0 ? this._nextClock(docId) : clientClock;
+    let newClock = clientClock;
     if (clientOps && clientOps.length > 0) {
+      // Only increment clock if client sent operations
+      newClock = this._nextClock(docId);
       for (const op of clientOps) {
         const docOps = this._operations.get(docId) ?? [];
         docOps.push({ operations: op, clock: newClock });
         this._operations.set(docId, docOps);
       }
+    } else if (allOps.length > 0) {
+      // If client sent no ops but server has ops, return the latest server clock
+      newClock = Math.max(...allOps.map((op) => op.clock));
     }
 
     // 4. Return data

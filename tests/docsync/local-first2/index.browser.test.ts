@@ -1,4 +1,4 @@
-import { describe, test, expect, vi } from "vitest";
+import { describe, test, expect } from "vitest";
 import { emptyIDB, testWrapper } from "./utils.js";
 import { tick } from "../utils.js";
 
@@ -75,6 +75,7 @@ describe("Local-First 2.0", () => {
       expect(reference.doc).toBeDefined();
       reference.addChild("Hello");
       reference.assertMemoryDoc(["Hello"]);
+      await tick(1);
       await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
 
       await reference.waitSync();

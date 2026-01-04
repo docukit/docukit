@@ -239,9 +239,13 @@ const setupClients = async (): Promise<ClientsSetup> => {
 
   return {
     docId,
-    reference: createClientUtils(referenceClient, docId, referenceUserId),
-    otherTab: createClientUtils(otherTabClient, docId, referenceUserId),
-    otherDevice: createClientUtils(otherDeviceClient, docId, otherDeviceUserId),
+    reference: await createClientUtils(referenceClient, docId, referenceUserId),
+    otherTab: await createClientUtils(otherTabClient, docId, referenceUserId),
+    otherDevice: await createClientUtils(
+      otherDeviceClient,
+      docId,
+      otherDeviceUserId,
+    ),
   };
 };
 
@@ -249,15 +253,16 @@ const setupClients = async (): Promise<ClientsSetup> => {
 // Client Utils Factory
 // ============================================================================
 
-const createClientUtils = (
+const createClientUtils = async (
   client: DocSyncClient<Doc, JsonDoc, Operations>,
   docId: string,
   userId: string,
-): ClientUtils => {
+): Promise<ClientUtils> => {
   let cleanup: (() => void) | undefined;
   let cachedDoc: Doc | undefined;
 
   const reqSpy = vi.spyOn(client["_serverSync"]["_api"], "request");
+  const local = await client["_localPromise"];
 
   return {
     client,
@@ -328,7 +333,6 @@ const createClientUtils = (
       ops: string[];
     }) => {
       // Get the provider from the client's internal state
-      const local = await client["_localPromise"];
       if (!local) {
         throw new Error("Client has no local provider configured");
       }
