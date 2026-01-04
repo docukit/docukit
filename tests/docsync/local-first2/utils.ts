@@ -86,7 +86,7 @@ type ClientUtils = {
   doc: Doc | undefined;
   loadDoc: () => Promise<void>;
   unLoadDoc: () => void;
-  addChild: (text: string) => Promise<void>;
+  addChild: (text: string) => void;
   assertIDBDoc: (expected?: {
     clock: number;
     doc: string[];
@@ -292,7 +292,7 @@ const createClientUtils = (
         cachedDoc = undefined; // Clear reference immediately
       }
     },
-    addChild: async (text: string) => {
+    addChild: (text: string) => {
       if (!cachedDoc) throw new Error("Doc not loaded");
       const child = cachedDoc.createNode(ChildNode);
       child.state.value.set(text);

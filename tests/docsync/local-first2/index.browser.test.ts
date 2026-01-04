@@ -73,7 +73,7 @@ describe("Local-First 2.0", () => {
     await testWrapper(async ({ reference, otherDevice, otherTab }) => {
       await reference.loadDoc();
       expect(reference.doc).toBeDefined();
-      await reference.addChild("Hello");
+      reference.addChild("Hello");
       reference.assertMemoryDoc(["Hello"]);
       await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
 
