@@ -228,6 +228,12 @@ const setupClients = async (): Promise<ClientsSetup> => {
 
   // OtherDevice: local enabled with different userId2, RT enabled, BC disabled
   const otherDeviceUserId = generateUserId();
+  // Wait for reference and otherTab sockets to connect before creating otherDevice
+  // This ensures they get their deviceId before we change it
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  // Force a different deviceId for otherDevice to simulate a different physical device
+  const newDeviceId = crypto.randomUUID();
+  localStorage.setItem("docsync:deviceId", newDeviceId);
   const otherDeviceClient = createClientWithConfig({
     userId: otherDeviceUserId, // Different user = different IDB + BC namespace
     token: createTestToken(otherDeviceUserId),
@@ -332,6 +338,7 @@ const createClientUtils = async (
       doc: string[];
       ops: string[];
     }) => {
+      console.log("assertIDBDoc");
       // Get the provider from the client's internal state
       if (!local) {
         throw new Error("Client has no local provider configured");

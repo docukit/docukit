@@ -5,6 +5,21 @@ import type {
   DocSyncEvents,
 } from "../shared/types.js";
 
+/**
+ * Get or create a unique device ID stored in localStorage.
+ * This ID is shared across all tabs/windows on the same device.
+ */
+function getDeviceId(): string {
+  const key = "docsync:deviceId";
+  let deviceId = localStorage.getItem(key);
+  if (!deviceId) {
+    // Generate a new device ID using crypto.randomUUID()
+    deviceId = crypto.randomUUID();
+    localStorage.setItem(key, deviceId);
+  }
+  return deviceId;
+}
+
 export type APIOptions = {
   url: string;
   getToken: () => Promise<string>;
@@ -18,7 +33,9 @@ export class API<S, O> {
   constructor(options: APIOptions) {
     this._socket = io(options.url, {
       auth: (cb) => {
-        void options.getToken().then((token) => cb({ token }));
+        void options.getToken().then((token) => {
+          cb({ token, deviceId: getDeviceId() });
+        });
       },
       // Performance optimizations for testing
       transports: ["websocket"], // Skip polling, go straight to WebSocket

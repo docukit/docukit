@@ -9,6 +9,7 @@ import type { ServerConfig, ServerProvider } from "./types.js";
 
 type AuthenticatedContext<TContext> = {
   userId: string;
+  deviceId: string;
   context: TContext;
 };
 
@@ -35,9 +36,14 @@ export class DocSyncServer<TContext, S, O> {
   private _setupSocketServer() {
     // Middleware: authenticate before allowing connection
     this._io.use((socket, next) => {
-      const { token } = socket.handshake.auth;
+      const { token, deviceId } = socket.handshake.auth;
       if (!token || typeof token !== "string") {
         next(new Error("Authentication required: no token provided"));
+        return;
+      }
+
+      if (!deviceId || typeof deviceId !== "string") {
+        next(new Error("Device ID required"));
         return;
       }
 
@@ -51,6 +57,7 @@ export class DocSyncServer<TContext, S, O> {
           // Attach authenticated context to socket data
           socket.data = {
             userId: authResult.userId,
+            deviceId,
             context: authResult.context ?? ({} as TContext),
           } satisfies AuthenticatedContext<TContext>;
 
@@ -62,7 +69,8 @@ export class DocSyncServer<TContext, S, O> {
     });
 
     this._io.on("connection", (socket) => {
-      const { userId, context } = socket.data as AuthenticatedContext<TContext>;
+      const { userId, deviceId, context } =
+        socket.data as AuthenticatedContext<TContext>;
 
       // socket.on("disconnect", (reason) =>
       //   console.log(`Client disconnected: ${reason}`),
@@ -120,11 +128,29 @@ export class DocSyncServer<TContext, S, O> {
           const result = await this._provider.sync(payload);
           cb(result);
 
-          // If client sent operations, notify other clients in the room (excluding sender)
+          // If client sent operations, notify other clients in the room
+          // Exclude clients from the same device (same deviceId)
           if (payload.operations && payload.operations.length > 0) {
-            socket.broadcast.to(`doc:${payload.docId}`).emit("dirty", {
-              docId: payload.docId,
-            });
+            const room = this._io.sockets.adapter.rooms.get(
+              `doc:${payload.docId}`,
+            );
+            if (room) {
+              for (const socketId of room) {
+                const targetSocket = this._io.sockets.sockets.get(socketId);
+                if (!targetSocket) continue;
+
+                // Skip if it's the sender or same device
+                if (
+                  targetSocket.id === socket.id ||
+                  (targetSocket.data as AuthenticatedContext<TContext>)
+                    .deviceId === deviceId
+                ) {
+                  continue;
+                }
+
+                targetSocket.emit("dirty", { docId: payload.docId });
+              }
+            }
           }
         },
         "delete-doc": async (payload, cb) => {

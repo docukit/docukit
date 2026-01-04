@@ -75,7 +75,7 @@ describe("Local-First 2.0", () => {
       expect(reference.doc).toBeDefined();
       reference.addChild("Hello");
       reference.assertMemoryDoc(["Hello"]);
-      await tick(1);
+      await tick(0.1);
       await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
 
       await reference.waitSync();
@@ -94,6 +94,33 @@ describe("Local-First 2.0", () => {
       // otherDevice gets operations from server and applies them
       otherDevice.assertMemoryDoc(["Hello"]);
       await otherDevice.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
+    });
+  });
+
+  test("load before adding child", async () => {
+    await testWrapper(async ({ reference, otherDevice, otherTab }) => {
+      await reference.loadDoc();
+      await otherTab.loadDoc();
+      await otherDevice.loadDoc();
+
+      // Wait for all clients to subscribe to the room
+      await tick();
+
+      // fastest operations - synchronous
+      reference.addChild("Hello");
+      reference.assertMemoryDoc(["Hello"]);
+      otherTab.assertMemoryDoc([]);
+      otherDevice.assertMemoryDoc([]);
+      await reference.assertIDBDoc({ clock: 0, doc: [], ops: [] });
+
+      // broadcastChannel
+      otherTab.assertMemoryDoc(["Hello"]);
+      otherDevice.assertMemoryDoc([]);
+      await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
+
+      // websocket
+      await otherDevice.waitSync();
+      otherDevice.assertMemoryDoc(["Hello"]);
     });
   });
 });
