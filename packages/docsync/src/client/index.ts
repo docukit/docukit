@@ -71,6 +71,13 @@ export class DocSyncClient<
         void this._applyServerOperations({ docId, operations });
       },
     });
+
+    // Setup reconnect handler to re-sync all active documents
+    this._serverSync.setReconnectHandler(() => {
+      for (const docId of this._docsCache.keys()) {
+        this._serverSync.saveRemote({ docId });
+      }
+    });
   }
 
   async _applyOperations(operations: O, docId: string) {
@@ -190,8 +197,6 @@ export class DocSyncClient<
         refCount: 1,
       });
       this._setupChangeListener(doc, id);
-      // Subscribe to real-time updates
-      void this._serverSync?.subscribeDoc(id);
       emit({ status: "success", data: { doc, id }, error: undefined });
       void (async () => {
         const local = await this._localPromise;
@@ -236,8 +241,6 @@ export class DocSyncClient<
             if (doc) {
               // Register listener only for new docs (not cache hits)
               this._setupChangeListener(doc, docId);
-              // Subscribe to real-time updates when first document reference is created
-              void this._serverSync?.subscribeDoc(docId);
             }
           }
           emit({

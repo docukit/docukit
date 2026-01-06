@@ -155,9 +155,15 @@ describe("Local-First 2.0", () => {
       await otherDevice.assertIDBDoc({ clock: 0, doc: [], ops: [] });
       await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
 
-      // connect
+      // reference connects
+      reference.connect();
+      await tick(40);
+      reference.assertMemoryDoc(["Hello"]);
+      await reference.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
+
+      // otherDevice connects
       otherDevice.connect();
-      await otherDevice.waitSync();
+      await tick(50);
       otherDevice.assertMemoryDoc(["Hello"]);
       await otherDevice.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
     });

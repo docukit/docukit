@@ -304,6 +304,12 @@ const createClientUtils = async (
       cachedDoc.root.append(child);
     },
     waitSync: async () => {
+      const socket = api["_socket"];
+
+      // If socket is not connected, this should fail fast
+      if (!socket.connected) {
+        throw new Error("Cannot wait for sync: socket not connected");
+      }
       // Get current number of completed sync calls
       const initialCount = reqSpy.mock.results.filter(
         (_, i) => reqSpy.mock.calls[i]?.[0] === "sync-operations",

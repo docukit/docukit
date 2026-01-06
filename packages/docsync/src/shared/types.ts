@@ -33,11 +33,6 @@ export type DocSyncEvents<S, O> = {
     request: { docId: string };
     response: { success: boolean };
   };
-  // Client subscribes to document updates
-  "subscribe-doc": {
-    request: { docId: string };
-    response: { success: boolean };
-  };
   // Client unsubscribes from document updates
   "unsubscribe-doc": {
     request: { docId: string };

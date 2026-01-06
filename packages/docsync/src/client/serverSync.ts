@@ -21,10 +21,10 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
   private _docBinding: DocBinding<D, S, O>;
   // Per-docId push status to allow concurrent pushes for different docs
   protected _pushStatusByDocId = new Map<string, PushStatus>();
-  protected _subscribedDocs = new Set<string>();
   private _onServerOperations?:
     | ((payload: { docId: string; operations: O[] }) => void)
     | undefined;
+  private _onReconnect?: () => void;
 
   constructor(config: ServerSyncConfig<D, S, O>) {
     this._localPromise = config.localPromise;
@@ -39,8 +39,8 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
         this.saveRemote({ docId: payload.docId });
       },
       onReconnect: () => {
-        // Re-subscribe to all documents after reconnection
-        void this._resubscribeAll();
+        // Notify parent to re-sync all active documents
+        this._onReconnect?.();
       },
     };
 
@@ -49,23 +49,11 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
   }
 
   /**
-   * Re-subscribe to all documents after reconnection.
+   * Set callback to be invoked when the socket reconnects.
+   * The parent (DocSyncClient) should use this to re-sync all active documents.
    */
-  private async _resubscribeAll(): Promise<void> {
-    const docIds = Array.from(this._subscribedDocs);
-    for (const docId of docIds) {
-      await this._api.request("subscribe-doc", { docId });
-    }
-  }
-
-  /**
-   * Subscribe to real-time updates for a document.
-   * Should be called when a document is first loaded (refCount 0 → 1).
-   */
-  async subscribeDoc(docId: string): Promise<void> {
-    if (this._subscribedDocs.has(docId)) return;
-    await this._api.request("subscribe-doc", { docId });
-    this._subscribedDocs.add(docId);
+  setReconnectHandler(handler: () => void): void {
+    this._onReconnect = handler;
   }
 
   /**
@@ -73,9 +61,7 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
    * Should be called when a document is unloaded (refCount 1 → 0).
    */
   async unsubscribeDoc(docId: string): Promise<void> {
-    if (!this._subscribedDocs.has(docId)) return;
     await this._api.request("unsubscribe-doc", { docId });
-    this._subscribedDocs.delete(docId);
   }
 
   /**

@@ -125,6 +125,15 @@ export class DocSyncServer<TContext, S, O> {
             });
             return;
           }
+
+          // Auto-subscribe to the document room on first sync
+          const room = this._io.sockets.adapter.rooms.get(
+            `doc:${payload.docId}`,
+          );
+          if (!room?.has(socket.id)) {
+            await socket.join(`doc:${payload.docId}`);
+          }
+
           const result = await this._provider.sync(payload);
           cb(result);
 
@@ -168,12 +177,6 @@ export class DocSyncServer<TContext, S, O> {
             cb({ success: false });
             return;
           }
-          cb({ success: true });
-        },
-        "subscribe-doc": async (payload, cb) => {
-          // Join the room for this document
-          await socket.join(`doc:${payload.docId}`);
-          // console.log(`User ${userId} subscribed to doc:${payload.docId}`);
           cb({ success: true });
         },
         "unsubscribe-doc": async (payload, cb) => {
