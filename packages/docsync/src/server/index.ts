@@ -195,6 +195,13 @@ export class DocSyncServer<TContext, S, O> {
   }
 
   /**
+   * Emit a debug log to all connected clients.
+   */
+  private _log(arg: unknown) {
+    this._io.emit("_log", arg);
+  }
+
+  /**
    * Close the server and all connections.
    */
   async close(): Promise<void> {

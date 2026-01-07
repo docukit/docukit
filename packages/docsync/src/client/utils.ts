@@ -40,6 +40,12 @@ export class API<S, O> {
       // Performance optimizations for testing
       transports: ["websocket"], // Skip polling, go straight to WebSocket
     });
+
+    // Listen to server debug logs (for testing/debugging)
+    this._socket.on("_log", (debugLog) => {
+      console.log("[🔍 SERVER]", JSON.stringify(debugLog));
+    });
+
     // prettier-ignore
     {
       this._socket.on("connect", () => {

@@ -66,6 +66,8 @@ type ClientToServerEvents<S, O> = {
 type ServerToClientEvents = {
   // Server notifies clients that a document has been modified
   dirty: (payload: { docId: string }) => void;
+  // Server sends debug logs to clients (for testing/debugging)
+  _log: (arg: unknown) => void;
 };
 
 export type ServerSocket<S, O> = Server<
