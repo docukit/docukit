@@ -25,6 +25,7 @@ export type APIOptions = {
   getToken: () => Promise<string>;
   onDirty?: (payload: { docId: string }) => void;
   onReconnect?: () => void;
+  onDisconnect?: () => void;
 };
 
 export class API<S, O> {
@@ -53,8 +54,11 @@ export class API<S, O> {
         // Notify reconnection so subscriptions can be restored
         options.onReconnect?.();
       });
+      this._socket.on("disconnect", () => {
+        // Reset any pending operations when socket disconnects
+        options.onDisconnect?.();
+      });
       // this._socket.on("connect_error", err => console.error("Socket.io connection error:", err));
-      // this._socket.on("disconnect", reason => console.error("Socket.io disconnected:", reason));
     }
 
     // Listen for dirty notifications from server
@@ -81,8 +85,17 @@ export class API<S, O> {
       cb: (res: DocSyncEvents<S, O>[K]["response"]) => void,
     ) => void;
 
-    return new Promise((resolve) => {
-      (this._socket.emit as Emit)(event, payload, resolve);
+    // TO-DO: should I reject on disconnect?
+    return new Promise((resolve, reject) => {
+      // Add a timeout to prevent hanging forever if socket disconnects during request
+      const timeout = setTimeout(() => {
+        reject(new Error(`Request timeout: ${event}`));
+      }, 5000); // 5 second timeout
+
+      (this._socket.emit as Emit)(event, payload, (response) => {
+        clearTimeout(timeout);
+        resolve(response);
+      });
     });
   }
 }

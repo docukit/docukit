@@ -42,6 +42,11 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
         // Notify parent to re-sync all active documents
         this._onReconnect?.();
       },
+      onDisconnect: () => {
+        // Reset all push statuses when socket disconnects
+        // This ensures that any in-flight requests don't leave the status stuck
+        this._pushStatusByDocId.clear();
+      },
     };
 
     this._api = new API(apiOptions);
