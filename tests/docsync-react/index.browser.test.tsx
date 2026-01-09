@@ -12,7 +12,12 @@ import { docConfig, id } from "./utils.js";
 
 test("createDocSyncClient", async () => {
   const { useDoc, DocSyncClientProvider } = createDocSyncClient({
-    url: "ws://localhost:8081",
+    server: {
+      url: "ws://localhost:8081",
+      auth: {
+        getToken: async () => "1234567890" as string,
+      },
+    },
     local: {
       provider: IndexedDBProvider,
       getIdentity: async () => ({

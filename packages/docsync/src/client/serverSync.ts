@@ -66,6 +66,8 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
    * Should be called when a document is unloaded (refCount 1 → 0).
    */
   async unsubscribeDoc(docId: string): Promise<void> {
+    // Skip if socket is not connected (e.g., in local-only mode or during tests)
+    if (!this._api["_socket"]?.connected) return;
     try {
       await this._api.request("unsubscribe-doc", { docId });
     } catch {
