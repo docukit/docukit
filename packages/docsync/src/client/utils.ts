@@ -32,10 +32,13 @@ export class API<S, O> {
   protected _socket: ClientSocket<S, O>;
 
   constructor(options: APIOptions) {
+    // Capture deviceId once at creation time, not on every reconnection
+    const deviceId = getDeviceId();
+
     this._socket = io(options.url, {
       auth: (cb) => {
         void options.getToken().then((token) => {
-          cb({ token, deviceId: getDeviceId() });
+          cb({ token, deviceId });
         });
       },
       // Performance optimizations for testing

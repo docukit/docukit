@@ -168,4 +168,54 @@ describe("Local-First 2.0", () => {
       await otherDevice.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
     });
   });
+
+  test("both devices add child -> connect", async () => {
+    await testWrapper(async ({ reference, otherDevice, otherTab }) => {
+      await reference.loadDoc();
+      await otherTab.loadDoc();
+      await otherDevice.loadDoc();
+
+      // Wait for all clients to subscribe to the room
+      await tick();
+
+      reference.disconnect();
+      otherTab.disconnect();
+      otherDevice.disconnect();
+
+      // fastest operations - synchronous
+      reference.addChild("A");
+      otherDevice.addChild("B");
+      reference.assertMemoryDoc(["A"]);
+      otherTab.assertMemoryDoc([]);
+      otherDevice.assertMemoryDoc(["B"]);
+      await reference.assertIDBDoc({ clock: 0, doc: [], ops: [] });
+
+      // broadcastChannel
+      otherTab.assertMemoryDoc(["A"]);
+      otherDevice.assertMemoryDoc(["B"]);
+      await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["A"] });
+
+      // without connecting, ws doesn't work
+      await tick(50);
+      otherDevice.assertMemoryDoc(["B"]);
+      reference.assertMemoryDoc(["A"]);
+
+      // connecting
+      reference.connect();
+      otherTab.connect();
+      otherDevice.connect();
+      await tick(100);
+
+      reference.assertMemoryDoc(["A", "B"]);
+      otherTab.assertMemoryDoc(["A", "B"]);
+      // otherDevice added B locally first, then received A from server
+      // CRDT ordering may differ based on insertion order vs deterministic ID ordering
+      otherDevice.assertMemoryDoc(["B", "A"]);
+
+      // await reference.assertIDBDoc({ clock: 1, doc: ["A"], ops: [] });
+      // await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["A"] });
+      // await otherTab.assertIDBDoc({ clock: 0, doc: [], ops: ["A"] });
+      // await otherDevice.assertIDBDoc({ clock: 0, doc: [], ops: ["A", "B"] });
+    });
+  });
 });

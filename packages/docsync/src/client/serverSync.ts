@@ -66,7 +66,12 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
    * Should be called when a document is unloaded (refCount 1 → 0).
    */
   async unsubscribeDoc(docId: string): Promise<void> {
-    await this._api.request("unsubscribe-doc", { docId });
+    try {
+      await this._api.request("unsubscribe-doc", { docId });
+    } catch {
+      // Silently ignore errors during cleanup (e.g., socket
+      // disconnected during request, timeout, or server error)
+    }
   }
 
   /**
@@ -127,26 +132,41 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
       const stored = await ctx.getSerializedDoc(docId);
       if (!stored) return;
 
-      const doc = this._docBinding.deserialize(stored.serializedDoc);
+      // Skip consolidation if another client (same IDB) already updated to this clock
+      // This handles the case where another tab/client already wrote this update
+      if (stored.clock >= response.clock) {
+        return;
+      }
 
-      // Apply server operations first (following server's authoritative order)
-      if (response.operations) {
-        for (const op of response.operations) {
+      // Collect all operations to apply: server ops first, then client ops
+      const serverOps = response.operations ?? [];
+      const allOps = [...serverOps, ...operations];
+
+      // Only proceed if there are operations to apply
+      if (allOps.length > 0) {
+        const doc = this._docBinding.deserialize(stored.serializedDoc);
+
+        // Apply all operations in order (server ops first, then client ops)
+        for (const op of allOps) {
           this._docBinding.applyOperations(doc, op);
         }
-      }
+        const serializedDoc = this._docBinding.serialize(doc);
 
-      // Then apply client operations
-      for (const op of operations) {
-        this._docBinding.applyOperations(doc, op);
-      }
-      const serializedDoc = this._docBinding.serialize(doc);
+        // Before saving, verify clock hasn't changed (another concurrent write)
+        // This prevents race conditions when multiple tabs/clients share the same IDB
+        const recheckStored = await ctx.getSerializedDoc(docId);
+        if (!recheckStored || recheckStored.clock !== stored.clock) {
+          // Clock changed during our transaction - another client beat us
+          // Silently skip to avoid duplicate operations
+          return;
+        }
 
-      await ctx.saveSerializedDoc({
-        serializedDoc,
-        docId,
-        clock: response.clock, // Use clock from server
-      });
+        await ctx.saveSerializedDoc({
+          serializedDoc,
+          docId,
+          clock: response.clock, // Use clock from server
+        });
+      }
     });
 
     // Notify that the doc has been updated with server operations
@@ -161,7 +181,12 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
     // Status may have changed to "pushing-with-pending" during async ops
     const currentStatus = this._pushStatusByDocId.get(docId);
     const shouldRetry = currentStatus === "pushing-with-pending";
-    this._pushStatusByDocId.set(docId, "idle");
-    if (shouldRetry) void this._doPush({ docId });
+    if (shouldRetry) {
+      // Keep status as "pushing" and retry immediately to avoid race window
+      // where a dirty event could trigger another concurrent _doPush
+      void this._doPush({ docId });
+    } else {
+      this._pushStatusByDocId.set(docId, "idle");
+    }
   }
 }
