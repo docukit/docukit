@@ -20,6 +20,17 @@ import type {
 } from "../../../packages/docsync/dist/src/shared/types.js";
 
 // ============================================================================
+// Miscellaneous
+// ============================================================================
+
+/**
+ * Waits for async operations to complete.
+ * Use sparingly - prefer explicit waitFor conditions when possible.
+ */
+export const tick = (ms = 3) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+// ============================================================================
 // Constants
 // ============================================================================
 

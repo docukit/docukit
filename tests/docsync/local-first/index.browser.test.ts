@@ -1,6 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { emptyIDB, testWrapper } from "./utils.js";
-import { tick } from "../utils.js";
+import { emptyIDB, testWrapper, tick } from "./utils.js";
 
 describe("Local-First 2.0", () => {
   test("cannot load doc twice", async () => {
