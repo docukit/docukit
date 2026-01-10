@@ -1,5 +1,3 @@
-We are going to make a new test plan that is simpler and easier to understand than ../local-first/REALTIME-TEST-PLAN.md.
-
 We are going to replicate the 2 real scenarios that can happen in practice: otherTab and otherDevice.
 
 | client/doc  | broadcastChannel | realTime | idb |
