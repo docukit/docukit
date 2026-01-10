@@ -32,16 +32,18 @@ export function createIndexNode(doc: Doc, { value }: { value: string }) {
 }
 
 export const { DocSyncClientProvider, useDoc } = createDocSyncClient({
-  url: "ws://localhost:8081",
+  server: {
+    url: "ws://localhost:8081",
+    auth: {
+      getToken: async () => "1234567890" as string,
+    },
+  },
   local: {
     provider: IndexedDBProvider,
     getIdentity: async () => ({
       userId: "John",
       secret: "asdasdasd",
     }),
-  },
-  auth: {
-    getToken: async () => "1234567890" as string,
   },
   docBinding: DocNodeBinding([IndexDocConfig]),
   // undoManagerSize: 50

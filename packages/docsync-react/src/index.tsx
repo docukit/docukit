@@ -26,7 +26,7 @@ type InferO<T> = T extends { docBinding: DocBinding<any, any, infer O> }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
-  config: T,
+  config: T & ClientConfig<InferD<T>, InferS<T>, InferO<T>>,
 ) {
   type D = InferD<T>;
   type S = InferS<T>;

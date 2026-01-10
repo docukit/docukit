@@ -25,9 +25,6 @@ test("createDocSyncClient", async () => {
         secret: "asdasdasd",
       }),
     },
-    auth: {
-      getToken: async () => "1234567890" as string,
-    },
     docBinding: DocNodeBinding([docConfig]),
   });
 
