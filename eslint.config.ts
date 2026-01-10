@@ -124,7 +124,7 @@ export const rootEslintConfig = tseslint.config(
       "playwright/valid-expect-in-promise": "error",
       "playwright/valid-expect": "error",
     },
-    files: ["**/*.e2e.test.ts"],
+    files: ["**/*.ui.test.ts"],
   },
   {
     plugins: {

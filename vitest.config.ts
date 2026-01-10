@@ -40,9 +40,10 @@ export default defineConfig({
           exclude: [
             "**/*.browser.test.ts",
             "**/*.browser.test.tsx",
+            "**/*.ui.test.ts",
             "**/node_modules",
             "**/dist",
-            "**/*.e2e*.ts",
+            "**/*.ui*.ts",
           ],
           name: "node",
           environment: "node",
