@@ -14,10 +14,11 @@ import {
 } from "docnode";
 import { ulid } from "ulid";
 import { expect, vi, type Mock } from "vitest";
+// TODO: fix this import
 import type {
   DocSyncEventName,
   DocSyncEvents,
-} from "../../../packages/docsync/dist/src/shared/types.js";
+} from "../../../../packages/docsync/dist/src/shared/types.js";
 
 // ============================================================================
 // Miscellaneous
