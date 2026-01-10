@@ -377,6 +377,9 @@ importers:
       postgres:
         specifier: ^3.4.5
         version: 3.4.7
+      socket.io-client:
+        specifier: ^4.8.1
+        version: 4.8.1
       ulid:
         specifier: ^2.3.0
         version: 2.4.0

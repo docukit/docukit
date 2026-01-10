@@ -9,6 +9,7 @@
   "dependencies": {
     "@docnode/lexical": "workspace:*",
     "@docnode/docsync": "workspace:*",
+    "socket.io-client": "^4.8.1",
     "@docnode/docsync-react": "workspace:*",
     "docnode": "workspace:*",
     "drizzle-orm": "^0.38.4",
