@@ -8,7 +8,7 @@ import {
   ChildNode,
 } from "./utils.js";
 
-describe.skip("Local-First Sync", () => {
+describe("Local-First Sync", () => {
   // Track clients created in each test for cleanup
   const activeClients: Array<ReturnType<typeof createClient>["client"]> = [];
   const activeCleanups: Array<() => void> = [];

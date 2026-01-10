@@ -37,7 +37,6 @@ export default defineConfig({
           //   enabled: true, // I prefer to use tsc for typechecking (pnpm check)
           // },
           setupFiles: ["dotenv/config"],
-          include: [], // temporary
           exclude: [
             "**/*.browser.test.ts",
             "**/*.browser.test.tsx",
@@ -59,11 +58,7 @@ export default defineConfig({
           // This prevents false failures from browser launch timeouts
           testTimeout: 3000, // (includes Playwright launch time?)
           hookTimeout: 10000,
-          include: [
-            "**/local-first2/**/*.browser.test.ts",
-            "**/local-first2/**/*.browser.test.tsx",
-          ], // temporary
-          // include: ["**/*.browser.test.ts", "**/*.browser.test.tsx"],
+          include: ["**/*.browser.test.ts", "**/*.browser.test.tsx"],
           globalSetup: ["./tests/docsync/local-first/globalSetup.ts"],
           benchmark: {
             include: ["**/*browser.bench.ts"],

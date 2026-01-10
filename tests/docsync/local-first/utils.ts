@@ -25,9 +25,6 @@ export const getTestServerUrl = (): string => {
   return `ws://localhost:${port}`;
 };
 
-// Legacy export for backwards compatibility
-export const TEST_SERVER_URL = getTestServerUrl();
-
 // ============================================================================
 // Node Definitions
 // ============================================================================
@@ -110,25 +107,6 @@ export const tick = (ms = 10) =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Gets a document from a client, returning a promise that resolves on success.
- */
-export const getDoc = (
-  client: DocSyncClient<Doc, JsonDoc, Operations>,
-  args: { type: string; id: string; createIfMissing?: boolean },
-): Promise<Doc> => {
-  return new Promise((resolve, reject) => {
-    client.getDoc(args as Parameters<typeof client.getDoc>[0], (result) => {
-      if (result.status === "success" && result.data) {
-        resolve(result.data.doc);
-      }
-      if (result.status === "error") {
-        reject(result.error);
-      }
-    });
-  });
-};
-
-/**
  * Gets a document and returns both the doc and a cleanup function.
  * The cleanup function should be called to unload the document.
  */
@@ -149,69 +127,4 @@ export const getDocWithCleanup = (
       },
     );
   });
-};
-
-// ============================================================================
-// Spy Helpers
-// ============================================================================
-
-/**
- * Creates a spy on BroadcastChannel.postMessage for a client.
- * Returns the spy instance to verify calls.
- */
-export const spyOnBroadcastChannel = (
-  client: DocSyncClient<Doc, JsonDoc, Operations>,
-) => {
-  const broadcastChannel = client["_broadcastChannel"];
-  if (!broadcastChannel) {
-    throw new Error(
-      "Cannot spy on BroadcastChannel - it's disabled or not initialized",
-    );
-  }
-
-  // Manual spy wrapper because vi.spyOn doesn't work with BroadcastChannel in Playwright
-  const calls: unknown[][] = [];
-  const originalPostMessage =
-    broadcastChannel.postMessage.bind(broadcastChannel);
-
-  broadcastChannel.postMessage = (message: unknown) => {
-    calls.push([message]);
-    originalPostMessage(message);
-  };
-
-  return {
-    mock: { calls },
-    mockClear: () => {
-      calls.length = 0;
-    },
-  };
-};
-
-/**
- * Creates a spy on ServerSync.saveRemote to verify dirty events trigger syncs.
- * Returns the spy instance to verify calls.
- */
-export const spyOnDirtyEvent = (
-  client: DocSyncClient<Doc, JsonDoc, Operations>,
-) => {
-  const serverSync = client["_serverSync"];
-  if (!serverSync) {
-    throw new Error("Client has no server sync configured");
-  }
-
-  // Manual spy wrapper because vi.spyOn doesn't work reliably in Playwright browser
-  const calls: unknown[][] = [];
-  const originalSaveRemote = serverSync.saveRemote.bind(serverSync);
-
-  serverSync.saveRemote = (payload: { docId: string }) => {
-    calls.push([payload]);
-    originalSaveRemote(payload);
-  };
-
-  return {
-    mock: { calls },
-    mockClear: () => {
-      calls.length = 0;
-    },
-  };
 };
