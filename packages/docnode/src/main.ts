@@ -950,10 +950,14 @@ export class Doc {
   }
 
   applyOperations(_operations: operations.Operations) {
-    withTransaction(this, () => {
-      if (!_operations[0].length && isObjectEmpty(_operations[1])) return;
-      operations.onApplyOperations(this, _operations);
-    });
+    withTransaction(
+      this,
+      () => {
+        if (!_operations[0].length && isObjectEmpty(_operations[1])) return;
+        operations.onApplyOperations(this, _operations);
+      },
+      true,
+    );
   }
 
   /**

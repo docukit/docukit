@@ -35,7 +35,11 @@ export function isObjectEmpty(obj: object) {
  * - Rolls back if it fails,
  * - Schedules the commit at the end of the microtask.
  */
-export function withTransaction(doc: Doc, fn: () => void): void {
+export function withTransaction(
+  doc: Doc,
+  fn: () => void,
+  isApplyOperations = false,
+): void {
   if (doc["_lifeCycleStage"] === "change" || doc["_lifeCycleStage"] === "init")
     throw new Error(
       `You can't trigger an update inside a ${doc["_lifeCycleStage"]} event`,
@@ -65,6 +69,6 @@ export function withTransaction(doc: Doc, fn: () => void): void {
       /* v8 ignore next -- @preserve */
       console.error("Error applying inverse operations: ", errorInRevert);
     }
-    throw errorInUpdate;
+    if (!isApplyOperations) throw errorInUpdate;
   }
 }

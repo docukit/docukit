@@ -293,6 +293,9 @@ export function checkUndoManager(
   const doc3 = Doc.fromJSON({ extensions: [{ nodes }] }, jsonDoc);
   const undoManager3 = new UndoManager(doc3, { maxUndoSteps: 10000000 });
 
+  // This document will replay all operations, but twice each operation
+  const doc4 = Doc.fromJSON({ extensions: [{ nodes }] }, jsonDoc);
+
   const changeEvents: ChangeEvent[] = [];
   const snapshots: unknown[] = [getStateSnapshot(doc, IS_TEST_NODE)];
   const jsonDocs: JsonDoc[] = [jsonDoc];
@@ -459,7 +462,25 @@ export function checkUndoManager(
     );
   }
 
-  // 4. UNDO
+  // 4. REPLAY TWICE EACH OPERATION
+  for (const [i, changeEvent] of changeEvents.entries()) {
+    updateAndListen(
+      doc4,
+      () => {
+        doc4.applyOperations(changeEvent.operations);
+      },
+      (changeEvent) => {
+        expect(doc4.toJSON()).toStrictEqual(jsonDocs[i + 1]);
+        expect(getStateSnapshot(doc4, IS_TEST_NODE)).toStrictEqual(
+          snapshots[i + 1],
+        );
+        expect(changeEvent).toStrictEqual(changeEvents[i]);
+      },
+    );
+    doc4.applyOperations(changeEvent.operations);
+  }
+
+  // 5. UNDO
   for (let i = 0; i < sizeDo; i++) {
     listen(
       doc3,
@@ -485,7 +506,7 @@ export function checkUndoManager(
     );
   }
 
-  // 5. REDO
+  // 6. REDO
   for (let i = 0; i < sizeDo; i++) {
     listen(
       doc3,
