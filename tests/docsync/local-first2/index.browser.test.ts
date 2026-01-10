@@ -210,6 +210,7 @@ describe("Local-First 2.0", () => {
       otherTab.assertMemoryDoc(["A", "B"]);
       // otherDevice added B locally first, then received A from server
       // CRDT ordering may differ based on insertion order vs deterministic ID ordering
+      // TODO: find a way to deterministically insert with conflicts
       otherDevice.assertMemoryDoc(["B", "A"]);
 
       await reference.assertIDBDoc({ clock: 2, doc: ["A", "B"], ops: [] });
