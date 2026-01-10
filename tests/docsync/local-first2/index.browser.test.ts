@@ -204,7 +204,7 @@ describe("Local-First 2.0", () => {
       reference.connect();
       otherTab.connect();
       otherDevice.connect();
-      await tick(100);
+      await tick(40);
 
       reference.assertMemoryDoc(["A", "B"]);
       otherTab.assertMemoryDoc(["A", "B"]);
@@ -212,10 +212,9 @@ describe("Local-First 2.0", () => {
       // CRDT ordering may differ based on insertion order vs deterministic ID ordering
       otherDevice.assertMemoryDoc(["B", "A"]);
 
-      // await reference.assertIDBDoc({ clock: 1, doc: ["A"], ops: [] });
-      // await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["A"] });
-      // await otherTab.assertIDBDoc({ clock: 0, doc: [], ops: ["A"] });
-      // await otherDevice.assertIDBDoc({ clock: 0, doc: [], ops: ["A", "B"] });
+      await reference.assertIDBDoc({ clock: 2, doc: ["A", "B"], ops: [] });
+      await otherTab.assertIDBDoc({ clock: 2, doc: ["A", "B"], ops: [] });
+      await otherDevice.assertIDBDoc({ clock: 2, doc: ["A", "B"], ops: [] });
     });
   });
 });
