@@ -7,6 +7,7 @@
  */
 import type { SerializedDoc } from "@docnode/docsync/client";
 import { DocNodeBinding } from "@docnode/docsync/docnode";
+import { testDocConfig } from "./utils.js";
 import {
   DocSyncServer,
   InMemoryServerProvider,
@@ -60,7 +61,7 @@ export async function setup() {
   serverPort = await findAvailablePort(PREFERRED_PORT);
 
   server = new DocSyncServer({
-    docBinding: DocNodeBinding([]),
+    docBinding: DocNodeBinding([testDocConfig]),
     port: serverPort,
     provider: InMemoryServerProvider,
     authenticate: async ({ token }) => {

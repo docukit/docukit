@@ -60,12 +60,16 @@ const ChildNode = defineNode({
   },
 });
 
+export const testDocConfig = {
+  type: "test",
+  extensions: [{ nodes: [ChildNode] }],
+};
+
 // ============================================================================
 // Doc Binding
 // ============================================================================
 
-const createDocBinding = () =>
-  DocNodeBinding([{ type: "test", extensions: [{ nodes: [ChildNode] }] }]);
+const createDocBinding = () => DocNodeBinding([testDocConfig]);
 
 // ============================================================================
 // Generators

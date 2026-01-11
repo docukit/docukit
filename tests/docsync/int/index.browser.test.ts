@@ -1,5 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { emptyIDB, testWrapper, tick } from "./utils.js";
+import type { JsonDoc, Operations } from "docnode";
+import type { DocSyncEvents } from "../../../packages/docsync/dist/src/shared/types.js";
 
 describe("Local-First", () => {
   test("cannot load doc twice", async () => {
@@ -272,6 +274,96 @@ describe("Local-First", () => {
       await otherTab.assertIDBDoc({ clock: 3, doc: ["A", "B", "C"], ops: [] });
       // prettier-ignore
       await otherDevice.assertIDBDoc({ clock: 3, doc: ["A", "B", "C"], ops: [] });
+    });
+  });
+
+  test("requests are batched even without local throttling", async () => {
+    await testWrapper(async ({ reference }) => {
+      await reference.loadDoc();
+      await tick();
+
+      // TODO
+      // Currently throttling is not implemented, but later we should disable it:
+      // reference["_throttle"] = false;
+
+      const childrenArray = [];
+
+      for (let i = 0; i < 101; i++) {
+        reference.addChild(`A${i}`);
+        childrenArray.push(`A${i}`);
+        reference.doc?.forceCommit();
+      }
+      await tick(50); // Wait for batched operations to sync
+      expect(childrenArray.length).toBe(101);
+      await reference.assertIDBDoc({ clock: 1, doc: childrenArray, ops: [] });
+      expect(reference.reqSpy.mock.calls.length).toBeLessThan(4);
+    });
+  });
+
+  test("squash operations", async () => {
+    await testWrapper(async ({ reference, otherDevice }) => {
+      await reference.loadDoc();
+
+      // Wait for all clients to subscribe to the room
+      await tick();
+
+      const childrenArray: string[] = [];
+
+      for (let i = 1; i <= 100; i++) {
+        reference.addChild(`A${i}`);
+        childrenArray.push(`A${i}`);
+        reference.doc?.forceCommit();
+        await tick(1);
+      }
+      expect(childrenArray.length).toBe(100);
+      expect(reference.reqSpy).toHaveBeenCalledTimes(101);
+      expect(otherDevice.reqSpy).toHaveBeenCalledTimes(0);
+
+      await otherDevice.loadDoc();
+      await tick();
+      expect(otherDevice.reqSpy).toHaveBeenCalledTimes(1);
+      expect(otherDevice.reqSpy).toHaveBeenCalledWith("sync-operations", {
+        docId: expect.any(String) as unknown,
+        clock: 0,
+        operations: [],
+      });
+
+      // For async functions, resolve the promise before asserting
+      const response = (await otherDevice.reqSpy.mock.results[0]
+        ?.value) as DocSyncEvents<
+        JsonDoc,
+        Operations
+      >["sync-operations"]["response"];
+      expect(response).toMatchObject({
+        docId: expect.any(String) as unknown,
+        operations: expect.any(Array) as unknown,
+        serializedDoc: null,
+        clock: 100,
+      });
+      expect(response.operations?.length).toBe(100);
+
+      otherDevice.unLoadDoc();
+
+      await otherDevice.loadDoc();
+      await tick();
+      expect(otherDevice.reqSpy).toHaveBeenCalledTimes(3);
+      expect(otherDevice.reqSpy).toHaveBeenCalledWith("sync-operations", {
+        docId: expect.any(String) as unknown,
+        clock: 100,
+        operations: [],
+      });
+
+      const response2 = (await otherDevice.reqSpy.mock.results[2]
+        ?.value) as DocSyncEvents<
+        JsonDoc,
+        Operations
+      >["sync-operations"]["response"];
+      expect(response2).toMatchObject({
+        docId: expect.any(String) as unknown,
+        operations: null,
+        serializedDoc: expect.any(Object) as unknown,
+        clock: 100,
+      });
     });
   });
 });

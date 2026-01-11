@@ -206,13 +206,19 @@ export class DocSyncServer<
 
           // Squash operations if threshold is reached
           if (
-            payload.operations &&
-            payload.operations.length >= OPERATION_THRESHOLD
+            result.operations &&
+            result.operations.length >= OPERATION_THRESHOLD
           ) {
-            const { docId, operations, serializedDoc, clock } = result;
+            const {
+              docId,
+              operations: serverOps,
+              serializedDoc,
+              clock,
+            } = result;
+            const operations = [...serverOps, ...(payload.operations ?? [])];
             const doc = serializedDoc
               ? this._docBinding.deserialize(serializedDoc)
-              : this._docBinding.new("type", docId).doc;
+              : this._docBinding.new("test", docId).doc;
             operations?.forEach((operation) => {
               this._docBinding.applyOperations(doc, operation);
             });
@@ -223,6 +229,7 @@ export class DocSyncServer<
                 serializedDoc: newSerializedDoc,
                 clock,
               });
+              await ctx.deleteOperations({ docId, count: 1 });
             });
           }
         },
