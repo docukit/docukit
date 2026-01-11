@@ -1,4 +1,3 @@
-import { vi, type Mock } from "vitest";
 import {
   DocSyncClient,
   IndexedDBProvider,
@@ -47,29 +46,6 @@ export const ops = (data?: Record<string, string>): Operations =>
 
 /** Empty operations */
 export const emptyOps = (): Operations => [[], {}] as Operations;
-
-// ============================================================================
-// Mock API
-// ============================================================================
-
-export interface MockApi {
-  request: Mock;
-  _socket: unknown;
-}
-
-export const createMockApi = (): MockApi => ({
-  request: vi.fn().mockImplementation(async (_endpoint, payload) => {
-    // Return the next clock value (client clock + 1)
-    const clientClock = (payload as { clock?: number }).clock ?? 0;
-    return {
-      docId: "test-doc",
-      operations: [],
-      serializedDoc: null,
-      clock: clientClock + 1,
-    };
-  }),
-  _socket: null,
-});
 
 // ============================================================================
 // ServerSync Factory
