@@ -30,7 +30,7 @@ const project = (name: string, browser: boolean): TestProjectConfiguration => ({
             "**/dist",
           ],
         }),
-    globalSetup: ["./tests/docsync/int/local-first/globalSetup.ts"],
+    globalSetup: ["./tests/docsync/int/globalSetup.ts"],
     benchmark: {
       include: ["**/*browser.bench.ts"],
     },

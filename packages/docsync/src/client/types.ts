@@ -55,7 +55,7 @@ export type ClientConfig<
   O extends {},
 > = {
   docBinding: DocBinding<D, S, O>;
-  server?: {
+  server: {
     url: string;
     auth: {
       /**
@@ -68,7 +68,7 @@ export type ClientConfig<
       getToken: () => Promise<string>;
     };
   };
-  local?: {
+  local: {
     // We want D, S, O to be inferred from the docBinding, not
     // from the provider
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

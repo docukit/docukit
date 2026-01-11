@@ -32,8 +32,8 @@ export class ServerSync<D extends {}, S extends SerializedDoc, O extends {}> {
 
     // Build API options conditionally based on realTime flag
     const apiOptions: APIOptions = {
-      url: config.server!.url,
-      getToken: config.server!.auth.getToken,
+      url: config.server.url,
+      getToken: config.server.auth.getToken,
       onDirty: (payload) => {
         // When server notifies us of changes, trigger a sync (reuse saveRemote)
         this.saveRemote({ docId: payload.docId });

@@ -18,7 +18,7 @@ import { expect, vi, type Mock } from "vitest";
 import type {
   DocSyncEventName,
   DocSyncEvents,
-} from "../../../../packages/docsync/dist/src/shared/types.js";
+} from "../../../packages/docsync/dist/src/shared/types.js";
 
 // ============================================================================
 // Miscellaneous
