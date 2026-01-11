@@ -1,4 +1,3 @@
-import type { DocSyncEvents } from "../../shared/types.js";
 import type { ClientProvider, TransactionContext } from "../../client/types.js";
 
 interface StoredDoc<S> {
@@ -31,51 +30,57 @@ export class InMemoryServerProvider<S, O>
 
   async transaction<T>(
     _mode: "readonly" | "readwrite",
-    _callback: (ctx: TransactionContext<S, O, "server">) => Promise<T>,
+    callback: (ctx: TransactionContext<S, O, "server">) => Promise<T>,
   ): Promise<T> {
-    throw new Error("not implemented yet");
-  }
+    // In-memory provider doesn't need real transactions since operations are synchronous
+    const ctx: TransactionContext<S, O, "server"> = {
+      getSerializedDoc: async (docId: string) => {
+        return this._docs.get(docId);
+      },
 
-  async sync(
-    req: DocSyncEvents<S, O>["sync-operations"]["request"],
-  ): Promise<DocSyncEvents<S, O>["sync-operations"]["response"]> {
-    const { docId, operations: clientOps, clock: clientClock } = req;
+      getOperations: async ({ docId, clock }) => {
+        const allOps = this._operations.get(docId) ?? [];
+        const serverOps = allOps
+          .filter((op) => op.clock > clock)
+          .map((op) => [op.operations]);
+        return serverOps;
+      },
 
-    // 1. Get operations the client doesn't have (clock > clientClock)
-    const allOps = this._operations.get(docId) ?? [];
-    const serverOps = allOps
-      .filter((op) => op.clock > clientClock)
-      .map((op) => op.operations);
+      deleteOperations: async ({ docId, count }) => {
+        const allOps = this._operations.get(docId) ?? [];
+        allOps.splice(0, count);
+        if (allOps.length === 0) {
+          this._operations.delete(docId);
+        } else {
+          this._operations.set(docId, allOps);
+        }
+      },
 
-    // 2. Get server document only if its clock > client clock
-    const storedDoc = this._docs.get(docId);
-    const serverDoc =
-      storedDoc && storedDoc.clock > clientClock
-        ? storedDoc.serializedDoc
-        : null;
+      saveOperations: async ({ docId, operations }) => {
+        if (operations.length === 0) {
+          // Return current clock if no operations to save
+          const allOps = this._operations.get(docId) ?? [];
+          return allOps.length > 0
+            ? Math.max(...allOps.map((op) => op.clock))
+            : 0;
+        }
 
-    // 3. Save client operations if provided
-    let newClock = clientClock;
-    if (clientOps && clientOps.length > 0) {
-      // Only increment clock if client sent operations
-      newClock = this._nextClock(docId);
-      for (const op of clientOps) {
+        // Increment clock and save operations
+        const newClock = this._nextClock(docId);
         const docOps = this._operations.get(docId) ?? [];
-        docOps.push({ operations: op, clock: newClock });
+        for (const op of operations) {
+          docOps.push({ operations: op, clock: newClock });
+        }
         this._operations.set(docId, docOps);
-      }
-    } else if (allOps.length > 0) {
-      // If client sent no ops but server has ops, return the latest server clock
-      newClock = Math.max(...allOps.map((op) => op.clock));
-    }
+        return newClock;
+      },
 
-    // 4. Return data
-    return {
-      docId,
-      operations: serverOps.length > 0 ? serverOps : null,
-      serializedDoc: serverDoc as S,
-      clock: newClock,
+      saveSerializedDoc: async ({ docId, serializedDoc, clock }) => {
+        this._docs.set(docId, { serializedDoc, clock });
+      },
     };
+
+    return callback(ctx);
   }
 
   /** For testing: clear all data */

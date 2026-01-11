@@ -1,7 +1,6 @@
 import { queryClient } from "./schema.js";
 import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "./schema.js";
-import type { DocSyncEvents } from "../../../shared/types.js";
 import { eq, gt, and } from "drizzle-orm";
 import type {
   ClientProvider,
@@ -13,64 +12,101 @@ export class PostgresProvider<S, O> implements ClientProvider<S, O, "server"> {
 
   async transaction<T>(
     _mode: "readonly" | "readwrite",
-    _callback: (ctx: TransactionContext<S, O, "server">) => Promise<T>,
+    callback: (ctx: TransactionContext<S, O, "server">) => Promise<T>,
   ): Promise<T> {
-    throw new Error("not implemented yet");
-  }
-
-  async sync(
-    req: DocSyncEvents<S, O>["sync-operations"]["request"],
-  ): Promise<DocSyncEvents<S, O>["sync-operations"]["response"]> {
-    const { docId, operations, clock: clientClock } = req;
-    const clientClockDate = new Date(clientClock);
-
     return await this._db.transaction(async (tx) => {
-      // 1. Get operations the client doesn't have
-      //    We query BEFORE inserting so we don't return the client's own operations
-      const serverOps = await tx
-        .select({ operations: schema.operations.operations })
-        .from(schema.operations)
-        .where(
-          and(
-            eq(schema.operations.docId, docId),
-            gt(schema.operations.clock, clientClockDate),
-          ),
-        )
-        .orderBy(schema.operations.clock);
+      const ctx: TransactionContext<S, O, "server"> = {
+        getSerializedDoc: async (docId: string) => {
+          const doc = await tx.query.documents.findFirst({
+            where: eq(schema.documents.docId, docId),
+          });
+          return doc
+            ? {
+                serializedDoc: doc.doc as S,
+                clock: doc.clock.getTime(),
+              }
+            : undefined;
+        },
 
-      // 2. Get server document only if its clock > client clock
-      const serverDoc = await tx.query.documents.findFirst({
-        where: and(
-          eq(schema.documents.docId, docId),
-          gt(schema.documents.clock, clientClockDate),
-        ),
-      });
+        getOperations: async ({ docId, clock }) => {
+          const clockDate = new Date(clock);
+          const serverOps = await tx
+            .select({ operations: schema.operations.operations })
+            .from(schema.operations)
+            .where(
+              and(
+                eq(schema.operations.docId, docId),
+                gt(schema.operations.clock, clockDate),
+              ),
+            )
+            .orderBy(schema.operations.clock);
 
-      // 3. Save client operations if provided (single row with array, clock = NOW())
-      //    Use RETURNING to get the DB-generated timestamp
-      const inserted =
-        operations && operations.length > 0
-          ? await tx
-              .insert(schema.operations)
-              .values({
-                docId,
-                operations,
-              })
-              .returning({ clock: schema.operations.clock })
-          : [];
-      // TODO: If client is up to date, should I return the client clock or no clock?
-      const newClock = inserted[0]?.clock.getTime() ?? clientClock;
+          return serverOps.map((r) => r.operations as O[]);
+        },
 
-      // 4. Return data
-      return {
-        docId,
-        operations:
-          serverOps.length > 0
-            ? (serverOps.map((r) => r.operations) as O[])
-            : null,
-        serializedDoc: (serverDoc?.doc ?? null) as S,
-        clock: newClock,
+        deleteOperations: async ({ docId, count }) => {
+          // Get the first `count` operations ordered by clock (oldest first)
+          const toDelete = await tx
+            .select({
+              docId: schema.operations.docId,
+              clock: schema.operations.clock,
+            })
+            .from(schema.operations)
+            .where(eq(schema.operations.docId, docId))
+            .orderBy(schema.operations.clock)
+            .limit(count);
+
+          if (toDelete.length > 0) {
+            // Delete operations using their composite primary key (docId, clock)
+            for (const op of toDelete) {
+              await tx
+                .delete(schema.operations)
+                .where(
+                  and(
+                    eq(schema.operations.docId, op.docId),
+                    eq(schema.operations.clock, op.clock),
+                  ),
+                );
+            }
+          }
+        },
+
+        saveOperations: async ({ docId, operations }) => {
+          if (operations.length === 0) {
+            // Return the latest clock for this docId
+            const latestOp = await tx.query.operations.findFirst({
+              where: eq(schema.operations.docId, docId),
+              orderBy: (ops, { desc }) => [desc(ops.clock)],
+            });
+            return latestOp?.clock.getTime() ?? 0;
+          }
+
+          // Insert operations and return the DB-generated timestamp
+          const inserted = await tx
+            .insert(schema.operations)
+            .values({
+              docId,
+              operations: operations as unknown[],
+            })
+            .returning({ clock: schema.operations.clock });
+
+          return inserted[0]!.clock.getTime();
+        },
+
+        saveSerializedDoc: async (_arg) => {
+          // TODO: saveSerializedDoc needs userId to work with Postgres schema.
+          // This will be called during operation squashing (not implemented yet).
+          // Options:
+          // 1. Pass userId through TransactionContext
+          // 2. Query userId from operations table
+          // 3. Refactor schema to not require userId on documents table
+          throw new Error(
+            "saveSerializedDoc not implemented for PostgresProvider yet - requires userId context",
+          );
+        },
       };
+
+      return callback(ctx);
     });
   }
 }
