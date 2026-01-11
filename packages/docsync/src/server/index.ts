@@ -151,8 +151,6 @@ export class DocSyncServer<
 
           // TODO: cache documents that have not been modified for append
           // only operations without performing read operations
-          // const result = await this._provider.sync(payload);
-
           const result = await this._provider.transaction(
             "readwrite",
             async (ctx) => {
@@ -211,8 +209,21 @@ export class DocSyncServer<
             payload.operations &&
             payload.operations.length >= OPERATION_THRESHOLD
           ) {
-            // TODO: Later
-            // await this._provider.squash(payload.docId);
+            const { docId, operations, serializedDoc, clock } = result;
+            const doc = serializedDoc
+              ? this._docBinding.deserialize(serializedDoc)
+              : this._docBinding.new("type", docId).doc;
+            operations?.forEach((operation) => {
+              this._docBinding.applyOperations(doc, operation);
+            });
+            const newSerializedDoc = this._docBinding.serialize(doc);
+            await this._provider.transaction("readwrite", async (ctx) => {
+              await ctx.saveSerializedDoc({
+                docId,
+                serializedDoc: newSerializedDoc,
+                clock,
+              });
+            });
           }
         },
         "delete-doc": async (payload, cb) => {
