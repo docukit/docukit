@@ -1,9 +1,12 @@
+/* eslint-disable @typescript-eslint/no-empty-object-type */
 /**
  * Vitest globalSetup for integration tests.
  * Starts a DocSyncServer with InMemoryServerProvider before browser tests run.
  *
  * Uses @docnode/docsync/testing to avoid loading PostgresProvider which requires DB env vars.
  */
+import type { SerializedDoc } from "@docnode/docsync/client";
+import { DocNodeBinding } from "@docnode/docsync/docnode";
 import {
   DocSyncServer,
   InMemoryServerProvider,
@@ -49,7 +52,7 @@ const parseTestToken = (token: string): string | undefined => {
   return token.slice(prefix.length);
 };
 
-let server: DocSyncServer<unknown, unknown, unknown> | undefined;
+let server: DocSyncServer<unknown, {}, SerializedDoc, {}> | undefined;
 let serverPort: number;
 
 export async function setup() {
@@ -57,6 +60,7 @@ export async function setup() {
   serverPort = await findAvailablePort(PREFERRED_PORT);
 
   server = new DocSyncServer({
+    docBinding: DocNodeBinding([]),
     port: serverPort,
     provider: InMemoryServerProvider,
     authenticate: async ({ token }) => {

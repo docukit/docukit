@@ -4,6 +4,8 @@ import {
   DocSyncServer,
   InMemoryServerProvider,
 } from "@docnode/docsync/testing";
+import { DocNodeBinding } from "@docnode/docsync/docnode";
+import type { Doc, JsonDoc, Operations } from "docnode";
 
 // ============================================================================
 // State
@@ -12,7 +14,7 @@ import {
 const TEST_PORT = 9999;
 const SERVER_URL = `ws://localhost:${TEST_PORT}`;
 
-type TestServer = DocSyncServer<unknown, unknown, unknown>;
+type TestServer = DocSyncServer<unknown, Doc, JsonDoc, Operations>;
 type TestSocket = ReturnType<typeof io>;
 
 let server: TestServer | undefined;
@@ -35,6 +37,7 @@ afterEach(async () => {
 
 export const createServer = () => {
   server = new DocSyncServer({
+    docBinding: DocNodeBinding([]),
     port: TEST_PORT,
     provider: InMemoryServerProvider,
     authenticate: async ({ token }) => {

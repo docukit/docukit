@@ -1,5 +1,5 @@
-import type { ServerProvider } from "../types.js";
 import type { DocSyncEvents } from "../../shared/types.js";
+import type { ClientProvider, TransactionContext } from "../../client/types.js";
 
 interface StoredDoc<S> {
   serializedDoc: S;
@@ -15,7 +15,9 @@ interface StoredOperation<O> {
  * In-memory server provider for testing.
  * Stores documents and operations in memory - data is lost when the process ends.
  */
-export class InMemoryServerProvider<S, O> implements ServerProvider<S, O> {
+export class InMemoryServerProvider<S, O>
+  implements ClientProvider<S, O, "server">
+{
   private _docs = new Map<string, StoredDoc<S>>();
   private _operations = new Map<string, StoredOperation<O>[]>();
   private _clockCounterByDocId = new Map<string, number>();
@@ -25,6 +27,13 @@ export class InMemoryServerProvider<S, O> implements ServerProvider<S, O> {
     const next = current + 1;
     this._clockCounterByDocId.set(docId, next);
     return next;
+  }
+
+  async transaction<T>(
+    _mode: "readonly" | "readwrite",
+    _callback: (ctx: TransactionContext<S, O, "server">) => Promise<T>,
+  ): Promise<T> {
+    throw new Error("not implemented yet");
   }
 
   async sync(

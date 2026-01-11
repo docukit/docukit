@@ -183,7 +183,6 @@ const createClientWithConfig = (config: {
   userId: string;
   token: string;
   docBinding: ReturnType<typeof createDocBinding>;
-  local: boolean;
 }): DocSyncClient<Doc, JsonDoc, Operations> => {
   const clientConfig: ClientConfig<Doc, JsonDoc, Operations> = {
     server: {
@@ -191,18 +190,14 @@ const createClientWithConfig = (config: {
       auth: { getToken: async () => config.token },
     },
     docBinding: config.docBinding,
-  };
-
-  // Add local config only if enabled
-  if (config.local) {
-    clientConfig.local = {
+    local: {
       provider: IndexedDBProvider,
       getIdentity: async () => ({
         userId: config.userId,
         secret: "test-secret",
       }),
-    };
-  }
+    },
+  };
 
   return new DocSyncClient(clientConfig);
 };
@@ -221,7 +216,6 @@ const setupClients = async (): Promise<ClientsSetup> => {
     userId: referenceUserId,
     token: createTestToken(referenceUserId),
     docBinding,
-    local: true,
   });
 
   // OtherTab: local + RT + BC enabled (same userId1 as reference)
@@ -229,7 +223,6 @@ const setupClients = async (): Promise<ClientsSetup> => {
     userId: referenceUserId, // Same user for broadcast channel and IDB sharing
     token: createTestToken(referenceUserId),
     docBinding,
-    local: true,
   });
 
   // OtherDevice: local enabled with different userId2, RT enabled, BC disabled
@@ -244,7 +237,6 @@ const setupClients = async (): Promise<ClientsSetup> => {
     userId: otherDeviceUserId, // Different user = different IDB + BC namespace
     token: createTestToken(otherDeviceUserId),
     docBinding,
-    local: true,
   });
 
   return {

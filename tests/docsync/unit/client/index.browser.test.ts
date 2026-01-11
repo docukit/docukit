@@ -57,7 +57,7 @@ describe("DocSyncClient", () => {
     });
 
     test("should initialize with local provider config", () => {
-      const client = createClient(true);
+      const client = createClient();
       expect(client).toBeInstanceOf(DocSyncClient);
     });
 
@@ -80,7 +80,7 @@ describe("DocSyncClient", () => {
 
       try {
         // Need local config to initialize BroadcastChannel
-        const client = createClient(true);
+        const client = createClient();
         const callback = createCallback();
 
         // Trigger _localPromise resolution by calling getDoc
@@ -111,7 +111,7 @@ describe("DocSyncClient", () => {
 
     // These tests only verify types at compile time, no runtime assertions needed
     test("callback receives correct types based on args", () => {
-      const client = createClient(true);
+      const client = createClient();
       const id = ulid().toLowerCase();
 
       // with id, without createIfMissing → MaybeDocResult
@@ -186,7 +186,7 @@ describe("DocSyncClient", () => {
   describe("getDoc", () => {
     describe("Get existing document", () => {
       test("should emit loading status initially", () => {
-        const client = createClient(true);
+        const client = createClient();
         const callback = createCallback();
 
         client.getDoc({ type: "test", id: "test-id" }, callback);
@@ -199,7 +199,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should return undefined when document does not exist and createIfMissing is false", async () => {
-        const client = createClient(true);
+        const client = createClient();
         const callback = createCallback();
 
         client.getDoc({ type: "test", id: "non-existent-id" }, callback);
@@ -213,7 +213,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should return cached document when requested multiple times", async () => {
-        const client = createClient(true);
+        const client = createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
 
@@ -231,7 +231,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should resolve cache hit on next microtask (no setTimeout needed)", async () => {
-        const client = createClient(true);
+        const client = createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
 
@@ -258,7 +258,7 @@ describe("DocSyncClient", () => {
 
     describe("Create new document", () => {
       test("should create new document with auto-generated ID when createIfMissing is true", () => {
-        const client = createClient(true);
+        const client = createClient();
         const callback = createCallback();
 
         client.getDoc({ type: "test", createIfMissing: true }, callback);
@@ -279,7 +279,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should generate unique IDs for each new document", () => {
-        const client = createClient(true);
+        const client = createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
 
@@ -295,7 +295,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should return unsubscribe function", () => {
-        const client = createClient(true);
+        const client = createClient();
         const callback = createCallback();
 
         const unsubscribe = client.getDoc(
@@ -309,7 +309,7 @@ describe("DocSyncClient", () => {
 
     describe("Get or create", () => {
       test("should create document with provided id when createIfMissing is true", async () => {
-        const client = createClient(true);
+        const client = createClient();
         const callback = createCallback();
         const customId = ulid().toLowerCase();
 
@@ -325,7 +325,7 @@ describe("DocSyncClient", () => {
 
     describe("Sync vs async behavior", () => {
       test("should NOT emit loading when creating new doc without id", () => {
-        const client = createClient(true);
+        const client = createClient();
         const callback = createCallback();
 
         client.getDoc({ type: "test", createIfMissing: true }, callback);
@@ -336,7 +336,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should emit loading before success when fetching by id", async () => {
-        const client = createClient(true);
+        const client = createClient();
         const callback = createCallback();
         const customId = ulid().toLowerCase();
 
@@ -355,7 +355,7 @@ describe("DocSyncClient", () => {
     describe("Unsubscribe", () => {
       test("should remove doc from cache and call removeListeners when last subscriber unsubscribes", async () => {
         const { client, removeListenersSpy } =
-          createClientWithRemoveListenersSpy(true);
+          createClientWithRemoveListenersSpy();
         const callback = createCallback();
 
         const unsubscribe = client.getDoc(
@@ -380,7 +380,7 @@ describe("DocSyncClient", () => {
 
       test("should NOT call removeListeners when non-last subscriber unsubscribes", async () => {
         const { client, removeListenersSpy } =
-          createClientWithRemoveListenersSpy(true);
+          createClientWithRemoveListenersSpy();
         const callback1 = createCallback();
         const callback2 = createCallback();
 
@@ -422,7 +422,7 @@ describe("DocSyncClient", () => {
 
     describe("refCount / multiple subscriptions", () => {
       test("should increment refCount for each subscription to same doc", async () => {
-        const client = createClient(true);
+        const client = createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
         const callback3 = createCallback();
@@ -446,7 +446,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should share same doc instance across multiple subscriptions", async () => {
-        const client = createClient(true);
+        const client = createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
 
@@ -467,7 +467,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should NOT notify callback when document content changes", async () => {
-        const client = createClient(true);
+        const client = createClient();
         const callback = createCallback();
 
         // Create doc
@@ -489,7 +489,7 @@ describe("DocSyncClient", () => {
 
     describe("Concurrency", () => {
       test("should share promise when multiple requests for same doc happen simultaneously", async () => {
-        const client = createClient(true);
+        const client = createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
         const customId = ulid().toLowerCase();
@@ -572,7 +572,7 @@ describe("DocSyncClient", () => {
     });
 
     test("should emit error status when docBinding.new throws for unknown type", async () => {
-      const client = createClient(true);
+      const client = createClient();
       const callback = createCallback();
 
       // Suppress expected unhandled rejection
@@ -685,7 +685,7 @@ describe("DocSyncClient", () => {
         MockBroadcastChannel as unknown as typeof BroadcastChannel;
 
       try {
-        const client = createClient(true);
+        const client = createClient();
         const callback = createCallback();
 
         client.getDoc({ type: "test", createIfMissing: true }, callback);
@@ -731,7 +731,7 @@ describe("DocSyncClient", () => {
         MockBroadcastChannel as unknown as typeof BroadcastChannel;
 
       try {
-        const client = createClient(true);
+        const client = createClient();
         const callback = createCallback();
 
         // Create a doc
@@ -790,7 +790,7 @@ describe("DocSyncClient", () => {
         MockBroadcastChannel as unknown as typeof BroadcastChannel;
 
       try {
-        const client = createClient(true);
+        const client = createClient();
         const callback = createCallback();
 
         // Create a doc - this will resolve _localPromise and initialize BroadcastChannel

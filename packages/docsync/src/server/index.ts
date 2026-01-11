@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-empty-object-type */
 import { Server } from "socket.io";
 import {
   type ServerSocket,
@@ -5,7 +6,9 @@ import {
   type DocSyncEventName,
   type AuthorizeEvent,
 } from "../shared/types.js";
-import type { ServerConfig, ServerProvider } from "./types.js";
+import type { ServerConfig } from "./types.js";
+import type { DocBinding, SerializedDoc } from "../shared/docBinding.js";
+import type { ClientProvider } from "../client/types.js";
 
 type AuthenticatedContext<TContext> = {
   userId: string;
@@ -13,13 +16,23 @@ type AuthenticatedContext<TContext> = {
   context: TContext;
 };
 
-export class DocSyncServer<TContext, S, O> {
-  private _io: ServerSocket<S, O>;
-  private _provider: ServerProvider<S, O>;
-  private _authenticate: ServerConfig<TContext, S, O>["authenticate"];
-  private _authorize?: ServerConfig<TContext, S, O>["authorize"];
+const OPERATION_THRESHOLD = 100;
 
-  constructor(config: ServerConfig<TContext, S, O>) {
+export class DocSyncServer<
+  TContext,
+  D extends {},
+  S extends SerializedDoc,
+  O extends {},
+> {
+  private _io: ServerSocket<S, O>;
+  private _docBinding: DocBinding<D, S, O>;
+  private _provider: ClientProvider<S, O, "server">;
+  private _authenticate: ServerConfig<TContext, D, S, O>["authenticate"];
+  private _authorize?: ServerConfig<TContext, D, S, O>["authorize"];
+  // TODO: see comment in sync-operations
+  private _LRUCache = new Map<string, { deviceId: string; clock: number }>();
+
+  constructor(config: ServerConfig<TContext, D, S, O>) {
     this._io = new Server(config.port ?? 8080, {
       cors: {
         origin: "*",
@@ -27,6 +40,8 @@ export class DocSyncServer<TContext, S, O> {
       // Performance: Only WebSocket transport, no polling
       transports: ["websocket"],
     });
+
+    this._docBinding = config.docBinding;
     this._provider = new config.provider();
     this._authenticate = config.authenticate;
     this._authorize = config.authorize;
@@ -120,7 +135,7 @@ export class DocSyncServer<TContext, S, O> {
             cb({
               docId: payload.docId,
               operations: null,
-              serializedDoc: null as S,
+              serializedDoc: null,
               clock: payload.clock,
             });
             return;
@@ -136,7 +151,34 @@ export class DocSyncServer<TContext, S, O> {
 
           // TODO: cache documents that have not been modified for append
           // only operations without performing read operations
-          const result = await this._provider.sync(payload);
+          // const result = await this._provider.sync(payload);
+
+          const result = await this._provider.transaction(
+            "readwrite",
+            async (ctx) => {
+              const { docId, clock, operations } = payload;
+              // 1. Get operations the client doesn't have (clock > clientClock)
+              //    We query BEFORE inserting so we don't return the client's own operations
+              const serverOps = await ctx.getOperations({ docId, clock });
+
+              // 2. Get server document only if its clock > client clock
+              const serverDoc = await ctx.getSerializedDoc(docId);
+
+              // 3. Save client operations if provided (returns the new clock)
+              const newClock = await ctx.saveOperations({
+                docId,
+                operations: operations ?? [],
+              });
+
+              // 4. Return data
+              return {
+                docId,
+                operations: serverOps.length > 0 ? serverOps.flat() : null,
+                serializedDoc: serverDoc?.serializedDoc ?? null,
+                clock: newClock,
+              };
+            },
+          );
           cb(result);
 
           // If client sent operations, notify other clients in the room
@@ -162,6 +204,15 @@ export class DocSyncServer<TContext, S, O> {
                 targetSocket.emit("dirty", { docId: payload.docId });
               }
             }
+          }
+
+          // Squash operations if threshold is reached
+          if (
+            payload.operations &&
+            payload.operations.length >= OPERATION_THRESHOLD
+          ) {
+            // TODO: Later
+            // await this._provider.squash(payload.docId);
           }
         },
         "delete-doc": async (payload, cb) => {

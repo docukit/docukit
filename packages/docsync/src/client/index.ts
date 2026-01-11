@@ -12,7 +12,7 @@ import type {
 import { ServerSync } from "./serverSync.js";
 
 export type LocalResolved<S, O> = {
-  provider: ClientProvider<S, O>;
+  provider: ClientProvider<S, O, "client">;
   identity: Identity;
 };
 
@@ -41,7 +41,11 @@ export class DocSyncClient<
     if (local) {
       this._localPromise = (async () => {
         const identity = await local.getIdentity();
-        const provider = new local.provider(identity) as ClientProvider<S, O>;
+        const provider = new local.provider(identity) as ClientProvider<
+          S,
+          O,
+          "client"
+        >;
 
         // Initialize BroadcastChannel with user-specific channel name
         // This ensures only tabs of the same user share operations

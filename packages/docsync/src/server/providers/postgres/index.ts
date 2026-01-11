@@ -1,12 +1,22 @@
 import { queryClient } from "./schema.js";
 import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "./schema.js";
-import type { ServerProvider } from "../../types.js";
 import type { DocSyncEvents } from "../../../shared/types.js";
 import { eq, gt, and } from "drizzle-orm";
+import type {
+  ClientProvider,
+  TransactionContext,
+} from "../../../client/types.js";
 
-export class PostgresProvider<S, O> implements ServerProvider<S, O> {
+export class PostgresProvider<S, O> implements ClientProvider<S, O, "server"> {
   private _db = drizzle(queryClient, { schema });
+
+  async transaction<T>(
+    _mode: "readonly" | "readwrite",
+    _callback: (ctx: TransactionContext<S, O, "server">) => Promise<T>,
+  ): Promise<T> {
+    throw new Error("not implemented yet");
+  }
 
   async sync(
     req: DocSyncEvents<S, O>["sync-operations"]["request"],

@@ -72,7 +72,7 @@ export type ClientConfig<
     // We want D, S, O to be inferred from the docBinding, not
     // from the provider
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    provider: new (identity: Identity) => ClientProvider<any, any>;
+    provider: new (identity: Identity) => ClientProvider<any, any, "client">;
     /**
      * Resolves the local storage identity.
      *
@@ -94,11 +94,11 @@ export type ClientConfig<
  * All operations share the same underlying transaction.
  */
 // prettier-ignore
-export type TransactionContext<S, O> = {
+export type TransactionContext<S, O, P extends "server" | "client"> = {
   getSerializedDoc(docId: string): Promise<{ serializedDoc: S; clock: number } | undefined>;
-  getOperations({ docId }: { docId: string }): Promise<O[][]>;
+  getOperations(arg: P extends "server" ? { docId: string; clock: number } : { docId: string }): Promise<O[][]>;
   deleteOperations(arg: { docId: string; count: number }): Promise<void>;
-  saveOperations(arg: { docId: string; operations: O[] }): Promise<void>;
+  saveOperations(arg: { docId: string; operations: O[] }): Promise<P extends "server" ? number : void>;
   saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
   // TODO:   // getDocIdsChangedSince
 };
@@ -107,13 +107,13 @@ export type TransactionContext<S, O> = {
  * Client-side storage provider.
  * All operations must be performed within a transaction.
  */
-export type ClientProvider<S, O> = {
+export type ClientProvider<S, O, P extends "server" | "client"> = {
   /**
    * Run operations in a single atomic transaction.
    * If any operation fails, all changes are rolled back.
    */
   transaction<T>(
     mode: "readonly" | "readwrite",
-    callback: (ctx: TransactionContext<S, O>) => Promise<T>,
+    callback: (ctx: TransactionContext<S, O, P>) => Promise<T>,
   ): Promise<T>;
 };

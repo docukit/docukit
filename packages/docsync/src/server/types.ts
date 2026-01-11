@@ -1,4 +1,8 @@
+/* eslint-disable @typescript-eslint/no-empty-object-type */
+import type { DocBinding } from "../shared/docBinding.js";
 import type { AuthorizeEvent, DocSyncEvents } from "../shared/types.js";
+import type { SerializedDoc } from "../shared/docBinding.js";
+import type { ClientProvider } from "../client/types.js";
 
 // replace this with shared types
 export type ServerProvider<S, O> = {
@@ -13,9 +17,15 @@ export type ServerProvider<S, O> = {
  * @typeParam TContext - Application-defined context shape returned by authenticate
  *                       and passed to authorize. Defaults to empty object.
  */
-export type ServerConfig<TContext, S, O> = {
+export type ServerConfig<
+  TContext,
+  D extends {},
+  S extends SerializedDoc,
+  O extends {},
+> = {
+  docBinding: DocBinding<D, S, O>;
   port?: number;
-  provider: new () => ServerProvider<S, O>;
+  provider: new () => ClientProvider<NoInfer<S>, NoInfer<O>, "server">;
 
   /**
    * Authenticates a WebSocket connection.

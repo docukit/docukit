@@ -50,17 +50,6 @@ export const createMockDocBinding = () =>
     { type: "test", extensions: [{ nodes: [TestNode, ChildNode] }] },
   ]);
 
-export const createValidConfig = () =>
-  createClientConfig({
-    server: {
-      url: "ws://localhost:8081",
-      auth: {
-        getToken: async () => "test-token",
-      },
-    },
-    docBinding: createMockDocBinding(),
-  });
-
 /**
  * Generates a unique userId for test isolation.
  * Each test can use its own userId to get an isolated IndexedDB database.
@@ -68,7 +57,7 @@ export const createValidConfig = () =>
 let testUserCounter = 0;
 export const generateTestUserId = () => `test-user-${++testUserCounter}`;
 
-export const createValidConfigWithLocal = (userId?: string) =>
+export const createValidConfig = (userId?: string) =>
   createClientConfig({
     server: {
       url: "ws://localhost:8081",
@@ -90,48 +79,33 @@ export const createValidConfigWithLocal = (userId?: string) =>
 // Client Factory
 // ============================================================================
 
-export const createClient = (withLocal = false, userId?: string) =>
-  new DocSyncClient(
-    withLocal ? createValidConfigWithLocal(userId) : createValidConfig(),
-  );
+export const createClient = (userId?: string) =>
+  new DocSyncClient(createValidConfig(userId));
 
 /**
  * Creates a client with a spy on docBinding.removeListeners.
  * Useful for testing that listeners are properly cleaned up.
  */
-export const createClientWithRemoveListenersSpy = (
-  withLocal = false,
-  userId?: string,
-) => {
+export const createClientWithRemoveListenersSpy = (userId?: string) => {
   const docBinding = createMockDocBinding();
   const removeListenersSpy = vi.spyOn(docBinding, "removeListeners");
 
-  const config = withLocal
-    ? createClientConfig({
-        server: {
-          url: "ws://localhost:8081",
-          auth: {
-            getToken: async () => "test-token",
-          },
-        },
-        docBinding,
-        local: {
-          provider: IndexedDBProvider,
-          getIdentity: async () => ({
-            userId: userId ?? generateTestUserId(),
-            secret: "test-secret",
-          }),
-        },
-      })
-    : createClientConfig({
-        server: {
-          url: "ws://localhost:8081",
-          auth: {
-            getToken: async () => "test-token",
-          },
-        },
-        docBinding,
-      });
+  const config = createClientConfig({
+    server: {
+      url: "ws://localhost:8081",
+      auth: {
+        getToken: async () => "test-token",
+      },
+    },
+    docBinding,
+    local: {
+      provider: IndexedDBProvider,
+      getIdentity: async () => ({
+        userId: userId ?? generateTestUserId(),
+        secret: "test-secret",
+      }),
+    },
+  });
 
   const client = new DocSyncClient(config);
   return { client, removeListenersSpy };
