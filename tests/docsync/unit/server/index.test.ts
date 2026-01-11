@@ -11,41 +11,39 @@ import {
   syncOperations,
 } from "./utils.js";
 
-describe("DocSyncServer", () => {
-  describe("authentication", () => {
-    test("rejects without token", async () => {
-      createServer();
-      const error = await waitForError(connectAnonymous());
-      expect(error.message).toContain("no token provided");
-    });
-
-    test("rejects invalid token", async () => {
-      createServer();
-      const error = await waitForError(connect("bad-token"));
-      expect(error.message).toContain("invalid token");
-    });
-
-    test("accepts valid token", async () => {
-      createServer();
-      const socket = connect("valid-user1");
-      await waitForConnect(socket);
-      expect(socket.connected).toBe(true);
-    });
+describe("authentication", () => {
+  test("rejects without token", async () => {
+    createServer();
+    const error = await waitForError(connectAnonymous());
+    expect(error.message).toContain("no token provided");
   });
 
-  describe("sync-operations", () => {
-    test("returns incremented clock", async () => {
-      createServer();
-      const socket = connect("valid-user1");
-      await waitForConnect(socket);
+  test("rejects invalid token", async () => {
+    createServer();
+    const error = await waitForError(connect("bad-token"));
+    expect(error.message).toContain("invalid token");
+  });
 
-      const res = await syncOperations(socket, {
-        docId: "doc-1",
-        operations: [{ type: "insert" }],
-        clock: 0,
-      });
+  test("accepts valid token", async () => {
+    createServer();
+    const socket = connect("valid-user1");
+    await waitForConnect(socket);
+    expect(socket.connected).toBe(true);
+  });
+});
 
-      expect(res).toMatchObject({ docId: "doc-1", clock: 1 });
+describe("sync-operations", () => {
+  test("returns incremented clock", async () => {
+    createServer();
+    const socket = connect("valid-user1");
+    await waitForConnect(socket);
+
+    const res = await syncOperations(socket, {
+      docId: "doc-1",
+      operations: [{ type: "insert" }],
+      clock: 0,
     });
+
+    expect(res).toMatchObject({ docId: "doc-1", clock: 1 });
   });
 });
