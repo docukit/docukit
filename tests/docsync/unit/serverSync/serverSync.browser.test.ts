@@ -34,44 +34,42 @@ describe("ServerSync", () => {
 
   describe("saveRemote", () => {
     test("should call _doPush when status is idle", async () => {
-      const mockApi = createMockApi();
-      const { serverSync, provider } = await createServerSync(mockApi);
-      const doPushSpy = vi.spyOn(
-        serverSync,
-        "_doPush" as keyof typeof serverSync,
-      );
+      const { client, provider } = await createServerSync();
+      const doPushSpy = vi.spyOn(client, "_doPush" as keyof typeof client);
       const docId = generateDocId();
 
       await saveOperations(provider, docId);
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
 
       expect(doPushSpy).toHaveBeenCalledWith({ docId });
     });
 
     test("should set status to pushing-with-pending when called during a push", async () => {
+      const { client, provider } = await createServerSync();
       const mockApi = createMockApi();
       mockApi.request.mockImplementation(
         () => new Promise((r) => setTimeout(r, 50)),
       );
-      const { serverSync, provider } = await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
       const docId = generateDocId();
 
       await saveOperations(provider, docId);
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
 
-      expect(serverSync["_pushStatusByDocId"].get(docId)).toBe(
+      expect(client["_pushStatusByDocId"].get(docId)).toBe(
         "pushing-with-pending",
       );
     });
 
     test("should allow concurrent pushes for different docIds", async () => {
+      const { client, provider } = await createServerSync();
       const mockApi = createMockApi();
       mockApi.request.mockImplementation(
         () => new Promise((r) => setTimeout(r, 20)),
       );
-      const { serverSync, provider } = await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
       const docId1 = generateDocId();
       const docId2 = generateDocId();
 
@@ -80,39 +78,38 @@ describe("ServerSync", () => {
         await ctx.saveOperations({ docId: docId2, operations: [emptyOps()] });
       });
 
-      serverSync.saveRemote({ docId: docId1 });
-      serverSync.saveRemote({ docId: docId2 });
+      client.saveRemote({ docId: docId1 });
+      client.saveRemote({ docId: docId2 });
       await tick();
 
-      expect(serverSync["_pushStatusByDocId"].get(docId1)).toBe("pushing");
-      expect(serverSync["_pushStatusByDocId"].get(docId2)).toBe("pushing");
+      expect(client["_pushStatusByDocId"].get(docId1)).toBe("pushing");
+      expect(client["_pushStatusByDocId"].get(docId2)).toBe("pushing");
     });
 
     test("should be idempotent for same docId during push", async () => {
+      const { client, provider } = await createServerSync();
       const mockApi = createMockApi();
       mockApi.request.mockImplementation(
         () => new Promise((r) => setTimeout(r, 50)),
       );
-      const { serverSync, provider } = await createServerSync(mockApi);
-      const doPushSpy = vi.spyOn(
-        serverSync,
-        "_doPush" as keyof typeof serverSync,
-      );
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
+      const doPushSpy = vi.spyOn(client, "_doPush" as keyof typeof client);
       const docId = generateDocId();
 
       await saveOperations(provider, docId);
-      serverSync.saveRemote({ docId });
-      serverSync.saveRemote({ docId });
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
+      client.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       expect(doPushSpy).toHaveBeenCalledTimes(1);
-      expect(serverSync["_pushStatusByDocId"].get(docId)).toBe(
+      expect(client["_pushStatusByDocId"].get(docId)).toBe(
         "pushing-with-pending",
       );
     });
 
     test("should handle rapid successive calls correctly", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
       let callCount = 0;
       const docId = generateDocId();
@@ -125,19 +122,18 @@ describe("ServerSync", () => {
           clock: callCount,
         });
       });
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
 
       await setupDocWithOperations(docBinding, provider, docId);
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
 
       await saveOperations(provider, docId);
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
 
       await tick();
 
       expect(mockApi.request).toHaveBeenCalledTimes(2);
-      expect(serverSync["_pushStatusByDocId"].get(docId)).toBe("idle");
+      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
     });
   });
 
@@ -147,9 +143,9 @@ describe("ServerSync", () => {
 
   describe("_doPush - Basic Flow", () => {
     test("should get operations from provider", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
       const docId = generateDocId();
 
       const testOperations = [ops({ test: "data1" }), ops({ test: "data2" })];
@@ -167,7 +163,7 @@ describe("ServerSync", () => {
         });
       });
 
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       expect(mockApi.request).toHaveBeenCalledWith("sync-operations", {
@@ -178,31 +174,31 @@ describe("ServerSync", () => {
     });
 
     test("should set status to pushing at start", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
       const docId = generateDocId();
       let statusDuringPush: string | undefined;
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
       mockApi.request.mockImplementation(async () => {
-        statusDuringPush = serverSync["_pushStatusByDocId"].get(docId);
+        statusDuringPush = client["_pushStatusByDocId"].get(docId);
         return { docId, operations: [], serializedDoc: null, clock: 1 };
       });
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
 
       await setupDocWithOperations(docBinding, provider, docId);
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       expect(statusDuringPush).toBe("pushing");
     });
 
     test("should send operations to API via sync-operations endpoint", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
       const docId = generateDocId();
 
       await setupDocWithOperations(docBinding, provider, docId);
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       expect(mockApi.request).toHaveBeenCalledWith(
@@ -212,13 +208,13 @@ describe("ServerSync", () => {
     });
 
     test("should include docId and clock in request", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
       const docId = generateDocId();
 
       await setupDocWithOperations(docBinding, provider, docId);
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       expect(mockApi.request).toHaveBeenCalledWith(
@@ -234,6 +230,7 @@ describe("ServerSync", () => {
 
   describe("_doPush - Client/Server Operation Combinations", () => {
     test("should handle client sends operations + server returns no operations", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
       mockApi.request.mockResolvedValue({
         docId: "test-doc",
@@ -241,15 +238,14 @@ describe("ServerSync", () => {
         serializedDoc: null,
         clock: 1,
       });
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
       const docId = generateDocId();
 
       await setupDocWithOperations(docBinding, provider, docId, {
         operations: [ops({ test: "data" })],
       });
 
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       expect(mockApi.request).toHaveBeenCalledWith(
@@ -260,10 +256,11 @@ describe("ServerSync", () => {
         }),
       );
       expect(await getOperationsCount(provider, docId)).toBe(0);
-      expect(serverSync["_pushStatusByDocId"].get(docId)).toBe("idle");
+      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
     });
 
     test("should handle client sends operations + server returns operations", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
       const docId = generateDocId();
 
@@ -277,15 +274,13 @@ describe("ServerSync", () => {
         serializedDoc: null,
         clock: 1,
       });
-
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
 
       await setupDocWithOperations(docBinding, provider, docId, {
         operations: [ops({ client: "op" })],
       });
 
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       expect(mockApi.request).toHaveBeenCalledWith(
@@ -296,10 +291,11 @@ describe("ServerSync", () => {
         }),
       );
       expect(await getOperationsCount(provider, docId)).toBe(0);
-      expect(serverSync["_pushStatusByDocId"].get(docId)).toBe("idle");
+      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
     });
 
     test("should handle client sends no operations + server returns no operations (pull with no updates)", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
       mockApi.request.mockResolvedValue({
         docId: "test-doc",
@@ -307,8 +303,7 @@ describe("ServerSync", () => {
         serializedDoc: null,
         clock: 1,
       });
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
       const docId = generateDocId();
 
       // Setup a document without pending operations (pure pull scenario)
@@ -321,7 +316,7 @@ describe("ServerSync", () => {
         });
       });
 
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       // Should call API even with no local operations (this is a pull)
@@ -332,15 +327,13 @@ describe("ServerSync", () => {
           operations: [],
         }),
       );
-      expect(serverSync["_pushStatusByDocId"].get(docId)).toBe("idle");
+      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
     });
 
     test("should handle client sends no operations + server returns operations (pull with updates)", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
       const docId = generateDocId();
-
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
 
       // Create server operations by modifying a doc
       const { doc: serverDoc } = docBinding.new("test", docId);
@@ -366,6 +359,7 @@ describe("ServerSync", () => {
         serializedDoc: null,
         clock: 1,
       });
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
 
       // Setup a document without pending operations (pure pull scenario)
       const { doc: initialDoc } = docBinding.new("test", docId);
@@ -378,7 +372,7 @@ describe("ServerSync", () => {
       });
 
       // Trigger pull - client has no operations but wants server's updates
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       // Should call API with empty operations (this is a pull)
@@ -402,7 +396,7 @@ describe("ServerSync", () => {
       storedDoc.root.children().forEach(() => storedChildren++);
       // Should have the 2 server children
       expect(storedChildren).toBe(2);
-      expect(serverSync["_pushStatusByDocId"].get(docId)).toBe("idle");
+      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
     });
   });
 
@@ -412,9 +406,9 @@ describe("ServerSync", () => {
 
   describe("_doPush - Success Path", () => {
     test("should delete operations after successful push", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
       const docId = generateDocId();
 
       await setupDocWithOperations(docBinding, provider, docId, {
@@ -423,13 +417,14 @@ describe("ServerSync", () => {
 
       expect(await getOperationsCount(provider, docId)).toBe(2);
 
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       expect(await getOperationsCount(provider, docId)).toBe(0);
     });
 
     test("should delete exact count of pushed operations", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
       const docId = generateDocId();
       mockApi.request.mockImplementation(
@@ -447,18 +442,17 @@ describe("ServerSync", () => {
             ),
           ),
       );
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
 
       await setupDocWithOperations(docBinding, provider, docId, {
         operations: [ops({ batch: "1" }), ops({ batch: "1" })],
       });
 
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       await saveOperations(provider, docId, [ops({ batch: "2" })]);
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
 
       await tick(100);
 
@@ -467,9 +461,9 @@ describe("ServerSync", () => {
     });
 
     test("should consolidate operations into serialized doc after push", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
       const docId = generateDocId();
 
       const { doc } = docBinding.new("test", docId);
@@ -486,36 +480,36 @@ describe("ServerSync", () => {
         await ctx.saveOperations({ docId, operations: [emptyOps()] });
       });
 
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       expect(await getStoredClock(provider, docId)).toBe(1);
     });
 
     test("should increment clock after consolidation", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
       const docId = generateDocId();
 
       await setupDocWithOperations(docBinding, provider, docId, { clock: 5 });
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       expect(await getStoredClock(provider, docId)).toBe(6);
     });
 
     test("should set status to idle after successful push", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
       const docId = generateDocId();
 
       await setupDocWithOperations(docBinding, provider, docId);
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
-      expect(serverSync["_pushStatusByDocId"].get(docId)).toBe("idle");
+      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
     });
   });
 
@@ -525,6 +519,7 @@ describe("ServerSync", () => {
 
   describe("_doPush - Retry Logic", () => {
     test("should retry if more operations were queued during push (pushing-with-pending)", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
       const docId = generateDocId();
       mockApi.request.mockImplementation(
@@ -542,15 +537,14 @@ describe("ServerSync", () => {
             ),
           ),
       );
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
 
       await setupDocWithOperations(docBinding, provider, docId);
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       await saveOperations(provider, docId);
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
 
       await tick(100);
 
@@ -558,6 +552,7 @@ describe("ServerSync", () => {
     });
 
     test("should retry on API failure", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
       const docId = generateDocId();
       let callCount = 0;
@@ -571,25 +566,23 @@ describe("ServerSync", () => {
           clock: 1,
         });
       });
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
 
       await setupDocWithOperations(docBinding, provider, docId);
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       expect(mockApi.request).toHaveBeenCalledTimes(2);
-      expect(serverSync["_pushStatusByDocId"].get(docId)).toBe("idle");
+      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
     });
 
     test("should set status to idle before retry", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
       const docId = generateDocId();
       const statusHistory: (string | undefined)[] = [];
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
       mockApi.request.mockImplementation(() => {
-        statusHistory.push(serverSync["_pushStatusByDocId"].get(docId));
+        statusHistory.push(client["_pushStatusByDocId"].get(docId));
         if (statusHistory.length === 1)
           return Promise.reject(new Error("Network error"));
         return Promise.resolve({
@@ -599,15 +592,17 @@ describe("ServerSync", () => {
           clock: 1,
         });
       });
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
 
       await setupDocWithOperations(docBinding, provider, docId);
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       expect(statusHistory).toStrictEqual(["pushing", "pushing"]);
     });
 
     test("should handle retry with new operations", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
       const docId = generateDocId();
       const receivedOperations: unknown[] = [];
@@ -622,17 +617,16 @@ describe("ServerSync", () => {
           });
         },
       );
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
 
       await setupDocWithOperations(docBinding, provider, docId, {
         operations: [ops({ op: "1" })],
       });
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       await saveOperations(provider, docId, [ops({ op: "2" })]);
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
 
       await tick();
 
@@ -648,6 +642,7 @@ describe("ServerSync", () => {
 
   describe("_doPush - Concurrency", () => {
     test("should not push same doc twice simultaneously", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
       const docId = generateDocId();
       let concurrentCalls = 0;
@@ -659,13 +654,12 @@ describe("ServerSync", () => {
         concurrentCalls--;
         return { docId, operations: [], serializedDoc: null, clock: 1 };
       });
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
 
       await setupDocWithOperations(docBinding, provider, docId);
-      serverSync.saveRemote({ docId });
-      serverSync.saveRemote({ docId });
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
+      client.saveRemote({ docId });
+      client.saveRemote({ docId });
 
       await tick();
 
@@ -673,6 +667,7 @@ describe("ServerSync", () => {
     });
 
     test("should queue operations that arrive during push", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
       const docId = generateDocId();
       mockApi.request.mockImplementation(
@@ -690,20 +685,19 @@ describe("ServerSync", () => {
             ),
           ),
       );
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
 
       await setupDocWithOperations(docBinding, provider, docId, {
         operations: [ops({ first: "true" })],
       });
 
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
 
       await saveOperations(provider, docId, [ops({ second: "true" })]);
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await saveOperations(provider, docId, [ops({ third: "true" })]);
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
 
       await tick(100);
 
@@ -715,6 +709,7 @@ describe("ServerSync", () => {
     });
 
     test("should handle interleaved operations from different docs", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
       const docId1 = generateDocId();
       const docId2 = generateDocId();
@@ -731,15 +726,14 @@ describe("ServerSync", () => {
           };
         },
       );
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
 
       for (const docId of [docId1, docId2]) {
         await setupDocWithOperations(docBinding, provider, docId);
       }
 
-      serverSync.saveRemote({ docId: docId1 });
-      serverSync.saveRemote({ docId: docId2 });
+      client.saveRemote({ docId: docId1 });
+      client.saveRemote({ docId: docId2 });
 
       await tick();
 
@@ -749,6 +743,7 @@ describe("ServerSync", () => {
     });
 
     test("should handle status changes during async operations", async () => {
+      const { client, docBinding, provider } = await createServerSync();
       const mockApi = createMockApi();
       const docId = generateDocId();
       mockApi.request.mockImplementation(
@@ -766,22 +761,21 @@ describe("ServerSync", () => {
             ),
           ),
       );
-      const { serverSync, docBinding, provider } =
-        await createServerSync(mockApi);
+      client["_api"] = mockApi as unknown as (typeof client)["_api"];
 
       await setupDocWithOperations(docBinding, provider, docId);
 
-      serverSync.saveRemote({ docId });
+      client.saveRemote({ docId });
       await tick();
-      expect(serverSync["_pushStatusByDocId"].get(docId)).toBe("pushing");
+      expect(client["_pushStatusByDocId"].get(docId)).toBe("pushing");
 
-      serverSync.saveRemote({ docId });
-      expect(serverSync["_pushStatusByDocId"].get(docId)).toBe(
+      client.saveRemote({ docId });
+      expect(client["_pushStatusByDocId"].get(docId)).toBe(
         "pushing-with-pending",
       );
 
       await tick(100);
-      expect(serverSync["_pushStatusByDocId"].get(docId)).toBe("idle");
+      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
     });
   });
 });

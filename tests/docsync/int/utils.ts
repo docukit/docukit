@@ -153,13 +153,11 @@ export const testWrapper = async (
 
     for (const client of allClients) {
       // Close socket if exists
-      const serverSync = client["_serverSync"];
-      if (serverSync) {
-        const socket = serverSync["_api"]["_socket"];
-        if (socket?.connected) {
-          socket.disconnect();
-        }
+      const socket = client["_api"]["_socket"];
+      if (socket?.connected) {
+        socket.disconnect();
       }
+
       // Close broadcast channel if exists
       const bc = client["_broadcastChannel"];
       if (bc) {
@@ -263,7 +261,7 @@ const createClientUtils = async (
   let cleanup: (() => void) | undefined;
   let cachedDoc: Doc | undefined;
 
-  const api = client["_serverSync"]["_api"];
+  const api = client["_api"];
 
   const reqSpy = vi.spyOn(api, "request");
   const local = await client["_localPromise"];

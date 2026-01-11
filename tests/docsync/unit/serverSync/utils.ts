@@ -3,17 +3,10 @@ import {
   DocSyncClient,
   IndexedDBProvider,
   type ClientConfig,
-  type SerializedDoc,
 } from "@docnode/docsync/client";
 import { DocNodeBinding } from "@docnode/docsync/docnode";
 import { defineNode, type Doc, type JsonDoc, type Operations } from "docnode";
 import { ulid } from "ulid";
-
-// prettier-ignore
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-type ServerSync<D extends {}, S extends SerializedDoc, O extends {}> = NonNullable<
-  DocSyncClient<D, S, O>["_serverSync"]
->;
 
 // ============================================================================
 // Node Definitions
@@ -82,8 +75,8 @@ export const createMockApi = (): MockApi => ({
 // ServerSync Factory
 // ============================================================================
 
+// TODO: these are private properties of client, should access them through bracket notation
 export interface ServerSyncTestContext {
-  serverSync: ServerSync<Doc, JsonDoc, Operations>;
   docBinding: ReturnType<typeof createDocBinding>;
   provider: IndexedDBProvider<JsonDoc, Operations>;
   client: DocSyncClient<Doc, JsonDoc, Operations>;
@@ -93,9 +86,7 @@ export interface ServerSyncTestContext {
  * Creates a DocSyncClient and accesses its internal ServerSync.
  * Returns the ServerSync, docBinding, and provider for test manipulation.
  */
-export const createServerSync = async (
-  mockApi: MockApi,
-): Promise<ServerSyncTestContext> => {
+export const createServerSync = async (): Promise<ServerSyncTestContext> => {
   const docBinding = createDocBinding();
   const userId = generateTestUserId();
 
@@ -119,12 +110,7 @@ export const createServerSync = async (
 
   const provider = local.provider as IndexedDBProvider<JsonDoc, Operations>;
 
-  // Access the internal ServerSync and replace its API with our mock
-  const serverSync = client["_serverSync"];
-  if (!serverSync) throw new Error("ServerSync not initialized");
-  serverSync["_api"] = mockApi as unknown as (typeof serverSync)["_api"];
-
-  return { serverSync, docBinding, provider, client };
+  return { docBinding, provider, client };
 };
 
 // ============================================================================
