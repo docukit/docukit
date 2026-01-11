@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { emptyIDB, testWrapper, tick } from "./utils.js";
 
-describe("Local-First 2.0", () => {
+describe("Local-First", () => {
   test("cannot load doc twice", async () => {
     await testWrapper(async (clients) => {
       // Initially doc is undefined
@@ -215,6 +215,63 @@ describe("Local-First 2.0", () => {
       await reference.assertIDBDoc({ clock: 2, doc: ["A", "B"], ops: [] });
       await otherTab.assertIDBDoc({ clock: 2, doc: ["A", "B"], ops: [] });
       await otherDevice.assertIDBDoc({ clock: 2, doc: ["A", "B"], ops: [] });
+    });
+  });
+
+  test("both tabs add child -> connect", async () => {
+    await testWrapper(async ({ reference, otherDevice, otherTab }) => {
+      await reference.loadDoc();
+      await otherTab.loadDoc();
+      await otherDevice.loadDoc();
+
+      // Wait for all clients to subscribe to the room
+      await tick();
+
+      reference.disconnect();
+      otherTab.disconnect();
+      otherDevice.disconnect();
+
+      // fastest operations - synchronous
+      reference.addChild("A");
+      otherTab.addChild("B");
+      otherDevice.addChild("C");
+      reference.assertMemoryDoc(["A"]);
+      otherTab.assertMemoryDoc(["B"]);
+      otherDevice.assertMemoryDoc(["C"]);
+      await reference.assertIDBDoc({ clock: 0, doc: [], ops: [] });
+
+      // broadcastChannel
+      reference.assertMemoryDoc(["A", "B"]);
+      // TODO: find a way to deterministically insert with conflicts
+      otherTab.assertMemoryDoc(["B", "A"]);
+      otherDevice.assertMemoryDoc(["C"]);
+      await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["A", "B"] });
+      await otherTab.assertIDBDoc({ clock: 0, doc: [], ops: ["A", "B"] });
+      await otherDevice.assertIDBDoc({ clock: 0, doc: [], ops: ["C"] });
+
+      // without connecting, ws doesn't work
+      await tick(50);
+      otherDevice.assertMemoryDoc(["C"]);
+      reference.assertMemoryDoc(["A", "B"]);
+      otherTab.assertMemoryDoc(["B", "A"]);
+
+      // connecting
+      reference.connect();
+      otherTab.connect();
+      otherDevice.connect();
+      await tick(40);
+
+      reference.assertMemoryDoc(["A", "B", "C"]);
+      otherTab.assertMemoryDoc(["B", "A", "C"]);
+      // otherDevice added B locally first, then received A from server
+      // CRDT ordering may differ based on insertion order vs deterministic ID ordering
+      // TODO: find a way to deterministically insert with conflicts
+      otherDevice.assertMemoryDoc(["C", "A", "B"]);
+
+      await reference.assertIDBDoc({ clock: 3, doc: ["A", "B", "C"], ops: [] });
+      await otherTab.assertIDBDoc({ clock: 3, doc: ["A", "B", "C"], ops: [] });
+      // prettier-ignore
+      await otherDevice.assertIDBDoc({ clock: 3, doc: ["A", "B", "C"], ops: [] });
     });
   });
 });
