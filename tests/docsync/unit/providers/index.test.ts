@@ -1,6 +1,6 @@
 import { InMemoryServerProvider } from "@docnode/docsync/testing";
 import type { Provider } from "../../../../packages/docsync/dist/src/client/types.js";
-import { PostgresProvider } from "../../../../packages/docsync/dist/src/server/providers/postgres/index.js";
+// import { PostgresProvider } from "../../../../packages/docsync/dist/src/server/providers/postgres/index.js";
 import { IndexedDBProvider } from "../../../../packages/docsync/dist/src/client/providers/indexeddb.js";
 import { test } from "vitest";
 
@@ -15,9 +15,9 @@ test.todo("in memory provider", () => {
   testProvider("server", new InMemoryServerProvider());
 });
 
-test.todo("postgres provider", () => {
-  testProvider("server", new PostgresProvider());
-});
+// test.todo("postgres provider", () => {
+//   testProvider("server", new PostgresProvider());
+// });
 
 test.todo("indexeddb provider", () => {
   testProvider(
