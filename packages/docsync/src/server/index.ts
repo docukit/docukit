@@ -134,6 +134,8 @@ export class DocSyncServer<TContext, S, O> {
             await socket.join(`doc:${payload.docId}`);
           }
 
+          // TODO: cache documents that have not been modified for append
+          // only operations without performing read operations
           const result = await this._provider.sync(payload);
           cb(result);
 
