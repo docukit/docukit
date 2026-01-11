@@ -3,7 +3,7 @@ import type { DocBinding, SerializedDoc } from "../shared/docBinding.js";
 import type {
   BroadcastMessage,
   ClientConfig,
-  ClientProvider,
+  Provider,
   DocData,
   GetDocArgs,
   Identity,
@@ -12,7 +12,7 @@ import type {
 import { API } from "./utils.js";
 
 export type LocalResolved<S, O> = {
-  provider: ClientProvider<S, O, "client">;
+  provider: Provider<S, O, "client">;
   identity: Identity;
 };
 
@@ -43,11 +43,7 @@ export class DocSyncClient<
     // Initialize local provider (if configured)
     this._localPromise = (async () => {
       const identity = await local.getIdentity();
-      const provider = new local.provider(identity) as ClientProvider<
-        S,
-        O,
-        "client"
-      >;
+      const provider = new local.provider(identity) as Provider<S, O, "client">;
 
       // Initialize BroadcastChannel with user-specific channel name
       // This ensures only tabs of the same user share operations

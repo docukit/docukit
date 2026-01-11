@@ -1,4 +1,4 @@
-import type { ClientProvider, TransactionContext } from "../../client/types.js";
+import type { Provider, TransactionContext } from "../../client/types.js";
 
 interface StoredDoc<S> {
   serializedDoc: S;
@@ -14,9 +14,7 @@ interface StoredOperation<O> {
  * In-memory server provider for testing.
  * Stores documents and operations in memory - data is lost when the process ends.
  */
-export class InMemoryServerProvider<S, O>
-  implements ClientProvider<S, O, "server">
-{
+export class InMemoryServerProvider<S, O> implements Provider<S, O, "server"> {
   private _docs = new Map<string, StoredDoc<S>>();
   private _operations = new Map<string, StoredOperation<O>[]>();
   private _clockCounterByDocId = new Map<string, number>();

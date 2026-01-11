@@ -2,7 +2,6 @@
 // (integration tests run server in globalSetup, excluded from coverage)
 
 import { describe, it, expect } from "vitest";
-import { InMemoryServerProvider } from "@docnode/docsync/testing";
 import {
   createServer,
   connect,
@@ -48,33 +47,5 @@ describe("DocSyncServer", () => {
 
       expect(res).toMatchObject({ docId: "doc-1", clock: 1 });
     });
-  });
-});
-
-describe.todo("InMemoryServerProvider", () => {
-  it("stores and retrieves operations by clock", async () => {
-    const _provider = new InMemoryServerProvider();
-
-    // TODO: Provider sync is deprecated.
-    const sync = (ops: unknown[] | null, clock: number) =>
-      new Promise((resolve) => {
-        resolve({ docId: "doc-1", operations: ops, clock });
-      });
-    // provider.sync({ docId: "doc-1", operations: ops, clock });
-
-    // Client sends operation → clock increments
-    expect(await sync([{ type: "op1" }], 0)).toMatchObject({
-      clock: 1,
-      operations: null,
-    });
-
-    // Another client at clock 0 → receives the operation
-    expect(await sync(null, 0)).toMatchObject({
-      clock: 1,
-      operations: [{ type: "op1" }],
-    });
-
-    // Client at clock 1 → no new operations
-    expect(await sync(null, 1)).toMatchObject({ operations: null });
   });
 });

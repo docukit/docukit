@@ -1,5 +1,5 @@
 import { openDB, type IDBPDatabase, type IDBPTransaction } from "idb";
-import type { ClientProvider, Identity, TransactionContext } from "../types.js";
+import type { Provider, Identity, TransactionContext } from "../types.js";
 import { type DBSchema } from "idb";
 import type { SerializedDocPayload } from "../../shared/types.js";
 
@@ -20,7 +20,7 @@ interface DocNodeIDB<S, O> extends DBSchema {
 type StoreNames = ("docs" | "operations")[];
 type IDBTx<S, O> = IDBPTransaction<DocNodeIDB<S, O>, StoreNames, "readwrite">;
 
-export class IndexedDBProvider<S, O> implements ClientProvider<S, O, "client"> {
+export class IndexedDBProvider<S, O> implements Provider<S, O, "client"> {
   private _dbPromise: Promise<IDBPDatabase<DocNodeIDB<S, O>>>;
 
   constructor(identity: Identity) {

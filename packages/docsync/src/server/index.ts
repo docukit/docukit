@@ -8,7 +8,7 @@ import {
 } from "../shared/types.js";
 import type { ServerConfig } from "./types.js";
 import type { DocBinding, SerializedDoc } from "../shared/docBinding.js";
-import type { ClientProvider } from "../client/types.js";
+import type { Provider } from "../client/types.js";
 
 type AuthenticatedContext<TContext> = {
   userId: string;
@@ -26,7 +26,7 @@ export class DocSyncServer<
 > {
   private _io: ServerSocket<S, O>;
   private _docBinding: DocBinding<D, S, O>;
-  private _provider: ClientProvider<S, O, "server">;
+  private _provider: Provider<S, O, "server">;
   private _authenticate: ServerConfig<TContext, D, S, O>["authenticate"];
   private _authorize?: ServerConfig<TContext, D, S, O>["authorize"];
   // TODO: see comment in sync-operations

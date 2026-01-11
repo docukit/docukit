@@ -72,7 +72,7 @@ export type ClientConfig<
     // We want D, S, O to be inferred from the docBinding, not
     // from the provider
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    provider: new (identity: Identity) => ClientProvider<any, any, "client">;
+    provider: new (identity: Identity) => Provider<any, any, "client">;
     /**
      * Resolves the local storage identity.
      *
@@ -107,7 +107,7 @@ export type TransactionContext<S, O, P extends "server" | "client"> = {
  * Client-side storage provider.
  * All operations must be performed within a transaction.
  */
-export type ClientProvider<S, O, P extends "server" | "client"> = {
+export type Provider<S, O, P extends "server" | "client"> = {
   /**
    * Run operations in a single atomic transaction.
    * If any operation fails, all changes are rolled back.

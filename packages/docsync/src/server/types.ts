@@ -2,7 +2,7 @@
 import type { DocBinding } from "../shared/docBinding.js";
 import type { AuthorizeEvent, DocSyncEvents } from "../shared/types.js";
 import type { SerializedDoc } from "../shared/docBinding.js";
-import type { ClientProvider } from "../client/types.js";
+import type { Provider } from "../client/types.js";
 
 // replace this with shared types
 export type ServerProvider<S, O> = {
@@ -25,7 +25,7 @@ export type ServerConfig<
 > = {
   docBinding: DocBinding<D, S, O>;
   port?: number;
-  provider: new () => ClientProvider<NoInfer<S>, NoInfer<O>, "server">;
+  provider: new () => Provider<NoInfer<S>, NoInfer<O>, "server">;
 
   /**
    * Authenticates a WebSocket connection.

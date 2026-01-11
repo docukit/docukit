@@ -74,7 +74,7 @@ export type ClientConfig = {
       secret: string;
     }>;
 
-    provider: new () => ClientProvider;
+    provider: new () => Provider;
   };
 };
 ````
