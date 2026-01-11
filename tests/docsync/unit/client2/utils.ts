@@ -22,7 +22,7 @@ let testUserCounter = 0;
 
 /** Generates a unique userId for test isolation (separate IndexedDB databases) */
 export const generateTestUserId = () =>
-  `serversync-test-${Date.now()}-${++testUserCounter}`;
+  `client-test-${Date.now()}-${++testUserCounter}`;
 
 /** Generates a unique docId (must be lowercase ULID) */
 export const generateDocId = () => ulid().toLowerCase();
