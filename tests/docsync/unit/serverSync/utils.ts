@@ -48,21 +48,13 @@ export const ops = (data?: Record<string, string>): Operations =>
 export const emptyOps = (): Operations => [[], {}] as Operations;
 
 // ============================================================================
-// ServerSync Factory
+// Client Factory
 // ============================================================================
 
-// TODO: these are private properties of client, should access them through bracket notation
-export interface ServerSyncTestContext {
-  docBinding: ReturnType<typeof createDocBinding>;
-  provider: IndexedDBProvider<JsonDoc, Operations>;
-  client: DocSyncClient<Doc, JsonDoc, Operations>;
-}
-
 /**
- * Creates a DocSyncClient and accesses its internal ServerSync.
- * Returns the ServerSync, docBinding, and provider for test manipulation.
+ * Creates a DocSyncClient for testing.
  */
-export const createServerSync = async (): Promise<ServerSyncTestContext> => {
+export const createClient = async () => {
   const docBinding = createDocBinding();
   const userId = generateTestUserId();
 
@@ -80,13 +72,10 @@ export const createServerSync = async (): Promise<ServerSyncTestContext> => {
 
   const client = new DocSyncClient(config);
 
-  // Wait for lazy initialization to create the provider and ServerSync
-  const local = await client["_localPromise"];
-  if (!local) throw new Error("Local not initialized");
+  // Wait for lazy initialization
+  await client["_localPromise"];
 
-  const provider = local.provider as IndexedDBProvider<JsonDoc, Operations>;
-
-  return { docBinding, provider, client };
+  return client;
 };
 
 // ============================================================================
@@ -106,8 +95,7 @@ export const tick = (ms = 3) =>
  * This is the common setup pattern used across most tests.
  */
 export const setupDocWithOperations = async (
-  docBinding: ReturnType<typeof createDocBinding>,
-  provider: IndexedDBProvider<JsonDoc, Operations>,
+  client: DocSyncClient<Doc, JsonDoc, Operations>,
   docId: string,
   options: {
     clock?: number;
@@ -115,6 +103,8 @@ export const setupDocWithOperations = async (
   } = {},
 ) => {
   const { clock = 0, operations = [emptyOps()] } = options;
+  const docBinding = client["_docBinding"];
+  const provider = (await client["_localPromise"]).provider;
   const { doc } = docBinding.new("test", docId);
 
   await provider.transaction("readwrite", async (ctx) => {
@@ -134,10 +124,11 @@ export const setupDocWithOperations = async (
  * Used when testing operations-only scenarios.
  */
 export const saveOperations = async (
-  provider: IndexedDBProvider<JsonDoc, Operations>,
+  client: DocSyncClient<Doc, JsonDoc, Operations>,
   docId: string,
   operations: Operations[] = [emptyOps()],
 ) => {
+  const provider = (await client["_localPromise"]).provider;
   await provider.transaction("readwrite", (ctx) =>
     ctx.saveOperations({ docId, operations }),
   );
@@ -147,9 +138,10 @@ export const saveOperations = async (
  * Gets operations count from provider.
  */
 export const getOperationsCount = async (
-  provider: IndexedDBProvider<JsonDoc, Operations>,
+  client: DocSyncClient<Doc, JsonDoc, Operations>,
   docId: string,
 ) => {
+  const provider = (await client["_localPromise"]).provider;
   const ops = await provider.transaction("readonly", (ctx) =>
     ctx.getOperations({ docId }),
   );
@@ -160,9 +152,10 @@ export const getOperationsCount = async (
  * Gets stored doc clock from provider.
  */
 export const getStoredClock = async (
-  provider: IndexedDBProvider<JsonDoc, Operations>,
+  client: DocSyncClient<Doc, JsonDoc, Operations>,
   docId: string,
 ) => {
+  const provider = (await client["_localPromise"]).provider;
   const stored = await provider.transaction("readonly", (ctx) =>
     ctx.getSerializedDoc(docId),
   );

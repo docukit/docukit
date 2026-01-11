@@ -1,6 +1,6 @@
 import { describe, test, expect, vi } from "vitest";
 import {
-  createServerSync,
+  createClient,
   generateDocId,
   setupDocWithOperations,
   saveOperations,
@@ -24,24 +24,24 @@ describe("ServerSync", () => {
 
   describe("saveRemote", () => {
     test("should call _doPush when status is idle", async () => {
-      const { client, provider } = await createServerSync();
+      const client = await createClient();
       const doPushSpy = vi.spyOn(client, "_doPush" as keyof typeof client);
       const docId = generateDocId();
 
-      await saveOperations(provider, docId);
+      await saveOperations(client, docId);
       client.saveRemote({ docId });
 
       expect(doPushSpy).toHaveBeenCalledWith({ docId });
     });
 
     test("should set status to pushing-with-pending when called during a push", async () => {
-      const { client, provider } = await createServerSync();
+      const client = await createClient();
       vi.spyOn(client["_api"], "request").mockImplementation(
         () => new Promise((r) => setTimeout(r, 50)),
       );
       const docId = generateDocId();
 
-      await saveOperations(provider, docId);
+      await saveOperations(client, docId);
       client.saveRemote({ docId });
       await tick();
       client.saveRemote({ docId });
@@ -52,13 +52,14 @@ describe("ServerSync", () => {
     });
 
     test("should allow concurrent pushes for different docIds", async () => {
-      const { client, provider } = await createServerSync();
+      const client = await createClient();
       vi.spyOn(client["_api"], "request").mockImplementation(
         () => new Promise((r) => setTimeout(r, 20)),
       );
       const docId1 = generateDocId();
       const docId2 = generateDocId();
 
+      const provider = (await client["_localPromise"]).provider;
       await provider.transaction("readwrite", async (ctx) => {
         await ctx.saveOperations({ docId: docId1, operations: [emptyOps()] });
         await ctx.saveOperations({ docId: docId2, operations: [emptyOps()] });
@@ -73,14 +74,14 @@ describe("ServerSync", () => {
     });
 
     test("should be idempotent for same docId during push", async () => {
-      const { client, provider } = await createServerSync();
+      const client = await createClient();
       vi.spyOn(client["_api"], "request").mockImplementation(
         () => new Promise((r) => setTimeout(r, 50)),
       );
       const doPushSpy = vi.spyOn(client, "_doPush" as keyof typeof client);
       const docId = generateDocId();
 
-      await saveOperations(provider, docId);
+      await saveOperations(client, docId);
       client.saveRemote({ docId });
       client.saveRemote({ docId });
       client.saveRemote({ docId });
@@ -93,7 +94,7 @@ describe("ServerSync", () => {
     });
 
     test("should handle rapid successive calls correctly", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       let callCount = 0;
       const docId = generateDocId();
       const requestSpy = vi.spyOn(client["_api"], "request");
@@ -107,10 +108,10 @@ describe("ServerSync", () => {
         });
       });
 
-      await setupDocWithOperations(docBinding, provider, docId);
+      await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
 
-      await saveOperations(provider, docId);
+      await saveOperations(client, docId);
       client.saveRemote({ docId });
 
       await tick();
@@ -126,12 +127,14 @@ describe("ServerSync", () => {
 
   describe("_doPush - Basic Flow", () => {
     test("should get operations from provider", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
       const requestSpy = vi.spyOn(client["_api"], "request");
 
       const testOperations = [ops({ test: "data1" }), ops({ test: "data2" })];
 
+      const docBinding = client["_docBinding"];
+      const provider = (await client["_localPromise"]).provider;
       const { doc } = docBinding.new("test", docId);
       await provider.transaction("readwrite", async (ctx) => {
         await ctx.saveSerializedDoc({
@@ -156,7 +159,7 @@ describe("ServerSync", () => {
     });
 
     test("should set status to pushing at start", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
       let statusDuringPush: string | undefined;
       vi.spyOn(client["_api"], "request").mockImplementation(async () => {
@@ -164,7 +167,7 @@ describe("ServerSync", () => {
         return { docId, operations: [], serializedDoc: null, clock: 1 };
       });
 
-      await setupDocWithOperations(docBinding, provider, docId);
+      await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
       await tick();
 
@@ -172,11 +175,11 @@ describe("ServerSync", () => {
     });
 
     test("should send operations to API via sync-operations endpoint", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
       const requestSpy = vi.spyOn(client["_api"], "request");
 
-      await setupDocWithOperations(docBinding, provider, docId);
+      await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
       await tick();
 
@@ -187,11 +190,11 @@ describe("ServerSync", () => {
     });
 
     test("should include docId and clock in request", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
       const requestSpy = vi.spyOn(client["_api"], "request");
 
-      await setupDocWithOperations(docBinding, provider, docId);
+      await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
       await tick();
 
@@ -208,7 +211,7 @@ describe("ServerSync", () => {
 
   describe("_doPush - Client/Server Operation Combinations", () => {
     test("should handle client sends operations + server returns no operations", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const requestSpy = vi.spyOn(client["_api"], "request");
       requestSpy.mockResolvedValue({
         docId: "test-doc",
@@ -218,7 +221,7 @@ describe("ServerSync", () => {
       });
       const docId = generateDocId();
 
-      await setupDocWithOperations(docBinding, provider, docId, {
+      await setupDocWithOperations(client, docId, {
         operations: [ops({ test: "data" })],
       });
 
@@ -232,12 +235,12 @@ describe("ServerSync", () => {
           operations: [ops({ test: "data" })],
         }),
       );
-      expect(await getOperationsCount(provider, docId)).toBe(0);
+      expect(await getOperationsCount(client, docId)).toBe(0);
       expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
     });
 
     test("should handle client sends operations + server returns operations", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
 
       // Mock server operations using ops helper to avoid ID conflicts
@@ -252,7 +255,7 @@ describe("ServerSync", () => {
         clock: 1,
       });
 
-      await setupDocWithOperations(docBinding, provider, docId, {
+      await setupDocWithOperations(client, docId, {
         operations: [ops({ client: "op" })],
       });
 
@@ -266,12 +269,12 @@ describe("ServerSync", () => {
           operations: [ops({ client: "op" })],
         }),
       );
-      expect(await getOperationsCount(provider, docId)).toBe(0);
+      expect(await getOperationsCount(client, docId)).toBe(0);
       expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
     });
 
     test("should handle client sends no operations + server returns no operations (pull with no updates)", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const requestSpy = vi.spyOn(client["_api"], "request");
       requestSpy.mockResolvedValue({
         docId: "test-doc",
@@ -282,6 +285,8 @@ describe("ServerSync", () => {
       const docId = generateDocId();
 
       // Setup a document without pending operations (pure pull scenario)
+      const docBinding = client["_docBinding"];
+      const provider = (await client["_localPromise"]).provider;
       const { doc: initialDoc } = docBinding.new("test", docId);
       await provider.transaction("readwrite", async (ctx) => {
         await ctx.saveSerializedDoc({
@@ -306,10 +311,11 @@ describe("ServerSync", () => {
     });
 
     test("should handle client sends no operations + server returns operations (pull with updates)", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
 
       // Create server operations by modifying a doc
+      const docBinding = client["_docBinding"];
       const { doc: serverDoc } = docBinding.new("test", docId);
       const serverChild1 = serverDoc.createNode(ChildNode);
       const serverChild2 = serverDoc.createNode(ChildNode);
@@ -336,6 +342,7 @@ describe("ServerSync", () => {
       });
 
       // Setup a document without pending operations (pure pull scenario)
+      const provider = (await client["_localPromise"]).provider;
       const { doc: initialDoc } = docBinding.new("test", docId);
       await provider.transaction("readwrite", async (ctx) => {
         await ctx.saveSerializedDoc({
@@ -380,7 +387,7 @@ describe("ServerSync", () => {
 
   describe("_doPush - Success Path", () => {
     test("should delete operations after successful push", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
       vi.spyOn(client["_api"], "request").mockResolvedValue({
         docId,
@@ -389,20 +396,20 @@ describe("ServerSync", () => {
         clock: 1,
       });
 
-      await setupDocWithOperations(docBinding, provider, docId, {
+      await setupDocWithOperations(client, docId, {
         operations: [emptyOps(), emptyOps()],
       });
 
-      expect(await getOperationsCount(provider, docId)).toBe(2);
+      expect(await getOperationsCount(client, docId)).toBe(2);
 
       client.saveRemote({ docId });
       await tick();
 
-      expect(await getOperationsCount(provider, docId)).toBe(0);
+      expect(await getOperationsCount(client, docId)).toBe(0);
     });
 
     test("should delete exact count of pushed operations", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
       const requestSpy = vi.spyOn(client["_api"], "request");
       requestSpy.mockImplementation(
@@ -421,24 +428,24 @@ describe("ServerSync", () => {
           ),
       );
 
-      await setupDocWithOperations(docBinding, provider, docId, {
+      await setupDocWithOperations(client, docId, {
         operations: [ops({ batch: "1" }), ops({ batch: "1" })],
       });
 
       client.saveRemote({ docId });
       await tick();
 
-      await saveOperations(provider, docId, [ops({ batch: "2" })]);
+      await saveOperations(client, docId, [ops({ batch: "2" })]);
       client.saveRemote({ docId });
 
       await tick(100);
 
-      expect(await getOperationsCount(provider, docId)).toBe(0);
+      expect(await getOperationsCount(client, docId)).toBe(0);
       expect(requestSpy).toHaveBeenCalledTimes(2);
     });
 
     test("should consolidate operations into serialized doc after push", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
       vi.spyOn(client["_api"], "request").mockResolvedValue({
         docId,
@@ -447,6 +454,8 @@ describe("ServerSync", () => {
         clock: 1,
       });
 
+      const docBinding = client["_docBinding"];
+      const provider = (await client["_localPromise"]).provider;
       const { doc } = docBinding.new("test", docId);
       const child = doc.createNode(ChildNode);
       doc.root.append(child);
@@ -464,11 +473,11 @@ describe("ServerSync", () => {
       client.saveRemote({ docId });
       await tick();
 
-      expect(await getStoredClock(provider, docId)).toBe(1);
+      expect(await getStoredClock(client, docId)).toBe(1);
     });
 
     test("should increment clock after consolidation", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
       vi.spyOn(client["_api"], "request").mockResolvedValue({
         docId,
@@ -477,15 +486,15 @@ describe("ServerSync", () => {
         clock: 6,
       });
 
-      await setupDocWithOperations(docBinding, provider, docId, { clock: 5 });
+      await setupDocWithOperations(client, docId, { clock: 5 });
       client.saveRemote({ docId });
       await tick();
 
-      expect(await getStoredClock(provider, docId)).toBe(6);
+      expect(await getStoredClock(client, docId)).toBe(6);
     });
 
     test("should set status to idle after successful push", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
       vi.spyOn(client["_api"], "request").mockResolvedValue({
         docId,
@@ -494,7 +503,7 @@ describe("ServerSync", () => {
         clock: 1,
       });
 
-      await setupDocWithOperations(docBinding, provider, docId);
+      await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
       await tick();
 
@@ -508,7 +517,7 @@ describe("ServerSync", () => {
 
   describe("_doPush - Retry Logic", () => {
     test("should retry if more operations were queued during push (pushing-with-pending)", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
       const requestSpy = vi.spyOn(client["_api"], "request");
       requestSpy.mockImplementation(
@@ -527,11 +536,11 @@ describe("ServerSync", () => {
           ),
       );
 
-      await setupDocWithOperations(docBinding, provider, docId);
+      await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
       await tick();
 
-      await saveOperations(provider, docId);
+      await saveOperations(client, docId);
       client.saveRemote({ docId });
 
       await tick(100);
@@ -540,7 +549,7 @@ describe("ServerSync", () => {
     });
 
     test("should retry on API failure", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
       let callCount = 0;
       const requestSpy = vi.spyOn(client["_api"], "request");
@@ -555,7 +564,7 @@ describe("ServerSync", () => {
         });
       });
 
-      await setupDocWithOperations(docBinding, provider, docId);
+      await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
       await tick();
 
@@ -564,7 +573,7 @@ describe("ServerSync", () => {
     });
 
     test("should set status to idle before retry", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
       const statusHistory: (string | undefined)[] = [];
       const requestSpy = vi.spyOn(client["_api"], "request");
@@ -580,7 +589,7 @@ describe("ServerSync", () => {
         });
       });
 
-      await setupDocWithOperations(docBinding, provider, docId);
+      await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
       await tick();
 
@@ -588,7 +597,7 @@ describe("ServerSync", () => {
     });
 
     test("should handle retry with new operations", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
       const receivedOperations: unknown[] = [];
       const requestSpy = vi.spyOn(client["_api"], "request");
@@ -604,13 +613,13 @@ describe("ServerSync", () => {
         });
       });
 
-      await setupDocWithOperations(docBinding, provider, docId, {
+      await setupDocWithOperations(client, docId, {
         operations: [ops({ op: "1" })],
       });
       client.saveRemote({ docId });
       await tick();
 
-      await saveOperations(provider, docId, [ops({ op: "2" })]);
+      await saveOperations(client, docId, [ops({ op: "2" })]);
       client.saveRemote({ docId });
 
       await tick();
@@ -627,7 +636,7 @@ describe("ServerSync", () => {
 
   describe("_doPush - Concurrency", () => {
     test("should not push same doc twice simultaneously", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
       let concurrentCalls = 0;
       let maxConcurrent = 0;
@@ -639,7 +648,7 @@ describe("ServerSync", () => {
         return { docId, operations: [], serializedDoc: null, clock: 1 };
       });
 
-      await setupDocWithOperations(docBinding, provider, docId);
+      await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
       client.saveRemote({ docId });
       client.saveRemote({ docId });
@@ -650,7 +659,7 @@ describe("ServerSync", () => {
     });
 
     test("should queue operations that arrive during push", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
       const requestSpy = vi.spyOn(client["_api"], "request");
       requestSpy.mockImplementation(
@@ -669,16 +678,16 @@ describe("ServerSync", () => {
           ),
       );
 
-      await setupDocWithOperations(docBinding, provider, docId, {
+      await setupDocWithOperations(client, docId, {
         operations: [ops({ first: "true" })],
       });
 
       client.saveRemote({ docId });
       await tick();
 
-      await saveOperations(provider, docId, [ops({ second: "true" })]);
+      await saveOperations(client, docId, [ops({ second: "true" })]);
       client.saveRemote({ docId });
-      await saveOperations(provider, docId, [ops({ third: "true" })]);
+      await saveOperations(client, docId, [ops({ third: "true" })]);
       client.saveRemote({ docId });
 
       await tick(100);
@@ -691,7 +700,7 @@ describe("ServerSync", () => {
     });
 
     test("should handle interleaved operations from different docs", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId1 = generateDocId();
       const docId2 = generateDocId();
       const callOrder: string[] = [];
@@ -708,7 +717,7 @@ describe("ServerSync", () => {
       });
 
       for (const docId of [docId1, docId2]) {
-        await setupDocWithOperations(docBinding, provider, docId);
+        await setupDocWithOperations(client, docId);
       }
 
       client.saveRemote({ docId: docId1 });
@@ -722,7 +731,7 @@ describe("ServerSync", () => {
     });
 
     test("should handle status changes during async operations", async () => {
-      const { client, docBinding, provider } = await createServerSync();
+      const client = await createClient();
       const docId = generateDocId();
       vi.spyOn(client["_api"], "request").mockImplementation(
         () =>
@@ -740,7 +749,7 @@ describe("ServerSync", () => {
           ),
       );
 
-      await setupDocWithOperations(docBinding, provider, docId);
+      await setupDocWithOperations(client, docId);
 
       client.saveRemote({ docId });
       await tick();
