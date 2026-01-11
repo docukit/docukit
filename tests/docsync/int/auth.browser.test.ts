@@ -1,3 +1,5 @@
+// TODO: move to unit tests
+
 import { describe, test, expect, vi } from "vitest";
 import { DocSyncClient, IndexedDBProvider } from "@docnode/docsync/client";
 import { DocNodeBinding } from "@docnode/docsync/docnode";
