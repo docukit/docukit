@@ -50,9 +50,9 @@ export type Identity = {
 };
 
 export type ClientConfig<
-  D extends {},
-  S extends SerializedDoc,
-  O extends {},
+  D extends {} = {},
+  S extends SerializedDoc = SerializedDoc,
+  O extends {} = {},
 > = {
   docBinding: DocBinding<D, S, O>;
   server: {

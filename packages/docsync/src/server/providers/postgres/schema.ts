@@ -7,9 +7,7 @@ import {
 } from "drizzle-orm/pg-core";
 import postgres from "postgres";
 
-if (!process.env.DOCNODE_DB_URL)
-  throw new Error("env var DOCNODE_DB_URL not found");
-export const queryClient = postgres(process.env.DOCNODE_DB_URL);
+export const queryClient = postgres(process.env.DOCNODE_DB_URL!);
 
 export const documents = pgTable("docsync-documents", {
   userId: varchar("userId", { length: 26 }).notNull(),
