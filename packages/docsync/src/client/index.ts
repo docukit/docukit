@@ -19,9 +19,9 @@ export type LocalResolved<S, O> = {
 type PushStatus = "idle" | "pushing" | "pushing-with-pending";
 
 export class DocSyncClient<
-  D extends {},
-  S extends SerializedDoc,
-  O extends {},
+  D extends {} = {},
+  S extends SerializedDoc = SerializedDoc,
+  O extends {} = {},
 > {
   protected _docBinding: DocBinding<D, S, O>;
   protected _docsCache = new Map<

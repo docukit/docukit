@@ -19,10 +19,10 @@ type AuthenticatedContext<TContext> = {
 const OPERATION_THRESHOLD = 100;
 
 export class DocSyncServer<
-  TContext,
-  D extends {},
-  S extends SerializedDoc,
-  O extends {},
+  TContext = {},
+  D extends {} = {},
+  S extends SerializedDoc = SerializedDoc,
+  O extends {} = {},
 > {
   private _io: ServerSocket<S, O>;
   private _docBinding: DocBinding<D, S, O>;
