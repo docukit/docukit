@@ -12,14 +12,14 @@ export default defineConfig({
   retries: 1,
   use: {
     baseURL: process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}/test`
-      : `http://localhost:${process.env.PORT ?? 3000}/test`,
+      ? `https://${process.env.VERCEL_URL}/subdocs`
+      : `http://localhost:${process.env.PORT ?? 4000}/subdocs`,
     trace: "on",
     video: "retain-on-failure",
   },
   webServer: {
-    command: "pnpm dev",
-    url: "http://localhost:3000",
+    command: "cd examples && pnpm dev",
+    url: "http://localhost:4000",
     reuseExistingServer: !process.env.CI,
   },
   // prettier-ignore

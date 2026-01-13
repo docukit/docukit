@@ -59,6 +59,13 @@ export class DocNodeHelper {
     state.unshift("root");
     const docNodes = this.getDocnodes(panel).locator("span");
     const count = await docNodes.count();
+
+    // Get the left position of the root element to use as baseline
+    const rootRect = await docNodes
+      .nth(0)
+      .evaluate((el) => el.getBoundingClientRect());
+    const baseLeft = rootRect.left;
+
     for (let i = 0; i < count; i++) {
       const text = await docNodes.nth(i).textContent();
       if (!text) {
@@ -72,7 +79,8 @@ export class DocNodeHelper {
         .nth(i)
         .evaluate((el) => el.getBoundingClientRect());
       const indent = i === 0 ? 0 : (state[i]?.match(/__/g)?.length ?? 0) + 1;
-      expect(rect.left).toBe(indent * 40);
+      // Calculate relative position from the root element
+      expect(rect.left - baseLeft).toBe(indent * 40);
     }
     await this._assertSync();
   }

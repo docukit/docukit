@@ -6,24 +6,10 @@ import {
 } from "@docnode/docsync-react/client";
 import { DocNodeBinding } from "@docnode/docsync-react/docnode";
 import { type ReactNode } from "react";
-import { defineNode, type Doc, type DocConfig, string } from "docnode";
+import { type Doc } from "docnode";
+import { IndexNode, IndexDocConfig } from "../../shared-config";
 
-export const IndexNode = defineNode({
-  type: "editor-index",
-  state: {
-    value: string(""),
-    // TODO: fromJSON and toJSON should have jsdocs
-    // asd: {
-    //   fromJSON: (json) => json,
-    // }
-  },
-});
-
-const IndexDocConfig: DocConfig = {
-  type: "indexDoc",
-  extensions: [{ nodes: [IndexNode] }],
-  nodeIdGenerator: "ulid",
-};
+export { IndexNode };
 
 export function createIndexNode(doc: Doc, { value }: { value: string }) {
   const node = doc.createNode(IndexNode);

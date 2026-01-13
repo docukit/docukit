@@ -13,7 +13,7 @@
   },
   "scripts": {
     "build": "turbo build",
-    "dev": "lsof -ti:3000,8081 | xargs kill -9; turbo dev",
+    "dev": "lsof -ti:3000,4000,8081 | xargs kill -9; turbo dev",
     "fix": "concurrently \"prettier --write . --log-level warn\" \"eslint\" \"tsc --noEmit\" \"turbo typecheck --log-order=grouped\" --prefixColors \"yellow,magenta,green,cyan\" --group --names \"prettier,eslint,tsc-root,tsc-packages\" --prefix name",
     "check": "concurrently \"prettier --check . --log-level warn\" \"eslint\" \"tsc --noEmit\" \"turbo typecheck --log-order=grouped\" --prefixColors \"yellow,magenta,green,cyan\" --group --names \"prettier,eslint,tsc-root,tsc-packages\" --prefix name",
     "test": "vitest watch",

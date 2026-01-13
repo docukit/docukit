@@ -1,16 +1,13 @@
 import ClientLayout from "./ClientLayout";
-import { notFound } from "next/navigation";
 
-export default function RootLayout({
+export default function SubdocsLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  if (process.env.NODE_ENV !== "development") return notFound();
-
   return (
     <>
-      <h1>Your doc:</h1>
+      <h1 className="p-4 text-2xl font-bold text-white">Subdocs Example</h1>
       <ClientLayout>{children}</ClientLayout>
     </>
   );
