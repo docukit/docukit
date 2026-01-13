@@ -46,6 +46,7 @@ export class API<S, O> {
     });
 
     // Listen to server debug logs (for testing/debugging)
+    /* v8 ignore next -- @preserve */
     this._socket.on("_log", (debugLog) => {
       console.log("[🔍 SERVER]", JSON.stringify(debugLog));
     });

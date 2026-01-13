@@ -268,6 +268,7 @@ export class DocSyncServer<
   /**
    * Emit a debug log to all connected clients.
    */
+  /* v8 ignore next -- @preserve */
   private _log(arg: unknown) {
     this._io.emit("_log", arg);
   }
