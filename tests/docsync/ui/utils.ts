@@ -24,10 +24,11 @@ export class DocNodeHelper {
     this._page1 = page1;
     this._page2 = page2;
 
-    this._app1 = page1.locator("#original");
-    this._app2 = page1.locator("#copy");
-    this._app3 = page2.locator("#original");
-    this._app4 = page2.locator("#copy");
+    // Now we have 3 clients per page: reference, otherTab, otherDevice
+    this._app1 = page1.locator("#reference");
+    this._app2 = page1.locator("#otherTab");
+    this._app3 = page2.locator("#reference");
+    this._app4 = page2.locator("#otherDevice");
 
     this._currentApp = process.env.DN_APP ? this._app1 : this._app3;
     console.log(`Using app ${process.env.DN_APP ? "one" : "three"}`);
