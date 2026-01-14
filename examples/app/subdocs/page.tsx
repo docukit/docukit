@@ -38,7 +38,7 @@ function SubDocContent({
   const secondaryResult = useDocHook({
     type: "indexDoc",
     id: secondaryDocId,
-    createIfMissing: false,
+    createIfMissing: true,
   });
   const secondaryDoc =
     activeDoc && secondaryResult.status === "success"
