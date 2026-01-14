@@ -3,11 +3,8 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   createIndexNode,
-  ReferenceDocSyncClientProvider,
   useReferenceDoc,
-  OtherTabDocSyncClientProvider,
   useOtherTabDoc,
-  OtherDeviceDocSyncClientProvider,
   useOtherDeviceDoc,
 } from "./ClientProviders";
 import { IndexDoc } from "./IndexDoc";
@@ -116,40 +113,34 @@ export default function Page() {
           // Each client gets its own independent provider
           if (clientId === "reference") {
             return (
-              <ReferenceDocSyncClientProvider>
-                <SubDocContent
-                  clientId={clientId}
-                  userId={userId}
-                  docId={docId}
-                  useDocHook={useReferenceDoc}
-                />
-              </ReferenceDocSyncClientProvider>
+              <SubDocContent
+                clientId={clientId}
+                userId={userId}
+                docId={docId}
+                useDocHook={useReferenceDoc}
+              />
             );
           }
 
           if (clientId === "otherTab") {
             return (
-              <OtherTabDocSyncClientProvider>
-                <SubDocContent
-                  clientId={clientId}
-                  userId={userId}
-                  docId={docId}
-                  useDocHook={useOtherTabDoc}
-                />
-              </OtherTabDocSyncClientProvider>
+              <SubDocContent
+                clientId={clientId}
+                userId={userId}
+                docId={docId}
+                useDocHook={useOtherTabDoc}
+              />
             );
           }
 
           // otherDevice
           return (
-            <OtherDeviceDocSyncClientProvider>
-              <SubDocContent
-                clientId={clientId}
-                userId={userId}
-                docId={docId}
-                useDocHook={useOtherDeviceDoc}
-              />
-            </OtherDeviceDocSyncClientProvider>
+            <SubDocContent
+              clientId={clientId}
+              userId={userId}
+              docId={docId}
+              useDocHook={useOtherDeviceDoc}
+            />
           );
         }}
       </MultiClientLayout>

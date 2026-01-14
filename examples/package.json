@@ -8,7 +8,8 @@
     "docsync-server": "node --env-file=.env --experimental-strip-types --watch ./docsync-server.ts",
     "build": "next build",
     "start": "next start -p 4000",
-    "lint": "eslint"
+    "clean": "rm -rf .next node_modules .turbo || rmdir /s /q .next node_modules .turbo",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@docnode/docsync-react": "workspace:*",

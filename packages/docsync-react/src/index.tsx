@@ -1,7 +1,6 @@
 "use client";
 
-import type React from "react";
-import { createContext, use, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   DocSyncClient,
   type ClientConfig,
@@ -33,22 +32,10 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
   type O = InferO<T>;
 
   // can't do this safely because can run on server during SSR
-  const docSyncClient =
+  const client =
     typeof window !== "undefined"
       ? new DocSyncClient(config as ClientConfig<D, S, O>)
       : undefined;
-
-  const DocSyncClientContext = createContext<
-    DocSyncClient<D, S, O> | undefined
-  >(docSyncClient);
-
-  function DocSyncClientProvider({ children }: { children: React.ReactNode }) {
-    return (
-      <DocSyncClientContext value={docSyncClient}>
-        {children}
-      </DocSyncClientContext>
-    );
-  }
 
   type DocData = { doc: D; id: string };
 
@@ -68,7 +55,6 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
       data: undefined,
       error: undefined,
     });
-    const client = use(DocSyncClientContext);
     const id = "id" in args ? args.id : undefined;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
     const type = args.type;
@@ -81,8 +67,5 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
     return result;
   }
 
-  return {
-    DocSyncClientProvider,
-    useDoc,
-  };
+  return { useDoc };
 }

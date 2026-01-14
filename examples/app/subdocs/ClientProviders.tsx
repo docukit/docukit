@@ -52,19 +52,19 @@ const createClientForUser = (userId: string, deviceId: string) => {
 };
 
 // Reference client (user1, device A)
-export const {
-  DocSyncClientProvider: ReferenceDocSyncClientProvider,
-  useDoc: useReferenceDoc,
-} = createClientForUser("user1", "device-a");
+export const { useDoc: useReferenceDoc } = createClientForUser(
+  "user1",
+  "device-a",
+);
 
 // Other tab client (user1, device A - same device as reference)
-export const {
-  DocSyncClientProvider: OtherTabDocSyncClientProvider,
-  useDoc: useOtherTabDoc,
-} = createClientForUser("user1", "device-a");
+export const { useDoc: useOtherTabDoc } = createClientForUser(
+  "user1",
+  "device-a",
+);
 
 // Other device client (user2, device B - different device)
-export const {
-  DocSyncClientProvider: OtherDeviceDocSyncClientProvider,
-  useDoc: useOtherDeviceDoc,
-} = createClientForUser("user2", "device-b");
+export const { useDoc: useOtherDeviceDoc } = createClientForUser(
+  "user2",
+  "device-b",
+);
