@@ -4,6 +4,7 @@ import {
   type Page,
   type Locator,
 } from "@playwright/test";
+import { ulid } from "ulid";
 
 export class DocNodeHelper {
   private _page1: Page;
@@ -41,8 +42,11 @@ export class DocNodeHelper {
   }) {
     const page2 = await context.newPage();
 
-    await page.goto("");
-    await page2.goto("");
+    // Generate unique ULID for each test run (lowercase)
+    const docId = ulid().toLowerCase();
+
+    await page.goto(`?docId=${docId}`);
+    await page2.goto(`?docId=${docId}`);
 
     const helper = new DocNodeHelper(page, page2);
     return helper;

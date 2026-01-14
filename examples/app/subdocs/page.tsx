@@ -1,12 +1,17 @@
 "use client";
 import { useEffect, useLayoutEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createIndexNode, useDoc } from "./ClientLayout";
 import { IndexDoc } from "./IndexDoc";
 
 function SubPage({ id }: { id: string }) {
+  // Get docId from URL param
+  const searchParams = useSearchParams();
+  const docId = searchParams.get("docId") ?? "01kcfhzz66v3393xhggx6aeb6t";
+
   const result = useDoc({
     type: "indexDoc",
-    id: "01kcfhzz66v3393xhggx6aeb6t",
+    id: docId,
     createIfMissing: true,
   });
   const indexDoc = result.status === "success" ? result.data.doc : undefined;
