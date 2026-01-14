@@ -79,21 +79,23 @@ function SubDocContent({
     return <div className="text-zinc-400">Loading document...</div>;
 
   return (
-    <div className="flex" id={clientId}>
-      <div className="main-doc">
+    <div className="flex gap-3" id={clientId}>
+      <div className="main-doc flex-1">
         <IndexDoc
           doc={indexDoc}
           selectedDoc={activeDoc}
           setActiveDoc={setActiveDoc}
         />
       </div>
-      <div className="m-2 h-96 border-l-2 border-gray-300" />
+      <div className="w-px bg-zinc-800" />
       {activeDoc && secondaryDoc ? (
-        <div className="secondary-doc">
+        <div className="secondary-doc flex-1">
           <IndexDoc doc={secondaryDoc} />
         </div>
       ) : (
-        <p>Select a document</p>
+        <div className="flex flex-1 items-start justify-center pt-8">
+          <p className="text-xs text-zinc-500">Select a document</p>
+        </div>
       )}
     </div>
   );

@@ -48,37 +48,61 @@ export function IndexDoc({
   }
 
   return (
-    <div className="docnode-doc">
+    <div className="docnode-doc text-sm">
       <DocRenderer
         doc={doc}
         render={({ node, children }) => {
+          const isSelected = node.id === selectedDoc;
+          const isClickable = !!setActiveDoc;
+
           return (
             <div
-              className="max-w-xl"
-              style={{ paddingLeft: node.is(IndexNode) ? "40px" : "0px" }}
+              className="relative"
+              style={{ paddingLeft: node.is(IndexNode) ? "20px" : "0px" }}
             >
               <div
                 onClick={(ev) => handleSelect(ev, node.id)}
-                className={`docnode flex items-center ${node.id === selectedDoc ? "bg-emerald-800" : setActiveDoc ? "is-hover:bg-zinc-900 cursor-pointer" : ""}`}
+                className={`docnode group relative rounded px-2 py-0.5 transition-colors ${
+                  isSelected
+                    ? "bg-emerald-800/50"
+                    : isClickable
+                      ? "cursor-pointer hover:bg-zinc-800/50"
+                      : ""
+                }`}
               >
-                <span className="inline-block w-44 truncate">
-                  {node.is(IndexNode) ? node.state.value.get() : "root"} -{" "}
-                  {node.id.slice(-8)}
+                {/* Node label */}
+                <span className="inline-block truncate text-xs text-zinc-300">
+                  {node.is(IndexNode) ? node.state.value.get() : "root"}
+                  <span className="ml-1 text-zinc-600">
+                    {node.id.slice(-6)}
+                  </span>
                 </span>
-                <button
-                  className="create m-1 w-7 rounded bg-green-500 p-1 text-white"
-                  onClick={() => handleAppend(node)}
-                >
-                  +
-                </button>
-                <button
-                  className="delete m-1 min-w-7 rounded bg-red-500 p-1 text-white"
-                  onClick={() => handleDelete(node)}
-                >
-                  -
-                </button>
+
+                {/* Buttons on hover - floating over the label on the right */}
+                <div className="absolute right-1 top-0 hidden flex-row gap-0.5 group-hover:flex">
+                  <button
+                    className="create rounded bg-green-600/90 px-1.5 py-0.5 text-xs font-medium text-white backdrop-blur-sm transition-colors hover:bg-green-500"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAppend(node);
+                    }}
+                    title="Add child"
+                  >
+                    +
+                  </button>
+                  <button
+                    className="delete rounded bg-red-600/90 px-1.5 py-0.5 text-xs font-medium text-white backdrop-blur-sm transition-colors hover:bg-red-500"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(node);
+                    }}
+                    title="Delete"
+                  >
+                    −
+                  </button>
+                </div>
               </div>
-              {children && <div>{children}</div>}
+              {children && <div className="mt-0.5">{children}</div>}
             </div>
           );
         }}
