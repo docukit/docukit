@@ -1,6 +1,6 @@
 {
   "extends": "ultimate-tooling/bundler/dom",
-  "exclude": ["packages", "docs", "playwright", "tests"],
+  "exclude": ["packages", "docs", "playwright", "tests", "examples"],
   "compilerOptions": {
     "exactOptionalPropertyTypes": true
   }
