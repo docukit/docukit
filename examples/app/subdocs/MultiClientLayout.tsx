@@ -8,7 +8,7 @@ interface MultiClientLayoutProps {
 
 export function MultiClientLayout({ children }: MultiClientLayoutProps) {
   return (
-    <div className="flex min-h-screen w-full gap-4 p-4">
+    <div className="flex w-full gap-4 p-4">
       {/* Reference Client - User 1 */}
       <div className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900/30 p-4">
         <div className="mb-4 flex items-center justify-between border-b border-zinc-700 pb-2">
