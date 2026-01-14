@@ -16,6 +16,7 @@ export default defineConfig({
       : `http://localhost:${process.env.PORT ?? 4000}/subdocs`,
     trace: "on",
     video: "retain-on-failure",
+    colorScheme: "dark",
   },
   webServer: {
     command: "cd examples && pnpm dev",
