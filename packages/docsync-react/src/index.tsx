@@ -67,5 +67,5 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
     return result;
   }
 
-  return { useDoc };
+  return { useDoc, client };
 }

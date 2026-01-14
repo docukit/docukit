@@ -6,6 +6,9 @@ import {
   useReferenceDoc,
   useOtherTabDoc,
   useOtherDeviceDoc,
+  referenceClient,
+  otherTabClient,
+  otherDeviceClient,
 } from "./ClientProviders";
 import { IndexDoc } from "./IndexDoc";
 import { MultiClientLayout } from "./MultiClientLayout";
@@ -108,7 +111,11 @@ export default function Page() {
         Subdocs Example - Multi-Client Sync
       </h1>
 
-      <MultiClientLayout>
+      <MultiClientLayout
+        referenceClient={referenceClient}
+        otherTabClient={otherTabClient}
+        otherDeviceClient={otherDeviceClient}
+      >
         {(clientId, userId) => {
           // Each client gets its own independent provider
           if (clientId === "reference") {

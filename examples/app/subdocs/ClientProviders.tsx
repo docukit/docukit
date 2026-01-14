@@ -52,19 +52,13 @@ const createClientForUser = (userId: string, deviceId: string) => {
 };
 
 // Reference client (user1, device A)
-export const { useDoc: useReferenceDoc } = createClientForUser(
-  "user1",
-  "device-a",
-);
+export const { useDoc: useReferenceDoc, client: referenceClient } =
+  createClientForUser("user1", "device-a");
 
 // Other tab client (user1, device A - same device as reference)
-export const { useDoc: useOtherTabDoc } = createClientForUser(
-  "user1",
-  "device-a",
-);
+export const { useDoc: useOtherTabDoc, client: otherTabClient } =
+  createClientForUser("user1", "device-a");
 
 // Other device client (user2, device B - different device)
-export const { useDoc: useOtherDeviceDoc } = createClientForUser(
-  "user2",
-  "device-b",
-);
+export const { useDoc: useOtherDeviceDoc, client: otherDeviceClient } =
+  createClientForUser("user2", "device-b");
