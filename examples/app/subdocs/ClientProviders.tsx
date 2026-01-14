@@ -4,7 +4,6 @@ import { createDocSyncClient } from "@docnode/docsync-react/client";
 import { DocNodeBinding } from "@docnode/docsync-react/docnode";
 import { IndexedDBProvider } from "@docnode/docsync-react/client";
 import { defineNode, string, type DocConfig, type Doc } from "docnode";
-import { useEffect, useState } from "react";
 
 // Same node definition as server
 export const IndexNode = defineNode({
@@ -27,10 +26,10 @@ export function createIndexNode(doc: Doc, { value }: { value: string }) {
   return node;
 }
 
-// Create 3 separate DocSyncClient instances
-const createClientForUser = (userId: string, deviceId?: string) => {
-  // Force different deviceId for "other device"
-  if (deviceId && typeof window !== "undefined") {
+// Create 3 separate DocSyncClient instances with different deviceIds
+const createClientForUser = (userId: string, deviceId: string) => {
+  // Force specific deviceId in localStorage before creating client
+  if (typeof window !== "undefined") {
     localStorage.setItem("docsync:deviceId", deviceId);
   }
 
@@ -38,7 +37,7 @@ const createClientForUser = (userId: string, deviceId?: string) => {
     server: {
       url: "ws://localhost:8081",
       auth: {
-        getToken: async () => "1234567890" as string,
+        getToken: async () => userId, // Use userId as token
       },
     },
     local: {
@@ -52,53 +51,20 @@ const createClientForUser = (userId: string, deviceId?: string) => {
   });
 };
 
-// Reference client (user1)
+// Reference client (user1, device A)
 export const {
   DocSyncClientProvider: ReferenceDocSyncClientProvider,
   useDoc: useReferenceDoc,
-} = createClientForUser("user1");
+} = createClientForUser("user1", "device-a");
 
-// Other tab client (user1, same device)
+// Other tab client (user1, device A - same device as reference)
 export const {
   DocSyncClientProvider: OtherTabDocSyncClientProvider,
   useDoc: useOtherTabDoc,
-} = createClientForUser("user1");
+} = createClientForUser("user1", "device-a");
 
-// Other device client (user2, different device)
-let otherDeviceClientSetup: ReturnType<typeof createClientForUser> | undefined;
-
-export function OtherDeviceDocSyncClientProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const [isReady, setIsReady] = useState(false);
-  const [Provider, setProvider] =
-    useState<React.ComponentType<{ children: React.ReactNode }>>();
-
-  useEffect(() => {
-    // Wait a bit to ensure other clients have initialized their deviceIds
-    setTimeout(() => {
-      const newDeviceId = crypto.randomUUID();
-      otherDeviceClientSetup = createClientForUser("user2", newDeviceId);
-      setProvider(() => otherDeviceClientSetup!.DocSyncClientProvider);
-      setIsReady(true);
-    }, 100);
-  }, []);
-
-  if (!isReady || !Provider) {
-    return <div className="text-zinc-500">Initializing...</div>;
-  }
-
-  return <Provider>{children}</Provider>;
-}
-
-// Wrapper that matches useReferenceDoc signature exactly
-export const useOtherDeviceDoc = ((
-  args: Parameters<typeof useReferenceDoc>[0],
-) => {
-  if (!otherDeviceClientSetup) {
-    throw new Error("Other device client not initialized");
-  }
-  return otherDeviceClientSetup.useDoc(args);
-}) as typeof useReferenceDoc;
+// Other device client (user2, device B - different device)
+export const {
+  DocSyncClientProvider: OtherDeviceDocSyncClientProvider,
+  useDoc: useOtherDeviceDoc,
+} = createClientForUser("user2", "device-b");

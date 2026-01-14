@@ -6,5 +6,5 @@ new DocSyncServer({
   docBinding: DocNodeBinding([IndexDocConfig]),
   port: 8081,
   provider: PostgresProvider,
-  authenticate: async () => ({ userId: "John" }),
+  authenticate: async ({ token }) => ({ userId: token }), // Use token as userId
 });
