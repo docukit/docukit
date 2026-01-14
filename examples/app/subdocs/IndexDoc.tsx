@@ -1,23 +1,16 @@
-import { IndexNode, useDoc } from "./ClientLayout";
-import { type DocNode } from "docnode";
-import { DocRenderer } from "@/components/Renderers";
+import { IndexNode } from "./ClientProviders";
+import { type DocNode, type Doc } from "docnode";
+import { DocRenderer } from "../../components/Renderers";
 
 export function IndexDoc({
-  activeDoc,
+  doc,
   setActiveDoc,
   selectedDoc,
 }: {
-  activeDoc: string;
-  selectedDoc?: string;
+  doc: Doc;
+  selectedDoc?: string | undefined;
   setActiveDoc?: (docId: string) => void;
 }) {
-  const result = useDoc({
-    type: "indexDoc",
-    id: activeDoc,
-    createIfMissing: true,
-  });
-  const doc = result.status === "success" ? result.data.doc : undefined;
-
   function handleSelect(ev: React.MouseEvent, docId: string) {
     const target = ev.target as HTMLElement;
     if (target.tagName === "BUTTON") return;
@@ -32,7 +25,7 @@ export function IndexDoc({
       const currentLastState = (
         lastChild as DocNode<typeof IndexNode>
       ).state.value.get();
-      const newValue = currentLastState.replace(/\d+$/, (match) =>
+      const newValue = currentLastState.replace(/\d+$/, (match: string) =>
         String(Number(match) + 1).padStart(match.length, "0"),
       );
       const newNode = doc.createNode(IndexNode);
@@ -54,9 +47,6 @@ export function IndexDoc({
     node.is(IndexNode) ? node.delete() : node.deleteChildren();
   }
 
-  // if (isPending) return <div>Loading...</div>;
-  // if (isError) return <div>Error</div>;
-  if (!doc) return <div>Loading...</div>;
   return (
     <div className="docnode-doc">
       <DocRenderer
