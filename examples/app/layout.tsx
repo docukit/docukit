@@ -17,8 +17,8 @@ export default function RootLayout({
   const pathname = usePathname();
 
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body>
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body style={{ colorScheme: "dark" }}>
         <div className="flex min-h-screen bg-zinc-950">
           {/* Sidebar */}
           <aside className="w-64 border-r border-zinc-800 bg-zinc-900/50 p-6">

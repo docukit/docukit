@@ -1,13 +1,6 @@
 "use client";
 
-import { useLayoutEffect } from "react";
-
 export default function HomePage() {
-  useLayoutEffect(() => {
-    document.documentElement.classList.add("dark");
-    document.documentElement.style.colorScheme = "dark";
-  }, []);
-
   return (
     <div className="flex min-h-screen items-center justify-center p-8">
       <div className="max-w-2xl text-center">

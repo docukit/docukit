@@ -6,16 +6,10 @@ import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
-import { useLayoutEffect } from "react";
 import ToolbarPlugin from "./ToolbarPlugin";
 import { $createParagraphNode, $createTextNode, $getRoot } from "lexical";
 
 export default function LexicalPage() {
-  useLayoutEffect(() => {
-    document.documentElement.classList.add("dark");
-    document.documentElement.style.colorScheme = "dark";
-  }, []);
-
   return (
     <div className="bg-linear-to-br flex min-h-screen flex-col items-center from-zinc-950 via-zinc-900 to-zinc-950 px-4 py-12">
       {/* Editor Container */}

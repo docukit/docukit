@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createIndexNode, useDoc } from "./ClientLayout";
 import { IndexDoc } from "./IndexDoc";
@@ -16,11 +16,6 @@ function SubPage({ id }: { id: string }) {
   });
   const indexDoc = result.status === "success" ? result.data.doc : undefined;
   const [activeDoc, setActiveDoc] = useState<string | undefined>();
-
-  useLayoutEffect(() => {
-    document.documentElement.classList.add("dark");
-    document.documentElement.style.colorScheme = "dark";
-  }, []);
 
   useEffect(() => {
     if (!indexDoc) return;
