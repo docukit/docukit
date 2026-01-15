@@ -1,5 +1,4 @@
 import { test, expectTypeOf, expect } from "vitest";
-import type React from "react";
 import {
   createDocSyncClient,
   IndexedDBProvider,
@@ -11,7 +10,7 @@ import { renderHook } from "vitest-browser-react";
 import { docConfig, id } from "./utils.js";
 
 test("createDocSyncClient", async () => {
-  const { useDoc, DocSyncClientProvider } = createDocSyncClient({
+  const { useDoc } = createDocSyncClient({
     server: {
       url: "ws://localhost:8081",
       auth: {
@@ -37,16 +36,10 @@ test("createDocSyncClient", async () => {
   // @ts-expect-error - type is required
   await renderHook(() => useDoc({ createIfMissing: true, id: "123" }));
 
-  // Create wrapper with provider
-  const wrapper = ({ children }: { children: React.ReactNode }) => (
-    <DocSyncClientProvider>{children}</DocSyncClientProvider>
-  );
-
   // with id, without createIfMissing
   // prettier-ignore
   const {result: _1} = await renderHook(
     () => useDoc({ type: "test", id: "1" }),
-    { wrapper }
   );
   expectTypeOf(_1.current).toEqualTypeOf<MaybeDocResult>();
   expect(_1.current.status).toBe("loading");
@@ -58,9 +51,8 @@ test("createDocSyncClient", async () => {
   // with id, with createIfMissing true
   // prettier-ignore
   const id2 = id.ending("2");
-  const { result: _2 } = await renderHook(
-    () => useDoc({ type: "test", id: id2, createIfMissing: true }),
-    { wrapper },
+  const { result: _2 } = await renderHook(() =>
+    useDoc({ type: "test", id: id2, createIfMissing: true }),
   );
   expectTypeOf(_2.current).toEqualTypeOf<DocResult>();
   expect(_2.current.status).toBe("loading");
