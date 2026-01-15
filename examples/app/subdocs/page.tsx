@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   createIndexNode,
@@ -101,7 +101,7 @@ function SubDocContent({
   );
 }
 
-export default function Page() {
+function SubdocsPageContent() {
   const searchParams = useSearchParams();
   const docId = searchParams.get("docId") ?? "01kcfhzz66v3393xhggx6aeb6t";
 
@@ -152,5 +152,13 @@ export default function Page() {
         }}
       </MultiClientLayout>
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div className="p-4 text-zinc-400">Loading...</div>}>
+      <SubdocsPageContent />
+    </Suspense>
   );
 }
