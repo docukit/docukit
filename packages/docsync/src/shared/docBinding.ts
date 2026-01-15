@@ -1,16 +1,10 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { Doc, type DocConfig, type Operations } from "docnode";
 
-export type SerializedDoc =
-  | string
-  | Record<string, unknown>
-  | Array<unknown>
-  | Uint8Array;
-
 // TO-DECIDE: should params in fn's be objects?
 export interface DocBinding<
   D extends {} = {},
-  S extends SerializedDoc = SerializedDoc,
+  S extends {} = {},
   O extends {} = {},
 > {
   new: (type: string, id?: string) => { doc: D; id: string };
@@ -21,11 +15,7 @@ export interface DocBinding<
   removeListeners: (doc: D) => void;
 }
 
-export const createDocBinding = <
-  D extends {},
-  S extends SerializedDoc,
-  O extends {} = {},
->(
+export const createDocBinding = <D extends {}, S extends {}, O extends {} = {}>(
   docBinding: DocBinding<D, S, O>,
 ): DocBinding<D, S, O> => {
   return docBinding;

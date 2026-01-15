@@ -5,7 +5,6 @@
  *
  * Uses @docnode/docsync/testing to avoid loading PostgresProvider which requires DB env vars.
  */
-import type { SerializedDoc } from "@docnode/docsync/client";
 import { DocNodeBinding } from "@docnode/docsync/docnode";
 import { testDocConfig } from "./utils.js";
 import {
@@ -53,7 +52,7 @@ const parseTestToken = (token: string): string | undefined => {
   return token.slice(prefix.length);
 };
 
-let server: DocSyncServer<unknown, {}, SerializedDoc, {}> | undefined;
+let server: DocSyncServer<unknown, {}, {}, {}> | undefined;
 let serverPort: number;
 
 export async function setup() {

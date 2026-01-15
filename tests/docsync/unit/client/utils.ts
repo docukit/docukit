@@ -5,7 +5,6 @@ import {
   IndexedDBProvider,
   type QueryResult,
   type DocData,
-  type SerializedDoc,
   type ClientConfig,
   type Identity,
 } from "@docnode/docsync/client";
@@ -37,11 +36,7 @@ export const ChildNode = defineNode({ type: "child", state: {} });
  * Using this wrapper forces inline object literals, which enables TypeScript's
  * excess property checking - catching typos and invalid properties at compile time.
  */
-const createClientConfig = <
-  D extends {},
-  S extends SerializedDoc,
-  O extends {},
->(
+const createClientConfig = <D extends {}, S extends {}, O extends {}>(
   config: ClientConfig<D, S, O>,
 ): ClientConfig<D, S, O> => config;
 

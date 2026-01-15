@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type { DocBinding, SerializedDoc } from "../shared/docBinding.js";
+import type { DocBinding } from "../shared/docBinding.js";
 import type { SerializedDocPayload } from "../shared/types.js";
 
 /**
@@ -51,7 +51,7 @@ export type Identity = {
 
 export type ClientConfig<
   D extends {} = {},
-  S extends SerializedDoc = SerializedDoc,
+  S extends {} = {},
   O extends {} = {},
 > = {
   docBinding: DocBinding<D, S, O>;

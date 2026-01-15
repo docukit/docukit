@@ -7,7 +7,7 @@ import {
   type AuthorizeEvent,
 } from "../shared/types.js";
 import type { ServerConfig } from "./types.js";
-import type { DocBinding, SerializedDoc } from "../shared/docBinding.js";
+import type { DocBinding } from "../shared/docBinding.js";
 import type { Provider } from "../client/types.js";
 
 type AuthenticatedContext<TContext> = {
@@ -21,7 +21,7 @@ const OPERATION_THRESHOLD = 100;
 export class DocSyncServer<
   TContext = {},
   D extends {} = {},
-  S extends SerializedDoc = SerializedDoc,
+  S extends {} = {},
   O extends {} = {},
 > {
   private _io: ServerSocket<S, O>;

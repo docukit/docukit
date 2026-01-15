@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type { DocBinding, SerializedDoc } from "../shared/docBinding.js";
+import type { DocBinding } from "../shared/docBinding.js";
 import type {
   BroadcastMessage,
   ClientConfig,
@@ -20,7 +20,7 @@ type PushStatus = "idle" | "pushing" | "pushing-with-pending";
 
 export class DocSyncClient<
   D extends {} = {},
-  S extends SerializedDoc = SerializedDoc,
+  S extends {} = {},
   O extends {} = {},
 > {
   protected _docBinding: DocBinding<D, S, O>;
