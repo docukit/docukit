@@ -1,32 +1,42 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import {
-  defineNode,
-  type DocNode,
-  string,
-  Doc,
-  type JsonDoc,
-  defineState,
-} from "docnode";
+import { defineNode, defineState, Doc, type DocNode } from "docnode";
 import {
   $getRoot,
+  $isElementNode,
   $parseSerializedNode,
+  COLLABORATION_TAG,
   createEditor,
   type CreateEditorArgs,
+  isLexicalEditor,
   type LexicalEditor,
-  type SerializedLexicalNode,
   type LexicalNode,
-  $isElementNode,
+  type SerializedLexicalNode,
 } from "lexical";
 
+import { syncDocNodeToLexical } from "./syncDocNodeToLexical.js";
+import { syncLexicalToDocNode } from "./syncLexicalToDocNode.js";
+
+/**
+ *
+ * @param editorOrConfig - A Lexical editor instance or a CreateEditorArgs object.
+ * @param doc - A DocNode document instance. If no doc is provided, it will create a new one.
+ * @returns A Lexical editor and DocNode document instance.
+ */
 export function docToLexical(
-  config: CreateEditorArgs,
-  // If no doc is provided, it will create a new one.
-  doc = new Doc({ extensions: [{ nodes: [LexicalDocNode] }] }),
+  editorOrConfig: LexicalEditor | CreateEditorArgs,
+  // TODO: review this
+  doc = Doc.fromJSON({ extensions: [{ nodes: [LexicalDocNode] }] }, [
+    "01kc52hq510g6y44jhq0wqrjb3",
+    "root",
+    {},
+  ]),
 ): { editor: LexicalEditor; doc: Doc } {
   const lexicalKeyToDocNodeId = new Map<string, string>();
   const docNodeIdToLexicalKey = new Map<string, string>();
 
-  const editor = createEditor(config);
+  const editor = isLexicalEditor(editorOrConfig)
+    ? editorOrConfig
+    : createEditor(editorOrConfig);
+
   editor.update(
     () => {
       const root = $getRoot();
@@ -58,7 +68,21 @@ export function docToLexical(
 
       processChildren(doc.root, root);
     },
-    { discrete: true },
+    { discrete: true, tag: COLLABORATION_TAG },
+  );
+
+  syncLexicalToDocNode(
+    doc,
+    editor,
+    lexicalKeyToDocNodeId,
+    docNodeIdToLexicalKey,
+  );
+
+  syncDocNodeToLexical(
+    doc,
+    editor,
+    lexicalKeyToDocNodeId,
+    docNodeIdToLexicalKey,
   );
 
   return { editor, doc };
