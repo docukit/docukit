@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 /**
  * Vitest globalSetup for integration tests.
  * Starts a DocSyncServer with InMemoryServerProvider before browser tests run.
@@ -52,7 +51,7 @@ const parseTestToken = (token: string): string | undefined => {
   return token.slice(prefix.length);
 };
 
-let server: DocSyncServer<unknown, {}, {}, {}> | undefined;
+let server: DocSyncServer | undefined;
 let serverPort: number;
 
 export async function setup() {

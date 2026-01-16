@@ -43,8 +43,8 @@ export class DocSyncServer<
 
     this._docBinding = config.docBinding;
     this._provider = new config.provider();
-    this._authenticate = config.authenticate;
-    this._authorize = config.authorize;
+    this._authenticate = config.authenticate.bind(config);
+    this._authorize = config.authorize?.bind(config);
     this._setupSocketServer();
   }
 

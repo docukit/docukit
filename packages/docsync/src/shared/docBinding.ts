@@ -7,12 +7,13 @@ export interface DocBinding<
   S extends {} = {},
   O extends {} = {},
 > {
-  new: (type: string, id?: string) => { doc: D; id: string };
-  deserialize: (serializedDoc: S) => D;
-  serialize: (doc: D) => S;
-  onChange: (doc: D, cb: (ev: { operations: O }) => void) => void;
-  applyOperations: (doc: D, operations: O) => void;
-  removeListeners: (doc: D) => void;
+  // method syntax is required to avoid type errors
+  "new"(type: string, id?: string): { doc: D; id: string };
+  deserialize(serializedDoc: S): D;
+  serialize(doc: D): S;
+  onChange(doc: D, cb: (ev: { operations: O }) => void): void;
+  applyOperations(doc: D, operations: O): void;
+  removeListeners(doc: D): void;
 }
 
 export const createDocBinding = <D extends {}, S extends {}, O extends {} = {}>(

@@ -31,7 +31,8 @@ export type ServerConfig<TContext, D extends {}, S extends {}, O extends {}> = {
    *
    * @returns User info with optional context, or undefined if authentication fails.
    */
-  authenticate: (ev: { token: string }) => Promise<
+  // method syntax is required to avoid type errors
+  authenticate(ev: { token: string }): Promise<
     | {
         userId: string;
         context?: TContext;
@@ -48,5 +49,5 @@ export type ServerConfig<TContext, D extends {}, S extends {}, O extends {}> = {
    *
    * @returns true to allow, false to deny.
    */
-  authorize?: (ev: AuthorizeEvent<TContext, S, O>) => Promise<boolean>;
+  authorize?(ev: AuthorizeEvent<TContext, S, O>): Promise<boolean>;
 };
