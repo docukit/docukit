@@ -433,8 +433,8 @@ importers:
         specifier: ^8.0.3
         version: 8.0.3
       lexical:
-        specifier: ^0.36.1
-        version: 0.36.2
+        specifier: ^0.38.2
+        version: 0.38.2
       postgres:
         specifier: ^3.4.5
         version: 3.4.7
@@ -4496,9 +4496,6 @@ packages:
 
   lexical@0.21.0:
     resolution: {integrity: sha512-Dxc5SCG4kB+wF+Rh55ism3SuecOKeOtCtGHFGKd6pj2QKVojtjkxGTQPMt7//2z5rMSue4R+hmRM0pCEZflupA==}
-
-  lexical@0.36.2:
-    resolution: {integrity: sha512-gIDJCmSAhtxD7h95WK17Nz19wCZu92Zn0p1/R45X01S/KAsLCwEtVJ2fTvIJNFTyx3QNJTuGcm5mYgRMUwq8rg==}
 
   lexical@0.38.2:
     resolution: {integrity: sha512-JJmfsG3c4gwBHzUGffbV7ifMNkKAWMCnYE3xJl87gty7hjyV5f3xq7eqTjP5HFYvO4XpjJvvWO2/djHp5S10tw==}
@@ -10578,8 +10575,6 @@ snapshots:
       type-check: 0.4.0
 
   lexical@0.21.0: {}
-
-  lexical@0.36.2: {}
 
   lexical@0.38.2: {}
 

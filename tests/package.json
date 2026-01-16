@@ -14,7 +14,7 @@
     "docnode": "workspace:*",
     "drizzle-orm": "^0.38.4",
     "idb": "^8.0.3",
-    "lexical": "^0.36.1",
+    "lexical": "^0.38.2",
     "postgres": "^3.4.5",
     "ulid": "^2.3.0",
     "valibot": "^1.0.0"
