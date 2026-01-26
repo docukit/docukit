@@ -558,7 +558,8 @@ export class Doc {
     | "update"
     | "normalize"
     | "normalize2"
-    | "change" = "idle";
+    | "change"
+    | "disposed" = "idle";
   protected _operations: operations.Operations = [[], {}];
   protected _inverseOperations: operations.Operations = [[], {}];
   protected _diff: Diff = {
@@ -892,7 +893,11 @@ export class Doc {
    * @throws If the document is **not** in the `idle` stage at the time of registration.
    */
   onChange = (callback: (ev: ChangeEvent) => void) => {
-    if (this._lifeCycleStage !== "idle" && this._lifeCycleStage !== "init")
+    if (
+      this._lifeCycleStage !== "idle" &&
+      this._lifeCycleStage !== "init" &&
+      this._lifeCycleStage !== "update"
+    )
       throw new Error(
         `You can't register a change event listener during the ${this._lifeCycleStage} stage`,
       );
@@ -1000,6 +1005,21 @@ export class Doc {
     this["_lifeCycleStage"] = "idle";
   }
 
+  /**
+   * This method unregisters all event listeners so the instance can be garbage-collected.
+   *
+   * After calling this method, the document can no longer be modified.
+   */
+  dispose() {
+    if (this._lifeCycleStage !== "idle")
+      throw new Error(
+        `You can't dispose a document during the ${this._lifeCycleStage} stage`,
+      );
+    this._changeListeners.clear();
+    this._normalizeListeners.clear();
+    this._lifeCycleStage = "disposed";
+  }
+
   toJSON(options?: { unsafe?: boolean }): JsonDoc {
     if (
       !options?.unsafe &&
@@ -1035,6 +1055,7 @@ export class Doc {
   // For safety, I think I would make the strategy a required property. E.g.:
   // doc.fromJSON({jsonDoc, strategy: "overwrite" | "merge"});
   // What should happen to the listeners in this case? Should be configurable?
+  // EDIT: I haven't needed it. It's super unsafe and dangerous. Best not to.
   /**
    * Creates a new doc from the given JSON.
    *

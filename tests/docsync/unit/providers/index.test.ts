@@ -1,7 +1,6 @@
+import type { Provider } from "@docnode/docsync";
+import { IndexedDBProvider } from "@docnode/docsync/client";
 import { InMemoryServerProvider } from "@docnode/docsync/testing";
-import type { Provider } from "../../../../packages/docsync/dist/src/client/types.js";
-// import { PostgresProvider } from "../../../../packages/docsync/dist/src/server/providers/postgres/index.js";
-import { IndexedDBProvider } from "../../../../packages/docsync/dist/src/client/providers/indexeddb.js";
 import { test } from "vitest";
 
 function testProvider<T extends "server" | "client", S, O>(

@@ -29,7 +29,6 @@ I will divide the development into the following milestones:
    ┌─────────────┐ ┌───────────┐ ┌────────┐ ┌────────────┐
    │ Main thread │ <-> │ IndexedDB\*│ <-> │ Server │ <-> │ Central DB │
    └─────────────┘ └───────────┘ └────────┘ └────────────┘
-
    - I need to ensure that two tabs cannot store new operations without having the latest version of the document.
 
 2. Add broadcast channel:

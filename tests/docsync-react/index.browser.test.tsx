@@ -91,17 +91,17 @@ test("createDocSyncClient", async () => {
   expectTypeOf<DocResult>().toEqualTypeOf<
     | {
         status: "loading";
-        data: undefined;
-        error: undefined;
+        data?: never;
+        error?: never;
       }
     | {
         status: "success";
         data: DocData<Doc>;
-        error: undefined;
+        error?: never;
       }
     | {
         status: "error";
-        data: undefined;
+        data?: never;
         error: Error;
       }
   >();

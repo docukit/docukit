@@ -324,9 +324,7 @@ describe("change", () => {
       doc.forceCommit();
       doc.onChange(() => {
         count++;
-        expect(fn).toThrowError(
-          "You can't trigger an update inside a change event",
-        );
+        expect(fn).toThrowError("You can't trigger an update inside a change");
       });
       node.state.value.set((current) => String(Number(current) + 1));
       doc.forceCommit();

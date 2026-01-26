@@ -8,12 +8,12 @@ export interface DocBinding<
   O extends {} = {},
 > {
   // method syntax is required to avoid type errors
-  "new"(type: string, id?: string): { doc: D; id: string };
+  create(type: string, id?: string): { doc: D; id: string };
   deserialize(serializedDoc: S): D;
   serialize(doc: D): S;
   onChange(doc: D, cb: (ev: { operations: O }) => void): void;
   applyOperations(doc: D, operations: O): void;
-  removeListeners(doc: D): void;
+  dispose(doc: D): void;
 }
 
 export const createDocBinding = <D extends {}, S extends {}, O extends {} = {}>(
@@ -34,7 +34,7 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
   });
 
   return createDocBinding({
-    new: (type, id) => {
+    create: (type, id) => {
       const docConfig = docConfigsMap.get(type);
       if (!docConfig) throw new Error(`Unknown type: ${type}`);
       const doc = new Doc({ ...docConfig, id });
@@ -55,12 +55,6 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
       doc.applyOperations(operations);
       doc.forceCommit();
     },
-    removeListeners: (doc) => {
-      // TODO: maybe doc should have a removeListeners method?
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-      doc["_changeListeners"].clear();
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-      doc["_normalizeListeners"].clear();
-    },
+    dispose: (doc) => doc.dispose(),
   });
 };

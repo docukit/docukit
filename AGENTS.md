@@ -12,6 +12,12 @@
   - In `pnpm fix` all pass.
 - Vitest tests should never take more than 4 seconds. If this happens, investigate the regression and let us know so we can fix it.
 
+## DocSync Architecture Rules
+
+**CRDT Agnostic:** DocSync must remain completely CRDT-agnostic. It should work with Yjs, Loro, DocNode, or any other CRDT library without inspecting or understanding the structure of operations or documents.
+
+- **NEVER** inspect node IDs, operation contents, or document structure
+
 ## Tests
 
 - Test files should be highly declarative and easy to understand. Extract repetitive utilities, setup, or cleanup functions into utils.ts files.

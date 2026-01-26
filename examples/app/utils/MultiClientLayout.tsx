@@ -1,13 +1,13 @@
 "use client";
 
 import { type ReactNode, useState } from "react";
-import type { referenceClient } from "./ClientProviders";
+import type { DocSyncClient } from "@docnode/docsync-react/client";
 
 interface MultiClientLayoutProps {
   children: (clientId: string, userId: string) => ReactNode;
-  referenceClient: typeof referenceClient;
-  otherTabClient: typeof referenceClient;
-  otherDeviceClient: typeof referenceClient;
+  referenceClient: DocSyncClient;
+  otherTabClient: DocSyncClient;
+  otherDeviceClient: DocSyncClient;
 }
 
 export function MultiClientLayout({
@@ -23,9 +23,9 @@ export function MultiClientLayout({
   const toggleReference = () => {
     if (!referenceClient) return;
     if (referenceConnected) {
-      referenceClient["_api"].disconnect();
+      referenceClient.disconnect();
     } else {
-      referenceClient["_api"].connect();
+      referenceClient.connect();
     }
     setReferenceConnected(!referenceConnected);
   };
@@ -33,9 +33,9 @@ export function MultiClientLayout({
   const toggleOtherTab = () => {
     if (!otherTabClient) return;
     if (otherTabConnected) {
-      otherTabClient["_api"].disconnect();
+      otherTabClient.disconnect();
     } else {
-      otherTabClient["_api"].connect();
+      otherTabClient.connect();
     }
     setOtherTabConnected(!otherTabConnected);
   };
@@ -43,9 +43,9 @@ export function MultiClientLayout({
   const toggleOtherDevice = () => {
     if (!otherDeviceClient) return;
     if (otherDeviceConnected) {
-      otherDeviceClient["_api"].disconnect();
+      otherDeviceClient.disconnect();
     } else {
-      otherDeviceClient["_api"].connect();
+      otherDeviceClient.connect();
     }
     setOtherDeviceConnected(!otherDeviceConnected);
   };
@@ -59,6 +59,7 @@ export function MultiClientLayout({
               Reference
             </h2>
             <button
+              data-testid="reference-connection-toggle"
               onClick={toggleReference}
               className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
                 referenceConnected
@@ -76,7 +77,11 @@ export function MultiClientLayout({
           </div>
           <span className="text-xs text-zinc-500">User 1 • Device A</span>
         </div>
-        {children("reference", "user1")}
+        <div id="reference">{children("reference", "user1")}</div>
+        {/* Hidden duplicate for testing multiple useDoc calls */}
+        <div id="reference-hidden" className="hidden">
+          {children("reference", "user1")}
+        </div>
       </div>
 
       {/* Other Tab - User 1 (same user, different tab) */}
@@ -85,6 +90,7 @@ export function MultiClientLayout({
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold text-blue-400">Other Tab</h2>
             <button
+              data-testid="otherTab-connection-toggle"
               onClick={toggleOtherTab}
               className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
                 otherTabConnected
@@ -102,7 +108,11 @@ export function MultiClientLayout({
           </div>
           <span className="text-xs text-zinc-500">User 1 • Device A</span>
         </div>
-        {children("otherTab", "user1")}
+        <div id="otherTab">{children("otherTab", "user1")}</div>
+        {/* Hidden duplicate for testing multiple useDoc calls */}
+        <div id="otherTab-hidden" className="hidden">
+          {children("otherTab", "user1")}
+        </div>
       </div>
 
       {/* Other Device - User 2 (different user, different device) */}
@@ -113,6 +123,7 @@ export function MultiClientLayout({
               Other Device
             </h2>
             <button
+              data-testid="otherDevice-connection-toggle"
               onClick={toggleOtherDevice}
               className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
                 otherDeviceConnected
@@ -130,7 +141,11 @@ export function MultiClientLayout({
           </div>
           <span className="text-xs text-zinc-500">User 2 • Device B</span>
         </div>
-        {children("otherDevice", "user2")}
+        <div id="otherDevice">{children("otherDevice", "user2")}</div>
+        {/* Hidden duplicate for testing multiple useDoc calls */}
+        <div id="otherDevice-hidden" className="hidden">
+          {children("otherDevice", "user2")}
+        </div>
       </div>
     </div>
   );

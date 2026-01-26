@@ -43,7 +43,7 @@ const Index = () => {
 
   return (
     <div className="bg-background gradient-mesh min-h-screen">
-      <section className="px-6 pb-20 pt-32">
+      <section className="px-6 pt-32 pb-20">
         <div className="container mx-auto text-center">
           <h1 className="text-foreground animate-fade-in mb-4 text-5xl font-bold md:text-7xl">
             Build
@@ -60,7 +60,7 @@ const Index = () => {
 
           <Link
             href="/docs"
-            className="bg-background mb-6 inline-block rounded-full border border-emerald-500 bg-opacity-50 px-4 py-1 text-xl font-medium backdrop-blur-sm transition-all duration-300 hover:border-green-400/50 hover:bg-green-400/10 hover:shadow-[0_0_20px_rgba(74,222,128,0.3)] hover:shadow-green-400/30"
+            className="bg-background bg-opacity-50 mb-6 inline-block rounded-full border border-emerald-500 px-4 py-1 text-xl font-medium backdrop-blur-sm transition-all duration-300 hover:border-green-400/50 hover:bg-green-400/10 hover:shadow-[0_0_20px_rgba(74,222,128,0.3)] hover:shadow-green-400/30"
           >
             Read the docs →
           </Link>
@@ -96,7 +96,7 @@ const FeatureCard: React.FC<FeatureCardProps> = ({ title, features }) => {
         {features.map((feature, index) => (
           <li
             key={index}
-            className="before:text-primary before:mr-2 before:mt-1 before:text-xl before:content-['-']"
+            className="before:text-primary before:mt-1 before:mr-2 before:text-xl before:content-['-']"
           >
             <span className="text-sm leading-relaxed">{feature}</span>
           </li>

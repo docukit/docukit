@@ -1,64 +1,31 @@
 "use client";
 
-import { createDocSyncClient } from "@docnode/docsync-react/client";
-import { DocNodeBinding } from "@docnode/docsync-react/docnode";
-import { IndexedDBProvider } from "@docnode/docsync-react/client";
-import { defineNode, string, type DocConfig, type Doc } from "docnode";
+import type { DocConfig } from "docnode";
+import {
+  IndexNode,
+  createIndexNode,
+  indexDocConfig,
+} from "../../shared-config";
+import { createMultiClients } from "../utils/createMultiClients";
 
-// Same node definition as server
-export const IndexNode = defineNode({
-  type: "editor-index",
-  state: {
-    value: string(""),
-  },
-});
+// Re-export for IndexDoc component
+export { IndexNode, createIndexNode };
 
-// Same doc configuration as server
-const IndexDocConfig: DocConfig = {
-  type: "indexDoc",
-  extensions: [{ nodes: [IndexNode] }],
-  nodeIdGenerator: "ulid",
+// Create clients with indexDocConfig
+const {
+  useReferenceDoc,
+  referenceClient,
+  useOtherTabDoc,
+  otherTabClient,
+  useOtherDeviceDoc,
+  otherDeviceClient,
+} = createMultiClients([indexDocConfig] as DocConfig[]);
+
+export {
+  useReferenceDoc,
+  referenceClient,
+  useOtherTabDoc,
+  otherTabClient,
+  useOtherDeviceDoc,
+  otherDeviceClient,
 };
-
-export function createIndexNode(doc: Doc, { value }: { value: string }) {
-  const node = doc.createNode(IndexNode);
-  node.state.value.set(value);
-  return node;
-}
-
-// Create 3 separate DocSyncClient instances with different deviceIds
-const createClientForUser = (userId: string, deviceId: string) => {
-  // Force specific deviceId in localStorage before creating client
-  if (typeof window !== "undefined") {
-    localStorage.setItem("docsync:deviceId", deviceId);
-  }
-
-  return createDocSyncClient({
-    server: {
-      url: "ws://localhost:8081",
-      auth: {
-        getToken: async () => userId, // Use userId as token
-      },
-    },
-    local: {
-      provider: IndexedDBProvider,
-      getIdentity: async () => ({
-        userId,
-        secret: "asdasdasd",
-      }),
-    },
-    docBinding: DocNodeBinding([IndexDocConfig]),
-  });
-};
-
-// Reference client (user1, device A)
-export const { useDoc: useReferenceDoc, client: referenceClient } =
-  createClientForUser("user1", "device-a");
-
-// Other tab client (user1, device A - same device as reference)
-export const { useDoc: useOtherTabDoc, client: otherTabClient } =
-  createClientForUser("user1", "device-a");
-
-// Other device client (user2, device B - different device)
-export const { useDoc: useOtherDeviceDoc, client: otherDeviceClient } =
-  createClientForUser("user2", "device-b");

@@ -6,4 +6,4 @@ export type {
   DocData,
   Identity,
   QueryResult,
-} from "../client/types.js";
+} from "../shared/types.js";

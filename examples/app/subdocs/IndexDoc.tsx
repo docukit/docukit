@@ -69,17 +69,20 @@ export function IndexDoc({
                       ? "cursor-pointer hover:bg-zinc-800/50"
                       : ""
                 }`}
+                data-node-value={
+                  node.is(IndexNode) ? node.state.value.get() : "root"
+                }
               >
                 {/* Node label */}
-                <span className="inline-block truncate text-xs text-zinc-300">
+                <span className="inline-block truncate font-mono text-xs text-zinc-300">
                   {node.is(IndexNode) ? node.state.value.get() : "root"}
                   <span className="ml-1 text-zinc-600">
-                    {node.id.slice(-6)}
+                    {node.id.slice(-4)}
                   </span>
                 </span>
 
                 {/* Buttons on hover - floating over the label on the right */}
-                <div className="absolute right-1 top-0 hidden flex-row gap-0.5 group-hover:flex">
+                <div className="absolute top-0 right-1 hidden flex-row gap-0.5 group-hover:flex">
                   <button
                     className="create rounded bg-green-600/90 px-1.5 py-0.5 text-xs font-medium text-white backdrop-blur-sm transition-colors hover:bg-green-500"
                     onClick={(e) => {

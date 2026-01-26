@@ -16,6 +16,7 @@
     "dev": "lsof -ti:3000,4000,8081 | xargs kill -9; turbo dev",
     "fix": "concurrently \"prettier --write . --log-level warn\" \"eslint\" \"tsc --noEmit\" \"turbo typecheck --log-order=grouped\" --prefixColors \"yellow,magenta,green,cyan\" --group --names \"prettier,eslint,tsc-root,tsc-packages\" --prefix name",
     "check": "concurrently \"prettier --check . --log-level warn\" \"eslint\" \"tsc --noEmit\" \"turbo typecheck --log-order=grouped\" --prefixColors \"yellow,magenta,green,cyan\" --group --names \"prettier,eslint,tsc-root,tsc-packages\" --prefix name",
+    "check:deps": "knip",
     "test": "vitest watch",
     "test:once": "vitest --watch=false",
     "test:ci": "turbo build --filter='!@docnode/docs' && CI=true vitest --watch=false",
@@ -41,8 +42,6 @@
     ]
   },
   "devDependencies": {
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
     "@playwright/test": "1.51.0",
     "@types/node": "^22.10.7",
     "@vitejs/plugin-react": "^5.1.2",
@@ -53,12 +52,12 @@
     "@vitest/ui": "4.0.8",
     "bun": "^1.1.42",
     "concurrently": "^9.1.2",
-    "dotenv": "^16.4.7",
     "eslint": "^9.19.0",
+    "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-playwright": "^2.2.0",
     "eslint-plugin-regexp": "^2.10.0",
-    "eslint-plugin-unicorn": "^56.0.1",
     "jiti": "^2.4.2",
+    "knip": "^5.82.1",
     "lint-staged": "15.4.1",
     "mitata": "^1.0.34",
     "playwright": "1.51.0",
@@ -69,7 +68,6 @@
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.21.0",
     "ultimate-tooling": "^1.0.0",
-    "vitest": "^4.0.8",
-    "vitest-browser-react": "^2.0.2"
+    "vitest": "^4.0.8"
   }
 }

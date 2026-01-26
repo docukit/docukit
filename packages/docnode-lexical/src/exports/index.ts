@@ -1,1 +1,5 @@
-export { docToLexical, LexicalDocNode } from "../index.js";
+export {
+  docToLexical,
+  LexicalDocNode,
+  lexicalDocNodeConfig,
+} from "../index.js";

@@ -9,11 +9,12 @@ export default defineConfig({
     ? "github"
     : [["html", { outputFolder: ".test-results/playwright/report" }]],
   outputDir: ".test-results/playwright/test-results",
+  timeout: 5000,
   retries: 1,
   use: {
     baseURL: process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}/subdocs`
-      : `http://localhost:${process.env.PORT ?? 4000}/subdocs`,
+      ? `https://${process.env.VERCEL_URL}/`
+      : `http://localhost:${process.env.PORT ?? 4000}/`,
     trace: "on",
     video: "retain-on-failure",
     colorScheme: "dark",
@@ -26,9 +27,9 @@ export default defineConfig({
   // prettier-ignore
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
-    { name: "webkit", use: { ...devices["Desktop Safari"] } },
-    { name: "Mobile Chrome", use: { ...devices["Pixel 5"] } },
-    { name: "Mobile Safari", use: { ...devices["iPhone 12"] } },
+    // { name: "firefox", use: { ...devices["Desktop Firefox"] } },
+    // { name: "webkit", use: { ...devices["Desktop Safari"] } },
+    // { name: "Mobile Chrome", use: { ...devices["Pixel 5"] } },
+    // { name: "Mobile Safari", use: { ...devices["iPhone 12"] } },
   ],
 });

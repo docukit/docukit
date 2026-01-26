@@ -1,108 +1,118 @@
 "use client";
 
-import { $createHeadingNode, HeadingNode } from "@lexical/rich-text";
-import { LexicalComposer } from "@lexical/react/LexicalComposer";
-import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
-import { ContentEditable } from "@lexical/react/LexicalContentEditable";
-import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
-import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
-import ToolbarPlugin from "./ToolbarPlugin";
-import { $createParagraphNode, $createTextNode, $getRoot } from "lexical";
+import { useEffect, Suspense } from "react";
+import {
+  useReferenceDoc,
+  useOtherTabDoc,
+  useOtherDeviceDoc,
+  referenceClient,
+  otherTabClient,
+  otherDeviceClient,
+} from "./ClientProviders";
+import { EditorPanel } from "./EditorPanel";
+import { MultiClientLayout } from "../utils/MultiClientLayout";
+import { useDocId } from "../utils/useDocId";
 
-export default function LexicalPage() {
+function EditorContent({
+  clientId,
+  docId,
+  useDocHook,
+}: {
+  clientId: string;
+  userId: string;
+  docId: string;
+  useDocHook: typeof useReferenceDoc;
+}) {
+  // All clients create doc if missing (safe with CRDT)
+  const { status, data, error } = useDocHook({
+    type: "docnode-lexical",
+    id: docId,
+    createIfMissing: true,
+  });
+
+  useEffect(() => {
+    // Only initialize from reference client
+    if (clientId !== "reference") return;
+    if (!data?.doc.root.first) return;
+
+    // Initialize doc with default content
+    // The docToLexical binding will handle Lexical initialization
+  }, [data, clientId]);
+
+  if (status === "error")
+    return <div className="text-red-400">Error: {error.message}</div>;
+
+  // Show loading state
+  if (status === "loading")
+    return <div className="text-zinc-400">Connecting...</div>;
+
+  const { doc } = data;
+
+  return <EditorPanel doc={doc} clientId={clientId} />;
+}
+
+function EditorPageContent() {
+  const docId = useDocId("/editor");
+
+  // Show loading while redirecting (prevents rendering with undefined docId)
+  if (!docId) {
+    return null; // Return null instead of loading to avoid mounting/unmounting
+  }
+
   return (
-    <div className="bg-linear-to-br flex min-h-screen flex-col items-center from-zinc-950 via-zinc-900 to-zinc-950 px-4 py-12">
-      {/* Editor Container */}
-      <div className="w-full max-w-2xl">
-        <div className="overflow-hidden rounded-xl border border-zinc-700/50 bg-zinc-900/50 shadow-2xl shadow-black/50 backdrop-blur-sm">
-          <LexicalComposer
-            initialConfig={{
-              namespace: "MyEditor",
-              editorState: () => {
-                const root = $getRoot();
+    <div className="min-h-screen bg-linear-to-br from-zinc-950 via-zinc-900 to-zinc-950 p-4">
+      <h1 className="mb-6 text-2xl font-bold">
+        Lexical Editor Example - Multi-Client Sync
+      </h1>
 
-                const h1 = $createHeadingNode("h1");
-                h1.append($createTextNode("Welcome to Lexical"));
-                root.append(h1);
-
-                const intro = $createParagraphNode();
-                intro.append(
-                  $createTextNode(
-                    "This is a modern rich text editor built with Lexical. It supports formatting, headings, and more.",
-                  ),
-                );
-                root.append(intro);
-
-                const h2 = $createHeadingNode("h2");
-                h2.append($createTextNode("Getting Started"));
-                root.append(h2);
-
-                const p1 = $createParagraphNode();
-                p1.append(
-                  $createTextNode(
-                    "Use the toolbar above to format your text. You can make text bold, italic, underlined, or strikethrough.",
-                  ),
-                );
-                root.append(p1);
-
-                const p2 = $createParagraphNode();
-                p2.append(
-                  $createTextNode(
-                    "You can also change the block type to create headings of different sizes, or align your text left, center, right, or justified.",
-                  ),
-                );
-                root.append(p2);
-
-                const h3 = $createHeadingNode("h3");
-                h3.append($createTextNode("Keyboard Shortcuts"));
-                root.append(h3);
-
-                const p3 = $createParagraphNode();
-                p3.append(
-                  $createTextNode(
-                    "Press Ctrl+B for bold, Ctrl+I for italic, Ctrl+U for underline. Use Ctrl+Z to undo and Ctrl+Y to redo.",
-                  ),
-                );
-                root.append(p3);
-              },
-              nodes: [HeadingNode],
-              theme: {
-                paragraph: "mb-2 text-zinc-200 leading-relaxed",
-                heading: {
-                  h1: "text-3xl font-bold text-white mb-4 mt-2",
-                  h2: "text-2xl font-semibold text-zinc-100 mb-3 mt-2",
-                  h3: "text-xl font-medium text-zinc-200 mb-2 mt-2",
-                },
-                text: {
-                  bold: "font-bold",
-                  italic: "italic",
-                  underline: "underline",
-                  strikethrough: "line-through",
-                },
-              },
-              onError: (error) => {
-                console.error(error);
-              },
-            }}
-          >
-            <ToolbarPlugin />
-            <div className="relative">
-              <RichTextPlugin
-                contentEditable={
-                  <ContentEditable className="min-h-[400px] px-6 py-4 text-zinc-300 outline-none focus:outline-none" />
-                }
-                ErrorBoundary={LexicalErrorBoundary}
-                placeholder={
-                  <div className="pointer-events-none absolute left-6 top-4 text-zinc-600">
-                    Start writing something amazing...
-                  </div>
-                }
+      <MultiClientLayout
+        referenceClient={referenceClient!}
+        otherTabClient={otherTabClient!}
+        otherDeviceClient={otherDeviceClient!}
+      >
+        {(clientId, userId) => {
+          // Each client gets its own independent provider
+          if (clientId === "reference") {
+            return (
+              <EditorContent
+                clientId={clientId}
+                userId={userId}
+                docId={docId}
+                useDocHook={useReferenceDoc}
               />
-            </div>
-            <HistoryPlugin />
-          </LexicalComposer>
-        </div>
-      </div>
+            );
+          }
+
+          if (clientId === "otherTab") {
+            return (
+              <EditorContent
+                clientId={clientId}
+                userId={userId}
+                docId={docId}
+                useDocHook={useOtherTabDoc}
+              />
+            );
+          }
+
+          // otherDevice
+          return (
+            <EditorContent
+              clientId={clientId}
+              userId={userId}
+              docId={docId}
+              useDocHook={useOtherDeviceDoc}
+            />
+          );
+        }}
+      </MultiClientLayout>
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div className="p-4 text-zinc-400">Loading...</div>}>
+      <EditorPageContent />
+    </Suspense>
   );
 }

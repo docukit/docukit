@@ -83,7 +83,7 @@ describe("register lifecycle", () => {
 
     expect(() => {
       new Doc({ extensions: [TestExtension] });
-    }).toThrowError("You can't trigger an update inside a init event");
+    }).toThrowError("You can't trigger an update inside a init stage");
   });
 
   test("can register change event inside and outside register", () => {
@@ -629,5 +629,62 @@ describe("applyOperations", () => {
       ]);
     });
     assertDoc(doc, ["test"]);
+  });
+});
+
+describe("dispose", () => {
+  test("dispose throws if called during an update event", () => {
+    const doc = new Doc({ extensions: [TextExtension] });
+    checkUndoManager(1, doc, () => {
+      const node = doc.createNode(Text);
+      doc.root.append(node);
+      expect(() => {
+        doc.dispose();
+      }).toThrowError("You can't dispose a document during the update stage");
+    });
+  });
+
+  test("dispose throws if called during a change event", () => {
+    const doc = new Doc({ extensions: [TextExtension] });
+    doc.onChange(() => {
+      expect(() => {
+        doc.dispose();
+      }).toThrowError("You can't dispose a document during the change stage");
+    });
+    const node = doc.createNode(Text);
+    doc.root.append(node);
+    doc.forceCommit();
+  });
+
+  test("dispose throws if called during a normalize event", () => {
+    const doc = new Doc({
+      extensions: [
+        TextExtension,
+        {
+          register: (doc) => {
+            doc.onNormalize(() => {
+              expect(() => {
+                doc.dispose();
+              }).toThrowError(
+                "You can't dispose a document during the normalize",
+              );
+            });
+          },
+        },
+      ],
+    });
+    checkUndoManager(1, doc, () => {
+      const node = doc.createNode(Text);
+      doc.root.append(node);
+    });
+  });
+
+  test("can't update a document after being disposed", () => {
+    const doc = new Doc({ extensions: [TextExtension] });
+    const node = doc.createNode(Text);
+    doc.dispose();
+    expect(() => {
+      doc.root.append(node);
+    }).toThrowError("You can't trigger an update inside a disposed stage");
   });
 });

@@ -40,9 +40,13 @@ export function withTransaction(
   fn: () => void,
   isApplyOperations = false,
 ): void {
-  if (doc["_lifeCycleStage"] === "change" || doc["_lifeCycleStage"] === "init")
+  if (
+    doc["_lifeCycleStage"] === "change" ||
+    doc["_lifeCycleStage"] === "init" ||
+    doc["_lifeCycleStage"] === "disposed"
+  )
     throw new Error(
-      `You can't trigger an update inside a ${doc["_lifeCycleStage"]} event`,
+      `You can't trigger an update inside a ${doc["_lifeCycleStage"]} stage`,
     );
 
   if (doc["_lifeCycleStage"] === "normalize2") {

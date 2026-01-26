@@ -10,6 +10,7 @@ import {
   ops,
   emptyOps,
   ChildNode,
+  spyOnRequest,
 } from "./utils.js";
 import type { Operations } from "docnode";
 
@@ -32,10 +33,13 @@ describe("Client 2", () => {
 
     test("should set status to pushing-with-pending when called during a push", async () => {
       const client = await createClient();
-      vi.spyOn(client["_api"], "request").mockImplementation(
-        () => new Promise((r) => setTimeout(r, 50)),
-      );
       const docId = generateDocId();
+      spyOnRequest(client).mockImplementation(
+        () =>
+          new Promise((r) =>
+            setTimeout(() => r({ data: { docId, clock: 1 } }), 50),
+          ),
+      );
 
       await saveOperations(client, docId);
       client.saveRemote({ docId });
@@ -49,11 +53,17 @@ describe("Client 2", () => {
 
     test("should allow concurrent pushes for different docIds", async () => {
       const client = await createClient();
-      vi.spyOn(client["_api"], "request").mockImplementation(
-        () => new Promise((r) => setTimeout(r, 20)),
-      );
       const docId1 = generateDocId();
       const docId2 = generateDocId();
+      spyOnRequest(client).mockImplementation(
+        (_event, payload) =>
+          new Promise((r) =>
+            setTimeout(
+              () => r({ data: { docId: payload.docId, clock: 1 } }),
+              20,
+            ),
+          ),
+      );
 
       const provider = (await client["_localPromise"]).provider;
       await provider.transaction("readwrite", async (ctx) => {
@@ -71,11 +81,14 @@ describe("Client 2", () => {
 
     test("should be idempotent for same docId during push", async () => {
       const client = await createClient();
-      vi.spyOn(client["_api"], "request").mockImplementation(
-        () => new Promise((r) => setTimeout(r, 50)),
+      const docId = generateDocId();
+      spyOnRequest(client).mockImplementation(
+        () =>
+          new Promise((r) =>
+            setTimeout(() => r({ data: { docId, clock: 1 } }), 50),
+          ),
       );
       const doPushSpy = vi.spyOn(client, "_doPush" as keyof typeof client);
-      const docId = generateDocId();
 
       await saveOperations(client, docId);
       client.saveRemote({ docId });
@@ -93,14 +106,14 @@ describe("Client 2", () => {
       const client = await createClient();
       let callCount = 0;
       const docId = generateDocId();
-      const requestSpy = vi.spyOn(client["_api"], "request");
+      const requestSpy = spyOnRequest(client);
       requestSpy.mockImplementation(() => {
         callCount++;
         return Promise.resolve({
-          docId,
-          operations: [],
-          serializedDoc: null,
-          clock: callCount,
+          data: {
+            docId,
+            clock: callCount,
+          },
         });
       });
 
@@ -125,13 +138,13 @@ describe("Client 2", () => {
     test("should get operations from provider", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      const requestSpy = vi.spyOn(client["_api"], "request");
+      const requestSpy = spyOnRequest(client);
 
       const testOperations = [ops({ test: "data1" }), ops({ test: "data2" })];
 
       const docBinding = client["_docBinding"];
       const provider = (await client["_localPromise"]).provider;
-      const { doc } = docBinding.new("test", docId);
+      const { doc } = docBinding.create("test", docId);
       await provider.transaction("readwrite", async (ctx) => {
         await ctx.saveSerializedDoc({
           serializedDoc: docBinding.serialize(doc),
@@ -158,9 +171,9 @@ describe("Client 2", () => {
       const client = await createClient();
       const docId = generateDocId();
       let statusDuringPush: string | undefined;
-      vi.spyOn(client["_api"], "request").mockImplementation(async () => {
+      spyOnRequest(client).mockImplementation(async () => {
         statusDuringPush = client["_pushStatusByDocId"].get(docId);
-        return { docId, operations: [], serializedDoc: null, clock: 1 };
+        return { data: { docId, clock: 1 } };
       });
 
       await setupDocWithOperations(client, docId);
@@ -173,7 +186,7 @@ describe("Client 2", () => {
     test("should send operations to API via sync-operations endpoint", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      const requestSpy = vi.spyOn(client["_api"], "request");
+      const requestSpy = spyOnRequest(client);
 
       await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
@@ -188,7 +201,7 @@ describe("Client 2", () => {
     test("should include docId and clock in request", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      const requestSpy = vi.spyOn(client["_api"], "request");
+      const requestSpy = spyOnRequest(client);
 
       await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
@@ -208,12 +221,12 @@ describe("Client 2", () => {
   describe("_doPush - Client/Server Operation Combinations", () => {
     test("should handle client sends operations + server returns no operations", async () => {
       const client = await createClient();
-      const requestSpy = vi.spyOn(client["_api"], "request");
+      const requestSpy = spyOnRequest(client);
       requestSpy.mockResolvedValue({
-        docId: "test-doc",
-        operations: null,
-        serializedDoc: null,
-        clock: 1,
+        data: {
+          docId: "test-doc",
+          clock: 1,
+        },
       });
       const docId = generateDocId();
 
@@ -243,12 +256,13 @@ describe("Client 2", () => {
       const serverOperations = [ops({ server: "op1" }), ops({ server: "op2" })];
 
       // Mock API to return server operations
-      const requestSpy = vi.spyOn(client["_api"], "request");
+      const requestSpy = spyOnRequest(client);
       requestSpy.mockResolvedValue({
-        docId,
-        operations: serverOperations,
-        serializedDoc: null,
-        clock: 1,
+        data: {
+          docId,
+          operations: serverOperations,
+          clock: 1,
+        },
       });
 
       await setupDocWithOperations(client, docId, {
@@ -271,19 +285,19 @@ describe("Client 2", () => {
 
     test("should handle client sends no operations + server returns no operations (pull with no updates)", async () => {
       const client = await createClient();
-      const requestSpy = vi.spyOn(client["_api"], "request");
+      const requestSpy = spyOnRequest(client);
       requestSpy.mockResolvedValue({
-        docId: "test-doc",
-        operations: null,
-        serializedDoc: null,
-        clock: 1,
+        data: {
+          docId: "test-doc",
+          clock: 1,
+        },
       });
       const docId = generateDocId();
 
       // Setup a document without pending operations (pure pull scenario)
       const docBinding = client["_docBinding"];
       const provider = (await client["_localPromise"]).provider;
-      const { doc: initialDoc } = docBinding.new("test", docId);
+      const { doc: initialDoc } = docBinding.create("test", docId);
       await provider.transaction("readwrite", async (ctx) => {
         await ctx.saveSerializedDoc({
           serializedDoc: docBinding.serialize(initialDoc),
@@ -312,7 +326,7 @@ describe("Client 2", () => {
 
       // Create server operations by modifying a doc
       const docBinding = client["_docBinding"];
-      const { doc: serverDoc } = docBinding.new("test", docId);
+      const { doc: serverDoc } = docBinding.create("test", docId);
       const serverChild1 = serverDoc.createNode(ChildNode);
       const serverChild2 = serverDoc.createNode(ChildNode);
 
@@ -329,17 +343,18 @@ describe("Client 2", () => {
       serverDoc.root.append(serverChild2);
 
       // Mock API to return server operations
-      const requestSpy = vi.spyOn(client["_api"], "request");
+      const requestSpy = spyOnRequest(client);
       requestSpy.mockResolvedValue({
-        docId,
-        operations: serverOperations,
-        serializedDoc: null,
-        clock: 1,
+        data: {
+          docId,
+          operations: serverOperations,
+          clock: 1,
+        },
       });
 
       // Setup a document without pending operations (pure pull scenario)
       const provider = (await client["_localPromise"]).provider;
-      const { doc: initialDoc } = docBinding.new("test", docId);
+      const { doc: initialDoc } = docBinding.create("test", docId);
       await provider.transaction("readwrite", async (ctx) => {
         await ctx.saveSerializedDoc({
           serializedDoc: docBinding.serialize(initialDoc),
@@ -385,11 +400,11 @@ describe("Client 2", () => {
     test("should delete operations after successful push", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      vi.spyOn(client["_api"], "request").mockResolvedValue({
-        docId,
-        operations: [],
-        serializedDoc: null,
-        clock: 1,
+      spyOnRequest(client).mockResolvedValue({
+        data: {
+          docId,
+          clock: 1,
+        },
       });
 
       await setupDocWithOperations(client, docId, {
@@ -407,17 +422,17 @@ describe("Client 2", () => {
     test("should delete exact count of pushed operations", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      const requestSpy = vi.spyOn(client["_api"], "request");
+      const requestSpy = spyOnRequest(client);
       requestSpy.mockImplementation(
         () =>
           new Promise((resolve) =>
             setTimeout(
               () =>
                 resolve({
-                  docId,
-                  operations: [],
-                  serializedDoc: null,
-                  clock: 1,
+                  data: {
+                    docId,
+                    clock: 1,
+                  },
                 }),
               30,
             ),
@@ -443,21 +458,21 @@ describe("Client 2", () => {
     test("should consolidate operations into serialized doc after push", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      vi.spyOn(client["_api"], "request").mockResolvedValue({
-        docId,
-        operations: [],
-        serializedDoc: null,
-        clock: 1,
+      spyOnRequest(client).mockResolvedValue({
+        data: {
+          docId,
+          clock: 1,
+        },
       });
 
       const docBinding = client["_docBinding"];
       const provider = (await client["_localPromise"]).provider;
-      const { doc } = docBinding.new("test", docId);
+      const { doc } = docBinding.create("test", docId);
       const child = doc.createNode(ChildNode);
       doc.root.append(child);
 
       await provider.transaction("readwrite", async (ctx) => {
-        const initialDoc = docBinding.new("test", docId).doc;
+        const initialDoc = docBinding.create("test", docId).doc;
         await ctx.saveSerializedDoc({
           serializedDoc: docBinding.serialize(initialDoc),
           docId,
@@ -475,11 +490,11 @@ describe("Client 2", () => {
     test("should increment clock after consolidation", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      vi.spyOn(client["_api"], "request").mockResolvedValue({
-        docId,
-        operations: [],
-        serializedDoc: null,
-        clock: 6,
+      spyOnRequest(client).mockResolvedValue({
+        data: {
+          docId,
+          clock: 6,
+        },
       });
 
       await setupDocWithOperations(client, docId, { clock: 5 });
@@ -492,11 +507,11 @@ describe("Client 2", () => {
     test("should set status to idle after successful push", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      vi.spyOn(client["_api"], "request").mockResolvedValue({
-        docId,
-        operations: [],
-        serializedDoc: null,
-        clock: 1,
+      spyOnRequest(client).mockResolvedValue({
+        data: {
+          docId,
+          clock: 1,
+        },
       });
 
       await setupDocWithOperations(client, docId);
@@ -515,17 +530,17 @@ describe("Client 2", () => {
     test("should retry if more operations were queued during push (pushing-with-pending)", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      const requestSpy = vi.spyOn(client["_api"], "request");
+      const requestSpy = spyOnRequest(client);
       requestSpy.mockImplementation(
         () =>
           new Promise((resolve) =>
             setTimeout(
               () =>
                 resolve({
-                  docId,
-                  operations: [],
-                  serializedDoc: null,
-                  clock: 1,
+                  data: {
+                    docId,
+                    clock: 1,
+                  },
                 }),
               20,
             ),
@@ -548,15 +563,16 @@ describe("Client 2", () => {
       const client = await createClient();
       const docId = generateDocId();
       let callCount = 0;
-      const requestSpy = vi.spyOn(client["_api"], "request");
+      const requestSpy = spyOnRequest(client);
       requestSpy.mockImplementation(() => {
         callCount++;
         if (callCount === 1) return Promise.reject(new Error("Network error"));
         return Promise.resolve({
-          docId,
-          operations: [],
-          serializedDoc: null,
-          clock: 1,
+          data: {
+            docId,
+            operations: [],
+            clock: 1,
+          },
         });
       });
 
@@ -572,16 +588,17 @@ describe("Client 2", () => {
       const client = await createClient();
       const docId = generateDocId();
       const statusHistory: (string | undefined)[] = [];
-      const requestSpy = vi.spyOn(client["_api"], "request");
+      const requestSpy = spyOnRequest(client);
       requestSpy.mockImplementation(() => {
         statusHistory.push(client["_pushStatusByDocId"].get(docId));
         if (statusHistory.length === 1)
           return Promise.reject(new Error("Network error"));
         return Promise.resolve({
-          docId,
-          operations: [],
-          serializedDoc: null,
-          clock: 1,
+          data: {
+            docId,
+            operations: [],
+            clock: 1,
+          },
         });
       });
 
@@ -596,16 +613,16 @@ describe("Client 2", () => {
       const client = await createClient();
       const docId = generateDocId();
       const receivedOperations: unknown[] = [];
-      const requestSpy = vi.spyOn(client["_api"], "request");
+      const requestSpy = spyOnRequest(client);
       requestSpy.mockImplementation((_event, payload) => {
         if ("operations" in payload) {
           receivedOperations.push(payload.operations);
         }
         return Promise.resolve({
-          docId,
-          operations: [],
-          serializedDoc: null,
-          clock: receivedOperations.length,
+          data: {
+            docId,
+            clock: receivedOperations.length,
+          },
         });
       });
 
@@ -636,12 +653,12 @@ describe("Client 2", () => {
       const docId = generateDocId();
       let concurrentCalls = 0;
       let maxConcurrent = 0;
-      vi.spyOn(client["_api"], "request").mockImplementation(async () => {
+      spyOnRequest(client).mockImplementation(async () => {
         concurrentCalls++;
         maxConcurrent = Math.max(maxConcurrent, concurrentCalls);
         await tick();
         concurrentCalls--;
-        return { docId, operations: [], serializedDoc: null, clock: 1 };
+        return { data: { docId, clock: 1 } };
       });
 
       await setupDocWithOperations(client, docId);
@@ -657,17 +674,17 @@ describe("Client 2", () => {
     test("should queue operations that arrive during push", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      const requestSpy = vi.spyOn(client["_api"], "request");
+      const requestSpy = spyOnRequest(client);
       requestSpy.mockImplementation(
         () =>
           new Promise((resolve) =>
             setTimeout(
               () =>
                 resolve({
-                  docId,
-                  operations: [],
-                  serializedDoc: null,
-                  clock: 1,
+                  data: {
+                    docId,
+                    clock: 1,
+                  },
                 }),
               30,
             ),
@@ -700,15 +717,15 @@ describe("Client 2", () => {
       const docId1 = generateDocId();
       const docId2 = generateDocId();
       const callOrder: string[] = [];
-      const requestSpy = vi.spyOn(client["_api"], "request");
+      const requestSpy = spyOnRequest(client);
       requestSpy.mockImplementation(async (_event, payload) => {
         callOrder.push(payload.docId);
         await tick();
         return {
-          docId: payload.docId,
-          operations: [],
-          serializedDoc: null,
-          clock: 1,
+          data: {
+            docId: payload.docId,
+            clock: 1,
+          },
         };
       });
 
@@ -729,16 +746,16 @@ describe("Client 2", () => {
     test("should handle status changes during async operations", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      vi.spyOn(client["_api"], "request").mockImplementation(
+      spyOnRequest(client).mockImplementation(
         () =>
           new Promise((resolve) =>
             setTimeout(
               () =>
                 resolve({
-                  docId,
-                  operations: [],
-                  serializedDoc: null,
-                  clock: 1,
+                  data: {
+                    docId,
+                    clock: 1,
+                  },
                 }),
               20,
             ),

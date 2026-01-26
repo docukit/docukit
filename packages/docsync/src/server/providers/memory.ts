@@ -1,4 +1,4 @@
-import type { Provider, TransactionContext } from "../../client/types.js";
+import type { Provider, TransactionContext } from "../../shared/types.js";
 
 interface StoredDoc<S> {
   serializedDoc: S;

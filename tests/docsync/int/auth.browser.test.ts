@@ -29,7 +29,7 @@ const createClient = (token: string) =>
 describe("Authentication", () => {
   test("client with valid token connects successfully", async () => {
     const client = createClient("test-token-user1");
-    const socket = client["_api"]["_socket"];
+    const socket = client["_socket"];
     await vi.waitFor(() => expect(socket.connected).toBe(true), {
       timeout: 500,
     });
@@ -38,7 +38,7 @@ describe("Authentication", () => {
 
   test("client with invalid token is rejected", async () => {
     const client = createClient("invalid");
-    const socket = client["_api"]["_socket"];
+    const socket = client["_socket"];
     const error = await new Promise<Error>((r) =>
       socket.on("connect_error", r),
     );

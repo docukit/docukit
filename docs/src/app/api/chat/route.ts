@@ -76,7 +76,7 @@ When answering:
       },
     },
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
-    messages: convertToModelMessages(reqJson.messages, {
+    messages: await convertToModelMessages(reqJson.messages, {
       ignoreIncompleteToolCalls: true,
     }),
     toolChoice: "auto",

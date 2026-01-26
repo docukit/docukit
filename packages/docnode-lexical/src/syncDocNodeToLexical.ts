@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-restricted-types */
 import { type Doc, type Operations } from "docnode";
 import {
   $getNodeByKey,
@@ -25,7 +24,7 @@ export function syncDocNodeToLexical(
   docNodeIdToLexicalKey: Map<string, string>,
 ) {
   // Sync DocNode → Lexical using operations
-  doc.onChange(({ operations }) => {
+  const unregisterDocListener = doc.onChange(({ operations }) => {
     // Skip if this editor is currently applying its own changes to Doc
     // This prevents reapplying changes when using a shared Doc
     if (getIsApplyingOwnChanges(editor)) {
@@ -57,6 +56,8 @@ export function syncDocNodeToLexical(
       setIsApplyingOwnChanges(editor, false);
     }
   });
+
+  return unregisterDocListener;
 }
 
 /**
@@ -73,7 +74,7 @@ function $applyDocNodeOperations(
   const lexicalRoot = $getRoot();
 
   // Helper: Get Lexical node by DocNode ID
-  const getLexicalNode = (docNodeId: string | 0): LexicalNode | null => {
+  const getLexicalNode = (docNodeId: string | 0) => {
     if (docNodeId === 0) {
       return lexicalRoot;
     }

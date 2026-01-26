@@ -40,6 +40,10 @@ export function DocRenderer({
   const [, forceRender] = useReducer((x: number) => x + 1, 0);
 
   useEffect(() => {
+    // If there are pending changes, commit them before registering listener
+    // This handles the case where the document was mutated in a parent useEffect
+    doc.forceCommit();
+    forceRender();
     return doc.onChange(forceRender);
   }, [doc]);
 
@@ -68,7 +72,8 @@ function NodeComponent2({
   return <>{render({ node, first, next })}</>;
 }
 
-export function DocRenderer2({
+// TODO: document in /docs/render
+function _DocRenderer2({
   doc,
   render,
 }: {

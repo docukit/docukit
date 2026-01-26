@@ -6,10 +6,13 @@ import {
   type Operations,
   defineState,
   type Extension,
+  boolean,
+  number,
+  string,
+  type Diff,
+  type JsonDoc,
+  UndoManager,
 } from "docnode";
-import { boolean, number, string } from "docnode";
-import { type Diff, type JsonDoc } from "docnode";
-import { UndoManager } from "docnode";
 import { ULID_REGEX } from "valibot";
 import { expect } from "vitest";
 
@@ -40,7 +43,9 @@ export const TestNode = defineNode({
     string: string(""),
     number: number(0),
     boolean: boolean(false),
-    date: date(new Date(0)),
+    date: defineState({
+      fromJSON: (json) => new Date(typeof json === "string" ? json : 0),
+    }),
   },
 });
 
@@ -531,7 +536,7 @@ export const getPrevError = [
 ].join(" ");
 
 // not used anywhere. Written here just in case I need it later.
-export const sessionSort = (a: string, b: string): number => {
+const _sessionSort = (a: string, b: string): number => {
   a = a.split(".")[0]!.padStart(12, "z");
   b = b.split(".")[0]!.padStart(12, "z");
   return a > b ? 1 : a < b ? -1 : 0;

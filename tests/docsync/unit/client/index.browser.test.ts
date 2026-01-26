@@ -6,13 +6,13 @@ import {
   type QueryResult,
 } from "@docnode/docsync/client";
 import { DocNodeBinding } from "@docnode/docsync/docnode";
-import { defineNode, type Doc } from "docnode";
+import { defineNode, type Doc, type JsonDoc, type Operations } from "docnode";
 import { ulid } from "ulid";
 import {
   TestNode,
   ChildNode,
   createClient,
-  createClientWithRemoveListenersSpy,
+  createClientWithDisposeSpy,
   createClientWithProvider,
   createFailingProvider,
   createCallback,
@@ -162,17 +162,17 @@ describe("DocSyncClient", () => {
       expectTypeOf<DocResult>().toEqualTypeOf<
         | {
             status: "loading";
-            data: undefined;
-            error: undefined;
+            data?: never;
+            error?: never;
           }
         | {
             status: "success";
             data: DocData<Doc>;
-            error: undefined;
+            error?: never;
           }
         | {
             status: "error";
-            data: undefined;
+            data?: never;
             error: Error;
           }
       >();
@@ -353,9 +353,8 @@ describe("DocSyncClient", () => {
     });
 
     describe("Unsubscribe", () => {
-      test("should remove doc from cache and call removeListeners when last subscriber unsubscribes", async () => {
-        const { client, removeListenersSpy } =
-          createClientWithRemoveListenersSpy();
+      test("should remove doc from cache and call dispose when last subscriber unsubscribes", async () => {
+        const { client, disposeSpy } = createClientWithDisposeSpy();
         const callback = createCallback();
 
         const unsubscribe = client.getDoc(
@@ -368,19 +367,18 @@ describe("DocSyncClient", () => {
 
         expect(cache.has(docId)).toBe(true);
         expect(cache.get(docId)?.refCount).toBe(1);
-        expect(removeListenersSpy).not.toHaveBeenCalled();
+        expect(disposeSpy).not.toHaveBeenCalled();
 
         unsubscribe();
         await tick(); // _unloadDoc is async
 
         expect(cache.has(docId)).toBe(false);
-        expect(removeListenersSpy).toHaveBeenCalledOnce();
-        expect(removeListenersSpy).toHaveBeenCalledWith(doc);
+        expect(disposeSpy).toHaveBeenCalledOnce();
+        expect(disposeSpy).toHaveBeenCalledWith(doc);
       });
 
-      test("should NOT call removeListeners when non-last subscriber unsubscribes", async () => {
-        const { client, removeListenersSpy } =
-          createClientWithRemoveListenersSpy();
+      test("should NOT call dispose when non-last subscriber unsubscribes", async () => {
+        const { client, disposeSpy } = createClientWithDisposeSpy();
         const callback1 = createCallback();
         const callback2 = createCallback();
 
@@ -402,21 +400,21 @@ describe("DocSyncClient", () => {
         const cache = client["_docsCache"];
         expect(cache.get(docId)?.refCount).toBe(2);
 
-        // Unsubscribe first one - should NOT call removeListeners
+        // Unsubscribe first one - should NOT call dispose
         unsubscribe1();
         await tick();
 
         expect(cache.get(docId)?.refCount).toBe(1);
         expect(cache.has(docId)).toBe(true);
-        expect(removeListenersSpy).not.toHaveBeenCalled();
+        expect(disposeSpy).not.toHaveBeenCalled();
 
-        // Unsubscribe second one - should call removeListeners
+        // Unsubscribe second one - should call dispose
         unsubscribe2();
         await tick();
 
         expect(cache.has(docId)).toBe(false);
-        expect(removeListenersSpy).toHaveBeenCalledOnce();
-        expect(removeListenersSpy).toHaveBeenCalledWith(doc);
+        expect(disposeSpy).toHaveBeenCalledOnce();
+        expect(disposeSpy).toHaveBeenCalledWith(doc);
       });
     });
 
@@ -819,6 +817,18 @@ describe("DocSyncClient", () => {
       } finally {
         globalThis.BroadcastChannel = originalBroadcastChannel;
       }
+    });
+  });
+
+  describe("types", () => {
+    test("DocSyncClient<D,S,O> is assignable to DocSyncClient (base type)", () => {
+      const client = createClient();
+      expectTypeOf(client).toEqualTypeOf<
+        DocSyncClient<Doc, JsonDoc, Operations>
+      >();
+      expectTypeOf<
+        DocSyncClient<Doc, JsonDoc, Operations>
+      >().toExtend<DocSyncClient>();
     });
   });
 });

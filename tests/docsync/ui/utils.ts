@@ -1,122 +1,67 @@
-import {
-  expect,
-  type BrowserContext,
-  type Page,
-  type Locator,
-} from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { ulid } from "ulid";
 
-export class DocNodeHelper {
-  private _page1: Page;
-  private _page2: Page;
+export class HelperBase {
+  protected _page: Page;
 
-  private _app1: Locator;
-  private _app2: Locator;
-  private _app3: Locator;
-  private _app4: Locator;
-  private _currentApp: Locator;
+  // clients
+  protected _reference: Locator;
+  protected _otherTab: Locator;
+  protected _otherDevice: Locator;
 
-  getDocnodes(panel: "main" | "secondary") {
-    return this._currentApp.locator(`.${panel}-doc .docnode`);
+  // Hidden duplicates (same client, multiple useDoc calls)
+  protected _referenceHidden: Locator;
+  protected _otherTabHidden: Locator;
+  protected _otherDeviceHidden: Locator;
+
+  docId: string;
+
+  async navigateToNewDoc() {
+    const oldDocId = this.docId;
+    // Click on the subdocs link in the sidebar
+    await this._page.locator("a[href='/subdocs']").click();
+
+    // Wait for the URL to change and get the new docId in one go
+    const docId = await this._page
+      .waitForFunction(
+        (expectedOldDocId) => {
+          const params = new URLSearchParams(window.location.search);
+          const currentDocId = params.get("docId");
+          return currentDocId && currentDocId !== expectedOldDocId
+            ? currentDocId
+            : false;
+        },
+        oldDocId,
+        { timeout: 2000 },
+      )
+      .then((handle) => handle.jsonValue() as Promise<string>);
+
+    await this._page.waitForLoadState("networkidle");
+    expect(docId).not.toBe(oldDocId);
+    this.docId = docId;
   }
 
-  private constructor(page1: Page, page2: Page) {
-    this._page1 = page1;
-    this._page2 = page2;
+  protected constructor(page: Page, docId: string) {
+    this._page = page;
+    this.docId = docId;
 
-    // Now we have 3 clients per page: reference, otherTab, otherDevice
-    this._app1 = page1.locator("#reference");
-    this._app2 = page1.locator("#otherTab");
-    this._app3 = page2.locator("#reference");
-    this._app4 = page2.locator("#otherDevice");
+    // Page 1: reference, otherTab, otherDevice
+    this._reference = page.locator("#reference").first();
+    this._otherTab = page.locator("#otherTab").first();
+    this._otherDevice = page.locator("#otherDevice").first();
 
-    this._currentApp = process.env.DN_APP ? this._app1 : this._app3;
-    console.log(`Using app ${process.env.DN_APP ? "one" : "three"}`);
+    // Hidden duplicates (testing multiple useDoc for same document)
+    this._referenceHidden = page.locator("#reference-hidden").first();
+    this._otherTabHidden = page.locator("#otherTab-hidden").first();
+    this._otherDeviceHidden = page.locator("#otherDevice-hidden").first();
   }
 
-  static async create({
-    page,
-    context,
-  }: {
-    page: Page;
-    context: BrowserContext;
-  }) {
-    const page2 = await context.newPage();
-
-    // Generate unique ULID for each test run (lowercase)
+  static async create<T extends HelperBase>(
+    this: new (page: Page, docId: string) => T,
+    { page }: { page: Page },
+  ): Promise<T> {
     const docId = ulid().toLowerCase();
-
-    await page.goto(`?docId=${docId}`);
-    await page2.goto(`?docId=${docId}`);
-
-    const helper = new DocNodeHelper(page, page2);
+    const helper = new this(page, docId);
     return helper;
-  }
-
-  private async _assertSync() {
-    expect(await this._app1.innerHTML()).toEqual(await this._app2.innerHTML());
-    expect(await this._app1.innerHTML()).toEqual(await this._app3.innerHTML());
-    expect(await this._app1.innerHTML()).toEqual(await this._app4.innerHTML());
-  }
-
-  async assertPanel(panel: "main" | "secondary", state: string[]) {
-    await this._assertSync();
-    state.unshift("root");
-    const docNodes = this.getDocnodes(panel).locator("span");
-    const count = await docNodes.count();
-
-    // Get the left position of the root element to use as baseline
-    const rootRect = await docNodes
-      .nth(0)
-      .evaluate((el) => el.getBoundingClientRect());
-    const baseLeft = rootRect.left;
-
-    for (let i = 0; i < count; i++) {
-      const text = await docNodes.nth(i).textContent();
-      if (!text) {
-        throw new Error("Text is null");
-      }
-      const textBeforeDash = text.split("-")[0]?.trim();
-      if (i === 0) expect(textBeforeDash).toBe("root");
-      else expect(textBeforeDash).toBe(state[i]?.replace(/__/g, ""));
-
-      const rect = await docNodes
-        .nth(i)
-        .evaluate((el) => el.getBoundingClientRect());
-      const indent = i === 0 ? 0 : (state[i]?.match(/__/g)?.length ?? 0) + 1;
-      // Calculate relative position from the root element
-      expect(rect.left - baseLeft).toBe(indent * 40);
-    }
-    await this._assertSync();
-  }
-
-  async createChild({
-    parent,
-    panel,
-  }: {
-    parent: string;
-    panel: "main" | "secondary";
-  }) {
-    await this._assertSync();
-    const docnodes = this.getDocnodes(panel);
-    const countBefore = await docnodes.count();
-    const createButton = this._currentApp
-      .locator(`.${panel}-doc .docnode`)
-      .filter({ hasText: new RegExp(`^${parent} - `) })
-      .locator("button.create");
-    await createButton.click();
-    const countAfter = await docnodes.count();
-    expect(countAfter).toBe(countBefore + 1);
-    await this._assertSync();
-  }
-
-  async delete({ node, panel }: { node: string; panel: "main" | "secondary" }) {
-    await this._assertSync();
-    const deleteButton = this._currentApp
-      .locator(`.${panel}-doc .docnode`)
-      .filter({ hasText: new RegExp(`^${node} - `) })
-      .locator("button.delete");
-    await deleteButton.click();
-    await this._assertSync();
   }
 }

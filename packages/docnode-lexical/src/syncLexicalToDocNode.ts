@@ -33,7 +33,7 @@ export function syncLexicalToDocNode(
   docNodeIdToLexicalKey: Map<string, string>,
 ) {
   // Sync Lexical → DocNode
-  editor.registerUpdateListener(
+  const unregisterEditorListener = editor.registerUpdateListener(
     ({ editorState, dirtyElements, dirtyLeaves, tags }) => {
       // Skip if update came from DocNode to avoid infinite loop
       if (tags.has(COLLABORATION_TAG)) {
@@ -76,6 +76,8 @@ export function syncLexicalToDocNode(
       }
     },
   );
+
+  return unregisterEditorListener;
 }
 
 /**

@@ -40,7 +40,7 @@ export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
               href={`https://github.com/docnode/docnode/blob/main/docs/content/docs/${page.path}`}
               rel="noreferrer noopener"
               target="_blank"
-              className="group/option [button]:hover:bg-gray-50 [button]:dark:hover:bg-gray-900 relative flex w-full items-center gap-2 overflow-hidden rounded-md p-2 pt-4 text-xs/4 text-gray-900 transition-colors data-[state=active]:bg-gray-50 dark:text-gray-100 dark:data-[state=active]:bg-gray-900"
+              className="group/option relative flex w-full items-center gap-2 overflow-hidden rounded-md p-2 pt-4 text-xs/4 text-gray-900 transition-colors data-[state=active]:bg-gray-50 dark:text-gray-100 dark:data-[state=active]:bg-gray-900 [button]:hover:bg-gray-50 [button]:dark:hover:bg-gray-900"
             >
               <GitHubIcon className="size-4" />
               <span className="truncate">Edit on GitHub</span>

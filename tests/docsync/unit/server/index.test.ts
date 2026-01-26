@@ -45,7 +45,67 @@ describe("sync-operations", () => {
         clock: 0,
       });
 
-      expect(res).toMatchObject({ docId: "doc-1", clock: 1 });
+      expect("error" in res).toBe(false);
+      if ("data" in res) {
+        expect(res.data).toMatchObject({ docId: "doc-1", clock: 1 });
+      }
+    });
+  });
+
+  test("squashes operations after threshold", async () => {
+    const auth = { getToken: async () => "valid-user1" };
+    await testWrapper({ auth }, async (T) => {
+      await T.waitForConnect();
+
+      // Use a valid ULID for docId
+      const docId = "01kfpgjsabrpdcw0qgh5evhy2g";
+
+      // Send 100 operations individually
+      for (let i = 0; i < 100; i++) {
+        const res = await T.syncOperations({
+          docId,
+          operations: [{ type: "insert", data: `op-${i}` }],
+          clock: i,
+        });
+
+        expect("error" in res).toBe(false);
+        if ("data" in res) {
+          expect(res.data.clock).toBe(i + 1);
+        }
+      }
+
+      // First sync from clock 0: should receive all 100 operations
+      const res1 = await T.syncOperations({
+        docId,
+        operations: [],
+        clock: 0,
+      });
+
+      expect("error" in res1).toBe(false);
+      if ("data" in res1) {
+        expect(res1.data.clock).toBe(100);
+        expect(res1.data.operations).toBeDefined();
+        expect(res1.data.operations?.length).toBe(100);
+        expect(res1.data.serializedDoc).toBeUndefined();
+      }
+
+      // Wait for squashing to complete (it happens async after the response)
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Second sync from clock 100: should receive serializedDoc (squashed)
+      // because previous fetch triggered squashing (>= 100 operations)
+      const res2 = await T.syncOperations({
+        docId,
+        operations: [],
+        clock: 100,
+      });
+
+      expect("error" in res2).toBe(false);
+      if ("data" in res2) {
+        expect(res2.data.clock).toBe(100);
+        expect(res2.data.serializedDoc).toBeDefined();
+        expect(res2.data.operations).toBeUndefined();
+      }
     });
   });
 });
@@ -59,7 +119,7 @@ describe("authenticate/authorize: different function syntaxes", () => {
     // Using method shorthand in object literal
     const server = new DocSyncServer({
       docBinding: DocNodeBinding([]),
-      port: 8889,
+      port: 0, // Let OS assign available port
       provider: InMemoryServerProvider,
 
       // Method shorthand - most concise
@@ -97,7 +157,7 @@ describe("authenticate/authorize: different function syntaxes", () => {
     // Using function keyword with property syntax
     const server = new DocSyncServer({
       docBinding: DocNodeBinding([]),
-      port: 8890,
+      port: 0, // Let OS assign available port
       provider: InMemoryServerProvider,
 
       // Traditional function expression
@@ -135,7 +195,7 @@ describe("authenticate/authorize: different function syntaxes", () => {
     // Using arrow function
     const server = new DocSyncServer({
       docBinding: DocNodeBinding([]),
-      port: 8891,
+      port: 0, // Let OS assign available port
       provider: InMemoryServerProvider,
 
       // Arrow function - most common in modern code
@@ -175,7 +235,7 @@ describe("authenticate/authorize: different function syntaxes", () => {
   test("mixed syntaxes work together", async () => {
     const server = new DocSyncServer({
       docBinding: DocNodeBinding([]),
-      port: 8892,
+      port: 0, // Let OS assign available port
       provider: InMemoryServerProvider,
 
       // Method shorthand for authenticate
@@ -225,7 +285,7 @@ describe("DocSyncServer assignability", () => {
       // Server with specific context type
       const specificServer = new DocSyncServer({
         docBinding: DocNodeBinding([]),
-        port: 8893,
+        port: 0, // Let OS assign available port
         provider: InMemoryServerProvider,
         async authenticate({ token: _token }) {
           if (_token === "test") {
@@ -256,7 +316,7 @@ describe("DocSyncServer assignability", () => {
       // Server with narrow literal types
       const _narrowServer = new DocSyncServer({
         docBinding: DocNodeBinding([]),
-        port: 8894,
+        port: 0, // Let OS assign available port
         provider: InMemoryServerProvider,
         async authenticate({ token: _token }) {
           return {
@@ -288,7 +348,7 @@ describe("DocSyncServer assignability", () => {
       // Server without authorize
       const serverWithoutAuth = new DocSyncServer({
         docBinding: DocNodeBinding([]),
-        port: 8895,
+        port: 0, // Let OS assign available port
         provider: InMemoryServerProvider,
         async authenticate({ token: _token }) {
           return { userId: "user1", context: { premium: true } };
@@ -298,7 +358,7 @@ describe("DocSyncServer assignability", () => {
       // Server with authorize
       const serverWithAuth = new DocSyncServer({
         docBinding: DocNodeBinding([]),
-        port: 8896,
+        port: 0, // Let OS assign available port
         provider: InMemoryServerProvider,
         async authenticate({ token: _token }) {
           return { userId: "user1", context: { premium: true } };
@@ -326,7 +386,7 @@ describe("DocSyncServer assignability", () => {
     void (() => {
       const complexServer = new DocSyncServer({
         docBinding: DocNodeBinding([]),
-        port: 8897,
+        port: 0, // Let OS assign available port
         provider: InMemoryServerProvider,
         async authenticate({ token: _token }) {
           return {
@@ -382,7 +442,7 @@ describe("DocSyncServer assignability", () => {
     void (() => {
       const emptyContextServer = new DocSyncServer({
         docBinding: DocNodeBinding([]),
-        port: 8898,
+        port: 0, // Let OS assign available port
         provider: InMemoryServerProvider,
         async authenticate({ token: _token }) {
           return { userId: "user1" }; // No context
@@ -403,7 +463,7 @@ describe("DocSyncServer assignability", () => {
     void (() => {
       const literalServer = new DocSyncServer({
         docBinding: DocNodeBinding([]),
-        port: 8899,
+        port: 0, // Let OS assign available port
         provider: InMemoryServerProvider,
         async authenticate({ token: _token }) {
           return {
@@ -438,5 +498,17 @@ describe("DocSyncServer assignability", () => {
 
       void literalServer.close();
     });
+  });
+
+  test("DocSyncServer<C,D,S,O> is assignable to DocSyncServer (base type)", () => {
+    // Specific DocSyncServer with all type parameters should be assignable to base DocSyncServer
+    type SpecificServer = DocSyncServer<
+      { role: string; permissions: string[] },
+      { root: unknown },
+      { root: unknown },
+      { type: string }
+    >;
+
+    expectTypeOf<SpecificServer>().toExtend<DocSyncServer>();
   });
 });

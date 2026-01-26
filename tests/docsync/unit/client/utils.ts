@@ -12,14 +12,6 @@ import { DocNodeBinding } from "@docnode/docsync/docnode";
 import { type Doc, defineNode } from "docnode";
 
 // ============================================================================
-// Types
-// ============================================================================
-
-export type DocCallback = Mock<
-  (result: QueryResult<DocData<Doc> | undefined>) => void
->;
-
-// ============================================================================
 // Node Definitions
 // ============================================================================
 
@@ -40,7 +32,7 @@ const createClientConfig = <D extends {}, S extends {}, O extends {}>(
   config: ClientConfig<D, S, O>,
 ): ClientConfig<D, S, O> => config;
 
-export const createMockDocBinding = () =>
+const createMockDocBinding = () =>
   DocNodeBinding([
     { type: "test", extensions: [{ nodes: [TestNode, ChildNode] }] },
   ]);
@@ -50,9 +42,9 @@ export const createMockDocBinding = () =>
  * Each test can use its own userId to get an isolated IndexedDB database.
  */
 let testUserCounter = 0;
-export const generateTestUserId = () => `test-user-${++testUserCounter}`;
+const generateTestUserId = () => `test-user-${++testUserCounter}`;
 
-export const createValidConfig = (userId?: string) =>
+const createValidConfig = (userId?: string) =>
   createClientConfig({
     server: {
       url: "ws://localhost:8081",
@@ -78,12 +70,12 @@ export const createClient = (userId?: string) =>
   new DocSyncClient(createValidConfig(userId));
 
 /**
- * Creates a client with a spy on docBinding.removeListeners.
+ * Creates a client with a spy on docBinding.dispose.
  * Useful for testing that listeners are properly cleaned up.
  */
-export const createClientWithRemoveListenersSpy = (userId?: string) => {
+export const createClientWithDisposeSpy = (userId?: string) => {
   const docBinding = createMockDocBinding();
-  const removeListenersSpy = vi.spyOn(docBinding, "removeListeners");
+  const disposeSpy = vi.spyOn(docBinding, "dispose");
 
   const config = createClientConfig({
     server: {
@@ -103,12 +95,16 @@ export const createClientWithRemoveListenersSpy = (userId?: string) => {
   });
 
   const client = new DocSyncClient(config);
-  return { client, removeListenersSpy };
+  return { client, disposeSpy };
 };
 
 // ============================================================================
 // Test Helpers
 // ============================================================================
+
+type DocCallback = Mock<
+  (result: QueryResult<DocData<Doc> | undefined>) => void
+>;
 
 export const createCallback = () => vi.fn() as DocCallback;
 

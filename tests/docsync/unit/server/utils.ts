@@ -1,11 +1,20 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { DocNodeBinding } from "@docnode/docsync/docnode";
 import { DocSyncServer, InMemoryServerProvider } from "@docnode/docsync/server";
-import { DocSyncClient } from "@docnode/docsync/client";
-import type {
-  Identity,
-  Provider,
-} from "../../../../packages/docsync/dist/src/client/types.js";
+import { DocSyncClient, type Identity } from "@docnode/docsync/client";
+import type { Provider } from "@docnode/docsync";
+import { testDocConfig } from "../../int/utils.js";
+
+// Auto-assign unique port range based on Vitest worker ID
+// This allows test files to run in parallel without port conflicts
+// Each worker gets 100 ports (worker 1: 8888-8987, worker 2: 8988-9087, etc.)
+const BASE_PORT = (() => {
+  const poolId = parseInt(process.env.VITEST_POOL_ID ?? "1", 10);
+  return 8888 + (poolId - 1) * 100;
+})();
+
+// Helper to get ports with offset from base (for manual server creation in tests)
+export const testPort = (offset = 0) => BASE_PORT + offset;
 
 const createMockDocSyncClient = (serverOverrides?: {
   url?: string;
@@ -20,7 +29,7 @@ const createMockDocSyncClient = (serverOverrides?: {
 
   return new DocSyncClient({
     server: {
-      url: serverOverrides?.url ?? "ws://localhost:8888",
+      url: serverOverrides?.url ?? `ws://localhost:${BASE_PORT}`,
       auth: serverOverrides?.auth ?? {
         getToken: async () => "test-token",
       },
@@ -39,10 +48,10 @@ const createMockDocSyncClient = (serverOverrides?: {
   }) as unknown as DocSyncClient;
 };
 
-const createServer = () => {
+const createServer = (port = BASE_PORT) => {
   return new DocSyncServer({
-    docBinding: DocNodeBinding([]),
-    port: 8888,
+    docBinding: DocNodeBinding([testDocConfig]),
+    port,
     provider: InMemoryServerProvider,
     authenticate: async ({ token }) => {
       if (token.startsWith("valid-")) {
@@ -56,6 +65,7 @@ export async function testWrapper(
   serverOverrides: {
     url?: string;
     auth?: { getToken: () => Promise<string> };
+    port?: number;
   },
   fn: (args: {
     server: DocSyncServer;
@@ -63,12 +73,16 @@ export async function testWrapper(
     waitForConnect: () => Promise<void>;
     waitForError: () => Promise<Error>;
     syncOperations: (payload: SyncPayload) => Promise<SyncResponse>;
-    socket: DocSyncClient["_api"]["_socket"];
+    socket: DocSyncClient["_socket"];
   }) => Promise<void>,
 ) {
-  const server = createServer();
-  const client = createMockDocSyncClient(serverOverrides);
-  const socket = client["_api"]["_socket"];
+  const port = serverOverrides.port ?? BASE_PORT;
+  const server = createServer(port);
+  const client = createMockDocSyncClient({
+    ...serverOverrides,
+    url: serverOverrides.url ?? `ws://localhost:${port}`,
+  });
+  const socket = client["_socket"];
   const waitForConnect = () =>
     new Promise<void>((resolve, reject) => {
       socket.on("connect", resolve);
@@ -94,14 +108,23 @@ export async function testWrapper(
   await server.close();
 }
 
-/* eslint-disable @typescript-eslint/no-restricted-types -- API uses null */
 type SyncPayload = {
   docId: string;
-  operations: {}[] | null;
+  operations?: {}[];
   clock: number;
 };
-type SyncResponse = {
-  docId: string;
-  clock: number;
-  operations: unknown[] | null;
-};
+type SyncResponse =
+  | {
+      data: {
+        docId: string;
+        clock: number;
+        operations?: unknown[];
+        serializedDoc?: unknown;
+      };
+    }
+  | {
+      error: {
+        type: "AuthorizationError" | "DatabaseError" | "ValidationError";
+        message: string;
+      };
+    };

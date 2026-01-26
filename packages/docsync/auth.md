@@ -288,7 +288,6 @@ DocNode does not manage encryption secrets. However, for most applications, the 
 - When a user account is created, the server generates a **high-entropy random secret**.
 - This secret is **never stored in plaintext**.
 - The server stores the secret **encrypted under the user’s authentication credentials**, for example:
-
   - encrypted with a key derived from OAuth credentials
   - encrypted with a password-derived key
   - protected by the identity provider’s security guarantees
@@ -303,7 +302,6 @@ On the first login from a new device:
 2. The server decrypts and returns the user’s local encryption secret
 3. The client derives its local encryption keys and initializes persistence
 4. The secret is stored **locally in secure storage**, preferably:
-
    - a secure cookie
    - using app-bound encryption if supported by the browser
 

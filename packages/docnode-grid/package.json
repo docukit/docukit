@@ -13,8 +13,5 @@
     "dist",
     "LICENSE.md",
     "README.md"
-  ],
-  "dependencies": {
-    "docnode": "workspace:*"
-  }
+  ]
 }

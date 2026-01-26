@@ -40,7 +40,7 @@ interface CollapsibleTableProps {
 
 export function CollapsibleTable({ rows }: CollapsibleTableProps) {
   return (
-    <div className="@container bg-fd-card text-fd-card-foreground my-6 flex flex-col overflow-hidden rounded-2xl border p-1 text-sm">
+    <div className="bg-fd-card text-fd-card-foreground @container my-6 flex flex-col overflow-hidden rounded-2xl border p-1 text-sm">
       <div className="not-prose text-fd-muted-foreground flex items-center px-3 py-1 font-medium">
         <p className="w-[25%]">Prop</p>
         <p className="@max-xl:hidden">Type</p>
@@ -71,7 +71,7 @@ function Item({ name, item }: { name: string; item: RowData }) {
       className={cn(
         "overflow-hidden rounded-xl border transition-all",
         open
-          ? "bg-fd-background not-last:mb-2 shadow-sm"
+          ? "bg-fd-background shadow-sm not-last:mb-2"
           : "border-transparent",
       )}
     >

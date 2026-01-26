@@ -162,7 +162,7 @@ while (prevIndex <= prevEndIndex && nextIndex <= nextEndIndex) {
 | --------------------- | ----------------------------------------- | ----------------------------------- | ------------------------------------ |
 | **Objective**         | Update DOM                                | Update Yjs                          | Update Yjs                           |
 | **Base structure**    | Two-pointer                               | Two-pointer                         | Two-pointer bidirectional            |
-| **Compares**          | `prevNodeMap ↔ nextNodeMap`              | `prevNodeMap ↔ nextNodeMap`        | `yChildren ↔ lChildren`             |
+| **Compares**          | `prevNodeMap ↔ nextNodeMap`               | `prevNodeMap ↔ nextNodeMap`         | `yChildren ↔ lChildren`              |
 | **When keys match**   | `$reconcileNode()` + update DOM           | `_syncChildFromLexical()` recursive | **Optimizes:** only if dirty         |
 | **Detects moves**     | ✅ Yes                                    | ✅ Yes                              | ✅ Yes                               |
 | **Lazy Sets**         | ✅ Only creates if diff                   | ✅ Only creates if diff             | ❌ Doesn't use sets                  |

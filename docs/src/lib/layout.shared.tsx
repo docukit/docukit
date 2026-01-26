@@ -1,6 +1,8 @@
 import { DiscordIcon } from "@/icons/DiscordIcon";
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
 import Logo2 from "@/icons/docnodeLogo";
+import { Montserrat } from "next/font/google";
+import { BrandXIcon } from "@/icons/BrandXIcon";
 
 /**
  * Shared layout configurations
@@ -49,15 +51,12 @@ export const baseOptions: BaseLayoutProps = {
   // see https://fumadocs.dev/docs/ui/navigation/links
 };
 
-import { Montserrat } from "next/font/google";
-import { BrandXIcon } from "@/icons/BrandXIcon";
-
 const montserrat = Montserrat({
   weight: "700",
   subsets: ["latin"],
 });
 
-export default function Logo({ className }: { className?: string }) {
+function Logo({ className }: { className?: string }) {
   return (
     <span className={`${montserrat.className} ${className}`}> DocNode </span>
   );

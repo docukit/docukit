@@ -61,7 +61,7 @@ docnode.to(node2); // Accesses `find` and `forEach` methods over the nodes in th
  ===============================================*/
 
 doc.onChange(callback); // At the end of a transaction. Doesn't allow mutating the doc
-doc.onNormalize(callback); // Before the change event. Allows mutating the doc.
+doc.onNormalize(callback); // Before the change event. Allows mutating the doc
 
 /*===============================================
                     MUTATORS
@@ -87,8 +87,9 @@ docnode.to(node2).move(target, position); // move a range of sibling nodes
 docnode.to(node2).copy(target, position); // copy a range of sibling nodes
 
 doc.applyOperations(operations); // Apply the operations received in a change event
-doc.forceCommit(); // Terminates the transaction early and synchronously, triggering events.
+doc.forceCommit(); // Terminates the transaction early and synchronously, triggering events
 doc.abort(); // Aborts the current transaction.
+doc.dispose(); // Release and lock the document to be garbage-collected
 
 /*===============================================
                 SERIALIZATION

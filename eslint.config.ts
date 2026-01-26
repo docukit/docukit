@@ -2,15 +2,13 @@ import tseslint from "typescript-eslint";
 import vitest from "@vitest/eslint-plugin";
 import playwright from "eslint-plugin-playwright";
 import * as regexpPlugin from "eslint-plugin-regexp";
+import eslintPluginImport from "eslint-plugin-import";
 
 // import eslintPluginUnicorn from "eslint-plugin-unicorn";
 
 // import perfectionist from 'eslint-plugin-perfectionist'
 // import { configs as regexpPluginConfigs } from 'eslint-plugin-regexp'
 // import eslintConfigPrettier from 'eslint-config-prettier'
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import type { FlatConfig } from "@typescript-eslint/utils/ts-eslint";
 
 export const rootEslintConfig = tseslint.config(
   {
@@ -94,6 +92,52 @@ export const rootEslintConfig = tseslint.config(
       vitest: {
         typecheck: true,
       },
+    },
+  },
+  {
+    plugins: {
+      import: eslintPluginImport,
+    },
+    rules: {
+      // Prevent imports that escape package boundaries
+      "import/no-relative-packages": "error",
+      // Prevent circular dependencies
+      "import/no-cycle": ["error", { maxDepth: 5 }],
+      // Prevent a module from importing itself
+      "import/no-self-import": "error",
+      // Ensure all imports are declared in package.json
+      "import/no-extraneous-dependencies": [
+        "error",
+        {
+          // prevent importing devDependencies except
+          // in paths listed here
+          devDependencies: [
+            "**/*.test.ts",
+            "**/*.test.tsx",
+            "**/*.browser.test.ts",
+            "**/*.browser.test.tsx",
+            "**/*.ui.test.ts",
+            "**/tests/**",
+            "**/vitest.config.ts",
+            "**/playwright.config.ts",
+            "**/eslint.config.ts",
+            "**/turbo.json",
+            "**/next.config.mjs",
+            "**/next.config.ts",
+            "**/drizzle.config.ts",
+            "**/*.config.ts",
+            "**/benchmarks/**",
+          ],
+        },
+      ],
+      // Prevent duplicate imports from the same module
+      "import/no-duplicates": "error",
+      // Ensure imports come before other statements
+      "import/first": "error",
+      // Enforce a newline after import statements
+      "import/newline-after-import": "error",
+      // TODO: import/no-unused-modules doesn't work with flat config yet
+      // See: https://github.com/import-js/eslint-plugin-import/issues/3079
     },
   },
   {

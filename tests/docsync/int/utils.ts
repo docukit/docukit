@@ -14,11 +14,6 @@ import {
 } from "docnode";
 import { ulid } from "ulid";
 import { expect, vi, type Mock } from "vitest";
-// TODO: fix this import
-import type {
-  DocSyncEventName,
-  DocSyncEvents,
-} from "../../../packages/docsync/dist/src/shared/types.js";
 
 // ============================================================================
 // Miscellaneous
@@ -109,18 +104,13 @@ type ClientUtils = {
     ops: string[];
   }) => Promise<void>;
   assertMemoryDoc: (children?: string[]) => void;
-  reqSpy: Mock<
-    <E extends DocSyncEventName>(
-      event: E,
-      payload: DocSyncEvents<JsonDoc, Operations>[E]["request"],
-    ) => Promise<DocSyncEvents<JsonDoc, Operations>[E]["response"]>
-  >;
+  reqSpy: Mock<DocSyncClient["_request"]>;
   waitSync: () => Promise<void>;
   disconnect: () => void;
   connect: () => void;
 };
 
-export type ClientsSetup = {
+type ClientsSetup = {
   docId: string;
   reference: ClientUtils;
   otherTab: ClientUtils;
@@ -157,7 +147,7 @@ export const testWrapper = async (
 
     for (const client of allClients) {
       // Close socket if exists
-      const socket = client["_api"]["_socket"];
+      const socket = client["_socket"];
       if (socket?.connected) {
         socket.disconnect();
       }
@@ -265,9 +255,12 @@ const createClientUtils = async (
   let cleanup: (() => void) | undefined;
   let cachedDoc: Doc | undefined;
 
-  const api = client["_api"];
+  const api = client;
 
-  const reqSpy = vi.spyOn(api, "request");
+  const reqSpy = vi.spyOn(
+    api,
+    "_request" as keyof typeof api,
+  ) as unknown as Mock<DocSyncClient["_request"]>;
   const local = await client["_localPromise"];
 
   return {

@@ -1,7 +1,15 @@
-import { openDB, type IDBPDatabase, type IDBPTransaction } from "idb";
-import type { Provider, Identity, TransactionContext } from "../types.js";
-import { type DBSchema } from "idb";
-import type { SerializedDocPayload } from "../../shared/types.js";
+import {
+  openDB,
+  type IDBPDatabase,
+  type IDBPTransaction,
+  type DBSchema,
+} from "idb";
+import type {
+  Provider,
+  Identity,
+  TransactionContext,
+  SerializedDocPayload,
+} from "../../shared/types.js";
 
 interface DocNodeIDB<S, O> extends DBSchema {
   docs: {

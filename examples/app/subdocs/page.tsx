@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
 import {
   createIndexNode,
   useReferenceDoc,
@@ -11,7 +10,8 @@ import {
   otherDeviceClient,
 } from "./ClientProviders";
 import { IndexDoc } from "./IndexDoc";
-import { MultiClientLayout } from "./MultiClientLayout";
+import { MultiClientLayout } from "../utils/MultiClientLayout";
+import { useDocId } from "../utils/useDocId";
 
 function SubDocContent({
   clientId,
@@ -24,13 +24,12 @@ function SubDocContent({
   useDocHook: typeof useReferenceDoc;
 }) {
   // All clients create doc if missing (safe with CRDT)
-  const result = useDocHook({
+  const { status, data, error } = useDocHook({
     type: "indexDoc",
     id: docId,
     createIfMissing: true,
   });
 
-  const indexDoc = result.status === "success" ? result.data?.doc : undefined;
   const [activeDoc, setActiveDoc] = useState<string | undefined>();
 
   // Load secondary doc when selected
@@ -48,6 +47,7 @@ function SubDocContent({
   useEffect(() => {
     // Only initialize from reference client
     if (clientId !== "reference") return;
+    const indexDoc = data?.doc;
     if (!indexDoc || indexDoc.root.first) return;
 
     // Initialize doc with default nodes
@@ -62,21 +62,16 @@ function SubDocContent({
       createIndexNode(indexDoc, { value: "2.1" }),
       createIndexNode(indexDoc, { value: "2.2" }),
     );
-  }, [indexDoc, clientId]);
+  }, [data, clientId]);
 
-  if (result.status === "error")
-    return <div className="text-red-400">Error: {result.error.message}</div>;
+  if (status === "error")
+    return <div className="text-red-400">Error: {error.message}</div>;
 
   // Show loading state
-  if (result.status === "loading")
+  if (status === "loading")
     return <div className="text-zinc-400">Connecting...</div>;
 
-  // Document doesn't exist yet (waiting for reference to create it)
-  if (!result.data)
-    return <div className="text-zinc-400">Waiting for document...</div>;
-
-  if (!indexDoc)
-    return <div className="text-zinc-400">Loading document...</div>;
+  const { doc: indexDoc } = data;
 
   return (
     <div className="flex gap-3" id={clientId}>
@@ -102,8 +97,12 @@ function SubDocContent({
 }
 
 function SubdocsPageContent() {
-  const searchParams = useSearchParams();
-  const docId = searchParams.get("docId") ?? "01kcfhzz66v3393xhggx6aeb6t";
+  const docId = useDocId("/subdocs");
+
+  // Show loading while redirecting (prevents rendering with undefined docId)
+  if (!docId) {
+    return null; // Return null instead of loading to avoid mounting/unmounting
+  }
 
   return (
     <div className="p-4">
@@ -112,9 +111,9 @@ function SubdocsPageContent() {
       </h1>
 
       <MultiClientLayout
-        referenceClient={referenceClient}
-        otherTabClient={otherTabClient}
-        otherDeviceClient={otherDeviceClient}
+        referenceClient={referenceClient!}
+        otherTabClient={otherTabClient!}
+        otherDeviceClient={otherDeviceClient!}
       >
         {(clientId, userId) => {
           // Each client gets its own independent provider

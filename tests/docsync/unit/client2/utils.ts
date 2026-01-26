@@ -6,12 +6,13 @@ import {
 import { DocNodeBinding } from "@docnode/docsync/docnode";
 import { defineNode, type Doc, type JsonDoc, type Operations } from "docnode";
 import { ulid } from "ulid";
+import { vi, type Mock } from "vitest";
 
 // ============================================================================
 // Node Definitions
 // ============================================================================
 
-export const TestNode = defineNode({ type: "test", state: {} });
+const TestNode = defineNode({ type: "test", state: {} });
 export const ChildNode = defineNode({ type: "child", state: {} });
 
 // ============================================================================
@@ -21,7 +22,7 @@ export const ChildNode = defineNode({ type: "child", state: {} });
 let testUserCounter = 0;
 
 /** Generates a unique userId for test isolation (separate IndexedDB databases) */
-export const generateTestUserId = () =>
+const generateTestUserId = () =>
   `client-test-${Date.now()}-${++testUserCounter}`;
 
 /** Generates a unique docId (must be lowercase ULID) */
@@ -31,7 +32,7 @@ export const generateDocId = () => ulid().toLowerCase();
 // Doc Binding
 // ============================================================================
 
-export const createDocBinding = () =>
+const createDocBinding = () =>
   DocNodeBinding([
     { type: "test", extensions: [{ nodes: [TestNode, ChildNode] }] },
   ]);
@@ -105,7 +106,7 @@ export const setupDocWithOperations = async (
   const { clock = 0, operations = [emptyOps()] } = options;
   const docBinding = client["_docBinding"];
   const provider = (await client["_localPromise"]).provider;
-  const { doc } = docBinding.new("test", docId);
+  const { doc } = docBinding.create("test", docId);
 
   await provider.transaction("readwrite", async (ctx) => {
     await ctx.saveSerializedDoc({
@@ -160,4 +161,20 @@ export const getStoredClock = async (
     ctx.getSerializedDoc(docId),
   );
   return stored?.clock;
+};
+
+// ============================================================================
+// Test Spies
+// ============================================================================
+
+/**
+ * Creates a properly typed spy for the _request method.
+ * This is needed because vi.spyOn infers a union of all client methods.
+ */
+export const spyOnRequest = (
+  client: DocSyncClient<Doc, JsonDoc, Operations>,
+) => {
+  return vi.spyOn(client, "_request" as keyof typeof client) as unknown as Mock<
+    DocSyncClient["_request"]
+  >;
 };

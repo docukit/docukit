@@ -1,4 +1,10 @@
-import { defineNode, defineState, Doc, type DocNode } from "docnode";
+import {
+  defineNode,
+  defineState,
+  Doc,
+  type DocConfig,
+  type DocNode,
+} from "docnode";
 import {
   $getRoot,
   $isElementNode,
@@ -19,7 +25,7 @@ import { syncLexicalToDocNode } from "./syncLexicalToDocNode.js";
  *
  * @param editorOrConfig - A Lexical editor instance or a CreateEditorArgs object.
  * @param doc - A DocNode document instance. If no doc is provided, it will create a new one.
- * @returns A Lexical editor and DocNode document instance.
+ * @returns An object with the Lexical editor, DocNode document instance, and a cleanup function.
  */
 export function docToLexical(
   editorOrConfig: LexicalEditor | CreateEditorArgs,
@@ -29,7 +35,7 @@ export function docToLexical(
     "root",
     {},
   ]),
-): { editor: LexicalEditor; doc: Doc } {
+): { editor: LexicalEditor; doc: Doc; cleanup: () => void } {
   const lexicalKeyToDocNodeId = new Map<string, string>();
   const docNodeIdToLexicalKey = new Map<string, string>();
 
@@ -71,21 +77,28 @@ export function docToLexical(
     { discrete: true, tag: COLLABORATION_TAG },
   );
 
-  syncLexicalToDocNode(
+  const unregisterLexicalListener = syncLexicalToDocNode(
     doc,
     editor,
     lexicalKeyToDocNodeId,
     docNodeIdToLexicalKey,
   );
 
-  syncDocNodeToLexical(
+  const unregisterDocListener = syncDocNodeToLexical(
     doc,
     editor,
     lexicalKeyToDocNodeId,
     docNodeIdToLexicalKey,
   );
 
-  return { editor, doc };
+  const cleanup = () => {
+    unregisterLexicalListener();
+    unregisterDocListener();
+    lexicalKeyToDocNodeId.clear();
+    docNodeIdToLexicalKey.clear();
+  };
+
+  return { editor, doc, cleanup };
 }
 
 export const LexicalDocNode = defineNode({
@@ -97,3 +110,8 @@ export const LexicalDocNode = defineNode({
     }),
   },
 });
+
+export const lexicalDocNodeConfig: DocConfig = {
+  type: "docnode-lexical",
+  extensions: [{ nodes: [LexicalDocNode] }],
+};

@@ -20,12 +20,14 @@ import { DefaultChatTransport } from "ai";
 import { Markdown } from "./markdown";
 import { Presence } from "@radix-ui/react-presence";
 
-const Context = createContext<{
-  open: boolean;
-  setOpen: (open: boolean) => void;
-  chat: UseChatHelpers<UIMessage>;
-  // eslint-disable-next-line @typescript-eslint/no-restricted-types
-} | null>(null);
+const Context = createContext<
+  | {
+      open: boolean;
+      setOpen: (open: boolean) => void;
+      chat: UseChatHelpers<UIMessage>;
+    }
+  | undefined
+>(undefined);
 
 function useChatContext() {
   return use(Context)!.chat;
@@ -336,7 +338,7 @@ export function AISearchTrigger() {
       <Presence present={open}>
         <div
           className={cn(
-            "bg-fd-popover text-fd-popover-foreground z-100 fixed inset-y-2 flex flex-col rounded-2xl border p-2 shadow-lg max-sm:inset-x-2 sm:end-2 sm:w-[460px]",
+            "bg-fd-popover text-fd-popover-foreground fixed inset-y-2 z-100 flex flex-col rounded-2xl border p-2 shadow-lg max-sm:inset-x-2 sm:end-2 sm:w-[460px]",
             open
               ? "animate-[ask-ai-open_300ms]"
               : "animate-[ask-ai-close_300ms]",
@@ -358,7 +360,7 @@ export function AISearchTrigger() {
                 ))}
             </div>
           </List>
-          <div className="bg-fd-card text-fd-card-foreground has-focus-visible:ring-2 has-focus-visible:ring-fd-ring rounded-xl border">
+          <div className="bg-fd-card text-fd-card-foreground has-focus-visible:ring-fd-ring rounded-xl border has-focus-visible:ring-2">
             <SearchAIInput />
             <div className="flex items-center gap-1.5 p-1 empty:hidden">
               <SearchAIActions />
