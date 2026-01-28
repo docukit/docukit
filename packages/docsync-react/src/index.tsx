@@ -6,6 +6,7 @@ import {
   type ClientConfig,
   type GetDocArgs,
   type QueryResult,
+  type Presence,
 } from "@docnode/docsync/client";
 import { type DocBinding } from "@docnode/docsync";
 
@@ -65,5 +66,22 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
     return result;
   }
 
-  return { useDoc, client };
+  function usePresence(args: { docId: string | undefined }) {
+    const [presence, INTERNAL_setPresence] = useState<Presence>({});
+
+    const setPresence = (newPresence: unknown) => {
+      const { docId } = args;
+      if (!docId) return;
+      void client?.setPresence({ docId, presence: newPresence });
+    };
+
+    useEffect(() => {
+      if (!client) return;
+      return client.getPresence(args, INTERNAL_setPresence);
+    }, [client, args.docId]);
+
+    return [presence, setPresence] as const;
+  }
+
+  return { useDoc, usePresence, client };
 }

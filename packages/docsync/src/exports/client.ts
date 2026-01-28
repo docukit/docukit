@@ -6,4 +6,5 @@ export type {
   DocData,
   Identity,
   QueryResult,
+  Presence,
 } from "../shared/types.js";

@@ -45,6 +45,7 @@ export class DocSyncClient<
     }
   >();
   protected _localPromise: Promise<LocalResolved<S, O>>;
+  protected _deviceId: string;
   private _shouldBroadcast = true;
   protected _broadcastChannel?: BroadcastChannel;
   protected _socket: ClientSocket<S, O>;
@@ -102,11 +103,11 @@ export class DocSyncClient<
       return { provider, identity };
     })();
 
-    const deviceId = getDeviceId();
+    this._deviceId = getDeviceId();
     this._socket = io(config.server.url, {
       auth: (cb) => {
         void config.server.auth.getToken().then((token) => {
-          cb({ token, deviceId });
+          cb({ token, deviceId: this._deviceId });
         });
       },
       // Performance optimizations for testing
@@ -417,21 +418,21 @@ export class DocSyncClient<
     };
   }
 
-  setPresence({ docId, presence }: { docId: string; presence: Presence }) {
+  async setPresence({ docId, presence }: { docId: string; presence: unknown }) {
     const cacheEntry = this._docsCache.get(docId);
     if (!cacheEntry)
       throw new Error(`Doc ${docId} is not loaded, cannot set presence`);
-    cacheEntry.presence = { ...cacheEntry.presence, ...presence };
-    this._request("presence", { docId, presence })
-      .then(({ error }) => {
-        if (error) throw error;
-      })
-      // TODO: consider logging the error, emit an error event or making the method async
-      .catch((error) => {
-        throw new Error(
-          `Unhandled error setting presence for doc ${docId}: ${error}`,
-        );
-      });
+    const userId = (await this._localPromise).identity.userId;
+    const presenceId = `${userId}-${this._deviceId}`;
+    const patchPresence = { [presenceId]: presence };
+    cacheEntry.presence = { ...cacheEntry.presence, ...patchPresence };
+    const { error } = await this._request("presence", {
+      docId,
+      presence: patchPresence,
+    });
+    if (error) {
+      console.error(`Error setting presence for doc ${docId}:`, error);
+    }
   }
 
   private _setupChangeListener(doc: D, docId: string) {
