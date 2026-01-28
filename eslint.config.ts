@@ -73,6 +73,9 @@ export const rootEslintConfig = tseslint.config(
           },
         },
       ],
+      // TODO: enable
+      // "@typescript-eslint/no-shadow": "error",
+      // "@typescript-eslint/no-redeclare": "error",
     },
     languageOptions: {
       parserOptions: {
