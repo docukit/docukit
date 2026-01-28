@@ -10,6 +10,7 @@ import {
   type ClientConnectHandler,
   type ClientDisconnectHandler,
   type SyncRequestHandler,
+  type Presence,
 } from "../shared/types.js";
 import type { DocBinding } from "../shared/docBinding.js";
 
@@ -34,6 +35,8 @@ export class DocSyncServer<
   private _authorize?: ServerConfig<TContext, D, S, O>["authorize"];
   // TODO: see comment in sync-operations
   private _LRUCache = new Map<string, { deviceId: string; clock: number }>();
+  // Track presence state per document: docId -> Record<userId, presence data>
+  private _presenceByDoc = new Map<string, Presence>();
 
   // Event handlers
   private _clientConnectHandlers = new Set<ClientConnectHandler<TContext>>();
@@ -139,8 +142,8 @@ export class DocSyncServer<
       // TypeScript errors if any handler is missing
       const handlers: SocketHandlers<S, O> = {
         "sync-operations": async (payload, cb) => {
+          const { docId, operations = [], clock } = payload;
           const startTime = Date.now();
-          const operations = payload.operations ?? [];
 
           const authorized = await checkAuth({
             type: "sync-operations",
@@ -173,11 +176,13 @@ export class DocSyncServer<
           }
 
           // Auto-subscribe to the document room on first sync
-          const room = this._io.sockets.adapter.rooms.get(
-            `doc:${payload.docId}`,
-          );
+          const room = this._io.sockets.adapter.rooms.get(`doc:${docId}`);
           if (!room?.has(socket.id)) {
-            await socket.join(`doc:${payload.docId}`);
+            await socket.join(`doc:${docId}`);
+
+            // Send current presence state to newly joined client
+            const presence = this._presenceByDoc.get(docId);
+            if (presence) socket.emit("presence", { docId, presence });
           }
 
           try {
@@ -188,7 +193,6 @@ export class DocSyncServer<
             const result = await this._provider.transaction(
               "readwrite",
               async (ctx) => {
-                const { docId, clock, operations } = payload;
                 // 1. Get operations the client doesn't have (clock > clientClock)
                 //    We query BEFORE inserting so we don't return the client's own operations
                 const serverOps = await ctx.getOperations({ docId, clock });
@@ -199,7 +203,7 @@ export class DocSyncServer<
                 // 3. Save client operations if provided (returns the new clock)
                 const newClock = await ctx.saveOperations({
                   docId,
-                  operations: operations ?? [],
+                  operations,
                 });
 
                 // 4. Return data
@@ -370,11 +374,33 @@ export class DocSyncServer<
           }
           cb({ success: true });
         },
-        "unsubscribe-doc": async (payload, cb) => {
+        "unsubscribe-doc": async ({ docId }, cb) => {
           // Leave the room for this document
-          await socket.leave(`doc:${payload.docId}`);
-          // console.log(`User ${userId} unsubscribed from doc:${payload.docId}`);
+          await socket.leave(`doc:${docId}`);
+
+          // Clean up presence state for this user in this document
+          const presenceForDoc = this._presenceByDoc.get(docId);
+          if (presenceForDoc) {
+            delete presenceForDoc[userId];
+            // Only delete the map entry if no users remain
+            if (Object.keys(presenceForDoc).length === 0) {
+              this._presenceByDoc.delete(docId);
+            }
+          }
+
           cb({ success: true });
+        },
+        presence: async ({ docId, presence }, cb) => {
+          // Update server's presence state for this document
+          const currentPresence = this._presenceByDoc.get(docId) ?? {};
+          const newPresence = { ...currentPresence, ...presence };
+          this._presenceByDoc.set(docId, newPresence);
+
+          // Broadcast to ALL clients in the room (including sender)
+          this._io.to(`doc:${docId}`).emit("presence", { docId, presence });
+
+          // Return success
+          cb({ data: void undefined });
         },
       };
 

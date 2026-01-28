@@ -65,6 +65,10 @@ export type DocSyncEvents<S, O> = {
       }
     >;
   };
+  presence: {
+    request: { docId: string; presence: Presence };
+    response: Result<void>;
+  };
   "delete-doc": {
     request: { docId: string };
     // TODO: use Result type
@@ -293,6 +297,12 @@ export type GetDocArgs =
 
 export type DocData<D> = { doc: D; id: string };
 
+/**
+ * Presence is a record of user IDs to their presence data.
+ * It is used to track the presence of users in a document.
+ */
+export type Presence = Record<string, unknown>;
+
 export type BroadcastMessage<O> = {
   type: "OPERATIONS";
   operations: O;
@@ -448,6 +458,8 @@ type ClientToServerEvents<S, O> = {
 type ServerToClientEvents = {
   // Server notifies clients that a document has been modified
   dirty: (payload: { docId: string }) => void;
+  // Server notifies clients about presence updates
+  presence: (payload: { docId: string; presence: Presence }) => void;
 };
 
 export type ServerSocket<S, O> = import("socket.io").Server<

@@ -29,6 +29,9 @@ function SubDocContent({
     id: docId,
     createIfMissing: true,
   });
+  // @ts-expect-error - not implemented
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
+  const { presence: _ } = usePresence({ docId });
 
   const [activeDoc, setActiveDoc] = useState<string | undefined>();
 

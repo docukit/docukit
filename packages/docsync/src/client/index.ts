@@ -18,6 +18,7 @@ import type {
   ClientSocket,
   DocSyncEventName,
   DocSyncEvents,
+  Presence,
 } from "../shared/types.js";
 
 // TODO: review this type!
@@ -36,7 +37,12 @@ export class DocSyncClient<
   protected _docBinding: DocBinding<D, S, O>;
   protected _docsCache = new Map<
     string,
-    { promisedDoc: Promise<D | undefined>; refCount: number }
+    {
+      promisedDoc: Promise<D | undefined>;
+      refCount: number;
+      presence: Presence;
+      presenceHandlers: Set<(presence: Presence) => void>;
+    }
   >();
   protected _localPromise: Promise<LocalResolved<S, O>>;
   private _shouldBroadcast = true;
@@ -127,6 +133,18 @@ export class DocSyncClient<
     this._socket.on("dirty", (payload) => {
       this.saveRemote({ docId: payload.docId });
     });
+    this._socket.on("presence", (payload) => {
+      const cacheEntry = this._docsCache.get(payload.docId);
+      if (!cacheEntry) return;
+
+      // Update cached presence
+      cacheEntry.presence = { ...cacheEntry.presence, ...payload.presence };
+
+      // Notify all registered handlers for this document
+      cacheEntry.presenceHandlers.forEach((handler) =>
+        handler(payload.presence),
+      );
+    });
   }
 
   connect() {
@@ -179,6 +197,8 @@ export class DocSyncClient<
     this._docsCache.set(docId, {
       promisedDoc: Promise.resolve(newDoc),
       refCount: cacheEntry.refCount,
+      presence: cacheEntry.presence,
+      presenceHandlers: cacheEntry.presenceHandlers,
     });
   }
 
@@ -242,7 +262,7 @@ export class DocSyncClient<
    */
   getDoc<T extends GetDocArgs>(
     args: T,
-    callback: (
+    onChange: (
       result: QueryResult<
         T extends { createIfMissing: true }
           ? DocData<D>
@@ -254,7 +274,7 @@ export class DocSyncClient<
     const argId = "id" in args ? args.id : undefined;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
     // Internal emit uses wider type; runtime logic ensures correct data per overload
-    const emit = callback as (
+    const emit = onChange as (
       result: QueryResult<DocData<D> | undefined>,
     ) => void;
     let docId: string | undefined;
@@ -266,6 +286,8 @@ export class DocSyncClient<
       this._docsCache.set(id, {
         promisedDoc: Promise.resolve(doc),
         refCount: 1,
+        presence: {},
+        presenceHandlers: new Set(),
       });
       this._setupChangeListener(doc, id);
       emit({ status: "success", data: { doc, id } });
@@ -313,7 +335,12 @@ export class DocSyncClient<
               docId,
               createIfMissing ? type : undefined,
             );
-            this._docsCache.set(docId, { promisedDoc, refCount: 1 });
+            this._docsCache.set(docId, {
+              promisedDoc,
+              refCount: 1,
+              presence: {},
+              presenceHandlers: new Set(),
+            });
             doc = await promisedDoc;
             if (doc) {
               // Register listener only for new docs (not cache hits)
@@ -350,6 +377,61 @@ export class DocSyncClient<
     return () => {
       if (docId) void this._unloadDoc(docId);
     };
+  }
+
+  /**
+   * Subscribe to presence updates for a document.
+   * Multiple handlers can be registered for the same document.
+   * @param args - The arguments for the getPresence request.
+   * @param onChange - The callback to invoke when the presence changes.
+   * @returns A function to unsubscribe from presence updates.
+   */
+  getPresence(
+    args: { docId: string | undefined },
+    onChange: (presence: Presence) => void,
+  ): () => void {
+    const { docId } = args;
+    if (!docId) return () => void undefined;
+    const cacheEntry = this._docsCache.get(docId);
+
+    if (!cacheEntry) {
+      throw new Error(
+        `Cannot subscribe to presence for document "${docId}" - document not loaded.`,
+      );
+    }
+
+    // Add handler to the set
+    cacheEntry.presenceHandlers.add(onChange);
+
+    // Immediately call with current presence if available
+    if (Object.keys(cacheEntry.presence).length > 0) {
+      onChange(cacheEntry.presence);
+    }
+
+    // Return unsubscribe function that removes only this handler
+    return () => {
+      const entry = this._docsCache.get(docId);
+      if (entry) {
+        entry.presenceHandlers.delete(onChange);
+      }
+    };
+  }
+
+  setPresence({ docId, presence }: { docId: string; presence: Presence }) {
+    const cacheEntry = this._docsCache.get(docId);
+    if (!cacheEntry)
+      throw new Error(`Doc ${docId} is not loaded, cannot set presence`);
+    cacheEntry.presence = { ...cacheEntry.presence, ...presence };
+    this._request("presence", { docId, presence })
+      .then(({ error }) => {
+        if (error) throw error;
+      })
+      // TODO: consider logging the error, emit an error event or making the method async
+      .catch((error) => {
+        throw new Error(
+          `Unhandled error setting presence for doc ${docId}: ${error}`,
+        );
+      });
   }
 
   private _setupChangeListener(doc: D, docId: string) {
