@@ -13,21 +13,7 @@ import { docToLexical } from "@docnode/lexical";
 import type { Doc } from "docnode";
 import { useEffect } from "react";
 
-type LexicalPresence = {
-  name: string;
-  color?: string;
-  selection?: unknown; // TODO: figure out the type of the selection
-};
-
-function DocSyncPlugin({
-  doc,
-  presence,
-  setPresence,
-}: {
-  doc: Doc;
-  presence?: LexicalPresence;
-  setPresence: (presence: unknown) => void;
-}) {
+function DocSyncPlugin({ doc }: { doc: Doc }) {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
@@ -35,7 +21,6 @@ function DocSyncPlugin({
 
     // Set up bidirectional sync between DocNode and Lexical
     const { cleanup } = docToLexical(editor, doc);
-    handlePresence(editor, doc, presence, setPresence);
 
     // TODO: the user should not need to call cleanup. Maybe I should export a hook
     return cleanup;
