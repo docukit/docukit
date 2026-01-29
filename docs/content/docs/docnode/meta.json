@@ -1,0 +1,21 @@
+{
+  "title": "DocNode",
+  "description": "Lightweight, flexible CRDT framework for real-time collaboration",
+  "root": true,
+  "pages": [
+    "index",
+    "getting-started",
+    "license",
+    "--- Learn ---",
+    "overview",
+    "nodes",
+    "doc-lifecycle",
+    "operations-and-diff",
+    "persistence",
+    "undo-manager",
+    "render",
+    "--- More ---",
+    "roadmap"
+  ],
+  "defaultOpen": true
+}

@@ -1,0 +1,7 @@
+{
+  "title": "DocSync",
+  "description": "Real-time synchronization protocol for collaborative applications",
+  "root": true,
+  "pages": ["index"],
+  "defaultOpen": true
+}
