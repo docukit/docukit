@@ -79,7 +79,7 @@ const Index = () => {
           </h1>
         </header>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:gap-8">
+        <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 md:grid-cols-2 lg:gap-8">
           {products.map((product, i) => (
             <ProductCard key={product.title} {...product} delay={i * 0.1} />
           ))}
