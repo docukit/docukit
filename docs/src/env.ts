@@ -7,10 +7,6 @@ export const env = createEnv({
    * These are only available on the server and are never sent to the client.
    */
   server: {
-    GROQ_API_KEY: z
-      .string()
-      .min(1)
-      .describe("Groq API key for AI chat functionality"),
     SMTP_URL: z
       .string()
       .url()

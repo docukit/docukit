@@ -2,7 +2,6 @@ import "@/app/global.css";
 import { Analytics } from "@vercel/analytics/react";
 import { Suspense } from "react";
 import PostHogPageView from "./PostHogPageView";
-import { AISearchTrigger } from "@/components/search";
 // import { Banner } from "fumadocs-ui/components/banner";
 
 export default function Layout({ children }: LayoutProps<"/">) {
@@ -25,7 +24,6 @@ export default function Layout({ children }: LayoutProps<"/">) {
           <PostHogPageView />
         </Suspense>
         <Analytics />
-        <AISearchTrigger />
         {children}
       </body>
     </html>
