@@ -1,8 +1,7 @@
 import { DiscordIcon } from "@/icons/DiscordIcon";
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
-import DocNodeLogo from "@/icons/DocNodeLogo";
-import DocSyncLogo from "@/icons/DocSyncLogo";
 import { BrandXIcon } from "@/icons/BrandXIcon";
+import { NavTitle } from "@/components/nav-title";
 
 /**
  * Shared layout configurations
@@ -41,9 +40,7 @@ export const baseOptions: BaseLayoutProps = {
     },
   ],
   nav: {
-    title: (
-      <div className="mr-auto flex items-center justify-center gap-1.5"></div>
-    ),
+    title: <NavTitle />,
   },
   // see https://fumadocs.dev/docs/ui/navigation/links
 };

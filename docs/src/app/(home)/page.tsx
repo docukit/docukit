@@ -9,6 +9,9 @@ import DocGridLogo from "@/icons/DocGridLogo";
 export const metadata: Metadata = {
   title: "DocuKit - Build local-first apps easily",
   description: "Real-time collaborative tools for modern developers.",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 const AnimatedBackground = () => (
@@ -30,37 +33,31 @@ const Index = () => {
   const products = [
     {
       title: "DocNode",
-      description: "Conflict resolution documents. Faster than any CRDT.",
-      details:
-        "Alternative to Yjs, Loro, and Automerge. Built for speed and flexibility.",
-      icon: <DocNodeLogo className="h-12 w-auto" />,
+      headline:
+        "Faster than any CRDT. The Yjs alternative for conflict resolution.",
+      icon: <DocNodeLogo className="h-10 w-auto" />,
       href: "/docs/docnode",
       color: "green",
     },
     {
       title: "DocSync",
-      description: "Agnostic local-first sync engine.",
-      details:
-        "Works with Yjs, Loro, and DocNode. The agnostic alternative to Hocuspocus.",
-      icon: <DocSyncLogo className="h-12 w-auto" />,
+      headline: "Agnostic local-first sync engine for DocNode, Yjs, or Loro.",
+      icon: <DocSyncLogo className="h-10 w-auto" />,
       href: "/docs/docsync",
       color: "blue",
     },
     {
       title: "DocEditor",
-      description: "Ready-to-use RTE based on DocNode.",
-      details:
-        "A high-level rich text editor. Modern alternative to Lexical and TipTap.",
-      icon: <DocEditorLogo className="h-12 w-auto" />,
+      headline: "The ready-to-use RTE alternative to Lexical and TipTap.",
+      icon: <DocEditorLogo className="h-10 w-auto" />,
       href: "/docs/doceditor",
       color: "blue",
     },
     {
       title: "DocGrid",
-      description: "High-performance data grid for local-first.",
-      details:
-        "Efficient table management. Alternative to AG Grid and Tanstack Tables.",
-      icon: <DocGridLogo className="h-12 w-auto" />,
+      headline:
+        "High-performance data grid alternative to AG Grid and Tanstack.",
+      icon: <DocGridLogo className="h-10 w-auto" />,
       href: "/docs/docgrid",
       color: "green",
     },
@@ -70,21 +67,21 @@ const Index = () => {
     <div className="relative min-h-screen text-slate-200 selection:bg-emerald-500/30">
       <AnimatedBackground />
 
-      <main className="container mx-auto px-6 pt-24 pb-24 md:pt-32">
-        <header className="mb-16 text-center">
-          <h1 className="text-6xl font-black tracking-tight sm:text-7xl md:text-9xl">
+      <main className="container mx-auto px-6 pt-16 pb-16 md:pt-24">
+        <header className="mb-8 text-center">
+          <h1 className="text-4xl font-black tracking-tight sm:text-5xl md:text-7xl">
             Build
             <span className="bg-gradient-to-b from-white to-slate-500 bg-clip-text text-transparent">
               {" "}
               local-first{" "}
             </span>
-            apps easily.
+            apps easily
           </h1>
         </header>
 
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:gap-12">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:gap-8">
           {products.map((product, i) => (
-            <ProductCard key={product.title} {...product} delay={i * 0.15} />
+            <ProductCard key={product.title} {...product} delay={i * 0.1} />
           ))}
         </div>
       </main>
@@ -94,8 +91,7 @@ const Index = () => {
 
 interface ProductCardProps {
   title: string;
-  description: string;
-  details: string;
+  headline: string;
   icon: React.ReactNode;
   href: string;
   color: "green" | "blue";
@@ -104,8 +100,7 @@ interface ProductCardProps {
 
 const ProductCard: React.FC<ProductCardProps> = ({
   title,
-  description,
-  details,
+  headline,
   icon,
   href,
   color,
@@ -116,7 +111,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
   return (
     <Link
       href={href}
-      className={`animate-fade-in-up group relative flex flex-col overflow-hidden rounded-[3rem] border-t border-white/20 p-8 transition-all duration-500 hover:-translate-y-3 hover:shadow-[0_20px_50px_rgba(0,0,0,0.3)] ${
+      className={`animate-fade-in-up group relative flex flex-col overflow-hidden rounded-[2.5rem] border-t border-white/20 p-6 transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_20px_50px_rgba(0,0,0,0.3)] ${
         isGreen
           ? "bg-emerald-600 shadow-emerald-900/20 hover:bg-emerald-500"
           : "bg-blue-600 shadow-blue-900/20 hover:bg-blue-500"
@@ -127,36 +122,32 @@ const ProductCard: React.FC<ProductCardProps> = ({
     >
       {/* Decorative background shapes */}
       <div
-        className={`absolute -top-6 -right-6 h-40 w-40 rounded-full opacity-20 blur-2xl transition-all duration-700 group-hover:scale-150 group-hover:opacity-40 ${isGreen ? "bg-emerald-200" : "bg-blue-200"}`}
+        className={`absolute -top-6 -right-6 h-32 w-32 rounded-full opacity-20 blur-2xl transition-all duration-700 group-hover:scale-150 group-hover:opacity-40 ${isGreen ? "bg-emerald-200" : "bg-blue-200"}`}
       />
       <div
-        className={`absolute -bottom-10 -left-10 h-48 w-48 rounded-full opacity-10 blur-xl transition-all duration-700 group-hover:scale-125 ${isGreen ? "bg-white" : "bg-white"}`}
+        className={`absolute -bottom-10 -left-10 h-32 w-32 rounded-full opacity-10 blur-xl transition-all duration-700 group-hover:scale-125 ${isGreen ? "bg-white" : "bg-white"}`}
       />
 
       <div className="relative z-10">
-        <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-[2rem] bg-white p-4 shadow-2xl transition-all duration-500 group-hover:scale-110 group-hover:rotate-12">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-[1.5rem] bg-white p-3 shadow-2xl transition-all duration-500 group-hover:scale-110 group-hover:rotate-12">
           {icon}
         </div>
 
-        <h2 className="mb-3 text-4xl font-black text-white md:text-5xl">
+        <h2 className="mb-1 text-3xl font-black text-white md:text-4xl">
           {title}
         </h2>
 
-        <p className="mb-4 text-xl leading-tight font-bold text-white/95">
-          {description}
+        <p className="mb-6 max-w-[90%] text-lg leading-tight font-bold text-white/95">
+          {headline}
         </p>
 
-        <p className="max-w-[90%] text-lg font-medium text-white/80">
-          {details}
-        </p>
-
-        <div className="mt-8 flex items-center gap-3 font-black text-white">
-          <span className="text-sm tracking-[0.2em] uppercase">
-            Read Documentation
+        <div className="mt-auto flex items-center gap-2 font-black text-white">
+          <span className="text-xs tracking-[0.2em] uppercase">
+            Read the docs
           </span>
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm transition-all duration-300 group-hover:translate-x-3 group-hover:bg-white/40">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm transition-all duration-300 group-hover:translate-x-2 group-hover:bg-white/40">
             <svg
-              className="h-6 w-6"
+              className="h-5 w-5"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
