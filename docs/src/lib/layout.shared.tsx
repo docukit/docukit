@@ -1,7 +1,7 @@
 import { DiscordIcon } from "@/icons/DiscordIcon";
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
-import Logo2 from "@/icons/DocNodeLogo";
-import { Montserrat } from "next/font/google";
+import DocNodeLogo from "@/icons/DocNodeLogo";
+import DocSyncLogo from "@/icons/DocSyncLogo";
 import { BrandXIcon } from "@/icons/BrandXIcon";
 
 /**
@@ -42,22 +42,11 @@ export const baseOptions: BaseLayoutProps = {
   ],
   nav: {
     title: (
-      <div className="mr-auto flex items-center justify-center gap-2 text-xl">
-        <Logo2 />
-        <Logo />
+      <div className="mr-auto flex items-center justify-center gap-1.5">
+        <DocNodeLogo className="h-6 w-auto" />
+        <DocSyncLogo className="h-6 w-auto" />
       </div>
     ),
   },
   // see https://fumadocs.dev/docs/ui/navigation/links
 };
-
-const montserrat = Montserrat({
-  weight: "700",
-  subsets: ["latin"],
-});
-
-function Logo({ className }: { className?: string }) {
-  return (
-    <span className={`${montserrat.className} ${className}`}> DocNode </span>
-  );
-}

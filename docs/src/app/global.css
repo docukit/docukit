@@ -10,9 +10,10 @@
 
 .gradient-mesh {
   background:
-    radial-gradient(at 40% 20%, hsla(142, 76%, 36%, 0.3) 0px, transparent 50%),
-    radial-gradient(at 80% 0%, hsla(142, 76%, 46%, 0.2) 0px, transparent 50%),
-    radial-gradient(at 0% 50%, hsla(142, 76%, 26%, 0.2) 0px, transparent 50%);
+    radial-gradient(at 40% 20%, hsla(142, 76%, 36%, 0.25) 0px, transparent 50%),
+    radial-gradient(at 80% 0%, hsla(217, 91%, 53%, 0.2) 0px, transparent 50%),
+    radial-gradient(at 0% 50%, hsla(217, 91%, 40%, 0.15) 0px, transparent 50%),
+    radial-gradient(at 90% 60%, hsla(142, 76%, 30%, 0.15) 0px, transparent 50%);
 }
 
 @custom-variant dark (&:is(.dark *));
