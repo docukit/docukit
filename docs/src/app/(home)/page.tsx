@@ -111,7 +111,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
   return (
     <Link
       href={href}
-      className={`animate-fade-in-up group relative flex flex-col overflow-hidden rounded-[2.5rem] border-t border-white/20 p-6 transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_20px_50px_rgba(0,0,0,0.3)] ${
+      className={`animate-fade-in-up group relative isolate flex [transform:translateZ(0)] flex-col overflow-hidden rounded-[2.5rem] p-6 transition-all duration-500 [backface-visibility:hidden] hover:-translate-y-2 hover:shadow-[0_20px_50px_rgba(0,0,0,0.3)] ${
         isGreen
           ? "bg-emerald-600 shadow-emerald-900/20 hover:bg-emerald-500"
           : "bg-blue-600 shadow-blue-900/20 hover:bg-blue-500"
@@ -120,6 +120,9 @@ const ProductCard: React.FC<ProductCardProps> = ({
         animationDelay: `${delay}s`,
       }}
     >
+      {/* Top highlight border */}
+      <div className="absolute inset-x-0 top-0 z-20 h-px bg-white/20" />
+
       {/* Decorative background shapes */}
       <div
         className={`absolute -top-6 -right-6 h-32 w-32 rounded-full opacity-20 blur-2xl transition-all duration-700 group-hover:scale-150 group-hover:opacity-40 ${isGreen ? "bg-emerald-200" : "bg-blue-200"}`}
