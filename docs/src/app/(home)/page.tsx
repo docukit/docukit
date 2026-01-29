@@ -3,8 +3,8 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import DocNodeLogo from "@/icons/DocNodeLogo";
 import DocSyncLogo from "@/icons/DocSyncLogo";
-import DocEditorLogo from "@/icons/DocEditorLogo";
-import DocGridLogo from "@/icons/DocGridLogo";
+// import DocEditorLogo from "@/icons/DocEditorLogo";
+// import DocGridLogo from "@/icons/DocGridLogo";
 
 export const metadata: Metadata = {
   title: "Build local-first apps easily",
@@ -34,34 +34,35 @@ const Index = () => {
     {
       title: "DocNode",
       headline:
-        "Faster than any CRDT. The Yjs alternative for conflict resolution.",
+        "Type-safe documents with conflict resolution. Faster than any CRDT.",
       icon: <DocNodeLogo className="h-10 w-auto" />,
       href: "/docs/docnode",
       color: "green",
     },
     {
       title: "DocSync",
-      headline: "Agnostic local-first sync engine for DocNode, Yjs, or Loro.",
+      headline:
+        "Agnostic local-first sync engine. Works with DocNode, Yjs, or Loro.",
       icon: <DocSyncLogo className="h-10 w-auto" />,
       href: "/docs/docsync",
       color: "blue",
     },
-    {
-      title: "DocEditor",
-      headline: "The ready-to-use RTE alternative to Lexical and TipTap.",
-      icon: <DocEditorLogo className="h-10 w-auto" />,
-      href: "/docs/doceditor",
-      color: "blue",
-    },
-    {
-      title: "DocGrid",
-      headline:
-        "High-performance data grid alternative to AG Grid and Tanstack.",
-      icon: <DocGridLogo className="h-10 w-auto" />,
-      href: "/docs/docgrid",
-      color: "green",
-    },
-  ];
+    // {
+    //   title: "DocEditor",
+    //   headline: "The ready-to-use RTE alternative to Lexical and TipTap.",
+    //   icon: <DocEditorLogo className="h-10 w-auto" />,
+    //   href: "/docs/doceditor",
+    //   color: "blue",
+    // },
+    // {
+    //   title: "DocGrid",
+    //   headline:
+    //     "High-performance data grid alternative to AG Grid and Tanstack.",
+    //   icon: <DocGridLogo className="h-10 w-auto" />,
+    //   href: "/docs/docgrid",
+    //   color: "green",
+    // },
+  ] as const;
 
   return (
     <div className="relative min-h-screen text-slate-200 selection:bg-emerald-500/30">
