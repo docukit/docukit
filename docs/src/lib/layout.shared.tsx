@@ -1,6 +1,6 @@
 import { DiscordIcon } from "@/icons/DiscordIcon";
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
-import Logo2 from "@/icons/docnodeLogo";
+import Logo2 from "@/icons/DocNodeLogo";
 import { Montserrat } from "next/font/google";
 import { BrandXIcon } from "@/icons/BrandXIcon";
 

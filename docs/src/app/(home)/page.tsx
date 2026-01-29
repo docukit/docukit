@@ -1,6 +1,8 @@
 import React from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
+import DocNodeLogo from "@/icons/DocNodeLogo";
+import DocSyncLogo from "@/icons/DocSyncLogo";
 
 export const metadata: Metadata = {
   title: "DocNode - Build local-first apps easily",
@@ -67,10 +69,18 @@ const Index = () => {
 
           <div className="mx-auto grid max-w-6xl gap-8 md:grid-cols-2">
             <div className="animate-fade-in" style={{ animationDelay: "0.2s" }}>
-              <FeatureCard title="DocNode" features={coreFeatures} />
+              <FeatureCard
+                title="DocNode"
+                features={coreFeatures}
+                icon={<DocNodeLogo className="h-12 w-auto" />}
+              />
             </div>
             <div className="animate-fade-in" style={{ animationDelay: "0.4s" }}>
-              <FeatureCard title="DocSync" features={syncFeatures} />
+              <FeatureCard
+                title="DocSync"
+                features={syncFeatures}
+                icon={<DocSyncLogo className="h-12 w-auto" />}
+              />
             </div>
           </div>
         </div>
@@ -86,12 +96,16 @@ export default Index;
 interface FeatureCardProps {
   title: string;
   features: string[];
+  icon?: React.ReactNode;
 }
 
-const FeatureCard: React.FC<FeatureCardProps> = ({ title, features }) => {
+const FeatureCard: React.FC<FeatureCardProps> = ({ title, features, icon }) => {
   return (
     <div className="bg-background hover:shadow-primary/20 rounded-lg p-4 opacity-80 backdrop-blur-3xl transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
-      <h2 className="pb-6 text-3xl font-semibold text-green-400">{title}</h2>
+      <div className="flex items-center justify-center gap-3 pb-6">
+        {icon}
+        <h2 className="text-3xl font-semibold">{title}</h2>
+      </div>
       <ul className="space-y-3">
         {features.map((feature, index) => (
           <li
