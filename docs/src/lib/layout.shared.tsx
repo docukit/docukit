@@ -42,10 +42,7 @@ export const baseOptions: BaseLayoutProps = {
   ],
   nav: {
     title: (
-      <div className="mr-auto flex items-center justify-center gap-1.5">
-        <DocNodeLogo className="h-6 w-auto" />
-        <DocSyncLogo className="h-6 w-auto" />
-      </div>
+      <div className="mr-auto flex items-center justify-center gap-1.5"></div>
     ),
   },
   // see https://fumadocs.dev/docs/ui/navigation/links
