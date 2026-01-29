@@ -24,15 +24,15 @@ export type LocalSelection = {
 };
 
 /** Presence data for a remote user (uses DocNode IDs, includes name and color for rendering) */
-export type RemotePresence = {
+export type LexicalPresence = {
   anchor: { key: string; offset: number };
   focus: { key: string; offset: number };
   name: string;
   color: string;
 };
 
-/** Map of user IDs to their presence data (excludes the current user) */
-export type Presence = Record<string, RemotePresence | undefined>;
+/** Map of socket IDs to their presence data (excludes the current user) */
+export type Presence = Record<string, LexicalPresence>;
 
 // Internal types for cursor rendering
 type CursorSelection = {

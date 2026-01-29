@@ -26,7 +26,7 @@ export type {
   LocalSelection,
   Presence,
   PresenceHandle,
-  RemotePresence,
+  LexicalPresence,
 } from "./syncPresence.js";
 
 /** Key mapping between Lexical keys and DocNode IDs */

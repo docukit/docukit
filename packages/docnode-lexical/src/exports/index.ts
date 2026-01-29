@@ -9,5 +9,5 @@ export type {
   LocalSelection,
   Presence,
   PresenceHandle,
-  RemotePresence,
+  LexicalPresence,
 } from "../index.js";
