@@ -21,11 +21,27 @@ import {
 import { syncDocNodeToLexical } from "./syncDocNodeToLexical.js";
 import { syncLexicalToDocNode } from "./syncLexicalToDocNode.js";
 
+export { syncPresence } from "./syncPresence.js";
+export type {
+  LocalSelection,
+  Presence,
+  PresenceHandle,
+  RemotePresence,
+} from "./syncPresence.js";
+
+/** Key mapping between Lexical keys and DocNode IDs */
+export type KeyBinding = {
+  /** Convert a Lexical node key to a DocNode ID */
+  lexicalKeyToDocNodeId: Map<string, string>;
+  /** Convert a DocNode ID to a Lexical node key */
+  docNodeIdToLexicalKey: Map<string, string>;
+};
+
 /**
  *
  * @param editorOrConfig - A Lexical editor instance or a CreateEditorArgs object.
  * @param doc - A DocNode document instance. If no doc is provided, it will create a new one.
- * @returns An object with the Lexical editor, DocNode document instance, and a cleanup function.
+ * @returns An object with the Lexical editor, DocNode document instance, key binding, and a cleanup function.
  */
 export function docToLexical(
   editorOrConfig: LexicalEditor | CreateEditorArgs,
@@ -35,7 +51,12 @@ export function docToLexical(
     "root",
     {},
   ]),
-): { editor: LexicalEditor; doc: Doc; cleanup: () => void } {
+): {
+  editor: LexicalEditor;
+  doc: Doc;
+  keyBinding: KeyBinding;
+  cleanup: () => void;
+} {
   const lexicalKeyToDocNodeId = new Map<string, string>();
   const docNodeIdToLexicalKey = new Map<string, string>();
 
@@ -98,7 +119,12 @@ export function docToLexical(
     docNodeIdToLexicalKey.clear();
   };
 
-  return { editor, doc, cleanup };
+  const keyBinding: KeyBinding = {
+    lexicalKeyToDocNodeId,
+    docNodeIdToLexicalKey,
+  };
+
+  return { editor, doc, keyBinding, cleanup };
 }
 
 export const LexicalDocNode = defineNode({

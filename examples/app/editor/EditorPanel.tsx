@@ -9,27 +9,69 @@ import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import ToolbarPlugin from "./ToolbarPlugin";
 import { $createParagraphNode, $createTextNode, $getRoot } from "lexical";
-import { docToLexical } from "@docnode/lexical";
+import {
+  docToLexical,
+  syncPresence,
+  type LocalSelection,
+  type Presence,
+} from "@docnode/lexical";
 import type { Doc } from "docnode";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
-function DocSyncPlugin({ doc }: { doc: Doc }) {
+function DocSyncPlugin({
+  doc,
+  presence,
+  setPresence,
+}: {
+  doc: Doc;
+  presence: Presence | undefined;
+  setPresence: ((selection: LocalSelection | undefined) => void) | undefined;
+}) {
   const [editor] = useLexicalComposerContext();
+  const presenceHandleRef = useRef<ReturnType<typeof syncPresence> | undefined>(
+    undefined,
+  );
 
+  // Set up doc sync and presence together (they share keyBinding)
   useEffect(() => {
     if (!doc) return;
+    const { cleanup, keyBinding } = docToLexical(editor, doc);
 
-    // Set up bidirectional sync between DocNode and Lexical
-    const { cleanup } = docToLexical(editor, doc);
+    // Set up presence if setPresence is available
+    if (setPresence) {
+      presenceHandleRef.current = syncPresence(editor, keyBinding, setPresence);
+    }
 
-    // TODO: the user should not need to call cleanup. Maybe I should export a hook
-    return cleanup;
-  }, [editor, doc]);
+    return () => {
+      presenceHandleRef.current?.cleanup();
+      presenceHandleRef.current = undefined;
+      cleanup();
+    };
+  }, [editor, doc, setPresence]);
+
+  // Update remote cursors when presence changes
+  useEffect(() => {
+    if (presence && presenceHandleRef.current) {
+      presenceHandleRef.current.updateRemoteCursors(presence);
+    }
+  }, [presence]);
 
   return null;
 }
 
-export function EditorPanel({ doc, clientId }: { doc: Doc; clientId: string }) {
+type EditorPanelProps = {
+  doc: Doc;
+  clientId: string;
+  presence?: Presence;
+  setPresence?: (selection: LocalSelection | undefined) => void;
+};
+
+export function EditorPanel({
+  doc,
+  clientId,
+  presence,
+  setPresence,
+}: EditorPanelProps) {
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-700/50 bg-zinc-900/50 shadow-2xl shadow-black/50 backdrop-blur-sm">
       <LexicalComposer
@@ -55,7 +97,11 @@ export function EditorPanel({ doc, clientId }: { doc: Doc; clientId: string }) {
           },
         }}
       >
-        <DocSyncPlugin doc={doc} />
+        <DocSyncPlugin
+          doc={doc}
+          presence={presence}
+          setPresence={setPresence}
+        />
         <InitialContentPlugin clientId={clientId} />
         <ToolbarPlugin />
         <div className="relative">

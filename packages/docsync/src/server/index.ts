@@ -123,6 +123,21 @@ export class DocSyncServer<
 
       // Handle disconnect
       socket.on("disconnect", (reason) => {
+        // Clean up presence for all documents this socket was in
+        for (const [docId, presenceForDoc] of this._presenceByDoc.entries()) {
+          if (presenceForDoc[socket.id] !== undefined) {
+            // Broadcast presence removal
+            socket.to(`doc:${docId}`).emit("presence", {
+              docId,
+              presence: { [socket.id]: undefined },
+            });
+            delete presenceForDoc[socket.id];
+            if (Object.keys(presenceForDoc).length === 0) {
+              this._presenceByDoc.delete(docId);
+            }
+          }
+        }
+
         this._emit(this._clientDisconnectHandlers, {
           userId,
           deviceId,
@@ -378,11 +393,18 @@ export class DocSyncServer<
           // Leave the room for this document
           await socket.leave(`doc:${docId}`);
 
-          // Clean up presence state for this user in this document
+          // Clean up presence state for this socket in this document
           const presenceForDoc = this._presenceByDoc.get(docId);
           if (presenceForDoc) {
-            delete presenceForDoc[userId];
-            // Only delete the map entry if no users remain
+            // Broadcast presence removal before deleting
+            if (presenceForDoc[socket.id] !== undefined) {
+              socket.to(`doc:${docId}`).emit("presence", {
+                docId,
+                presence: { [socket.id]: undefined },
+              });
+            }
+            delete presenceForDoc[socket.id];
+            // Only delete the map entry if no sockets remain
             if (Object.keys(presenceForDoc).length === 0) {
               this._presenceByDoc.delete(docId);
             }
@@ -391,13 +413,18 @@ export class DocSyncServer<
           cb({ success: true });
         },
         presence: async ({ docId, presence }, cb) => {
+          // Use socket.id as the unique presence key (each connection is unique)
+          const presencePatch = { [socket.id]: presence };
+
           // Update server's presence state for this document
           const currentPresence = this._presenceByDoc.get(docId) ?? {};
-          const newPresence = { ...currentPresence, ...presence };
+          const newPresence = { ...currentPresence, ...presencePatch };
           this._presenceByDoc.set(docId, newPresence);
 
-          // Broadcast to ALL clients in the room (including sender)
-          this._io.to(`doc:${docId}`).emit("presence", { docId, presence });
+          // Broadcast to all clients in the room EXCEPT the sender
+          socket
+            .to(`doc:${docId}`)
+            .emit("presence", { docId, presence: presencePatch });
 
           // Return success
           cb({ data: void undefined });

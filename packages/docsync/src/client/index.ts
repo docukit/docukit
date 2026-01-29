@@ -138,12 +138,21 @@ export class DocSyncClient<
       const cacheEntry = this._docsCache.get(payload.docId);
       if (!cacheEntry) return;
 
-      // Update cached presence
-      cacheEntry.presence = { ...cacheEntry.presence, ...payload.presence };
+      // Update cached presence with the patch from server
+      // Handle undefined values as deletions
+      const newPresence = { ...cacheEntry.presence };
+      for (const [key, value] of Object.entries(payload.presence)) {
+        if (value === undefined) {
+          delete newPresence[key];
+        } else {
+          newPresence[key] = value;
+        }
+      }
+      cacheEntry.presence = newPresence;
 
-      // Notify all registered handlers for this document
+      // Notify all registered handlers with FULL presence state
       cacheEntry.presenceHandlers.forEach((handler) =>
-        handler(payload.presence),
+        handler(cacheEntry.presence),
       );
     });
   }
@@ -322,27 +331,34 @@ export class DocSyncClient<
     // Case: { type, id } or { type, id, createIfMissing } → Load or create (async).
     if (argId) {
       docId = argId;
+      // Check cache BEFORE async block to avoid race conditions with getPresence
+      const existingCacheEntry = this._docsCache.get(docId);
+      if (existingCacheEntry) {
+        existingCacheEntry.refCount += 1;
+      } else {
+        // Create cache entry immediately so getPresence can subscribe
+        const promisedDoc = this._loadOrCreateDoc(
+          docId,
+          createIfMissing ? type : undefined,
+        );
+        this._docsCache.set(docId, {
+          promisedDoc,
+          refCount: 1,
+          presence: {},
+          presenceHandlers: new Set(),
+        });
+      }
+
       void (async () => {
         try {
           let doc: D | undefined;
           let source: "cache" | "local" | "created" = "local";
-          const cacheEntry = this._docsCache.get(docId);
-          if (cacheEntry) {
-            cacheEntry.refCount += 1;
+          const cacheEntry = this._docsCache.get(docId)!;
+          if (existingCacheEntry) {
             doc = await cacheEntry.promisedDoc;
             source = "cache";
           } else {
-            const promisedDoc = this._loadOrCreateDoc(
-              docId,
-              createIfMissing ? type : undefined,
-            );
-            this._docsCache.set(docId, {
-              promisedDoc,
-              refCount: 1,
-              presence: {},
-              presenceHandlers: new Set(),
-            });
-            doc = await promisedDoc;
+            doc = await cacheEntry.promisedDoc;
             if (doc) {
               // Register listener only for new docs (not cache hits)
               this._setupChangeListener(doc, docId);
@@ -422,13 +438,11 @@ export class DocSyncClient<
     const cacheEntry = this._docsCache.get(docId);
     if (!cacheEntry)
       throw new Error(`Doc ${docId} is not loaded, cannot set presence`);
-    const userId = (await this._localPromise).identity.userId;
-    const presenceId = `${userId}-${this._deviceId}`;
-    const patchPresence = { [presenceId]: presence };
-    cacheEntry.presence = { ...cacheEntry.presence, ...patchPresence };
+    // Note: We send raw presence data. Server will use socket.id as the key.
+    // We do NOT update local cache here - server broadcasts only to others.
     const { error } = await this._request("presence", {
       docId,
-      presence: patchPresence,
+      presence,
     });
     if (error) {
       console.error(`Error setting presence for doc ${docId}:`, error);

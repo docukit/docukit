@@ -66,7 +66,8 @@ export type DocSyncEvents<S, O> = {
     >;
   };
   presence: {
-    request: { docId: string; presence: Presence };
+    // Client sends raw presence data; server wraps with socket.id
+    request: { docId: string; presence: unknown };
     response: Result<void>;
   };
   "delete-doc": {
