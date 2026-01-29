@@ -7,7 +7,7 @@ import DocEditorLogo from "@/icons/DocEditorLogo";
 import DocGridLogo from "@/icons/DocGridLogo";
 
 export const metadata: Metadata = {
-  title: "DocuKit - Build local-first apps easily",
+  title: "Build local-first apps easily",
   description: "Real-time collaborative tools for modern developers.",
   icons: {
     icon: "/favicon.svg",
@@ -71,7 +71,7 @@ const Index = () => {
         <header className="mb-8 text-center">
           <h1 className="text-4xl font-black tracking-tight sm:text-5xl md:text-7xl">
             Build
-            <span className="bg-gradient-to-b from-white to-slate-500 bg-clip-text text-transparent">
+            <span className="bg-linear-to-b from-white to-slate-500 bg-clip-text text-transparent">
               {" "}
               local-first{" "}
             </span>
