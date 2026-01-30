@@ -7,10 +7,6 @@ import { NavTitle } from "@/components/nav-title";
 
 const options: BaseLayoutProps = {
   ...baseOptions,
-  nav: {
-    ...baseOptions.nav,
-    title: undefined,
-  },
   links: [
     ...(baseOptions.links ?? []),
     {
