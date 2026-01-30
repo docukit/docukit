@@ -28,10 +28,55 @@ const config = {
         destination: "/blog/local-first",
         permanent: true, // 301 redirect
       },
+      // Redirect old /docs/ URLs to /docnode
+      {
+        source: "/docs/:path*",
+        destination: "/docnode/:path*",
+        permanent: true,
+      },
+      {
+        source: "/docs",
+        destination: "/docnode",
+        permanent: true,
+      },
     ];
   },
   async rewrites() {
     return [
+      // Map clean URLs to internal /docs/ structure
+      {
+        source: "/docnode/:path*",
+        destination: "/docs/docnode/:path*",
+      },
+      {
+        source: "/docnode",
+        destination: "/docs/docnode",
+      },
+      {
+        source: "/docsync/:path*",
+        destination: "/docs/docsync/:path*",
+      },
+      {
+        source: "/docsync",
+        destination: "/docs/docsync",
+      },
+      {
+        source: "/doceditor/:path*",
+        destination: "/docs/doceditor/:path*",
+      },
+      {
+        source: "/doceditor",
+        destination: "/docs/doceditor",
+      },
+      {
+        source: "/docgrid/:path*",
+        destination: "/docs/docgrid/:path*",
+      },
+      {
+        source: "/docgrid",
+        destination: "/docs/docgrid",
+      },
+      // LLM mdx files
       {
         source: "/docs/:path*.mdx",
         destination: "/llms.mdx/:path*",

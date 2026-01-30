@@ -36,7 +36,7 @@ const Index = () => {
       headline:
         "Type-safe documents with conflict resolution. Faster than any CRDT.",
       icon: <DocNodeLogo className="h-10 w-auto" />,
-      href: "/docs/docnode",
+      href: "/docnode",
       color: "green",
     },
     {
@@ -44,14 +44,14 @@ const Index = () => {
       headline:
         "Agnostic local-first sync engine. Works with DocNode, Yjs, or Loro.",
       icon: <DocSyncLogo className="h-10 w-auto" />,
-      href: "/docs/docsync",
+      href: "/docsync",
       color: "blue",
     },
     // {
     //   title: "DocEditor",
     //   headline: "The ready-to-use RTE alternative to Lexical and TipTap.",
     //   icon: <DocEditorLogo className="h-10 w-auto" />,
-    //   href: "/docs/doceditor",
+    //   href: "/doceditor",
     //   color: "blue",
     // },
     // {
@@ -59,7 +59,7 @@ const Index = () => {
     //   headline:
     //     "High-performance data grid alternative to AG Grid and Tanstack.",
     //   icon: <DocGridLogo className="h-10 w-auto" />,
-    //   href: "/docs/docgrid",
+    //   href: "/docgrid",
     //   color: "green",
     // },
   ] as const;
