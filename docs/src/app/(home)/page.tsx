@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import DocNodeLogo from "@/icons/DocNodeLogo";
 import DocSyncLogo from "@/icons/DocSyncLogo";
+import Footer from "@/components/Footer";
 // import DocEditorLogo from "@/icons/DocEditorLogo";
 // import DocGridLogo from "@/icons/DocGridLogo";
 
@@ -69,15 +70,34 @@ const Index = () => {
       <AnimatedBackground />
 
       <main className="container mx-auto px-6 pt-16 pb-16 md:pt-24">
-        <header className="mb-8 text-center">
+        <header className="mb-16 text-center">
+          {/* Badge */}
+          {/* <div className="mb-6 flex justify-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+              </span>
+              Real-time collaboration made simple
+            </div>
+          </div> */}
+
+          {/* Heading */}
           <h1 className="text-4xl font-black tracking-tight sm:text-5xl md:text-7xl">
             Build
-            <span className="bg-linear-to-b from-white to-slate-500 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-cyan-400 via-blue-500 to-emerald-400 bg-clip-text text-transparent">
               {" "}
               local-first{" "}
             </span>
             apps easily
           </h1>
+
+          {/* Subheading */}
+          <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-400 sm:text-xl">
+            Type-safe documents, conflict-free sync, and real-time
+            collaboration. Build modern local-first applications with the tools
+            you already know.
+          </p>
         </header>
 
         <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 md:grid-cols-2 lg:gap-8">
@@ -86,6 +106,8 @@ const Index = () => {
           ))}
         </div>
       </main>
+
+      <Footer />
     </div>
   );
 };
