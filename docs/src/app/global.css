@@ -56,6 +56,16 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* Sidebar dropdown */
+#nd-sidebar > div:first-child {
+  @apply py-1.5;
+  gap: 4 !important;
+}
+
+#nd-sidebar button[aria-haspopup="dialog"] {
+  height: 36px !important;
+}
+
 /* Detect product path and apply blue theme automatically */
 html:has(a[data-active="true"][href*="/docsync"]),
 html:has(a[data-active="true"][href*="/doceditor"]) {

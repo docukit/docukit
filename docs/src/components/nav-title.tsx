@@ -5,7 +5,6 @@ import DocNodeLogo from "@/icons/DocNodeLogo";
 import DocSyncLogo from "@/icons/DocSyncLogo";
 import DocEditorLogo from "@/icons/DocEditorLogo";
 import DocGridLogo from "@/icons/DocGridLogo";
-import DocuKitFaviconCircles from "@/icons/DocuKitFaviconCircles";
 
 export function NavTitle() {
   const pathname = usePathname();
@@ -23,5 +22,5 @@ export function NavTitle() {
     return <DocGridLogo className="h-6 w-auto" />;
   }
 
-  return <DocuKitFaviconCircles className="h-6 w-6" />;
+  return null;
 }
