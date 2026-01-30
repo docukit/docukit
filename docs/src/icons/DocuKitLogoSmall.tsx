@@ -5,9 +5,11 @@ const GREEN = "#00C853";
 const BLUE = "#1b68f5";
 const WHITE = "#FFFFFF";
 
-// Size constants
-const SQUARE_SIZE = 100;
-const TOTAL_SIZE = SQUARE_SIZE * 2;
+// ViewBox size (internal coordinate system)
+const VIEWBOX_SIZE = 200;
+const SQUARE_SIZE = VIEWBOX_SIZE / 2; // 100
+const ICON_PADDING = 15;
+const ICON_SIZE = SQUARE_SIZE - ICON_PADDING * 2; // 70
 
 interface LogoProps {
   className?: string;
@@ -31,7 +33,7 @@ function DocNodeIconSimple({
   const bottomY = y + 85 * scale;
   const leftX = x + 20 * scale;
   const rightX = x + size - 20 * scale;
-  const lineWidth = 4 * scale;
+  const lineWidth = 5 * scale;
 
   return (
     <g>
@@ -80,7 +82,7 @@ function DocSyncIconSimple({
   const center = x + size / 2;
   const centerY = y + size / 2;
   const extent = 38 * scale;
-  const lineWidth = 4 * scale;
+  const lineWidth = 5 * scale;
 
   return (
     <g>
@@ -119,7 +121,7 @@ function DocEditorIconSimple({
   const scale = size / 100;
   const startX = x + 15 * scale;
   const endX = x + size - 15 * scale;
-  const lineWidth = 4 * scale;
+  const lineWidth = 5 * scale;
   const lines = [
     { y: y + 25 * scale },
     { y: y + 50 * scale },
@@ -162,7 +164,7 @@ function DocGridIconSimple({
     { x: x + offset, y: y + size - offset },
     { x: x + size - offset, y: y + size - offset },
   ];
-  const lineWidth = 4 * scale;
+  const lineWidth = 5 * scale;
 
   return (
     <g>
@@ -208,12 +210,9 @@ function DocGridIconSimple({
 
 // Small/simplified combined logo - 4 squares with simplified icons
 export default function DocuKitLogoSmall({ className, size = 100 }: LogoProps) {
-  const iconSize = SQUARE_SIZE * 0.7;
-  const iconOffset = (SQUARE_SIZE - iconSize) / 2;
-
   return (
     <svg
-      viewBox={`0 0 ${TOTAL_SIZE} ${TOTAL_SIZE}`}
+      viewBox={`0 0 ${VIEWBOX_SIZE} ${VIEWBOX_SIZE}`}
       width={size}
       height={size}
       xmlns="http://www.w3.org/2000/svg"
@@ -221,7 +220,7 @@ export default function DocuKitLogoSmall({ className, size = 100 }: LogoProps) {
     >
       {/* Top-left: Green - DocNode */}
       <rect x={0} y={0} width={SQUARE_SIZE} height={SQUARE_SIZE} fill={GREEN} />
-      <DocNodeIconSimple x={iconOffset} y={iconOffset} size={iconSize} />
+      <DocNodeIconSimple x={ICON_PADDING} y={ICON_PADDING} size={ICON_SIZE} />
 
       {/* Top-right: Blue - DocSync */}
       <rect
@@ -232,9 +231,9 @@ export default function DocuKitLogoSmall({ className, size = 100 }: LogoProps) {
         fill={BLUE}
       />
       <DocSyncIconSimple
-        x={SQUARE_SIZE + iconOffset}
-        y={iconOffset}
-        size={iconSize}
+        x={SQUARE_SIZE + ICON_PADDING}
+        y={ICON_PADDING}
+        size={ICON_SIZE}
       />
 
       {/* Bottom-left: Blue - DocEditor */}
@@ -246,9 +245,9 @@ export default function DocuKitLogoSmall({ className, size = 100 }: LogoProps) {
         fill={BLUE}
       />
       <DocEditorIconSimple
-        x={iconOffset}
-        y={SQUARE_SIZE + iconOffset}
-        size={iconSize}
+        x={ICON_PADDING}
+        y={SQUARE_SIZE + ICON_PADDING}
+        size={ICON_SIZE}
       />
 
       {/* Bottom-right: Green - DocGrid */}
@@ -260,9 +259,9 @@ export default function DocuKitLogoSmall({ className, size = 100 }: LogoProps) {
         fill={GREEN}
       />
       <DocGridIconSimple
-        x={SQUARE_SIZE + iconOffset}
-        y={SQUARE_SIZE + iconOffset}
-        size={iconSize}
+        x={SQUARE_SIZE + ICON_PADDING}
+        y={SQUARE_SIZE + ICON_PADDING}
+        size={ICON_SIZE}
       />
     </svg>
   );
@@ -270,13 +269,11 @@ export default function DocuKitLogoSmall({ className, size = 100 }: LogoProps) {
 
 // Circular version of the small logo
 export function DocuKitLogoSmallCircular({ className, size = 100 }: LogoProps) {
-  const iconSize = SQUARE_SIZE * 0.7;
-  const iconOffset = (SQUARE_SIZE - iconSize) / 2;
   const clipId = `circle-clip-small-${Math.random().toString(36).substr(2, 9)}`;
 
   return (
     <svg
-      viewBox={`0 0 ${TOTAL_SIZE} ${TOTAL_SIZE}`}
+      viewBox={`0 0 ${VIEWBOX_SIZE} ${VIEWBOX_SIZE}`}
       width={size}
       height={size}
       xmlns="http://www.w3.org/2000/svg"
@@ -284,7 +281,11 @@ export function DocuKitLogoSmallCircular({ className, size = 100 }: LogoProps) {
     >
       <defs>
         <clipPath id={clipId}>
-          <circle cx={TOTAL_SIZE / 2} cy={TOTAL_SIZE / 2} r={TOTAL_SIZE / 2} />
+          <circle
+            cx={VIEWBOX_SIZE / 2}
+            cy={VIEWBOX_SIZE / 2}
+            r={VIEWBOX_SIZE / 2}
+          />
         </clipPath>
       </defs>
 
@@ -297,7 +298,7 @@ export function DocuKitLogoSmallCircular({ className, size = 100 }: LogoProps) {
           height={SQUARE_SIZE}
           fill={GREEN}
         />
-        <DocNodeIconSimple x={iconOffset} y={iconOffset} size={iconSize} />
+        <DocNodeIconSimple x={ICON_PADDING} y={ICON_PADDING} size={ICON_SIZE} />
 
         {/* Top-right: Blue - DocSync */}
         <rect
@@ -308,9 +309,9 @@ export function DocuKitLogoSmallCircular({ className, size = 100 }: LogoProps) {
           fill={BLUE}
         />
         <DocSyncIconSimple
-          x={SQUARE_SIZE + iconOffset}
-          y={iconOffset}
-          size={iconSize}
+          x={SQUARE_SIZE + ICON_PADDING}
+          y={ICON_PADDING}
+          size={ICON_SIZE}
         />
 
         {/* Bottom-left: Blue - DocEditor */}
@@ -322,9 +323,9 @@ export function DocuKitLogoSmallCircular({ className, size = 100 }: LogoProps) {
           fill={BLUE}
         />
         <DocEditorIconSimple
-          x={iconOffset}
-          y={SQUARE_SIZE + iconOffset}
-          size={iconSize}
+          x={ICON_PADDING}
+          y={SQUARE_SIZE + ICON_PADDING}
+          size={ICON_SIZE}
         />
 
         {/* Bottom-right: Green - DocGrid */}
@@ -336,9 +337,9 @@ export function DocuKitLogoSmallCircular({ className, size = 100 }: LogoProps) {
           fill={GREEN}
         />
         <DocGridIconSimple
-          x={SQUARE_SIZE + iconOffset}
-          y={SQUARE_SIZE + iconOffset}
-          size={iconSize}
+          x={SQUARE_SIZE + ICON_PADDING}
+          y={SQUARE_SIZE + ICON_PADDING}
+          size={ICON_SIZE}
         />
       </g>
     </svg>

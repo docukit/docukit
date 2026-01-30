@@ -4,9 +4,9 @@ import React from "react";
 const GREEN = "#00C853";
 const BLUE = "#1b68f5";
 
-// Size constants
-const SQUARE_SIZE = 50;
-const TOTAL_SIZE = SQUARE_SIZE * 2;
+// ViewBox size (internal coordinate system)
+const VIEWBOX_SIZE = 100;
+const SQUARE_SIZE = VIEWBOX_SIZE / 2; // 50
 
 interface FaviconProps {
   className?: string;
@@ -20,7 +20,7 @@ export default function DocuKitFavicon({
 }: FaviconProps) {
   return (
     <svg
-      viewBox={`0 0 ${TOTAL_SIZE} ${TOTAL_SIZE}`}
+      viewBox={`0 0 ${VIEWBOX_SIZE} ${VIEWBOX_SIZE}`}
       width={size}
       height={size}
       xmlns="http://www.w3.org/2000/svg"
@@ -68,7 +68,7 @@ export function DocuKitFaviconCircular({
 
   return (
     <svg
-      viewBox={`0 0 ${TOTAL_SIZE} ${TOTAL_SIZE}`}
+      viewBox={`0 0 ${VIEWBOX_SIZE} ${VIEWBOX_SIZE}`}
       width={size}
       height={size}
       xmlns="http://www.w3.org/2000/svg"
@@ -76,7 +76,11 @@ export function DocuKitFaviconCircular({
     >
       <defs>
         <clipPath id={clipId}>
-          <circle cx={TOTAL_SIZE / 2} cy={TOTAL_SIZE / 2} r={TOTAL_SIZE / 2} />
+          <circle
+            cx={VIEWBOX_SIZE / 2}
+            cy={VIEWBOX_SIZE / 2}
+            r={VIEWBOX_SIZE / 2}
+          />
         </clipPath>
       </defs>
 

@@ -2,7 +2,7 @@ import { DiscordIcon } from "@/icons/DiscordIcon";
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
 import { BrandXIcon } from "@/icons/BrandXIcon";
 import { NavTitle } from "@/components/nav-title";
-import DocuKitFaviconCircles from "@/icons/DocuKitFaviconCircles";
+import DocuKitFavicon from "@/icons/DocuKitFavicon";
 
 /**
  * Shared layout configurations
@@ -43,7 +43,7 @@ export const baseOptions: BaseLayoutProps = {
   nav: {
     title: (
       <div className="flex items-center gap-2">
-        <DocuKitFaviconCircles className="h-6 w-6" />
+        <DocuKitFavicon className="h-6 w-6" />
         <span className="font-bold">DocuKit</span>
       </div>
     ),
