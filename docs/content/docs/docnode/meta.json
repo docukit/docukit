@@ -1,6 +1,7 @@
 {
   "title": "DocNode",
-  "description": "Lightweight, flexible CRDT framework for real-time collaboration",
+  "description": "Documents without conflicts",
+  "icon": "DocNode",
   "root": true,
   "pages": [
     "index",

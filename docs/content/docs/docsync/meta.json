@@ -1,7 +1,8 @@
 {
   "title": "DocSync",
-  "description": "Real-time synchronization protocol for collaborative applications",
+  "description": "Agnostic sync engine",
   "root": true,
   "pages": ["index"],
-  "defaultOpen": true
+  "defaultOpen": true,
+  "icon": "DocSync"
 }
