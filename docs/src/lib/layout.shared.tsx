@@ -1,7 +1,6 @@
 import { DiscordIcon } from "@/icons/DiscordIcon";
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
 import { BrandXIcon } from "@/icons/BrandXIcon";
-import { NavTitle } from "@/components/nav-title";
 import DocuKitFavicon from "@/icons/DocuKitFavicon";
 
 /**
