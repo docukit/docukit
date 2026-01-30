@@ -56,6 +56,12 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* Detect product path and apply blue theme automatically */
+html:has(a[data-active="true"][href*="/docsync"]),
+html:has(a[data-active="true"][href*="/doceditor"]) {
+  --primary: var(--color-blue-500) !important;
+}
+
 :root {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
