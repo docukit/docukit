@@ -302,7 +302,7 @@ export type DocData<D> = { doc: D; id: string };
  * Presence is a record of user IDs to their presence data.
  * It is used to track the presence of users in a document.
  */
-export type Presence<T> = Record<string, T>;
+export type Presence<T = unknown> = Record<string, T>;
 
 export type BroadcastMessage<O> = {
   type: "OPERATIONS";
