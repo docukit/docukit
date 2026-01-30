@@ -7,17 +7,20 @@ const BLUE = "#1b68f5";
 // ViewBox size (internal coordinate system)
 const VIEWBOX_SIZE = 100;
 const SQUARE_SIZE = VIEWBOX_SIZE / 2; // 50
+const CORNER_RADIUS = 8; // Rounded corners (proportional)
 
 interface FaviconProps {
   className?: string;
   size?: number;
 }
 
-// Favicon - 4 colored squares (no icons)
+// Favicon - 4 colored squares with rounded corners (no icons)
 export default function DocuKitFavicon({
   className,
   size = 100,
 }: FaviconProps) {
+  const clipId = `rounded-clip-favicon-${Math.random().toString(36).substr(2, 9)}`;
+
   return (
     <svg
       viewBox={`0 0 ${VIEWBOX_SIZE} ${VIEWBOX_SIZE}`}
@@ -26,35 +29,56 @@ export default function DocuKitFavicon({
       xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
-      {/* Top-left: Green */}
-      <rect x={0} y={0} width={SQUARE_SIZE} height={SQUARE_SIZE} fill={GREEN} />
+      <defs>
+        <clipPath id={clipId}>
+          <rect
+            x={0}
+            y={0}
+            width={VIEWBOX_SIZE}
+            height={VIEWBOX_SIZE}
+            rx={CORNER_RADIUS}
+            ry={CORNER_RADIUS}
+          />
+        </clipPath>
+      </defs>
 
-      {/* Top-right: Blue */}
-      <rect
-        x={SQUARE_SIZE}
-        y={0}
-        width={SQUARE_SIZE}
-        height={SQUARE_SIZE}
-        fill={BLUE}
-      />
+      <g clipPath={`url(#${clipId})`}>
+        {/* Top-left: Green */}
+        <rect
+          x={0}
+          y={0}
+          width={SQUARE_SIZE}
+          height={SQUARE_SIZE}
+          fill={GREEN}
+        />
 
-      {/* Bottom-left: Blue */}
-      <rect
-        x={0}
-        y={SQUARE_SIZE}
-        width={SQUARE_SIZE}
-        height={SQUARE_SIZE}
-        fill={BLUE}
-      />
+        {/* Top-right: Blue */}
+        <rect
+          x={SQUARE_SIZE}
+          y={0}
+          width={SQUARE_SIZE}
+          height={SQUARE_SIZE}
+          fill={BLUE}
+        />
 
-      {/* Bottom-right: Green */}
-      <rect
-        x={SQUARE_SIZE}
-        y={SQUARE_SIZE}
-        width={SQUARE_SIZE}
-        height={SQUARE_SIZE}
-        fill={GREEN}
-      />
+        {/* Bottom-left: Blue */}
+        <rect
+          x={0}
+          y={SQUARE_SIZE}
+          width={SQUARE_SIZE}
+          height={SQUARE_SIZE}
+          fill={BLUE}
+        />
+
+        {/* Bottom-right: Green */}
+        <rect
+          x={SQUARE_SIZE}
+          y={SQUARE_SIZE}
+          width={SQUARE_SIZE}
+          height={SQUARE_SIZE}
+          fill={GREEN}
+        />
+      </g>
     </svg>
   );
 }

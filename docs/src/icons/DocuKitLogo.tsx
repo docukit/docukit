@@ -10,6 +10,7 @@ const VIEWBOX_SIZE = 200;
 const SQUARE_SIZE = VIEWBOX_SIZE / 2; // 100
 const ICON_PADDING = 15;
 const ICON_SIZE = SQUARE_SIZE - ICON_PADDING * 2; // 70
+const CORNER_RADIUS = 16; // Rounded corners
 
 interface LogoProps {
   className?: string;
@@ -208,8 +209,10 @@ function DocGridIcon({ x, y, size }: { x: number; y: number; size: number }) {
   );
 }
 
-// Main combined logo - 4 squares with icons
+// Main combined logo - 4 squares with icons and rounded corners
 export default function DocuKitLogo({ className, size = 200 }: LogoProps) {
+  const clipId = `rounded-clip-${Math.random().toString(36).substr(2, 9)}`;
+
   return (
     <svg
       viewBox={`0 0 ${VIEWBOX_SIZE} ${VIEWBOX_SIZE}`}
@@ -218,51 +221,72 @@ export default function DocuKitLogo({ className, size = 200 }: LogoProps) {
       xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
-      {/* Top-left: Green - DocNode */}
-      <rect x={0} y={0} width={SQUARE_SIZE} height={SQUARE_SIZE} fill={GREEN} />
-      <DocNodeIcon x={ICON_PADDING} y={ICON_PADDING} size={ICON_SIZE} />
+      <defs>
+        <clipPath id={clipId}>
+          <rect
+            x={0}
+            y={0}
+            width={VIEWBOX_SIZE}
+            height={VIEWBOX_SIZE}
+            rx={CORNER_RADIUS}
+            ry={CORNER_RADIUS}
+          />
+        </clipPath>
+      </defs>
 
-      {/* Top-right: Blue - DocSync */}
-      <rect
-        x={SQUARE_SIZE}
-        y={0}
-        width={SQUARE_SIZE}
-        height={SQUARE_SIZE}
-        fill={BLUE}
-      />
-      <DocSyncIcon
-        x={SQUARE_SIZE + ICON_PADDING}
-        y={ICON_PADDING}
-        size={ICON_SIZE}
-      />
+      <g clipPath={`url(#${clipId})`}>
+        {/* Top-left: Green - DocNode */}
+        <rect
+          x={0}
+          y={0}
+          width={SQUARE_SIZE}
+          height={SQUARE_SIZE}
+          fill={GREEN}
+        />
+        <DocNodeIcon x={ICON_PADDING} y={ICON_PADDING} size={ICON_SIZE} />
 
-      {/* Bottom-left: Blue - DocEditor */}
-      <rect
-        x={0}
-        y={SQUARE_SIZE}
-        width={SQUARE_SIZE}
-        height={SQUARE_SIZE}
-        fill={BLUE}
-      />
-      <DocEditorIcon
-        x={ICON_PADDING}
-        y={SQUARE_SIZE + ICON_PADDING}
-        size={ICON_SIZE}
-      />
+        {/* Top-right: Blue - DocSync */}
+        <rect
+          x={SQUARE_SIZE}
+          y={0}
+          width={SQUARE_SIZE}
+          height={SQUARE_SIZE}
+          fill={BLUE}
+        />
+        <DocSyncIcon
+          x={SQUARE_SIZE + ICON_PADDING}
+          y={ICON_PADDING}
+          size={ICON_SIZE}
+        />
 
-      {/* Bottom-right: Green - DocGrid */}
-      <rect
-        x={SQUARE_SIZE}
-        y={SQUARE_SIZE}
-        width={SQUARE_SIZE}
-        height={SQUARE_SIZE}
-        fill={GREEN}
-      />
-      <DocGridIcon
-        x={SQUARE_SIZE + ICON_PADDING}
-        y={SQUARE_SIZE + ICON_PADDING}
-        size={ICON_SIZE}
-      />
+        {/* Bottom-left: Blue - DocEditor */}
+        <rect
+          x={0}
+          y={SQUARE_SIZE}
+          width={SQUARE_SIZE}
+          height={SQUARE_SIZE}
+          fill={BLUE}
+        />
+        <DocEditorIcon
+          x={ICON_PADDING}
+          y={SQUARE_SIZE + ICON_PADDING}
+          size={ICON_SIZE}
+        />
+
+        {/* Bottom-right: Green - DocGrid */}
+        <rect
+          x={SQUARE_SIZE}
+          y={SQUARE_SIZE}
+          width={SQUARE_SIZE}
+          height={SQUARE_SIZE}
+          fill={GREEN}
+        />
+        <DocGridIcon
+          x={SQUARE_SIZE + ICON_PADDING}
+          y={SQUARE_SIZE + ICON_PADDING}
+          size={ICON_SIZE}
+        />
+      </g>
     </svg>
   );
 }
