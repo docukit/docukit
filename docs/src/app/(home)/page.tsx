@@ -85,7 +85,7 @@ const Index = () => {
           {/* Heading */}
           <h1 className="text-4xl font-black tracking-tight sm:text-5xl md:text-7xl">
             Build
-            <span className="bg-gradient-to-r from-emerald-600 to-blue-600 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-blue-400 to-emerald-500 bg-clip-text text-transparent">
               {" "}
               local-first{" "}
             </span>
