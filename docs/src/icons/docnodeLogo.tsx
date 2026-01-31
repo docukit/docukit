@@ -1,3 +1,5 @@
+import { GREEN } from "@/lib/brand-colors";
+
 // 1. CANVAS SIZE (doesn't matter)
 const VIEWBOX_HEIGHT = 1000;
 
@@ -6,7 +8,7 @@ const TOP_CIRCLE_RADIUS = VIEWBOX_HEIGHT * 0.15;
 const BOTTOM_CIRCLE_RADIUS = VIEWBOX_HEIGHT * 0.15;
 const ANGLE_TRIANGLE = 65; // in degrees
 const GRAPH_LINES_WIDTH = VIEWBOX_HEIGHT * 0.1;
-const COLOR = "#00C853"; // very close to tailwind's green-500
+const COLOR = GREEN;
 
 const triangle_height =
   VIEWBOX_HEIGHT - TOP_CIRCLE_RADIUS - BOTTOM_CIRCLE_RADIUS;

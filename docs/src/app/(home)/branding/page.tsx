@@ -1,6 +1,7 @@
 import React from "react";
 import DocuKitLogo, { DocuKitLogoCircular } from "@/icons/DocuKitLogo";
 import DocuKitFavicon, { DocuKitFaviconCircular } from "@/icons/DocuKitFavicon";
+import { GREEN, BLUE } from "@/lib/brand-colors";
 
 export const metadata = {
   title: "Branding | DocuKit",
@@ -65,17 +66,17 @@ export default function BrandingPage() {
           <div className="flex flex-col items-center">
             <div
               className="h-20 w-20 rounded-lg"
-              style={{ backgroundColor: "#00C853" }}
+              style={{ backgroundColor: GREEN }}
             />
-            <span className="mt-2 font-mono text-sm">#00C853</span>
+            <span className="mt-2 font-mono text-sm">{GREEN}</span>
             <span className="text-muted-foreground text-xs">Green</span>
           </div>
           <div className="flex flex-col items-center">
             <div
               className="h-20 w-20 rounded-lg"
-              style={{ backgroundColor: "#1b68f5" }}
+              style={{ backgroundColor: BLUE }}
             />
-            <span className="mt-2 font-mono text-sm">#1b68f5</span>
+            <span className="mt-2 font-mono text-sm">{BLUE}</span>
             <span className="text-muted-foreground text-xs">Blue</span>
           </div>
         </div>

@@ -1,3 +1,5 @@
+import { BLUE } from "@/lib/brand-colors";
+
 // 1. CANVAS SIZE
 const VIEWBOX_SIZE = 1000;
 
@@ -7,7 +9,7 @@ const OUTER_CIRCLE_RADIUS = VIEWBOX_SIZE * 0.11;
 const ARM_LENGTH =
   VIEWBOX_SIZE / 2 - CENTER_CIRCLE_RADIUS - OUTER_CIRCLE_RADIUS;
 const GRAPH_LINES_WIDTH = VIEWBOX_SIZE * 0.09;
-const COLOR = "#1b68f5"; // very close to tailwind's green-500
+const COLOR = BLUE;
 
 // Derived values
 const CENTER = VIEWBOX_SIZE / 2;

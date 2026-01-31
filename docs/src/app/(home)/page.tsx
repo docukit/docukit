@@ -85,7 +85,7 @@ const Index = () => {
           {/* Heading */}
           <h1 className="text-4xl font-black tracking-tight sm:text-5xl md:text-7xl">
             Build
-            <span className="bg-gradient-to-r from-cyan-400 via-blue-500 to-emerald-400 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-emerald-600 to-blue-600 bg-clip-text text-transparent">
               {" "}
               local-first{" "}
             </span>
@@ -148,7 +148,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
       {/* Decorative background shapes */}
       <div
-        className={`absolute -top-6 -right-6 h-32 w-32 rounded-full opacity-20 blur-2xl transition-all duration-700 group-hover:scale-150 group-hover:opacity-40 ${isGreen ? "bg-emerald-200" : "bg-blue-200"}`}
+        className={`absolute -top-6 -right-6 h-32 w-32 rounded-full opacity-20 blur-2xl transition-all duration-700 group-hover:scale-150 group-hover:opacity-40 ${isGreen ? "bg-emerald-400" : "bg-blue-400"}`}
       />
       <div
         className={`absolute -bottom-10 -left-10 h-32 w-32 rounded-full opacity-10 blur-xl transition-all duration-700 group-hover:scale-125 ${isGreen ? "bg-white" : "bg-white"}`}

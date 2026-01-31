@@ -1,8 +1,5 @@
 import React from "react";
-
-// Colors
-const GREEN = "#00C853";
-const BLUE = "#1b68f5";
+import { GREEN, BLUE } from "@/lib/brand-colors";
 
 // ViewBox size (internal coordinate system)
 const VIEWBOX_SIZE = 100;
