@@ -4,7 +4,7 @@ import { GREEN, BLUE } from "@/lib/brand-colors";
 // ViewBox size (internal coordinate system)
 const VIEWBOX_SIZE = 100;
 const SQUARE_SIZE = VIEWBOX_SIZE / 2; // 50
-const CORNER_RADIUS = 8; // Rounded corners (proportional)
+const CORNER_RADIUS = 16; // Rounded corners (proportional)
 
 interface FaviconProps {
   className?: string;
