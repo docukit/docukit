@@ -139,10 +139,10 @@ export class DocSyncClient<
       if (!cacheEntry) return;
 
       // Update cached presence with the patch from server
-      // Handle undefined values as deletions
+      // Handle null/undefined values as deletions
       const newPresence = { ...cacheEntry.presence };
       for (const [key, value] of Object.entries(payload.presence)) {
-        if (value === undefined) {
+        if (value === undefined || value === null) {
           delete newPresence[key];
         } else {
           newPresence[key] = value;
