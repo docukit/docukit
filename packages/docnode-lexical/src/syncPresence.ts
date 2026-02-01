@@ -280,6 +280,7 @@ function syncLocalSelectionToPresence(
   const selection = $getSelection();
 
   if (!$isRangeSelection(selection)) {
+    // TODO: handle node selection
     setPresence(undefined);
     return;
   }
@@ -301,6 +302,7 @@ function syncLocalSelectionToPresence(
 
   if (!anchorDocNodeId || !focusDocNodeId) {
     // Node not yet mapped (e.g., newly created), skip
+    setPresence(undefined);
     return;
   }
 
