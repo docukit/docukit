@@ -280,6 +280,15 @@ export type SyncRequestHandler<O = unknown, S = unknown> = (
 // #region Client Types
 // ============================================================================
 
+/**
+ * State for deferred operations (batching and debouncing).
+ * Used to track pending timeouts and their associated data.
+ */
+export type DeferredState<T> = {
+  timeout?: ReturnType<typeof setTimeout>;
+  data: T;
+};
+
 export type Identity = {
   userId: string;
   secret: string;

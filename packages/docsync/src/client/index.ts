@@ -19,6 +19,7 @@ import type {
   DocSyncEventName,
   DocSyncEvents,
   Presence,
+  DeferredState,
 } from "../shared/types.js";
 
 // TODO: review this type!
@@ -50,15 +51,11 @@ export class DocSyncClient<
   protected _broadcastChannel?: BroadcastChannel;
   protected _socket: ClientSocket<S, O>;
   protected _pushStatusByDocId = new Map<string, PushStatus>();
-  protected _localOpsBatchState = new Map<
-    string,
-    { timeout?: ReturnType<typeof setTimeout>; queue: O[] }
-  >();
+
+  // Timeouts
+  protected _localOpsBatchState = new Map<string, DeferredState<O[]>>();
   protected _batchDelay = 50;
-  protected _presenceDebounceState = new Map<
-    string,
-    { timeout: ReturnType<typeof setTimeout>; pendingValue: unknown }
-  >();
+  protected _presenceDebounceState = new Map<string, DeferredState<unknown>>();
   protected _presenceDebounce = 50;
 
   // Event handlers - ChangeHandler and SyncHandler use default (unknown) to allow covariance
@@ -448,9 +445,7 @@ export class DocSyncClient<
 
     // Clear existing timeout if any
     const existingState = this._presenceDebounceState.get(docId);
-    if (existingState) {
-      clearTimeout(existingState.timeout);
-    }
+    clearTimeout(existingState?.timeout);
 
     // Debounce the presence update
     const timeout = setTimeout(() => {
@@ -464,7 +459,7 @@ export class DocSyncClient<
       void (async () => {
         const { error } = await this._request("presence", {
           docId,
-          presence: state.pendingValue,
+          presence: state.data,
         });
         if (error) {
           console.error(`Error setting presence for doc ${docId}:`, error);
@@ -472,7 +467,7 @@ export class DocSyncClient<
       })();
     }, this._presenceDebounce);
 
-    this._presenceDebounceState.set(docId, { timeout, pendingValue: presence });
+    this._presenceDebounceState.set(docId, { timeout, data: presence });
   }
 
   private _setupChangeListener(doc: D, docId: string) {
@@ -584,13 +579,13 @@ export class DocSyncClient<
 
     if (!state) {
       // Create new state with empty queue
-      state = { queue: [] };
+      state = { data: [] };
       this._localOpsBatchState.set(docId, state);
     }
 
     // Add operations to queue
     if (operations.length > 0) {
-      state.queue.push(...operations);
+      state.data.push(...operations);
     }
 
     // If there is already a pending timeout, we just wait
@@ -604,7 +599,7 @@ export class DocSyncClient<
         const currentState = this._localOpsBatchState.get(docId);
         if (!currentState) return;
 
-        const opsToSave = currentState.queue;
+        const opsToSave = currentState.data;
         this._localOpsBatchState.delete(docId);
 
         if (opsToSave && opsToSave.length > 0) {
