@@ -50,8 +50,10 @@ export class DocSyncClient<
   protected _broadcastChannel?: BroadcastChannel;
   protected _socket: ClientSocket<S, O>;
   protected _pushStatusByDocId = new Map<string, PushStatus>();
-  protected _localOpsQueue = new Map<string, O[]>();
-  protected _localOpsTimeout = new Map<string, ReturnType<typeof setTimeout>>();
+  protected _localOpsThrottleState = new Map<
+    string,
+    { timeout?: ReturnType<typeof setTimeout>; queue: O[] }
+  >();
   protected _throttle = 50;
   protected _presenceDebounceState = new Map<
     string,
@@ -577,24 +579,33 @@ export class DocSyncClient<
   }
 
   onLocalOperations({ docId, operations }: { docId: string; operations: O[] }) {
-    // Add operations to queue
-    const currentQueue = this._localOpsQueue.get(docId) ?? [];
-    if (operations.length > 0) {
-      currentQueue.push(...operations);
+    // Get or create the throttle state for this document
+    let state = this._localOpsThrottleState.get(docId);
+
+    if (!state) {
+      // Create new state with empty queue
+      state = { queue: [] };
+      this._localOpsThrottleState.set(docId, state);
     }
-    this._localOpsQueue.set(docId, currentQueue);
+
+    // Add operations to queue
+    if (operations.length > 0) {
+      state.queue.push(...operations);
+    }
 
     // If there is already a pending timeout, we just wait
-    if (this._localOpsTimeout.has(docId)) {
+    if (state.timeout !== undefined) {
       return;
     }
 
     // Otherwise, schedule the save
-    const timeout = setTimeout(() => {
+    state.timeout = setTimeout(() => {
       void (async () => {
-        this._localOpsTimeout.delete(docId);
-        const opsToSave = this._localOpsQueue.get(docId);
-        this._localOpsQueue.delete(docId);
+        const currentState = this._localOpsThrottleState.get(docId);
+        if (!currentState) return;
+
+        const opsToSave = currentState.queue;
+        this._localOpsThrottleState.delete(docId);
 
         if (opsToSave && opsToSave.length > 0) {
           const local = await this._localPromise;
@@ -605,8 +616,6 @@ export class DocSyncClient<
         }
       })();
     }, this._throttle);
-
-    this._localOpsTimeout.set(docId, timeout);
   }
 
   /**
