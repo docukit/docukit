@@ -11,6 +11,9 @@ import {
   $getSelection,
   $isLineBreakNode,
   $isRangeSelection,
+  BLUR_COMMAND,
+  COMMAND_PRIORITY_EDITOR,
+  FOCUS_COMMAND,
   type LexicalEditor,
   type NodeKey,
   type NodeMap,
@@ -378,11 +381,26 @@ export function syncPresence(
     keyBinding,
   };
 
+  // Helper to check if this editor currently has focus
+  const editorHasFocus = (): boolean => {
+    const rootElement = editor.getRootElement();
+    if (!rootElement) return false;
+    return (
+      rootElement.contains(document.activeElement) ||
+      rootElement === document.activeElement
+    );
+  };
+
   // Listen for selection changes to update local presence
   const unregisterSelectionListener = editor.registerUpdateListener(
     ({ editorState, tags }) => {
       // Skip updates from collaboration to avoid loops
       if (tags.has("collaboration")) {
+        return;
+      }
+
+      // Only sync presence when editor has focus (check programmatically)
+      if (!editorHasFocus()) {
         return;
       }
 
@@ -392,12 +410,40 @@ export function syncPresence(
     },
   );
 
+  // Listen for focus to sync current selection
+  const unregisterFocusListener = editor.registerCommand(
+    FOCUS_COMMAND,
+    () => {
+      editor.getEditorState().read(() => {
+        syncLocalSelectionToPresence(editor, keyBinding, setPresence);
+      });
+      return false;
+    },
+    COMMAND_PRIORITY_EDITOR,
+  );
+
+  // Listen for blur to clear presence (deferred to handle focus moving within editor)
+  const unregisterBlurListener = editor.registerCommand(
+    BLUR_COMMAND,
+    () => {
+      setTimeout(() => {
+        if (!editorHasFocus()) {
+          setPresence(undefined);
+        }
+      }, 0);
+      return false;
+    },
+    COMMAND_PRIORITY_EDITOR,
+  );
+
   return {
     updateRemoteCursors: (presence: Presence) => {
       syncRemoteCursors(binding, presence);
     },
     cleanup: () => {
       unregisterSelectionListener();
+      unregisterFocusListener();
+      unregisterBlurListener();
 
       // Clean up all cursors
       for (const cursor of binding.cursors.values()) {
