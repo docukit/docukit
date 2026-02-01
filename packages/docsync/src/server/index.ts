@@ -133,8 +133,8 @@ export class DocSyncServer<
           for (const docId of subscribedDocs) {
             const presenceForDoc = this._presenceByDoc.get(docId);
 
-            // Always broadcast removal, using null instead of undefined (JSON-serializable)
-            this._io.to(`doc:${docId}`).emit("presence", {
+            // Immediately broadcast removal to OTHER clients
+            socket.to(`doc:${docId}`).emit("presence", {
               docId,
               presence: { [socket.id]: null },
             });
@@ -425,9 +425,9 @@ export class DocSyncServer<
           // Clean up presence state for this socket in this document
           const presenceForDoc = this._presenceByDoc.get(docId);
           if (presenceForDoc) {
-            // Broadcast presence removal before deleting (use null for JSON serialization)
+            // Immediately broadcast presence removal to OTHER clients
             if (presenceForDoc[socket.id] !== undefined) {
-              this._io.to(`doc:${docId}`).emit("presence", {
+              socket.to(`doc:${docId}`).emit("presence", {
                 docId,
                 presence: { [socket.id]: null },
               });
@@ -460,10 +460,11 @@ export class DocSyncServer<
             this._presenceByDoc.set(docId, newPresence);
           }
 
-          // Broadcast to all clients in the room EXCEPT the sender
-          socket
-            .to(`doc:${docId}`)
-            .emit("presence", { docId, presence: { [socket.id]: presence } });
+          // Immediately broadcast to OTHER clients (excludes sender)
+          socket.to(`doc:${docId}`).emit("presence", {
+            docId,
+            presence: { [socket.id]: presence },
+          });
 
           // Return success
           cb({ data: void undefined });

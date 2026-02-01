@@ -53,6 +53,11 @@ export class DocSyncClient<
   protected _localOpsQueue = new Map<string, O[]>();
   protected _localOpsTimeout = new Map<string, ReturnType<typeof setTimeout>>();
   protected _throttle = 50;
+  protected _presenceDebounceState = new Map<
+    string,
+    { timeout: ReturnType<typeof setTimeout>; pendingValue: unknown }
+  >();
+  protected _presenceDebounce = 50;
 
   // Event handlers - ChangeHandler and SyncHandler use default (unknown) to allow covariance
   protected _connectHandlers = new Set<ConnectHandler>();
@@ -438,15 +443,34 @@ export class DocSyncClient<
     const cacheEntry = this._docsCache.get(docId);
     if (!cacheEntry)
       throw new Error(`Doc ${docId} is not loaded, cannot set presence`);
-    // Note: We send raw presence data. Server will use socket.id as the key.
-    // We do NOT update local cache here - server broadcasts only to others.
-    const { error } = await this._request("presence", {
-      docId,
-      presence,
-    });
-    if (error) {
-      console.error(`Error setting presence for doc ${docId}:`, error);
+
+    // Clear existing timeout if any
+    const existingState = this._presenceDebounceState.get(docId);
+    if (existingState) {
+      clearTimeout(existingState.timeout);
     }
+
+    // Debounce the presence update
+    const timeout = setTimeout(() => {
+      const state = this._presenceDebounceState.get(docId);
+      if (!state) return;
+
+      this._presenceDebounceState.delete(docId);
+
+      // Note: We send raw presence data. Server will use socket.id as the key.
+      // We do NOT update local cache here - server broadcasts only to others.
+      void (async () => {
+        const { error } = await this._request("presence", {
+          docId,
+          presence: state.pendingValue,
+        });
+        if (error) {
+          console.error(`Error setting presence for doc ${docId}:`, error);
+        }
+      })();
+    }, this._presenceDebounce);
+
+    this._presenceDebounceState.set(docId, { timeout, pendingValue: presence });
   }
 
   private _setupChangeListener(doc: D, docId: string) {
