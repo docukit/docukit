@@ -427,11 +427,7 @@ export function syncPresence(
   const unregisterBlurListener = editor.registerCommand(
     BLUR_COMMAND,
     () => {
-      setTimeout(() => {
-        if (!editorHasFocus()) {
-          setPresence(undefined);
-        }
-      }, 50);
+      if (!editorHasFocus()) setPresence(undefined);
       return false;
     },
     COMMAND_PRIORITY_EDITOR,
