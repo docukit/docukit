@@ -50,13 +50,13 @@ export class DocSyncClient<
   private _shouldBroadcast = true;
   protected _broadcastChannel?: BroadcastChannel;
   protected _socket: ClientSocket<S, O>;
-  protected _pushStatusByDocId = new Map<string, PushStatus>();
 
-  // Timeouts
+  // Flow control state (batching, debouncing, push queueing)
   protected _localOpsBatchState = new Map<string, DeferredState<O[]>>();
   protected _batchDelay = 50;
   protected _presenceDebounceState = new Map<string, DeferredState<unknown>>();
   protected _presenceDebounce = 50;
+  protected _pushStatusByDocId = new Map<string, PushStatus>();
 
   // Event handlers - ChangeHandler and SyncHandler use default (unknown) to allow covariance
   protected _connectHandlers = new Set<ConnectHandler>();
