@@ -55,7 +55,7 @@ export class DocSyncClient<
   protected _localOpsBatchState = new Map<string, DeferredState<O[]>>();
   protected _batchDelay = 50;
   protected _presenceDebounceState = new Map<string, DeferredState<unknown>>();
-  protected _presenceDebounce = 50;
+  protected _presenceDebounce = 400;
   protected _pushStatusByDocId = new Map<string, PushStatus>();
 
   // Event handlers - ChangeHandler and SyncHandler use default (unknown) to allow covariance
