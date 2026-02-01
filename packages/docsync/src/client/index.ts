@@ -50,11 +50,11 @@ export class DocSyncClient<
   protected _broadcastChannel?: BroadcastChannel;
   protected _socket: ClientSocket<S, O>;
   protected _pushStatusByDocId = new Map<string, PushStatus>();
-  protected _localOpsThrottleState = new Map<
+  protected _localOpsBatchState = new Map<
     string,
     { timeout?: ReturnType<typeof setTimeout>; queue: O[] }
   >();
-  protected _throttle = 50;
+  protected _batchDelay = 50;
   protected _presenceDebounceState = new Map<
     string,
     { timeout: ReturnType<typeof setTimeout>; pendingValue: unknown }
@@ -579,13 +579,13 @@ export class DocSyncClient<
   }
 
   onLocalOperations({ docId, operations }: { docId: string; operations: O[] }) {
-    // Get or create the throttle state for this document
-    let state = this._localOpsThrottleState.get(docId);
+    // Get or create the batch state for this document
+    let state = this._localOpsBatchState.get(docId);
 
     if (!state) {
       // Create new state with empty queue
       state = { queue: [] };
-      this._localOpsThrottleState.set(docId, state);
+      this._localOpsBatchState.set(docId, state);
     }
 
     // Add operations to queue
@@ -598,14 +598,14 @@ export class DocSyncClient<
       return;
     }
 
-    // Otherwise, schedule the save
+    // Otherwise, schedule the batch save
     state.timeout = setTimeout(() => {
       void (async () => {
-        const currentState = this._localOpsThrottleState.get(docId);
+        const currentState = this._localOpsBatchState.get(docId);
         if (!currentState) return;
 
         const opsToSave = currentState.queue;
-        this._localOpsThrottleState.delete(docId);
+        this._localOpsBatchState.delete(docId);
 
         if (opsToSave && opsToSave.length > 0) {
           const local = await this._localPromise;
@@ -615,7 +615,7 @@ export class DocSyncClient<
           this.saveRemote({ docId });
         }
       })();
-    }, this._throttle);
+    }, this._batchDelay);
   }
 
   /**

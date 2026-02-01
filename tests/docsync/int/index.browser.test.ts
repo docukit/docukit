@@ -294,12 +294,12 @@ describe("Local-First", () => {
     });
   });
 
-  test("requests are batched even without local throttling", async () => {
+  test("requests are batched even without local batching delay", async () => {
     await testWrapper(async ({ reference }) => {
       await reference.loadDoc();
       await tick();
 
-      // with throttling
+      // with batching delay
       const childrenArray1 = [];
       for (let i = 0; i < 101; i++) {
         reference.addChild(`A${i}`);
@@ -311,8 +311,8 @@ describe("Local-First", () => {
       await reference.assertIDBDoc({ clock: 1, doc: childrenArray1, ops: [] });
       expect(reference.reqSpy.mock.calls.length).toBeLessThan(4);
 
-      // without throttling
-      reference.client["_throttle"] = 0;
+      // without batching delay
+      reference.client["_batchDelay"] = 0;
 
       const childrenArray2 = [];
 
