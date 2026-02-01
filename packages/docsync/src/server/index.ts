@@ -445,7 +445,7 @@ export class DocSyncServer<
           // Update server's presence state for this document
           const currentPresence = this._presenceByDoc.get(docId) ?? {};
 
-          if (presence === null) {
+          if (presence === null || presence === undefined) {
             // Delete the presence entry for this socket
             delete currentPresence[socket.id];
             // Only keep the map entry if there are other sockets with presence
@@ -461,9 +461,11 @@ export class DocSyncServer<
           }
 
           // Immediately broadcast to OTHER clients (excludes sender)
+          // Note: Convert undefined to null because JSON.stringify strips undefined values
+          const broadcastPresence = presence ?? null;
           socket.to(`doc:${docId}`).emit("presence", {
             docId,
-            presence: { [socket.id]: presence },
+            presence: { [socket.id]: broadcastPresence },
           });
 
           // Return success
