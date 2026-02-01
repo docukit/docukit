@@ -14,6 +14,7 @@ import {
   BLUR_COMMAND,
   COMMAND_PRIORITY_EDITOR,
   FOCUS_COMMAND,
+  SELECTION_CHANGE_COMMAND,
   type LexicalEditor,
   type NodeKey,
   type NodeMap,
@@ -392,22 +393,22 @@ export function syncPresence(
   };
 
   // Listen for selection changes to update local presence
-  const unregisterSelectionListener = editor.registerUpdateListener(
-    ({ editorState, tags }) => {
-      // Skip updates from collaboration to avoid loops
-      if (tags.has("collaboration")) {
-        return;
-      }
-
-      // Only sync presence when editor has focus (check programmatically)
+  // Use SELECTION_CHANGE_COMMAND instead of registerUpdateListener
+  // This only fires when selection actually changes, not on every update
+  const unregisterSelectionListener = editor.registerCommand(
+    SELECTION_CHANGE_COMMAND,
+    () => {
+      // Only sync presence when editor has focus
       if (!editorHasFocus()) {
-        return;
+        return false;
       }
 
-      editorState.read(() => {
+      editor.getEditorState().read(() => {
         syncLocalSelectionToPresence(editor, keyBinding, setPresence);
       });
+      return false;
     },
+    COMMAND_PRIORITY_EDITOR,
   );
 
   // Listen for focus to sync current selection
@@ -430,7 +431,7 @@ export function syncPresence(
         if (!editorHasFocus()) {
           setPresence(undefined);
         }
-      }, 0);
+      }, 50);
       return false;
     },
     COMMAND_PRIORITY_EDITOR,
