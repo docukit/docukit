@@ -1,0 +1,127 @@
+---
+title: Server
+description: Server-side implementation of DocSync
+---
+
+The entire DocSyncServer API is included in the following snippet.
+
+```ts
+import {
+  DocSyncServer,
+  PostgresProvider, // or InMemoryServerProvider for testing
+} from "@docnode/docsync/server";
+import { DocNodeBinding } from "@docnode/docsync/docnode";
+import { defineNode, string } from "docnode";
+
+/*===============================================
+              SETUP: DOC BINDING
+ ===============================================*/
+
+// Define your node types (same as client-side)
+const NoteNode = defineNode({
+  type: "note",
+  state: {
+    title: string(""),
+    content: string(""),
+  },
+});
+
+// Create a doc binding that maps document types to their configs
+const docBinding = DocNodeBinding([
+  { type: "notes", extensions: [{ nodes: [NoteNode] }] },
+]);
+
+/*===============================================
+          CONSTRUCTOR: DocSyncServer
+ ===============================================*/
+
+const server = new DocSyncServer({
+  port: 8080, // Optional, defaults to 8080
+
+  docBinding, // How to serialize/deserialize documents
+
+  provider: PostgresProvider, // Storage provider (PostgresProvider or InMemoryServerProvider)
+
+  // Required: Authenticate WebSocket connections
+  async authenticate({ token }) {
+    // Validate the token (e.g., verify JWT)
+    const user = await verifyToken(token);
+    if (!user) return undefined; // Reject connection
+
+    // Return userId and optional context for authorization
+    return {
+      userId: user.id,
+      context: { role: user.role, orgId: user.orgId }, // Passed to authorize()
+    };
+  },
+
+  // Optional: Authorize each operation
+  async authorize({ type, payload, userId, context }) {
+    // type: "sync-operations" | "delete-doc" | "presence" | "unsubscribe-doc"
+    // payload: The request payload (e.g., { docId, operations, clock })
+    // userId: Authenticated user ID
+    // context: Context returned from authenticate()
+
+    if (type === "sync-operations") {
+      // Example: Check if user can access this document
+      const { docId } = payload;
+      return await canUserAccessDoc(userId, docId, context.orgId);
+    }
+
+    return true; // Allow by default
+  },
+});
+
+/*===============================================
+                   EVENTS
+ ===============================================*/
+
+// Called when a client successfully connects (after authentication)
+server.onClientConnect((event) => {
+  event.userId; // Authenticated user ID
+  event.deviceId; // Unique device identifier
+  event.socketId; // Socket.IO socket ID
+  event.context; // Context from authenticate()
+});
+
+// Called when a client disconnects
+server.onClientDisconnect((event) => {
+  event.userId; // User ID (or "unknown" if auth failed)
+  event.deviceId; // Device ID (or "unknown" if auth failed)
+  event.socketId; // Socket ID (or "unknown" if auth failed)
+  event.reason; // Disconnect reason (e.g., "transport close", "Authentication failed: invalid token")
+});
+
+// Called after each sync-operations request completes
+// Follows "wide events" philosophy: one event per operation with all context
+server.onSyncRequest((event) => {
+  event.userId; // User who made the request
+  event.deviceId; // Device that made the request
+  event.socketId; // Socket ID
+  event.status; // "success" | "error"
+  event.durationMs; // Processing time in milliseconds
+  event.clientsCount; // Number of clients viewing this document
+  event.devicesCount; // Number of unique devices viewing this document
+
+  // Request context (always present)
+  event.req.docId; // Document ID
+  event.req.operations; // Operations sent by client (if any)
+  event.req.clock; // Client's clock value
+
+  // Response context (present on success, may be partial on error)
+  event.res?.operations; // Operations returned to client (if any)
+  event.res?.serializedDoc; // Full document snapshot (if squashing occurred)
+  event.res?.clock; // New clock value
+
+  // Error context (only on error)
+  event.error?.type; // "AuthorizationError" | "DatabaseError" | "ValidationError"
+  event.error?.message; // Error message
+  event.error?.stack; // Stack trace (if available)
+});
+
+/*===============================================
+                   CLEANUP
+ ===============================================*/
+
+await server.close(); // Close the server and all connections
+```

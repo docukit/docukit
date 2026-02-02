@@ -2,7 +2,14 @@
   "title": "DocSync",
   "description": "Agnostic sync engine",
   "root": true,
-  "pages": ["index"],
+  "pages": [
+    "index",
+    "getting-started",
+    "license",
+    "--- Learn ---",
+    "client",
+    "server"
+  ],
   "defaultOpen": true,
   "icon": "DocSync"
 }

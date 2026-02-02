@@ -1,0 +1,191 @@
+---
+title: Client
+description: Client-side implementation of DocSync
+---
+
+The entire DocSyncClient API is included in the following snippet.
+
+```tsx
+import {
+  DocSyncClient,
+  IndexedDBProvider, // Offline-first local storage
+} from "@docnode/docsync/client";
+import { DocNodeBinding } from "@docnode/docsync/docnode";
+import { defineNode, string } from "docnode";
+
+/*===============================================
+              SETUP: DOC BINDING
+ ===============================================*/
+
+// Define your node types (same as server-side)
+const NoteNode = defineNode({
+  type: "note",
+  state: {
+    title: string(""),
+    content: string(""),
+  },
+});
+
+// Create a doc binding that maps document types to their configs
+const docBinding = DocNodeBinding([
+  { type: "notes", extensions: [{ nodes: [NoteNode] }] },
+]);
+
+/*===============================================
+          CONSTRUCTOR: DocSyncClient
+ ===============================================*/
+
+const client = new DocSyncClient({
+  docBinding, // How to serialize/deserialize documents
+
+  // Remote server configuration
+  server: {
+    url: "http://localhost:8080",
+    auth: {
+      // Called on every connection attempt
+      getToken: async () => await fetchAuthToken(),
+    },
+  },
+
+  // Local storage configuration (offline-first)
+  local: {
+    provider: IndexedDBProvider, // Persistent local storage
+
+    // Resolves identity for local storage namespacing and encryption
+    getIdentity: async () => ({
+      userId: "user-123", // Used to namespace local storage
+      secret: await fetchUserSecret(), // Used for encryption (never persist client-side!)
+    }),
+  },
+});
+
+/*===============================================
+               CONNECTION CONTROL
+ ===============================================*/
+
+client.connect(); // Connect to the server
+client.disconnect(); // Disconnect from the server
+
+/*===============================================
+            DOCUMENT LOADING: getDoc
+ ===============================================*/
+
+// Subscribe to a document with reactive state updates
+// The callback receives QueryResult<DocData<D> | undefined>
+const unsubscribe = client.getDoc(
+  // Overload 1: Get existing doc (returns undefined if not found)
+  { type: "notes", id: "doc-123" },
+
+  // Overload 2: Create new doc with auto-generated ID
+  // { type: "notes", createIfMissing: true }
+
+  // Overload 3: Get or create doc with specific ID
+  // { type: "notes", id: "doc-123", createIfMissing: true }
+
+  (result) => {
+    if (result.status === "loading") {
+      // Initial state while loading
+    }
+
+    if (result.status === "success" && result.data) {
+      const { doc, id } = result.data;
+      // doc: The DocNode document instance
+      // id: The document ID (root node ID)
+
+      // Now you can use the doc normally
+      doc.root.state.title.set("Hello World");
+    }
+
+    if (result.status === "success" && !result.data) {
+      // Document not found (only when createIfMissing is false/undefined)
+    }
+
+    if (result.status === "error") {
+      console.error(result.error);
+    }
+  },
+);
+
+// Clean up when done (decrements ref count, unloads if 0)
+unsubscribe();
+
+/*===============================================
+                   PRESENCE
+ ===============================================*/
+
+// Subscribe to presence updates for a document
+// Note: Document must already be loaded via getDoc
+const unsubPresence = client.getPresence({ docId: "doc-123" }, (presence) => {
+  // presence: Record<socketId, presenceData>
+  for (const [socketId, data] of Object.entries(presence)) {
+    console.log(`User ${socketId} is at:`, data);
+  }
+});
+
+// Set your presence for a document
+await client.setPresence({
+  docId: "doc-123",
+  presence: { cursor: { x: 100, y: 200 }, color: "#ff0000" },
+});
+
+// Clear presence (on unsubscribe)
+unsubPresence();
+
+/*===============================================
+                   EVENTS
+ ===============================================*/
+
+// Called when WebSocket connects successfully
+client.onConnect(() => {
+  console.log("Connected to server");
+});
+
+// Called when WebSocket disconnects
+client.onDisconnect((event) => {
+  event.reason; // Disconnect reason (e.g., "transport close")
+});
+
+// Called when document content changes (from any source)
+client.onChange((event) => {
+  event.docId; // Document that changed
+  event.origin; // "local" | "broadcast" | "remote"
+  //   - "local": Changes made by this client
+  //   - "broadcast": Changes from another tab (same device)
+  //   - "remote": Changes from server (other devices)
+  event.operations; // Array of operations that were applied
+});
+
+// Called after each sync with server completes
+client.onSync((event) => {
+  // Request context (always present)
+  event.req.docId; // Document ID
+  event.req.operations; // Operations sent to server
+  event.req.clock; // Clock value sent to server
+
+  // Success case
+  if ("data" in event && event.data) {
+    event.data.operations; // Operations received from server (if any)
+    event.data.serializedDoc; // Full document snapshot (if squashing occurred)
+    event.data.clock; // New clock value from server
+  }
+
+  // Error case
+  if ("error" in event && event.error) {
+    event.error.type; // "NetworkError" | "AuthorizationError" | "DatabaseError" | "ValidationError"
+    event.error.message; // Error message
+  }
+});
+
+// Called when a document is loaded into memory
+client.onDocLoad((event) => {
+  event.docId; // Document ID
+  event.source; // "cache" | "local" | "created"
+  event.refCount; // Number of active subscriptions
+});
+
+// Called when a document is unloaded from memory
+client.onDocUnload((event) => {
+  event.docId; // Document ID
+  event.refCount; // Remaining subscriptions (0 = removed from cache)
+});
+```
