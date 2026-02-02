@@ -8,7 +8,11 @@
     "license",
     "--- Learn ---",
     "client",
-    "server"
+    "server",
+    "--- Guides ---",
+    "auth",
+    "persistence",
+    "subdocuments"
   ],
   "defaultOpen": true,
   "icon": "DocSync"

@@ -3,189 +3,198 @@ title: Client
 description: Client-side implementation of DocSync
 ---
 
-The entire DocSyncClient API is included in the following snippet.
+import { TypeTable } from "fumadocs-ui/components/type-table";
+
+## createDocSyncClient
+
+Creates a DocSync client instance along with React hooks for document synchronization.
 
 ```tsx
-import {
-  DocSyncClient,
-  IndexedDBProvider, // Offline-first local storage
-} from "@docnode/docsync/client";
-import { DocNodeBinding } from "@docnode/docsync/docnode";
-import { defineNode, string } from "docnode";
+import { createDocSyncClient } from "@docnode/docsync-react";
 
-/*===============================================
-              SETUP: DOC BINDING
- ===============================================*/
-
-// Define your node types (same as server-side)
-const NoteNode = defineNode({
-  type: "note",
-  state: {
-    title: string(""),
-    content: string(""),
-  },
-});
-
-// Create a doc binding that maps document types to their configs
-const docBinding = DocNodeBinding([
-  { type: "notes", extensions: [{ nodes: [NoteNode] }] },
-]);
-
-/*===============================================
-          CONSTRUCTOR: DocSyncClient
- ===============================================*/
-
-const client = new DocSyncClient({
-  docBinding, // How to serialize/deserialize documents
-
-  // Remote server configuration
+const { client, useDoc, usePresence } = createDocSyncClient({
+  docBinding,
   server: {
     url: "http://localhost:8080",
     auth: {
-      // Called on every connection attempt
       getToken: async () => await fetchAuthToken(),
     },
   },
-
-  // Local storage configuration (offline-first)
   local: {
-    provider: IndexedDBProvider, // Persistent local storage
-
-    // Resolves identity for local storage namespacing and encryption
+    provider: IndexedDBProvider,
     getIdentity: async () => ({
-      userId: "user-123", // Used to namespace local storage
-      secret: await fetchUserSecret(), // Used for encryption (never persist client-side!)
+      userId: "user-123",
+      secret: await fetchUserSecret(),
     }),
   },
 });
-
-/*===============================================
-               CONNECTION CONTROL
- ===============================================*/
-
-client.connect(); // Connect to the server
-client.disconnect(); // Disconnect from the server
-
-/*===============================================
-            DOCUMENT LOADING: getDoc
- ===============================================*/
-
-// Subscribe to a document with reactive state updates
-// The callback receives QueryResult<DocData<D> | undefined>
-const unsubscribe = client.getDoc(
-  // Overload 1: Get existing doc (returns undefined if not found)
-  { type: "notes", id: "doc-123" },
-
-  // Overload 2: Create new doc with auto-generated ID
-  // { type: "notes", createIfMissing: true }
-
-  // Overload 3: Get or create doc with specific ID
-  // { type: "notes", id: "doc-123", createIfMissing: true }
-
-  (result) => {
-    if (result.status === "loading") {
-      // Initial state while loading
-    }
-
-    if (result.status === "success" && result.data) {
-      const { doc, id } = result.data;
-      // doc: The DocNode document instance
-      // id: The document ID (root node ID)
-
-      // Now you can use the doc normally
-      doc.root.state.title.set("Hello World");
-    }
-
-    if (result.status === "success" && !result.data) {
-      // Document not found (only when createIfMissing is false/undefined)
-    }
-
-    if (result.status === "error") {
-      console.error(result.error);
-    }
-  },
-);
-
-// Clean up when done (decrements ref count, unloads if 0)
-unsubscribe();
-
-/*===============================================
-                   PRESENCE
- ===============================================*/
-
-// Subscribe to presence updates for a document
-// Note: Document must already be loaded via getDoc
-const unsubPresence = client.getPresence({ docId: "doc-123" }, (presence) => {
-  // presence: Record<socketId, presenceData>
-  for (const [socketId, data] of Object.entries(presence)) {
-    console.log(`User ${socketId} is at:`, data);
-  }
-});
-
-// Set your presence for a document
-await client.setPresence({
-  docId: "doc-123",
-  presence: { cursor: { x: 100, y: 200 }, color: "#ff0000" },
-});
-
-// Clear presence (on unsubscribe)
-unsubPresence();
-
-/*===============================================
-                   EVENTS
- ===============================================*/
-
-// Called when WebSocket connects successfully
-client.onConnect(() => {
-  console.log("Connected to server");
-});
-
-// Called when WebSocket disconnects
-client.onDisconnect((event) => {
-  event.reason; // Disconnect reason (e.g., "transport close")
-});
-
-// Called when document content changes (from any source)
-client.onChange((event) => {
-  event.docId; // Document that changed
-  event.origin; // "local" | "broadcast" | "remote"
-  //   - "local": Changes made by this client
-  //   - "broadcast": Changes from another tab (same device)
-  //   - "remote": Changes from server (other devices)
-  event.operations; // Array of operations that were applied
-});
-
-// Called after each sync with server completes
-client.onSync((event) => {
-  // Request context (always present)
-  event.req.docId; // Document ID
-  event.req.operations; // Operations sent to server
-  event.req.clock; // Clock value sent to server
-
-  // Success case
-  if ("data" in event && event.data) {
-    event.data.operations; // Operations received from server (if any)
-    event.data.serializedDoc; // Full document snapshot (if squashing occurred)
-    event.data.clock; // New clock value from server
-  }
-
-  // Error case
-  if ("error" in event && event.error) {
-    event.error.type; // "NetworkError" | "AuthorizationError" | "DatabaseError" | "ValidationError"
-    event.error.message; // Error message
-  }
-});
-
-// Called when a document is loaded into memory
-client.onDocLoad((event) => {
-  event.docId; // Document ID
-  event.source; // "cache" | "local" | "created"
-  event.refCount; // Number of active subscriptions
-});
-
-// Called when a document is unloaded from memory
-client.onDocUnload((event) => {
-  event.docId; // Document ID
-  event.refCount; // Remaining subscriptions (0 = removed from cache)
-});
 ```
+
+### Props
+
+<TypeTable
+  type={{
+    docBinding: {
+      description:
+        "Document binding that maps document types to their serialization/deserialization configs.",
+      type: "DocBinding<D, S, O>",
+      required: true,
+    },
+    server: {
+      description: "Remote server configuration object.",
+      type: "object",
+      required: true,
+    },
+    "server.url": {
+      description: "WebSocket URL of the DocSync server.",
+      type: "string",
+      required: true,
+    },
+    "server.auth.getToken": {
+      description:
+        "Async function called on every connection attempt to retrieve the authentication token. The token is passed verbatim to the server.",
+      type: "() => Promise<string>",
+      required: true,
+    },
+    local: {
+      description: "Local storage configuration for offline-first persistence.",
+      type: "object",
+      required: true,
+    },
+    "local.provider": {
+      description:
+        "Storage provider class constructor (e.g., IndexedDBProvider) for persistent local storage.",
+      type: "Provider",
+      required: true,
+    },
+    "local.getIdentity": {
+      description:
+        "Async function that resolves the local storage identity. Returns userId (for namespacing) and secret (for encryption). The secret must never be persisted client-side.",
+      type: "() => Promise<Identity>",
+      required: true,
+    },
+  }}
+/>
+
+### Returns
+
+<TypeTable
+  type={{
+    client: {
+      description:
+        "The underlying DocSyncClient instance. May be undefined during SSR.",
+      type: "DocSyncClient | undefined",
+    },
+    useDoc: {
+      description:
+        "React hook that subscribes to a document with reactive state updates.",
+      type: "(args: GetDocArgs) => QueryResult<DocData | undefined>",
+    },
+    usePresence: {
+      description:
+        "React hook that subscribes to presence updates for a document and provides a setter.",
+      type: "(args: { docId: string | undefined }) => [Presence, setPresence]",
+    },
+  }}
+/>
+
+---
+
+## useDoc
+
+React hook that subscribes to a document with reactive state updates.
+
+```tsx
+const result = useDoc({ type: "notes", id: "doc-123" });
+
+const result = useDoc({ type: "notes", createIfMissing: true });
+
+const result = useDoc({ type: "notes", id: "doc-123", createIfMissing: true });
+```
+
+### Props
+
+<TypeTable
+  type={{
+    type: {
+      description:
+        "The document type to load (must match a type defined in docBinding).",
+      type: "string",
+      required: true,
+    },
+    id: {
+      description:
+        "The document ID to load. If omitted with createIfMissing: true, a new ID will be auto-generated.",
+      type: "string",
+    },
+    createIfMissing: {
+      description:
+        "If true, creates the document if it doesn't exist. When true without id, generates a new document with auto-generated ID.",
+      type: "boolean",
+      default: "false",
+    },
+  }}
+/>
+
+### Returns
+
+<TypeTable
+  type={{
+    status: {
+      description: "Current state of the query.",
+      type: '"loading" | "success" | "error"',
+      required: true,
+    },
+    data: {
+      description:
+        "The document data when status is 'success'. Contains doc (the DocNode instance) and id (document ID). Undefined if document not found.",
+      type: "{ doc: D; id: string } | undefined",
+    },
+    error: {
+      description: "Error information when status is 'error'.",
+      type: "Error",
+    },
+  }}
+/>
+
+---
+
+## usePresence
+
+React hook that subscribes to presence updates for a document and provides a setter function.
+
+```tsx
+const [presence, setPresence] = usePresence({ docId: "doc-123" });
+
+setPresence({ cursor: { x: 100, y: 200 }, color: "#ff0000" });
+```
+
+### Props
+
+<TypeTable
+  type={{
+    docId: {
+      description:
+        "The document ID to subscribe to presence updates for. The document must already be loaded via useDoc.",
+      type: "string | undefined",
+      required: true,
+    },
+  }}
+/>
+
+### Returns
+
+<TypeTable
+  type={{
+    presence: {
+      description:
+        "Record of socket IDs to their presence data for all connected users.",
+      type: "Record<string, T>",
+    },
+    setPresence: {
+      description:
+        "Function to update this client's presence for the document.",
+      type: "(presence: T) => void",
+    },
+  }}
+/>
