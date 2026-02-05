@@ -13,11 +13,15 @@ npm i @docukit/lexical
 
 ## 2. Usage
 
+`DocNodePlugin` receives a DocNode Doc and syncs it with the Lexical editor. It is unopinionated about
+how you should sync that Doc across different clients. We recommend using DocSync as explained
+in the next section.
+
 ```tsx tab="React"
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { DocNodePlugin } from "@docukit/lexical/react";
 
-function Editor({ doc, presence, setPresence, user }) {
+function Editor({ doc, presence, setPresence }) {
   return (
     <LexicalComposer initialConfig={initialConfig}>
       // [!code highlight:5]
@@ -25,7 +29,7 @@ function Editor({ doc, presence, setPresence, user }) {
         doc={doc}
         presence={presence}
         setPresence={setPresence}
-        user={user}
+        user={{ name: "John Doe", color: "#ff0000" }}
       />
       {/* ... The rest of your Lexical Plugins ... */}
     </LexicalComposer>
@@ -64,3 +68,30 @@ function Editor({ doc, presence, setPresence, user }) {
     },
   }}
 />
+
+## 3. With DocSync (recommended)
+
+```tsx tab="React"
+import { LexicalComposer } from "@lexical/react/LexicalComposer";
+import { DocNodePlugin } from "@docukit/lexical/react";
+// see the DocSync docs for more info on how to generate these hooks
+import { useDoc, usePresence } from "../docsync/client";
+
+function Editor() {
+  // [!code highlight:2]
+  const { doc, docId } = useDoc({ type: "lexical", createIfMissing: true });
+  const [presence, setPresence] = usePresence({ docId });
+
+  return (
+    <LexicalComposer initialConfig={initialConfig}>
+      <DocNodePlugin
+        doc={doc}
+        presence={presence}
+        setPresence={setPresence}
+        user={{ name: "John Doe", color: "#ff0000" }}
+      />
+      {/* ... The rest of your Lexical Plugins ... */}
+    </LexicalComposer>
+  );
+}
+```
