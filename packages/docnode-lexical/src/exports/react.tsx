@@ -53,6 +53,7 @@ export type DocNodePluginProps = {
  * }
  * ```
  */
+// TODO: The docnode-lexical core should do more, and bindings like this should be much simpler.
 export function DocNodePlugin({
   doc,
   presence,
