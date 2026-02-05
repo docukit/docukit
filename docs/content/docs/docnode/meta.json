@@ -15,8 +15,9 @@
     "persistence",
     "undo-manager",
     "render",
-    "--- More ---",
-    "roadmap"
+    "--- Editor Bindings ---",
+    "lexical",
+    "tiptap"
   ],
   "defaultOpen": true
 }
