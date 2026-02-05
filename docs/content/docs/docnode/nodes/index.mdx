@@ -14,7 +14,7 @@ A node is the fundamental building block of a DocNode document. Each node has an
 You define what kinds of nodes your document can contain using `NodeDefinitions`; at runtime, the document contains nodes that conform to those definitions.
 
 ```ts
-import { Doc, defineNode, string, number, boolean } from "docnode";
+import { Doc, defineNode, string, number, boolean } from "@docukit/docnode";
 
 // Paragragh with Uppercase is the NodeDefinition (recommended convention)
 const Paragraph = defineNode({
@@ -41,7 +41,7 @@ The root node is the only one that DocNode automatically inserts. Every document
 The root node's ID is considered the document ID, and its type is considered the document type. They are synonymous.
 
 ```ts
-import { Doc } from "docnode";
+import { Doc } from "@docukit/docnode";
 
 // 1. Default type and id
 const doc = new Doc();
@@ -70,7 +70,7 @@ console.log(root2.type); // 'richtext-editor' -> The doc type is considered the 
 Node `StateDefinitions` are declared inside `NodeDefinitions`. DocNode ships 3 built‑in `StateDefinitions` for common primitives: `string`, `number`, and `boolean`.
 
 ```ts
-import { string, number, boolean, defineNode, Doc } from "docnode";
+import { string, number, boolean, defineNode, Doc } from "@docukit/docnode";
 
 const TestNode = defineNode({
   type: "test",
@@ -146,7 +146,7 @@ This aspect of DocNode evolves from my experience making [the Lexical editor in 
 More precisely, DocNode will combine all `NodeDefinitions` with the same type into a single and internal “resolved” node definition. The only requirement is that `NodeDefinitions` with the same type must not have duplicate state keys. For DocNode, it is as if there were only one node definition per type at runtime.
 
 ```ts
-import { defineNode, string, Doc, type Extension } from "docnode";
+import { defineNode, string, Doc, type Extension } from "@docukit/docnode";
 
 const TextNode = defineNode({
   type: "text",

@@ -12,7 +12,7 @@
  * which further increases the memory cost of using iterators in what are essentially linear traversals.
  */
 
-import { Doc, defineNode, string } from "docnode";
+import { Doc, defineNode, string } from "@docukit/docnode";
 import { children, descendants, nextSiblings } from "./shared.js";
 import { assert, bench, describe, wrapper } from "./utils.js";
 import { TextExtension } from "../utils.js";

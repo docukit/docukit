@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { Doc, defineNode, UndoManager } from "docnode";
+import { Doc, defineNode, UndoManager } from "@docukit/docnode";
 import {
   TextExtension,
   Text,

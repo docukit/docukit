@@ -1,4 +1,4 @@
-import { Doc, type DocNode } from "docnode";
+import { Doc, type DocNode } from "@docukit/docnode";
 import {
   $createParagraphNode,
   $createTextNode,
@@ -10,7 +10,7 @@ import {
 } from "lexical";
 import { describe, expect, test } from "vitest";
 
-import { docToLexical, LexicalDocNode } from "@docnode/lexical";
+import { docToLexical, LexicalDocNode } from "@docukit/docnode-lexical";
 import { assertJson } from "../docnode/utils.js";
 
 describe("docnode to lexical", () => {

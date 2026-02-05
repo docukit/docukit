@@ -12,7 +12,7 @@ import {
   type Diff,
   type JsonDoc,
   UndoManager,
-} from "docnode";
+} from "@docukit/docnode";
 import { ULID_REGEX } from "valibot";
 import { expect } from "vitest";
 

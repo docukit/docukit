@@ -7,8 +7,8 @@ import {
   type GetDocArgs,
   type QueryResult,
   type Presence,
-} from "@docnode/docsync/client";
-import { type DocBinding } from "@docnode/docsync";
+} from "@docukit/docsync/client";
+import { type DocBinding } from "@docukit/docsync";
 
 // Helper types to infer D, S, O from ClientConfig
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { Doc, type DocNode, UndoManager } from "docnode";
+import { Doc, type DocNode, UndoManager } from "@docukit/docnode";
 import {
   assertDoc,
   checkUndoManager,

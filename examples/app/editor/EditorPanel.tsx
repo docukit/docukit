@@ -13,8 +13,8 @@ import {
   DocNodePlugin,
   type LocalSelection,
   type Presence,
-} from "@docnode/lexical/react";
-import type { Doc } from "docnode";
+} from "@docukit/docnode-lexical/react";
+import type { Doc } from "@docukit/docnode";
 import { useEffect } from "react";
 
 type EditorPanelProps = {

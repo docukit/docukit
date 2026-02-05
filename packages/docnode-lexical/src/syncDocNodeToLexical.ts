@@ -1,4 +1,4 @@
-import { type Doc, type Operations } from "docnode";
+import { type Doc, type Operations } from "@docukit/docnode";
 import {
   $getNodeByKey,
   $getRoot,

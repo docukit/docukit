@@ -8,7 +8,7 @@ import {
   type DeepImmutable,
   type StateDefinition,
   type NodeDefinition,
-} from "docnode";
+} from "@docukit/docnode";
 import {
   Text,
   TextExtension,

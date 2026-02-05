@@ -4,10 +4,10 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { describe, test, expect, expectTypeOf } from "vitest";
 import { testWrapper, testPort } from "./utils.js";
-import { DocSyncServer, InMemoryServerProvider } from "@docnode/docsync/server";
-import { DocNodeBinding } from "@docnode/docsync/docnode";
-import { DocSyncClient } from "@docnode/docsync/client";
-import type { Provider } from "@docnode/docsync";
+import { DocSyncServer, InMemoryServerProvider } from "@docukit/docsync/server";
+import { DocNodeBinding } from "@docukit/docsync/docnode";
+import { DocSyncClient } from "@docukit/docsync/client";
+import type { Provider } from "@docukit/docsync";
 
 describe("authentication", () => {
   test("rejects without token", async () => {

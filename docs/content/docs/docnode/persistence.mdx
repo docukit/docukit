@@ -55,7 +55,7 @@ The `change` event includes operations in a compact JSON form. Use a small queue
 Client
 
 ```ts
-import type { Doc, Operations } from "docnode";
+import type { Doc, Operations } from "@docukit/docnode";
 
 export function saveDocOnChange(doc: Doc) {
   let pending: Operations[] = [];
@@ -103,7 +103,7 @@ export function saveDocOnChange(doc: Doc) {
 Server
 
 ```ts
-import { Doc, type Operations } from "docnode";
+import { Doc, type Operations } from "@docukit/docnode";
 
 const docConfig: DocConfig = {
   /* your config */

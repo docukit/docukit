@@ -1,5 +1,5 @@
 {
-  "name": "@docnode/editor",
+  "name": "@docukit/doceditor",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE.md",
   "private": true,
@@ -15,6 +15,6 @@
     "README.md"
   ],
   "dependencies": {
-    "docnode": "workspace:*"
+    "@docukit/docnode": "workspace:*"
   }
 }

@@ -56,7 +56,7 @@ examples/
 Examples use the latest workspace versions of:
 
 - `docnode` - Core document library
-- `@docnode/docsync-react` - React hooks and components for sync
+- `@docukit/docsync-react` - React hooks and components for sync
 - `lexical` - Rich text editor framework
 
 Changes to these packages will automatically reflect in the examples during development.

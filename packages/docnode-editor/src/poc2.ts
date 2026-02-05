@@ -1,4 +1,4 @@
-import { Doc, type Extension } from "docnode";
+import { Doc, type Extension } from "@docukit/docnode";
 
 class Editor extends Doc {
   selection: unknown;

@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import { DocNodeBinding } from "@docnode/docsync/docnode";
-import { DocSyncServer, InMemoryServerProvider } from "@docnode/docsync/server";
-import { DocSyncClient, type Identity } from "@docnode/docsync/client";
-import type { Provider } from "@docnode/docsync";
+import { DocNodeBinding } from "@docukit/docsync/docnode";
+import { DocSyncServer, InMemoryServerProvider } from "@docukit/docsync/server";
+import { DocSyncClient, type Identity } from "@docukit/docsync/client";
+import type { Provider } from "@docukit/docsync";
 import { testDocConfig } from "../../int/utils.js";
 
 // Auto-assign unique port range based on Vitest worker ID

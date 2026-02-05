@@ -1,6 +1,6 @@
 import { test, expect, describe } from "vitest";
-import { Doc } from "docnode";
-import { docToLexical, LexicalDocNode } from "@docnode/lexical";
+import { Doc } from "@docukit/docnode";
+import { docToLexical, LexicalDocNode } from "@docukit/docnode-lexical";
 import { assertJson } from "../docnode/utils.js";
 import { type SerializedParagraphNode, type SerializedTextNode } from "lexical";
 

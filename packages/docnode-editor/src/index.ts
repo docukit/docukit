@@ -1,4 +1,4 @@
-import type { Doc } from "docnode";
+import type { Doc } from "@docukit/docnode";
 
 export class Editor {
   doc: Doc; // equivalent to editorState in Lexical

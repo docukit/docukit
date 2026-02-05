@@ -1,4 +1,4 @@
-import { type Doc, type DocNode } from "docnode";
+import { type Doc, type DocNode } from "@docukit/docnode";
 import {
   $getRoot,
   $isElementNode,

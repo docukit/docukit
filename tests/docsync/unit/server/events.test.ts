@@ -1,12 +1,12 @@
 import { describe, test, expect } from "vitest";
 import { testWrapper, testPort } from "./utils.js";
-import { DocSyncServer, InMemoryServerProvider } from "@docnode/docsync/server";
-import { DocNodeBinding } from "@docnode/docsync/docnode";
+import { DocSyncServer, InMemoryServerProvider } from "@docukit/docsync/server";
+import { DocNodeBinding } from "@docukit/docsync/docnode";
 import type {
   ClientConnectEvent,
   ClientDisconnectEvent,
   SyncRequestEvent,
-} from "@docnode/docsync";
+} from "@docukit/docsync";
 
 describe("Server Events", () => {
   // ──────────────────────────────────────────────────────────────────────────

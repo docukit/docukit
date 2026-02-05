@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import type { Doc } from "docnode";
+import type { Doc } from "@docukit/docnode";
 import {
   docToLexical,
   syncPresence,
@@ -24,7 +24,7 @@ export type DocNodePluginProps = {
  *
  * @example
  * ```tsx
- * import { DocNodePlugin } from "@docnode/lexical/react";
+ * import { DocNodePlugin } from "@docukit/docnode-lexical/react";
  *
  * function Editor({ doc, presence, setPresence }) {
  *   return (

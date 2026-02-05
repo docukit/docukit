@@ -1,8 +1,7 @@
 "use client";
 
-import { lexicalDocNodeConfig } from "@docnode/lexical";
+import { lexicalDocNodeConfig } from "@docukit/docnode-lexical";
 import { createMultiClients } from "../utils/createMultiClients";
-import type { DocConfig } from "docnode";
 
 // Create clients with lexicalDocNodeConfig
 const {
@@ -15,7 +14,7 @@ const {
   useOtherDeviceDoc,
   useOtherDevicePresence,
   otherDeviceClient,
-} = createMultiClients([lexicalDocNodeConfig] as DocConfig[]);
+} = createMultiClients([lexicalDocNodeConfig]);
 
 export {
   useReferenceDoc,

@@ -327,7 +327,7 @@ While DocNode keeps secret management application-defined, it is recommended to 
 For example, a server-backed secret helper can encapsulate best practices:
 
 ```ts
-import { serverBackedSecret } from "@docnode/auth-helpers";
+import { serverBackedSecret } from "@docukit/auth-helpers";
 
 local: {
   getIdentity: serverBackedSecret({

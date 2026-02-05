@@ -1,5 +1,5 @@
 {
-  "name": "@docnode/docsync-react",
+  "name": "@docukit/docsync-react",
   "license": "SEE LICENSE IN LICENSE.md",
   "private": true,
   "type": "module",
@@ -24,7 +24,7 @@
     "@types/react": "19.1.8"
   },
   "dependencies": {
-    "@docnode/docsync": "workspace:*",
+    "@docukit/docsync": "workspace:*",
     "react": "19.1.0"
   },
   "exports": {

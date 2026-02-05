@@ -1,6 +1,6 @@
-import type { Provider } from "@docnode/docsync";
-import { IndexedDBProvider } from "@docnode/docsync/client";
-import { InMemoryServerProvider } from "@docnode/docsync/testing";
+import type { Provider } from "@docukit/docsync";
+import { IndexedDBProvider } from "@docukit/docsync/client";
+import { InMemoryServerProvider } from "@docukit/docsync/testing";
 import { test } from "vitest";
 
 function testProvider<T extends "server" | "client", S, O>(

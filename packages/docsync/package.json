@@ -1,5 +1,5 @@
 {
-  "name": "@docnode/docsync",
+  "name": "@docukit/docsync",
   "license": "SEE LICENSE IN LICENSE.md",
   "private": true,
   "type": "module",
@@ -43,7 +43,7 @@
     }
   },
   "dependencies": {
-    "docnode": "workspace:*",
+    "@docukit/docnode": "workspace:*",
     "drizzle-orm": "^0.38.4",
     "idb": "^8.0.1",
     "postgres": "^3.4.5",

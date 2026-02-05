@@ -15,7 +15,7 @@ import {
 import { EditorPanel } from "./EditorPanel";
 import { MultiClientLayout } from "../utils/MultiClientLayout";
 import { useDocId } from "../utils/useDocId";
-import type { LocalSelection, Presence } from "@docnode/lexical";
+import type { LocalSelection, Presence } from "@docukit/docnode-lexical";
 
 // User colors for cursor display
 const USER_COLORS: Record<string, string> = {

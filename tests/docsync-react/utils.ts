@@ -1,4 +1,4 @@
-import type { DocConfig } from "docnode";
+import type { DocConfig } from "@docukit/docnode";
 
 export const docConfig: DocConfig = {
   type: "test",

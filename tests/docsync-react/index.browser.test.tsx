@@ -2,10 +2,10 @@ import { test, expectTypeOf, expect } from "vitest";
 import {
   createDocSyncClient,
   IndexedDBProvider,
-} from "@docnode/docsync-react/client";
-import { DocNodeBinding } from "@docnode/docsync-react/docnode";
-import type { Doc } from "docnode";
-import type { DocData, QueryResult } from "@docnode/docsync/client";
+} from "@docukit/docsync-react/client";
+import { DocNodeBinding } from "@docukit/docsync-react/docnode";
+import type { Doc } from "@docukit/docnode";
+import type { DocData, QueryResult } from "@docukit/docsync/client";
 import { renderHook } from "vitest-browser-react";
 import { docConfig, id } from "./utils.js";
 

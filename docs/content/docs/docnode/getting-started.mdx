@@ -5,7 +5,7 @@ title: Getting Started
 ## Installation
 
 ```npm
-npm i docnode
+npm i @docukit/docnode
 ```
 
 {/* TODO: ### Bundle size */}
@@ -14,7 +14,7 @@ npm i docnode
 
 ```ts tab="Text Editor"
 // nodes.ts
-import { defineNode, number, string, boolean } from "docnode";
+import { defineNode, number, string, boolean } from "@docukit/docnode";
 
 const TextNode = defineNode({
   type: "text",
@@ -44,7 +44,7 @@ const HeadingNode = defineNode({
 
 ```ts tab="File Explorer"
 // nodes.ts
-import { defineNode, string } from "docnode";
+import { defineNode, string } from "@docukit/docnode";
 // We are going to see later how to define custom state definitions.
 import { date } from "./your-custom-state-definitions";
 
@@ -67,7 +67,7 @@ const FolderNode = defineNode({
 
 ```ts tab="Todo List"
 // nodes.ts
-import { defineNode, string, boolean } from "docnode";
+import { defineNode, string, boolean } from "@docukit/docnode";
 // We are going to see later how to define custom state definitions.
 import { date } from "./your-custom-state-definitions";
 
@@ -94,7 +94,7 @@ const TodoListNode = defineNode({
 
 ```ts tab="Text Editor"
 // extensions.ts
-import type { Extension } from "docnode";
+import type { Extension } from "@docukit/docnode";
 import { ParagraphNode, HeadingNode } from "./nodes";
 
 const RichTextBaseExtension: Extension = {
@@ -113,7 +113,7 @@ const RichTextBaseExtension: Extension = {
 
 ```ts tab="File Explorer"
 // extensions.ts
-import type { Extension } from "docnode";
+import type { Extension } from "@docukit/docnode";
 import { FileNode, FolderNode } from "./nodes";
 
 const FileExplorerBaseExtension: Extension = {
@@ -136,21 +136,21 @@ const TodoListBaseExtension: Extension = {
 ## 3. Create your document
 
 ```ts tab="Text Editor"
-import { Doc } from "docnode";
+import { Doc } from "@docukit/docnode";
 import { RichTextBaseExtension } from "./extensions";
 
 const doc = new Doc({ extensions: [RichTextBaseExtension] });
 ```
 
 ```ts tab="Todo List"
-import { Doc } from "docnode";
+import { Doc } from "@docukit/docnode";
 import { TodoListBaseExtension } from "./extensions";
 
 const doc = new Doc({ extensions: [TodoListBaseExtension] });
 ```
 
 ```ts tab="File Explorer"
-import { Doc } from "docnode";
+import { Doc } from "@docukit/docnode";
 import { FileExplorerBaseExtension } from "./extensions";
 
 const doc = new Doc({ extensions: [FileExplorerBaseExtension] });

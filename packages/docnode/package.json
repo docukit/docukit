@@ -1,5 +1,5 @@
 {
-  "name": "docnode",
+  "name": "@docukit/docnode",
   "version": "0.1.1",
   "license": "SEE LICENSE IN LICENSE.md",
   "description": "A type-safe, fast, ID-based Operational Transformation (OT) framework.",

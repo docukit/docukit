@@ -1,11 +1,11 @@
 "use client";
 
-import { DocNodeBinding } from "@docnode/docsync-react/docnode";
+import { DocNodeBinding } from "@docukit/docsync-react/docnode";
 import {
   IndexedDBProvider,
   createDocSyncClient,
-} from "@docnode/docsync-react/client";
-import type { DocConfig } from "docnode";
+} from "@docukit/docsync-react/client";
+import type { DocConfig } from "@docukit/docnode";
 
 // Create 3 separate DocSyncClient instances with different deviceIds
 const createClientForUser = (

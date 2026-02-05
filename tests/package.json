@@ -7,10 +7,10 @@
     "clean": "rm -rf .next node_modules .turbo dist tsconfig.build.tsbuildinfo || rmdir /s /q .next node_modules .turbo dist tsconfig.build.tsbuildinfo"
   },
   "dependencies": {
-    "@docnode/lexical": "workspace:*",
-    "@docnode/docsync": "workspace:*",
-    "@docnode/docsync-react": "workspace:*",
-    "docnode": "workspace:*",
+    "@docukit/docnode-lexical": "workspace:*",
+    "@docukit/docsync": "workspace:*",
+    "@docukit/docsync-react": "workspace:*",
+    "@docukit/docnode": "workspace:*",
     "lexical": "^0.38.2",
     "ulid": "^2.3.0",
     "valibot": "^1.0.0"

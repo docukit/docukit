@@ -2,9 +2,14 @@ import {
   DocSyncClient,
   IndexedDBProvider,
   type ClientConfig,
-} from "@docnode/docsync/client";
-import { DocNodeBinding } from "@docnode/docsync/docnode";
-import { defineNode, type Doc, type JsonDoc, type Operations } from "docnode";
+} from "@docukit/docsync/client";
+import { DocNodeBinding } from "@docukit/docsync/docnode";
+import {
+  defineNode,
+  type Doc,
+  type JsonDoc,
+  type Operations,
+} from "@docukit/docnode";
 import { ulid } from "ulid";
 import { vi, type Mock } from "vitest";
 

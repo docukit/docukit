@@ -1,7 +1,7 @@
-import { DocNodeBinding } from "@docnode/docsync-react/docnode";
-import { DocSyncServer, PostgresProvider } from "@docnode/docsync-react/server";
+import { DocNodeBinding } from "@docukit/docsync-react/docnode";
+import { DocSyncServer, PostgresProvider } from "@docukit/docsync-react/server";
 import { indexDocConfig } from "./shared-config.ts";
-import { lexicalDocNodeConfig } from "@docnode/lexical";
+import { lexicalDocNodeConfig } from "@docukit/docnode-lexical";
 
 new DocSyncServer({
   docBinding: DocNodeBinding([indexDocConfig, lexicalDocNodeConfig]),

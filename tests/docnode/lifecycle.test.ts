@@ -8,7 +8,7 @@ import {
   updateAndListen,
   humanReadableOperations,
 } from "./utils.js";
-import { Doc, defineNode, type Extension } from "docnode";
+import { Doc, defineNode, type Extension } from "@docukit/docnode";
 
 describe("register lifecycle", () => {
   test("register is called when Doc is created", () => {

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import { Doc, type DocConfig, type Operations } from "docnode";
+import { Doc, type DocConfig, type Operations } from "@docukit/docnode";
 
 // TO-DECIDE: should params in fn's be objects?
 export interface DocBinding<

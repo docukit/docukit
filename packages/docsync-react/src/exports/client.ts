@@ -1,3 +1,3 @@
 export { createDocSyncClient } from "../index.js";
 
-export * from "@docnode/docsync/client";
+export * from "@docukit/docsync/client";

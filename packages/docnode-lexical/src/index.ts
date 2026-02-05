@@ -4,7 +4,7 @@ import {
   Doc,
   type DocConfig,
   type DocNode,
-} from "docnode";
+} from "@docukit/docnode";
 import {
   $getRoot,
   $isElementNode,

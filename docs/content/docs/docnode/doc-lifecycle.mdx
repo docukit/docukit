@@ -106,7 +106,7 @@ Finally, DocNode provides two ways to end a transaction synchronously:
 Extensions accept an optional `register` function that is called when the document is initialized.
 
 ```ts
-import { type Extension } from "docnode";
+import { type Extension } from "@docukit/docnode";
 
 const MyExtension: Extension = {
   register: (doc) => {
@@ -120,7 +120,7 @@ You cannot update the document in the register callback. Its purpose is to regis
 Unlike the change event, the normalize event must be registered within the `register` function of an extension, otherwise it will result in a runtime error:
 
 ```ts
-import { type Extension } from "docnode";
+import { type Extension } from "@docukit/docnode";
 
 const MyExtension: Extension = {
   register: (doc) => {
