@@ -306,6 +306,16 @@ importers:
       lexical:
         specifier: ^0.38.2
         version: 0.38.2
+    devDependencies:
+      '@lexical/react':
+        specifier: ^0.38.2
+        version: 0.38.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(yjs@13.6.29)
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.1.8
+      react:
+        specifier: ^19.0.0
+        version: 19.2.3
 
   packages/docsync:
     dependencies:
@@ -3373,7 +3383,6 @@ packages:
 
   bun@1.3.6:
     resolution: {integrity: sha512-Tn98GlZVN2WM7+lg/uGn5DzUao37Yc0PUz7yzYHdeF5hd+SmHQGbCUIKE4Sspdgtxn49LunK3mDNBC2Qn6GJjw==}
-    cpu: [arm64, x64]
     os: [darwin, linux, win32]
     hasBin: true
 

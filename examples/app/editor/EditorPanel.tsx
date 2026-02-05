@@ -10,54 +10,12 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import ToolbarPlugin from "./ToolbarPlugin";
 import { $createParagraphNode, $createTextNode, $getRoot } from "lexical";
 import {
-  docToLexical,
-  syncPresence,
+  DocNodePlugin,
   type LocalSelection,
   type Presence,
-} from "@docnode/lexical";
+} from "@docnode/lexical/react";
 import type { Doc } from "docnode";
-import { useEffect, useRef } from "react";
-
-function DocSyncPlugin({
-  doc,
-  presence,
-  setPresence,
-}: {
-  doc: Doc;
-  presence: Presence | undefined;
-  setPresence: ((selection: LocalSelection | undefined) => void) | undefined;
-}) {
-  const [editor] = useLexicalComposerContext();
-  const presenceHandleRef = useRef<ReturnType<typeof syncPresence> | undefined>(
-    undefined,
-  );
-
-  // Set up doc sync and presence together (they share keyBinding)
-  useEffect(() => {
-    if (!doc) return;
-    const { cleanup, keyBinding } = docToLexical(editor, doc);
-
-    // Set up presence if setPresence is available
-    if (setPresence) {
-      presenceHandleRef.current = syncPresence(editor, keyBinding, setPresence);
-    }
-
-    return () => {
-      presenceHandleRef.current?.cleanup();
-      presenceHandleRef.current = undefined;
-      cleanup();
-    };
-  }, [editor, doc, setPresence]);
-
-  // Update remote cursors when presence changes
-  useEffect(() => {
-    if (presence && presenceHandleRef.current) {
-      presenceHandleRef.current.updateRemoteCursors(presence);
-    }
-  }, [presence]);
-
-  return null;
-}
+import { useEffect } from "react";
 
 type EditorPanelProps = {
   doc: Doc;
@@ -97,7 +55,7 @@ export function EditorPanel({
           },
         }}
       >
-        <DocSyncPlugin
+        <DocNodePlugin
           doc={doc}
           presence={presence}
           setPresence={setPresence}
