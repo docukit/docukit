@@ -3,14 +3,53 @@ title: Lexical
 description: Lexical Editor Binding for DocNode.
 ---
 
+import { TypeTable } from "fumadocs-ui/components/type-table";
+
 ## 1. Installation
 
 ```npm
-npm i @docukit/docnode-lexical
+npm i @docukit/lexical
 ```
 
 ## 2. Usage
 
-```ts
+```tsx tab="React"
+import { LexicalComposer } from "@lexical/react/LexicalComposer";
+import { DocNodePlugin } from "@docukit/lexical/react";
 
+function Editor({ doc, presence, setPresence }) {
+  return (
+    <LexicalComposer initialConfig={initialConfig}>
+      // [!code highlight]
+      <DocNodePlugin doc={doc} presence={presence} setPresence={setPresence} />
+      {/* ... The rest of your Lexical Plugins ... */}
+    </LexicalComposer>
+  );
+}
 ```
+
+```ts tab="Vanilla"
+// TODO: Add vanilla example
+```
+
+### Props
+
+<TypeTable
+  type={{
+    doc: {
+      description: "The DocNode document instance to sync with the editor.",
+      type: "Doc",
+      required: true,
+    },
+    presence: {
+      description: "Remote presence data for collaborative cursors.",
+      type: "Presence | undefined",
+      required: false,
+    },
+    setPresence: {
+      description: "Callback to send local cursor position to other users.",
+      type: "(selection: LocalSelection | undefined) => void | undefined",
+      required: false,
+    },
+  }}
+/>
