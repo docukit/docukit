@@ -14,7 +14,7 @@ const Footer = () => {
             <ul className="space-y-3">
               <li>
                 <Link
-                  href="/docs/docnode"
+                  href="/docnode"
                   className="text-slate-400 transition-colors hover:text-white"
                 >
                   DocNode
@@ -22,7 +22,7 @@ const Footer = () => {
               </li>
               <li>
                 <Link
-                  href="/docs/docsync"
+                  href="/docsync"
                   className="text-slate-400 transition-colors hover:text-white"
                 >
                   DocSync
@@ -39,7 +39,7 @@ const Footer = () => {
             <ul className="space-y-3">
               <li>
                 <Link
-                  href="/docs/docnode#comparison-table"
+                  href="/docnode#comparison-table"
                   className="text-slate-400 transition-colors hover:text-white"
                 >
                   DocNode vs Yjs
@@ -47,7 +47,7 @@ const Footer = () => {
               </li>
               <li>
                 <Link
-                  href="/docs/docsync"
+                  href="/docsync#comparison-table"
                   className="text-slate-400 transition-colors hover:text-white"
                 >
                   DocSync vs Hocuspocus
@@ -72,7 +72,7 @@ const Footer = () => {
               </li>
               <li>
                 <Link
-                  href="#"
+                  href="/about"
                   className="text-slate-400 transition-colors hover:text-white"
                 >
                   About
@@ -80,7 +80,7 @@ const Footer = () => {
               </li>
               <li>
                 <Link
-                  href="/docs/docnode/license"
+                  href="/license"
                   className="text-slate-400 transition-colors hover:text-white"
                 >
                   License

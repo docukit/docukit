@@ -3,7 +3,6 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import DocNodeLogo from "@/icons/DocNodeLogo";
 import DocSyncLogo from "@/icons/DocSyncLogo";
-import Footer from "@/components/Footer";
 // import DocEditorLogo from "@/icons/DocEditorLogo";
 // import DocGridLogo from "@/icons/DocGridLogo";
 
@@ -106,8 +105,6 @@ const Index = () => {
           ))}
         </div>
       </main>
-
-      <Footer />
     </div>
   );
 };
