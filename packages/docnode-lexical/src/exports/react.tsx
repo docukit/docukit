@@ -65,6 +65,10 @@ export function DocNodePlugin({
     undefined,
   );
 
+  // Extract primitive values to avoid re-creating callback when user object reference changes
+  const userName = user?.name;
+  const userColor = user?.color;
+
   // Wrap setPresence to include user info when provided
   const setPresence = useCallback(
     (selection: LocalSelection | undefined) => {
@@ -74,17 +78,17 @@ export function DocNodePlugin({
         return;
       }
       // Enrich with user info if provided
-      if (user) {
+      if (userName !== undefined && userColor !== undefined) {
         rawSetPresence({
           ...selection,
-          name: user.name,
-          color: user.color,
+          name: userName,
+          color: userColor,
         });
       } else {
         rawSetPresence(selection);
       }
     },
-    [rawSetPresence, user],
+    [rawSetPresence, userName, userColor],
   );
 
   // Set up doc sync and presence together (they share keyBinding)
