@@ -127,10 +127,7 @@ export function PricingFeature() {
         <div className="prose prose-sm prose-a:text-inherit space-y-2">
           <p className="text-sm">
             Read our{" "}
-            <a
-              href="/docnode/license"
-              className="text-blue-600 hover:underline"
-            >
+            <a href="/license" className="text-blue-600 hover:underline">
               License and Pricing page
             </a>
             .
@@ -150,10 +147,7 @@ export function LicenseFeature() {
         <div className="prose prose-sm prose-a:text-inherit space-y-2">
           <p className="text-sm">
             Read our{" "}
-            <a
-              href="/docnode/license"
-              className="text-blue-600 hover:underline"
-            >
+            <a href="/license" className="text-blue-600 hover:underline">
               License and Pricing page
             </a>
             .

@@ -5,7 +5,7 @@
   "pages": [
     "index",
     "getting-started",
-    "license",
+    "external:[License and Pricing](/license)",
     "--- Learn ---",
     "client",
     "server",
