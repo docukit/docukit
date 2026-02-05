@@ -57,9 +57,9 @@
 }
 
 /* Detect product path and apply blue theme automatically */
-html:has(a[data-active="true"][href*="/docsync"]),
-html:has(a[data-active="true"][href*="/doceditor"]) {
-  --primary: var(--color-blue-500) !important;
+html:has(a[data-active="true"][href*="/docnode"]),
+html:has(a[data-active="true"][href*="/docgrid"]) {
+  --primary: var(--color-emerald-600) !important;
 }
 
 :root {
@@ -70,7 +70,7 @@ html:has(a[data-active="true"][href*="/doceditor"]) {
   --card-foreground: oklch(0.13 0.028 261.692);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.13 0.028 261.692);
-  --primary: var(--color-emerald-600);
+  --primary: var(--color-blue-400);
   --primary-foreground: oklch(0.985 0.002 247.839);
   --secondary: oklch(0.967 0.003 264.542);
   --secondary-foreground: oklch(0.21 0.034 264.665);
@@ -104,7 +104,7 @@ html:has(a[data-active="true"][href*="/doceditor"]) {
   --card-foreground: oklch(0.985 0.002 247.839);
   --popover: oklch(0.21 0.034 264.665);
   --popover-foreground: oklch(0.985 0.002 247.839);
-  --primary: var(--color-emerald-600);
+  --primary: var(--color-blue-400);
   --primary-foreground: oklch(0.21 0.034 264.665);
   --secondary: oklch(0.278 0.033 256.848);
   --secondary-foreground: oklch(0.985 0.002 247.839);

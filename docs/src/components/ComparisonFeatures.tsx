@@ -103,14 +103,7 @@ export function SyncBackendFeature() {
             >
               Hocuspocus
             </a>{" "}
-            or{" "}
-            <a
-              href="https://jamsocket.com/y-sweet"
-              className="text-blue-600 hover:underline"
-            >
-              Y-Sweet
-            </a>{" "}
-            are to Yjs.
+            is to Yjs.
           </p>
         </div>
       }
