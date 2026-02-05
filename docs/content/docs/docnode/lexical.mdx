@@ -17,11 +17,16 @@ npm i @docukit/lexical
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { DocNodePlugin } from "@docukit/lexical/react";
 
-function Editor({ doc, presence, setPresence }) {
+function Editor({ doc, presence, setPresence, user }) {
   return (
     <LexicalComposer initialConfig={initialConfig}>
-      // [!code highlight]
-      <DocNodePlugin doc={doc} presence={presence} setPresence={setPresence} />
+      // [!code highlight:5]
+      <DocNodePlugin
+        doc={doc}
+        presence={presence}
+        setPresence={setPresence}
+        user={user}
+      />
       {/* ... The rest of your Lexical Plugins ... */}
     </LexicalComposer>
   );
@@ -48,7 +53,13 @@ function Editor({ doc, presence, setPresence }) {
     },
     setPresence: {
       description: "Callback to send local cursor position to other users.",
-      type: "(selection: LocalSelection | undefined) => void | undefined",
+      type: "(selection: PresenceSelection | undefined) => void | undefined",
+      required: false,
+    },
+    user: {
+      description:
+        "User information to attach to presence data. When provided, the plugin automatically enriches presence updates with the user's name and color.",
+      type: "{ name: string; color: string } | undefined",
       required: false,
     },
   }}

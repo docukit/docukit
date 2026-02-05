@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, Suspense, useCallback } from "react";
+import { useEffect, Suspense } from "react";
 import {
   useReferenceDoc,
   useReferencePresence,
@@ -15,7 +15,7 @@ import {
 import { EditorPanel } from "./EditorPanel";
 import { MultiClientLayout } from "../utils/MultiClientLayout";
 import { useDocId } from "../utils/useDocId";
-import type { LocalSelection, Presence } from "@docukit/docnode-lexical";
+import type { Presence } from "@docukit/docnode-lexical";
 
 // User colors for cursor display
 const USER_COLORS: Record<string, string> = {
@@ -44,27 +44,7 @@ function EditorContent({
   });
 
   // Get presence for this document
-  const [rawPresence, setRawPresence] = usePresenceHook({ docId });
-
-  // Wrap setPresence to include user name and color
-  const setPresence = useCallback(
-    (selection: LocalSelection | undefined) => {
-      if (!selection) {
-        setRawPresence(undefined);
-        return;
-      }
-      // Add name and color for remote rendering
-      setRawPresence({
-        ...selection,
-        name: userId,
-        color: USER_COLORS[userId] ?? "#888888",
-      });
-    },
-    [setRawPresence, userId],
-  );
-
-  // Transform raw presence to typed Presence for EditorPanel
-  const presence = rawPresence as Presence;
+  const [presence, setPresence] = usePresenceHook({ docId });
 
   useEffect(() => {
     // Only initialize from reference client
@@ -88,8 +68,9 @@ function EditorContent({
     <EditorPanel
       doc={doc}
       clientId={clientId}
-      presence={presence}
+      presence={presence as Presence}
       setPresence={setPresence}
+      user={{ name: userId, color: USER_COLORS[userId] ?? "#888888" }}
     />
   );
 }

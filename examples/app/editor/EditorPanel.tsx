@@ -13,6 +13,7 @@ import {
   DocNodePlugin,
   type LocalSelection,
   type Presence,
+  type PresenceUser,
 } from "@docukit/docnode-lexical/react";
 import type { Doc } from "@docukit/docnode";
 import { useEffect } from "react";
@@ -22,6 +23,7 @@ type EditorPanelProps = {
   clientId: string;
   presence?: Presence;
   setPresence?: (selection: LocalSelection | undefined) => void;
+  user?: PresenceUser;
 };
 
 export function EditorPanel({
@@ -29,6 +31,7 @@ export function EditorPanel({
   clientId,
   presence,
   setPresence,
+  user,
 }: EditorPanelProps) {
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-700/50 bg-zinc-900/50 shadow-2xl shadow-black/50 backdrop-blur-sm">
@@ -59,6 +62,7 @@ export function EditorPanel({
           doc={doc}
           presence={presence}
           setPresence={setPresence}
+          user={user}
         />
         <InitialContentPlugin clientId={clientId} />
         <ToolbarPlugin />
