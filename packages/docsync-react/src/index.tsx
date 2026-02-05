@@ -38,7 +38,7 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
       ? new DocSyncClient(config as ClientConfig<D, S, O>)
       : undefined;
 
-  type DocData = { doc: D; id: string };
+  type DocData = { doc: D; docId: string };
 
   function useDoc(args: {
     type: string;

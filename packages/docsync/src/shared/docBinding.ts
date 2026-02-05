@@ -8,7 +8,7 @@ export interface DocBinding<
   O extends {} = {},
 > {
   // method syntax is required to avoid type errors
-  create(type: string, id?: string): { doc: D; id: string };
+  create(type: string, id?: string): { doc: D; docId: string };
   deserialize(serializedDoc: S): D;
   serialize(doc: D): S;
   onChange(doc: D, cb: (ev: { operations: O }) => void): void;
@@ -38,7 +38,7 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
       const docConfig = docConfigsMap.get(type);
       if (!docConfig) throw new Error(`Unknown type: ${type}`);
       const doc = new Doc({ ...docConfig, id });
-      return { doc, id: doc.root.id };
+      return { doc, docId: doc.root.id };
     },
     serialize: (doc) => doc.toJSON({ unsafe: true }),
     deserialize: (serializedDoc) => {

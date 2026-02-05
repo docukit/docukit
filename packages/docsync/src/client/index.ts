@@ -254,7 +254,7 @@ export class DocSyncClient<
    *
    * The callback will be invoked with state updates:
    * 1. `{ status: "loading" }` - Initial state while fetching
-   * 2. `{ status: "success", data: { doc, id } }` - Document loaded successfully
+   * 2. `{ status: "success", data: { doc, docId } }` - Document loaded successfully
    * 3. `{ status: "error", error }` - Failed to load document
    *
    * To observe document content changes, use `doc.onChange()` directly on the returned doc.
@@ -295,20 +295,20 @@ export class DocSyncClient<
 
     // Case: { type, createIfMissing: true } → Create new doc with auto-generated ID (sync).
     if (!argId && createIfMissing) {
-      const { doc, id } = this._docBinding.create(type);
-      docId = id;
-      this._docsCache.set(id, {
+      const { doc, docId: createdDocId } = this._docBinding.create(type);
+      docId = createdDocId;
+      this._docsCache.set(createdDocId, {
         promisedDoc: Promise.resolve(doc),
         refCount: 1,
         presence: {},
         presenceHandlers: new Set(),
       });
-      this._setupChangeListener(doc, id);
-      emit({ status: "success", data: { doc, id } });
+      this._setupChangeListener(doc, createdDocId);
+      emit({ status: "success", data: { doc, docId: createdDocId } });
 
       // Emit doc load event
       this._emit(this._docLoadHandlers, {
-        docId: id,
+        docId: createdDocId,
         source: "created",
         refCount: 1,
       });
@@ -319,14 +319,14 @@ export class DocSyncClient<
         await local.provider.transaction("readwrite", (ctx) =>
           ctx.saveSerializedDoc({
             serializedDoc: this._docBinding.serialize(doc),
-            docId: id,
+            docId: createdDocId,
             clock: 0,
           }),
         );
       })();
       // We don't trigger a initial saveRemote here because argId is undefined,
       // so this is truly a new doc. Initial operations will be pushed to server
-      return () => void this._unloadDoc(id);
+      return () => void this._unloadDoc(createdDocId);
     }
 
     // Preparing for the async cases
@@ -382,7 +382,7 @@ export class DocSyncClient<
 
           emit({
             status: "success",
-            data: doc ? { doc, id: docId } : undefined,
+            data: doc ? { doc, docId } : undefined,
           });
           // Fetch from server to check if document exists there
           if (doc) {

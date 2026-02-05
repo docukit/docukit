@@ -229,7 +229,7 @@ describe("DocSyncClient", () => {
         expect(createdDoc).toBeDefined();
 
         // Request the same doc again
-        client.getDoc({ type: "test", id: createdDoc!.id }, callback2);
+        client.getDoc({ type: "test", id: createdDoc!.docId }, callback2);
         await tick();
         const cachedDoc = getSuccessData(callback2);
         expect(cachedDoc?.doc).toBe(createdDoc!.doc);
@@ -246,7 +246,7 @@ describe("DocSyncClient", () => {
         expect(createdDoc).toBeDefined();
 
         // Request the same doc - cache hit
-        client.getDoc({ type: "test", id: createdDoc!.id }, callback2);
+        client.getDoc({ type: "test", id: createdDoc!.docId }, callback2);
 
         // First call is loading (sync)
         expect(callback2.mock.calls[0]?.[0]?.status).toBe("loading");
@@ -277,7 +277,7 @@ describe("DocSyncClient", () => {
               // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
               doc: expect.anything(),
               // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-              id: expect.any(String),
+              docId: expect.any(String),
             }),
           }),
         );
@@ -291,8 +291,8 @@ describe("DocSyncClient", () => {
         client.getDoc({ type: "test", createIfMissing: true }, callback1);
         client.getDoc({ type: "test", createIfMissing: true }, callback2);
 
-        const id1 = callback1.mock.calls[0]?.[0]?.data?.id;
-        const id2 = callback2.mock.calls[0]?.[0]?.data?.id;
+        const id1 = callback1.mock.calls[0]?.[0]?.data?.docId;
+        const id2 = callback2.mock.calls[0]?.[0]?.data?.docId;
 
         expect(id1).toBeDefined();
         expect(id2).toBeDefined();
@@ -324,7 +324,7 @@ describe("DocSyncClient", () => {
         );
         await tick();
 
-        expect(getSuccessData(callback)?.id).toBe(customId);
+        expect(getSuccessData(callback)?.docId).toBe(customId);
       });
     });
 
@@ -367,7 +367,7 @@ describe("DocSyncClient", () => {
           callback,
         );
         const doc = getSuccessData(callback)!.doc;
-        const docId = getSuccessData(callback)!.id;
+        const docId = getSuccessData(callback)!.docId;
         const cache = client["_docsCache"];
 
         expect(cache.has(docId)).toBe(true);
@@ -393,7 +393,7 @@ describe("DocSyncClient", () => {
           callback1,
         );
         const doc = getSuccessData(callback1)!.doc;
-        const docId = getSuccessData(callback1)!.id;
+        const docId = getSuccessData(callback1)!.docId;
 
         // Second subscription to same doc
         const unsubscribe2 = client.getDoc(
@@ -432,7 +432,7 @@ describe("DocSyncClient", () => {
 
         // Create doc
         client.getDoc({ type: "test", createIfMissing: true }, callback1);
-        const docId = getSuccessData(callback1)!.id;
+        const docId = getSuccessData(callback1)!.docId;
 
         const cache = client["_docsCache"];
         expect(cache.get(docId)?.refCount).toBe(1);
@@ -459,7 +459,7 @@ describe("DocSyncClient", () => {
 
         // Second subscription
         client.getDoc(
-          { type: "test", id: getSuccessData(callback1)!.id },
+          { type: "test", id: getSuccessData(callback1)!.docId },
           callback2,
         );
         await tick();
@@ -693,7 +693,7 @@ describe("DocSyncClient", () => {
 
         client.getDoc({ type: "test", createIfMissing: true }, callback);
         const doc = getSuccessData(callback)!.doc;
-        const docId = getSuccessData(callback)!.id;
+        const docId = getSuccessData(callback)!.docId;
 
         // Trigger a document change
         doc.root.append(doc.createNode(ChildNode));
@@ -740,7 +740,7 @@ describe("DocSyncClient", () => {
         // Create a doc
         client.getDoc({ type: "test", createIfMissing: true }, callback);
         const doc = getSuccessData(callback)!.doc;
-        const docId = getSuccessData(callback)!.id;
+        const docId = getSuccessData(callback)!.docId;
 
         // Verify initial state - no children
         expect(doc.root.first).toBeFalsy();
@@ -798,7 +798,7 @@ describe("DocSyncClient", () => {
 
         // Create a doc - this will resolve _localPromise and initialize BroadcastChannel
         client.getDoc({ type: "test", createIfMissing: true }, callback);
-        const docId = getSuccessData(callback)!.id;
+        const docId = getSuccessData(callback)!.docId;
 
         // Wait for BroadcastChannel to be initialized
         await tick();

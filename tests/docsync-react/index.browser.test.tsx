@@ -60,8 +60,8 @@ test("createDocSyncClient", async () => {
     .poll(() => _2.current.status, { interval: 100, timeout: 2000 })
     .toBe("success");
   expect(_2.current.data?.doc).toBeDefined();
-  expect(_2.current.data?.id.endsWith("002")).toBe(true);
-  expect(_2.current.data?.id).toBe(_2.current.data?.doc?.root.id);
+  expect(_2.current.data?.docId.endsWith("002")).toBe(true);
+  expect(_2.current.data?.docId).toBe(_2.current.data?.doc?.root.id);
 
   // without id, with createIfMissing true
   // prettier-ignore

@@ -305,7 +305,7 @@ export type GetDocArgs =
   | { type: string; id: string; createIfMissing?: boolean }
   | { type: string; createIfMissing: true };
 
-export type DocData<D> = { doc: D; id: string };
+export type DocData<D> = { doc: D; docId: string };
 
 /**
  * Presence is a record of user IDs to their presence data.
