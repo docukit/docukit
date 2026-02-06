@@ -4,6 +4,12 @@ import { Suspense } from "react";
 import PostHogPageView from "./PostHogPageView";
 // import { Banner } from "fumadocs-ui/components/banner";
 
+export const metadata = {
+  icons: {
+    icon: "/favicon.svg",
+  },
+};
+
 export default function Layout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" suppressHydrationWarning>
