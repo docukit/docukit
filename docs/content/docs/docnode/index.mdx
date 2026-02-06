@@ -29,6 +29,8 @@ DocNode is a local-first framework. It is primarily composed of:
    tabs and clients in real time, both locally and in a central database. It supports authentication,
    conflict resolution, multiplexing, history version, and more.
 
+For the story behind DocNode and acknowledgements, see [About](/about).
+
 ## How does it compare to Yjs?
 
 <div id="comparison-table">
@@ -154,24 +156,3 @@ DocNode is a local-first framework. It is primarily composed of:
 - **Schema enforcement**: Do you want your document to always start with a heading? Or never have more than five bullets in a row? DocNode lets you define your own Normalizers to enforce any structure you can imagine.
   {/* - Bundle size and dependencies? */}
   {/* - Batteries included? (backend, editor bindings, auth, history version, multiplexing, encryption, etc.)? */}
-
-## Credits & Acknowledgements
-
-Many thanks to:
-
-- The [Lexical](https://lexical.dev) team, especially [Dominic Gannaway](https://github.com/trueadm), [Acy Watson](https://github.com/acywatson), [Gerard Rovira](https://github.com/zurfyx), [Maksim Horbachevsky](https://github.com/fantactuka), and [Bob Ippolito](https://github.com/etrepum), for the opportunity to collaborate closely and for the insightful discussions on Lexical's design. Special thanks to Bob, whose design of the new Lexical State API and the idea of Lexical Extensions strongly shaped DocNode’s approach to state management and gave it its composable nature.
-- The [Yjs](https://yjs.dev) team, [Kevin Jahns](https://github.com/dmonad) and [Bartosz Spytkowski](https://github.com/Horusiath), for their inspiring work and for sharing so many valuable resources through forums, blogs, and talks.
-- The [Loro](https://loro.dev) team, [Zixuan Chen](https://github.com/zxch3n) and [Leon Zhao](https://github.com/Leeeon233), for the friendly and insightful conversations about CRDTs and for pushing the boundaries of what’s possible with them.
-- The research community advancing conflict resolution strategies for collaborative editing. Special thanks to [Martin Kleppmann](https://github.com/ept) and [Joseph Gentle](https://github.com/josephg) for their impactful contributions.
-- State management libraries: [Jotai](https://jotai.org/docs/core/atom), [Zustand](https://zustand.docs.pmnd.rs), and [Pinia](https://pinia.vuejs.org/core-concepts/#Setup-Stores), which inspired the way to customize getters and setters in DocNode.
-- To my beautiful wife Normi, for supporting me unconditionally in this and all my projects.
-
-## About Me
-
-Hi, I'm [German Jablonski](https://x.com/GermanJablo), an Argentinian currently based in the UK and working on Payload development at Figma.
-
-I began working on DocNode in January 2024, but my fascination with CRDTs and OT started back in 2021, when I was building my note editor [Fluski](https://fluski.com).
-
-In Fluski, not only the text editor but also other data structures, like the document tree, are CRDTs. Along the way, I faced countless challenges. That experience pushed me to dive deep into the world of rich-text editors and collaborative data structures. I set up alerts on Google Scholar, Hacker News, and Reddit, and spent years reading every paper and implementation I could find.
-
-Had I known how much time and effort it would take to build DocNode, I probably wouldn’t have been foolish enough to start it. But looking back, I’m glad I did. The world might have missed out on something truly beautiful. What kept me going was the conviction that there had to be a simpler way to work with conflict resolution in documents. That way is now real, and I hope it helps you too.
