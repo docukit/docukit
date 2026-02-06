@@ -92,6 +92,14 @@ const Footer = ({ variant = "home" }: FooterProps) => {
               </li>
               <li>
                 <Link
+                  href="/contact"
+                  className="text-slate-400 transition-colors hover:text-white"
+                >
+                  Contact
+                </Link>
+              </li>
+              <li>
+                <Link
                   href="/about"
                   className="text-slate-400 transition-colors hover:text-white"
                 >
