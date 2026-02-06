@@ -54,7 +54,7 @@ function EditorSlot({
     );
   }
 
-  const { doc } = data!;
+  const { doc } = data;
   return (
     <SyncedEditorPanel
       doc={doc}

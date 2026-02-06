@@ -7,8 +7,6 @@ import {
 } from "@docukit/docsync-react/client";
 import type { DocConfig } from "@docukit/docnode";
 
-
-
 function createClient(
   userId: string,
   deviceId: string,
