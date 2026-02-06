@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import DocNodeLogo from "@/icons/DocNodeLogo";
 import DocSyncLogo from "@/icons/DocSyncLogo";
+import { SyncedEditorsDemo } from "@/components/SyncedEditorsDemo";
 // import DocEditorLogo from "@/icons/DocEditorLogo";
 // import DocGridLogo from "@/icons/DocGridLogo";
 
@@ -103,6 +104,10 @@ const Index = () => {
           {products.map((product, i) => (
             <ProductCard key={product.title} {...product} delay={i * 0.1} />
           ))}
+        </div>
+
+        <div className="mx-auto mt-20 max-w-6xl">
+          <SyncedEditorsDemo />
         </div>
       </main>
     </div>
