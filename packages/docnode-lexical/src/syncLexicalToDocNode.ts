@@ -11,8 +11,9 @@ import {
 
 import { LexicalDocNode } from "./index.js";
 
-// TODO: review this
 // Track which editor is currently making changes to prevent reapplying own changes
+// without this, a change in lexical would trigger a change in docnode,
+// which would trigger a change in lexical, etc.
 const isApplyingOwnChanges = new WeakMap<LexicalEditor, boolean>();
 
 export function getIsApplyingOwnChanges(editor: LexicalEditor): boolean {
@@ -35,7 +36,7 @@ export function syncLexicalToDocNode(
   // Sync Lexical → DocNode
   const unregisterEditorListener = editor.registerUpdateListener(
     ({ editorState, dirtyElements, dirtyLeaves, tags }) => {
-      // Skip if update came from DocNode to avoid infinite loop
+      // Skip if update is remote (from another editor) to avoid infinite loop
       if (tags.has(COLLABORATION_TAG)) {
         return;
       }
