@@ -11,6 +11,7 @@ import type { Metadata } from "next";
 import { createRelativeLink } from "fumadocs-ui/mdx";
 import { GitHubIcon } from "@/icons/GithubIcon";
 import { ArrowLink } from "@/icons/ArrowLink";
+import Footer from "@/components/Footer";
 
 export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
   const params = await props.params;
@@ -55,6 +56,9 @@ export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
       }}
       toc={toc}
       full={page.data.full}
+      footer={{
+        children: <Footer variant="docs" />,
+      }}
     >
       <DocsTitle>{page.data.title}</DocsTitle>
       <DocsDescription>{page.data.description}</DocsDescription>

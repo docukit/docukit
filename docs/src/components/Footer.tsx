@@ -1,11 +1,31 @@
 import React from "react";
 import Link from "next/link";
 
-const Footer = () => {
+type FooterProps = {
+  variant?: "home" | "docs";
+};
+
+const Footer = ({ variant = "home" }: FooterProps) => {
+  const isDocs = variant === "docs";
+
   return (
-    <footer className="relative mt-24 border-t border-slate-800 bg-slate-950/50 backdrop-blur-sm">
-      <div className="container mx-auto px-6 py-16 md:py-24">
-        <div className="mx-auto flex max-w-4xl flex-col justify-center gap-12 md:flex-row md:gap-16">
+    <footer
+      className={`relative ${
+        isDocs
+          ? "mt-12 border-t border-slate-800/50 pt-8"
+          : "mt-24 border-t border-slate-800 bg-slate-950/50 backdrop-blur-sm"
+      }`}
+    >
+      <div
+        className={`${
+          isDocs ? "w-full" : "container mx-auto px-6 py-16 md:py-24"
+        }`}
+      >
+        <div
+          className={`mx-auto flex max-w-4xl flex-col gap-12 md:flex-row md:gap-16 ${
+            isDocs ? "" : "justify-center"
+          }`}
+        >
           {/* Libraries */}
           <div>
             <h3 className="mb-4 text-sm font-bold tracking-wider text-white uppercase">
