@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function AboutPage() {
   return (
-    <div className="relative min-h-screen text-slate-200 selection:bg-emerald-500/30">
+    <div className="selection:bg-primary/30 relative min-h-screen text-slate-200">
       <main className="container mx-auto max-w-4xl px-4 py-16">
         <div className="mb-12">
           <h1 className="mb-4 text-4xl font-bold">About</h1>
@@ -25,7 +25,7 @@ export default function AboutPage() {
               href="https://x.com/GermanJablo"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+              className="text-primary underline underline-offset-2 hover:opacity-80"
             >
               German Jablonski
             </a>
@@ -40,7 +40,7 @@ export default function AboutPage() {
               href="https://fluski.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+              className="text-primary underline underline-offset-2 hover:opacity-80"
             >
               Fluski
             </a>
@@ -74,7 +74,7 @@ export default function AboutPage() {
                 href="https://lexical.dev"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Lexical
               </a>{" "}
@@ -83,7 +83,7 @@ export default function AboutPage() {
                 href="https://github.com/trueadm"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Dominic Gannaway
               </a>
@@ -92,7 +92,7 @@ export default function AboutPage() {
                 href="https://github.com/acywatson"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Acy Watson
               </a>
@@ -101,7 +101,7 @@ export default function AboutPage() {
                 href="https://github.com/zurfyx"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Gerard Rovira
               </a>
@@ -110,7 +110,7 @@ export default function AboutPage() {
                 href="https://github.com/fantactuka"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Maksim Horbachevsky
               </a>
@@ -119,7 +119,7 @@ export default function AboutPage() {
                 href="https://github.com/etrepum"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Bob Ippolito
               </a>
@@ -135,7 +135,7 @@ export default function AboutPage() {
                 href="https://yjs.dev"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Yjs
               </a>{" "}
@@ -144,7 +144,7 @@ export default function AboutPage() {
                 href="https://github.com/dmonad"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Kevin Jahns
               </a>{" "}
@@ -153,7 +153,7 @@ export default function AboutPage() {
                 href="https://github.com/Horusiath"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Bartosz Spytkowski
               </a>
@@ -166,7 +166,7 @@ export default function AboutPage() {
                 href="https://loro.dev"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Loro
               </a>{" "}
@@ -175,7 +175,7 @@ export default function AboutPage() {
                 href="https://github.com/zxch3n"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Zixuan Chen
               </a>{" "}
@@ -184,7 +184,7 @@ export default function AboutPage() {
                 href="https://github.com/Leeeon233"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Leon Zhao
               </a>
@@ -198,7 +198,7 @@ export default function AboutPage() {
                 href="https://github.com/ept"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Martin Kleppmann
               </a>{" "}
@@ -207,7 +207,7 @@ export default function AboutPage() {
                 href="https://github.com/josephg"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Joseph Gentle
               </a>{" "}
@@ -219,7 +219,7 @@ export default function AboutPage() {
                 href="https://jotai.org/docs/core/atom"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Jotai
               </a>
@@ -228,7 +228,7 @@ export default function AboutPage() {
                 href="https://zustand.docs.pmnd.rs"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Zustand
               </a>
@@ -237,7 +237,7 @@ export default function AboutPage() {
                 href="https://pinia.vuejs.org/core-concepts/#Setup-Stores"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-emerald-400 underline underline-offset-2 hover:text-emerald-300"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
               >
                 Pinia
               </a>
