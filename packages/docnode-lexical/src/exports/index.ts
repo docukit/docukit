@@ -3,11 +3,11 @@ export {
   LexicalDocNode,
   lexicalDocNodeConfig,
   syncPresence,
+  createLexicalDoc,
   updatePresence,
 } from "../index.js";
 export type {
   DocToLexicalPresenceOptions,
-  DocToLexicalResult,
   KeyBinding,
   Presence,
   PresenceHandle,

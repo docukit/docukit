@@ -11,7 +11,11 @@ import {
 } from "lexical";
 import { describe, expect, test } from "vitest";
 
-import { docToLexical, LexicalDocNode } from "@docukit/docnode-lexical";
+import {
+  createLexicalDoc,
+  docToLexical,
+  LexicalDocNode,
+} from "@docukit/docnode-lexical";
 import { assertJson } from "../docnode/utils.js";
 
 describe("docnode to lexical", () => {
@@ -22,10 +26,10 @@ describe("docnode to lexical", () => {
         console.error(error);
       },
     });
-    const { editor: boundEditor, doc } = docToLexical(editor);
-    const editorToUse = boundEditor;
+    const doc = createLexicalDoc();
+    docToLexical(editor, doc);
     expect(doc).toBeInstanceOf(Doc);
-    const jsonEditorState = editorToUse.getEditorState().toJSON();
+    const jsonEditorState = editor.getEditorState().toJSON();
     expect(jsonEditorState).toStrictEqual({
       root: {
         children: [],
@@ -102,9 +106,10 @@ describe("docnode to lexical", () => {
         console.error(error);
       },
     });
-    const { editor: boundEditor } = docToLexical(editor, doc);
-    expect(doc).toBeInstanceOf(Doc);
-    const jsonEditorState = boundEditor.getEditorState().toJSON();
+    const doc2 = createLexicalDoc();
+    docToLexical(editor, doc2);
+    expect(doc2).toBeInstanceOf(Doc);
+    const jsonEditorState = editor.getEditorState().toJSON();
     expect(jsonEditorState).toStrictEqual({
       root: {
         children: [
@@ -135,7 +140,8 @@ describe("lexical to docnode sync", () => {
         console.error(error);
       },
     });
-    const { doc } = docToLexical(editor);
+    const doc = createLexicalDoc();
+    docToLexical(editor, doc);
 
     // Initially empty
     expect(doc.root.first).toBeUndefined();
@@ -165,7 +171,8 @@ describe("lexical to docnode sync", () => {
         console.error(error);
       },
     });
-    const { doc } = docToLexical(editor);
+    const doc = createLexicalDoc();
+    docToLexical(editor, doc);
 
     // Add paragraph with text
     editor.update(
@@ -202,7 +209,8 @@ describe("lexical to docnode sync", () => {
         console.error(error);
       },
     });
-    const { doc } = docToLexical(editor);
+    const doc = createLexicalDoc();
+    docToLexical(editor, doc);
 
     // Add two paragraphs
     editor.update(
@@ -243,7 +251,8 @@ describe("lexical to docnode sync", () => {
         console.error(error);
       },
     });
-    const { doc } = docToLexical(editor);
+    const doc = createLexicalDoc();
+    docToLexical(editor, doc);
 
     // Add initial text
     editor.update(
@@ -286,7 +295,8 @@ describe("lexical to docnode sync", () => {
         console.error(error);
       },
     });
-    const { doc } = docToLexical(editor);
+    const doc = createLexicalDoc();
+    docToLexical(editor, doc);
 
     // Add two paragraphs
     editor.update(
@@ -328,7 +338,8 @@ describe("lexical to docnode sync", () => {
         console.error(error);
       },
     });
-    const { doc } = docToLexical(editor);
+    const doc = createLexicalDoc();
+    docToLexical(editor, doc);
 
     // Step 1: Add initial content
     editor.update(

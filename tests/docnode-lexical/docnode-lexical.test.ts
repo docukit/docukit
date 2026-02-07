@@ -1,6 +1,10 @@
 import { test, expect, describe } from "vitest";
 import { Doc } from "@docukit/docnode";
-import { docToLexical, LexicalDocNode } from "@docukit/docnode-lexical";
+import {
+  createLexicalDoc,
+  docToLexical,
+  LexicalDocNode,
+} from "@docukit/docnode-lexical";
 import { assertJson } from "../docnode/utils.js";
 import {
   createEditor,
@@ -16,7 +20,8 @@ describe("docnode to lexical", () => {
         console.error(error);
       },
     });
-    const { doc } = docToLexical(editor);
+    const doc = createLexicalDoc();
+    docToLexical(editor, doc);
     expect(doc).toBeInstanceOf(Doc);
     const jsonEditorState = editor.getEditorState().toJSON();
     expect(jsonEditorState).toStrictEqual({

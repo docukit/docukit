@@ -7,7 +7,11 @@ import {
 } from "lexical";
 import { describe, expect, test } from "vitest";
 
-import { docToLexical, LexicalDocNode } from "@docukit/docnode-lexical";
+import {
+  createLexicalDoc,
+  docToLexical,
+  LexicalDocNode,
+} from "@docukit/docnode-lexical";
 
 describe("docnode to lexical sync", () => {
   test("add paragraph to empty doc", () => {
@@ -17,7 +21,8 @@ describe("docnode to lexical sync", () => {
         console.error(error);
       },
     });
-    const { doc } = docToLexical(editor);
+    const doc = createLexicalDoc();
+    docToLexical(editor, doc);
 
     // Initially empty
     editor.getEditorState().read(() => {
@@ -58,7 +63,8 @@ describe("docnode to lexical sync", () => {
         console.error(error);
       },
     });
-    const { doc } = docToLexical(editor);
+    const doc = createLexicalDoc();
+    docToLexical(editor, doc);
 
     // Create paragraph with text in DocNode
     const paragraphJson: SerializedParagraphNode = {
@@ -112,7 +118,8 @@ describe("docnode to lexical sync", () => {
         console.error(error);
       },
     });
-    const { doc } = docToLexical(editor);
+    const doc = createLexicalDoc();
+    docToLexical(editor, doc);
 
     // Create two paragraphs in DocNode
     const paragraphJson: SerializedParagraphNode = {
@@ -179,7 +186,8 @@ describe("docnode to lexical sync", () => {
         console.error(error);
       },
     });
-    const { doc } = docToLexical(editor);
+    const doc = createLexicalDoc();
+    docToLexical(editor, doc);
 
     // Create initial paragraph with text
     const paragraphJson: SerializedParagraphNode = {
@@ -245,7 +253,8 @@ describe("docnode to lexical sync", () => {
         console.error(error);
       },
     });
-    const { doc } = docToLexical(editor);
+    const doc = createLexicalDoc();
+    docToLexical(editor, doc);
 
     // Create two paragraphs
     const paragraphJson: SerializedParagraphNode = {
@@ -322,7 +331,8 @@ describe("docnode to lexical sync", () => {
         console.error(error);
       },
     });
-    const { doc } = docToLexical(editor);
+    const doc = createLexicalDoc();
+    docToLexical(editor, doc);
 
     const paragraphJson: SerializedParagraphNode = {
       children: [],

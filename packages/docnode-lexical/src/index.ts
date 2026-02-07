@@ -55,16 +55,6 @@ export type DocToLexicalPresenceOptions = {
   user?: { name: string; color: string } | undefined;
 };
 
-/** Result of docToLexical. renderPresence is only present when presence options were passed. */
-export type DocToLexicalResult = {
-  editor: LexicalEditor;
-  doc: Doc;
-  keyBinding: KeyBinding;
-  cleanup: () => void;
-  /** Call when presence data changes to update remote cursors. Only set when presence options were passed. */
-  renderPresence?: (presence: Presence) => void;
-};
-
 type EditorBinding = {
   presenceHandle: ReturnType<typeof syncPresence> | undefined;
   lastPresence: Presence | undefined;
@@ -97,17 +87,10 @@ export function updatePresence(
  */
 export function docToLexical(
   editor: LexicalEditor,
-  doc?: Doc,
+  doc: Doc,
   presenceOptions?: DocToLexicalPresenceOptions,
-): DocToLexicalResult {
-  const resolvedDoc =
-    doc ??
-    Doc.fromJSON({ extensions: [{ nodes: [LexicalDocNode] }] }, [
-      "01kc52hq510g6y44jhq0wqrjb3",
-      "root",
-      {},
-    ]);
-  const core = docToLexicalCore(editor, resolvedDoc);
+) {
+  const core = docToLexicalCore(editor, doc);
 
   const { setPresence: rawSetPresence, user } = presenceOptions ?? {};
   const presenceHandle = rawSetPresence
@@ -131,15 +114,7 @@ export function docToLexical(
     core.cleanup();
   };
 
-  return {
-    editor: core.editor,
-    doc: core.doc,
-    keyBinding: core.keyBinding,
-    cleanup,
-    ...(presenceHandle != null && {
-      renderPresence: (presence: Presence) => updatePresence(editor, presence),
-    }),
-  };
+  return cleanup;
 }
 
 function docToLexicalCore(
@@ -228,4 +203,12 @@ export const LexicalDocNode = defineNode({
 export const lexicalDocNodeConfig: DocConfig = {
   type: "docnode-lexical",
   extensions: [{ nodes: [LexicalDocNode] }],
+};
+
+export const createLexicalDoc = (): Doc => {
+  return Doc.fromJSON({ extensions: [{ nodes: [LexicalDocNode] }] }, [
+    "01kc52hq510g6y44jhq0wqrjb3",
+    "root",
+    {},
+  ]);
 };
