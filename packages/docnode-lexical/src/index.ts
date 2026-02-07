@@ -65,14 +65,12 @@ export type DocToLexicalResult = {
   renderPresence?: (presence: Presence) => void;
 };
 
-const bindingByEditor = new WeakMap<
-  LexicalEditor,
-  {
-    presenceHandle: ReturnType<typeof syncPresence> | undefined;
-    lastPresence: Presence | undefined;
-    coreCleanup: () => void;
-  }
->();
+type EditorBinding = {
+  presenceHandle: ReturnType<typeof syncPresence> | undefined;
+  lastPresence: Presence | undefined;
+};
+
+const bindingByEditor = new WeakMap<LexicalEditor, EditorBinding>();
 
 /**
  * Update remote cursors for an editor. Call this when presence data changes
@@ -112,27 +110,19 @@ export function docToLexical(
   const core = docToLexicalCore(editor, resolvedDoc);
 
   const { setPresence: rawSetPresence, user } = presenceOptions ?? {};
-  let presenceHandle: ReturnType<typeof syncPresence> | undefined;
-  if (rawSetPresence) {
-    const setPresence = (selection: PresenceSelection | undefined) => {
-      if (!selection) {
-        rawSetPresence(undefined);
-        return;
-      }
-      if (user?.name !== undefined && user?.color !== undefined) {
-        rawSetPresence({ ...selection, name: user.name, color: user.color });
-      } else {
-        rawSetPresence(selection);
-      }
-    };
-    presenceHandle = syncPresence(editor, core.keyBinding, setPresence);
-  }
+  const presenceHandle = rawSetPresence
+    ? syncPresence(editor, core.keyBinding, (selection) =>
+        rawSetPresence(
+          selection == null
+            ? undefined
+            : user?.name != null && user?.color != null
+              ? { ...selection, name: user.name, color: user.color }
+              : selection,
+        ),
+      )
+    : undefined;
 
-  bindingByEditor.set(editor, {
-    presenceHandle,
-    lastPresence: undefined,
-    coreCleanup: core.cleanup,
-  });
+  bindingByEditor.set(editor, { presenceHandle, lastPresence: undefined });
 
   const cleanup = () => {
     const binding = bindingByEditor.get(editor);
@@ -141,17 +131,14 @@ export function docToLexical(
     core.cleanup();
   };
 
-  const renderPresence =
-    presenceHandle !== undefined
-      ? (presence: Presence) => updatePresence(editor, presence)
-      : undefined;
-
   return {
     editor: core.editor,
     doc: core.doc,
     keyBinding: core.keyBinding,
     cleanup,
-    ...(renderPresence !== undefined && { renderPresence }),
+    ...(presenceHandle != null && {
+      renderPresence: (presence: Presence) => updatePresence(editor, presence),
+    }),
   };
 }
 
@@ -164,8 +151,11 @@ function docToLexicalCore(
   keyBinding: KeyBinding;
   cleanup: () => void;
 } {
-  const lexicalKeyToDocNodeId = new Map<string, string>();
-  const docNodeIdToLexicalKey = new Map<string, string>();
+  const keyBinding: KeyBinding = {
+    lexicalKeyToDocNodeId: new Map<string, string>(),
+    docNodeIdToLexicalKey: new Map<string, string>(),
+  };
+  const { lexicalKeyToDocNodeId, docNodeIdToLexicalKey } = keyBinding;
 
   editor.update(
     () => {
@@ -218,13 +208,8 @@ function docToLexicalCore(
   const cleanup = () => {
     unregisterLexicalListener();
     unregisterDocListener();
-    lexicalKeyToDocNodeId.clear();
-    docNodeIdToLexicalKey.clear();
-  };
-
-  const keyBinding: KeyBinding = {
-    lexicalKeyToDocNodeId,
-    docNodeIdToLexicalKey,
+    keyBinding.lexicalKeyToDocNodeId.clear();
+    keyBinding.docNodeIdToLexicalKey.clear();
   };
 
   return { editor, doc, keyBinding, cleanup };
