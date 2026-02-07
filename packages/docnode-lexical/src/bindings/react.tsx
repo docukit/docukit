@@ -3,14 +3,9 @@
 import { useEffect } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import type { Doc } from "@docukit/docnode";
-import {
-  syncLexicalWithDoc,
-  updatePresence,
-  type Presence,
-  type PresenceSelection,
-} from "../index.js";
-
-export type { LexicalPresence, Presence, PresenceSelection } from "../index.js";
+import { syncLexicalWithDoc, updatePresence } from "../index.js";
+import type { PresenceSelection } from "../types.js";
+import type { Presence } from "../syncPresence.js";
 
 export type PresenceUser = {
   name: string;

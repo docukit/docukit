@@ -1,38 +1,19 @@
 import { type Doc } from "@docukit/docnode";
 import { type LexicalEditor } from "lexical";
-
 import { initializeEditorFromDoc } from "./initializeEditorFromDoc.js";
-import {
-  LexicalDocNode,
-  createLexicalDoc,
-  lexicalDocNodeConfig,
-} from "./lexicalDocNode.js";
 import { syncDocNodeToLexical } from "./syncDocNodeToLexical.js";
 import { syncLexicalToDocNode } from "./syncLexicalToDocNode.js";
-import { syncPresence } from "./syncPresence.js";
+import { syncPresence, type Presence } from "./syncPresence.js";
 
-import type { Presence } from "./syncPresence.js";
 import type { syncLexicalWithDocPresenceOptions } from "./types.js";
 
-export { syncPresence } from "./syncPresence.js";
-export type {
-  Presence,
-  PresenceHandle,
-  LexicalPresence,
-} from "./syncPresence.js";
-
-export type {
-  KeyBinding,
-  PresenceSelection,
-  syncLexicalWithDocPresenceOptions,
-} from "./types.js";
-
-type EditorBinding = {
-  presenceHandle: ReturnType<typeof syncPresence> | undefined;
-  lastPresence: Presence | undefined;
-};
-
-const bindingByEditor = new WeakMap<LexicalEditor, EditorBinding>();
+const bindingByEditor = new WeakMap<
+  LexicalEditor,
+  {
+    presenceHandle: ReturnType<typeof syncPresence> | undefined;
+    lastPresence: Presence | undefined;
+  }
+>();
 
 /**
  * Update remote cursors for an editor. Call this when presence data changes
@@ -102,5 +83,3 @@ export function syncLexicalWithDoc(
     keyBinding.docNodeIdToLexicalKey.clear();
   };
 }
-
-export { LexicalDocNode, lexicalDocNodeConfig, createLexicalDoc };

@@ -1,16 +1,17 @@
+export { syncLexicalWithDoc, updatePresence } from "../index.js";
 export {
-  syncLexicalWithDoc,
   LexicalDocNode,
   lexicalDocNodeConfig,
-  syncPresence,
   createLexicalDoc,
-  updatePresence,
-} from "../index.js";
+} from "../lexicalDocNode.js";
+export { syncPresence } from "../syncPresence.js";
 export type {
   syncLexicalWithDocPresenceOptions,
   KeyBinding,
+  PresenceSelection,
+} from "../types.js";
+export type {
   Presence,
   PresenceHandle,
   LexicalPresence,
-  PresenceSelection,
-} from "../index.js";
+} from "../syncPresence.js";
