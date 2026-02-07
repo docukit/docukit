@@ -62,7 +62,6 @@ export function DocNodePlugin({
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
-    if (!doc) return;
     return syncLexicalWithDoc(editor, doc, { setPresence, user });
     // Intentionally only [editor, doc]: avoid re-binding on re-renders so cursor does not jump.
   }, [editor, doc]);
