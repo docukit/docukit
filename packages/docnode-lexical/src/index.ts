@@ -35,10 +35,7 @@ export function updatePresence(
 }
 
 /**
- * @param editor - Lexical editor instance.
- * @param doc - DocNode document. If omitted, a new doc is created.
- * @param presenceOptions - Optional. When setPresence is provided, selection is synced to presence and renderPresence is returned for remote cursors.
- * @returns Cleanup function to unbind the editor from the doc and presence.
+ * Sync Lexical and DocNode. Presence is optional. Returns a cleanup function to unbind.
  */
 export function syncLexicalWithDoc(
   editor: LexicalEditor,
