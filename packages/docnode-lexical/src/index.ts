@@ -78,54 +78,16 @@ export function updatePresence(
 }
 
 /**
- * Bind a Lexical editor to a DocNode doc. The consumer must create the editor first (e.g. with createEditor from Lexical).
- *
  * @param editor - Lexical editor instance.
  * @param doc - DocNode document. If omitted, a new doc is created.
  * @param presenceOptions - Optional. When setPresence is provided, selection is synced to presence and renderPresence is returned for remote cursors.
- * @returns Result with editor, doc, keyBinding, cleanup, and optional renderPresence.
+ * @returns Cleanup function to unbind the editor from the doc and presence.
  */
 export function syncLexicalWithDoc(
   editor: LexicalEditor,
   doc: Doc,
   presenceOptions?: syncLexicalWithDocPresenceOptions,
-) {
-  const core = syncLexicalWithDocCore(editor, doc);
-
-  const { setPresence: rawSetPresence, user } = presenceOptions ?? {};
-  const presenceHandle = rawSetPresence
-    ? syncPresence(editor, core.keyBinding, (selection) =>
-        rawSetPresence(
-          selection == null
-            ? undefined
-            : user?.name != null && user?.color != null
-              ? { ...selection, name: user.name, color: user.color }
-              : selection,
-        ),
-      )
-    : undefined;
-
-  bindingByEditor.set(editor, { presenceHandle, lastPresence: undefined });
-
-  const cleanup = () => {
-    const binding = bindingByEditor.get(editor);
-    bindingByEditor.delete(editor);
-    binding?.presenceHandle?.cleanup();
-    core.cleanup();
-  };
-
-  return cleanup;
-}
-
-function syncLexicalWithDocCore(
-  editor: LexicalEditor,
-  doc: Doc,
-): {
-  editor: LexicalEditor;
-  doc: Doc;
-  keyBinding: KeyBinding;
-  cleanup: () => void;
-} {
+): () => void {
   const keyBinding: KeyBinding = {
     lexicalKeyToDocNodeId: new Map<string, string>(),
     docNodeIdToLexicalKey: new Map<string, string>(),
@@ -180,14 +142,30 @@ function syncLexicalWithDocCore(
     docNodeIdToLexicalKey,
   );
 
-  const cleanup = () => {
+  const { setPresence: rawSetPresence, user } = presenceOptions ?? {};
+  const presenceHandle = rawSetPresence
+    ? syncPresence(editor, keyBinding, (selection) =>
+        rawSetPresence(
+          selection == null
+            ? undefined
+            : user?.name != null && user?.color != null
+              ? { ...selection, name: user.name, color: user.color }
+              : selection,
+        ),
+      )
+    : undefined;
+
+  bindingByEditor.set(editor, { presenceHandle, lastPresence: undefined });
+
+  return () => {
+    const binding = bindingByEditor.get(editor);
+    bindingByEditor.delete(editor);
+    binding?.presenceHandle?.cleanup();
     unregisterLexicalListener();
     unregisterDocListener();
     keyBinding.lexicalKeyToDocNodeId.clear();
     keyBinding.docNodeIdToLexicalKey.clear();
   };
-
-  return { editor, doc, keyBinding, cleanup };
 }
 
 export const LexicalDocNode = defineNode({

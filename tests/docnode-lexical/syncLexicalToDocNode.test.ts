@@ -106,9 +106,8 @@ describe("docnode to lexical", () => {
         console.error(error);
       },
     });
-    const doc2 = createLexicalDoc();
-    syncLexicalWithDoc(editor, doc2);
-    expect(doc2).toBeInstanceOf(Doc);
+    syncLexicalWithDoc(editor, doc);
+    expect(doc).toBeInstanceOf(Doc);
     const jsonEditorState = editor.getEditorState().toJSON();
     expect(jsonEditorState).toStrictEqual({
       root: {
