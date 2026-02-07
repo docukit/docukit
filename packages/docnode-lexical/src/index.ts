@@ -41,10 +41,13 @@ export function syncLexicalWithDoc(
   doc: Doc,
   presenceOptions?: syncLexicalWithDocPresenceOptions,
 ): () => void {
+  // 1. Set Lexical content to match DocNode and build key binding
   const keyBinding = initializeEditorFromDoc(editor, doc);
 
+  // 2. Sync Lexical → DocNode. Every time Lexical content changes, DocNode is updated.
   const offLexicalListener = syncLexicalToDocNode(doc, editor, keyBinding);
 
+  // 3. Sync DocNode → Lexical. Every time DocNode changes, Lexical is updated.
   const offDocListener = syncDocNodeToLexical(doc, editor, keyBinding);
 
   const { setPresence: rawSetPresence, user } = presenceOptions ?? {};
