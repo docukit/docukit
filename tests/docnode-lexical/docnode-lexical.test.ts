@@ -2,7 +2,7 @@ import { test, expect, describe } from "vitest";
 import { Doc } from "@docukit/docnode";
 import {
   createLexicalDoc,
-  docToLexical,
+  syncLexicalWithDoc,
   LexicalDocNode,
 } from "@docukit/docnode-lexical";
 import { assertJson } from "../docnode/utils.js";
@@ -21,7 +21,7 @@ describe("docnode to lexical", () => {
       },
     });
     const doc = createLexicalDoc();
-    docToLexical(editor, doc);
+    syncLexicalWithDoc(editor, doc);
     expect(doc).toBeInstanceOf(Doc);
     const jsonEditorState = editor.getEditorState().toJSON();
     expect(jsonEditorState).toStrictEqual({
@@ -100,7 +100,7 @@ describe("docnode to lexical", () => {
         console.error(error);
       },
     });
-    docToLexical(editor, doc);
+    syncLexicalWithDoc(editor, doc);
     expect(doc).toBeInstanceOf(Doc);
     const jsonEditorState = editor.getEditorState().toJSON();
     expect(jsonEditorState).toStrictEqual({

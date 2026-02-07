@@ -52,7 +52,7 @@ function EditorContent({
     if (!data?.doc.root.first) return;
 
     // Initialize doc with default content
-    // The docToLexical binding will handle Lexical initialization
+    // The syncLexicalWithDoc binding will handle Lexical initialization
   }, [data, clientId]);
 
   if (status === "error")

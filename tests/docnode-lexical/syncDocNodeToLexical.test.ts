@@ -9,7 +9,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   createLexicalDoc,
-  docToLexical,
+  syncLexicalWithDoc,
   LexicalDocNode,
 } from "@docukit/docnode-lexical";
 
@@ -22,7 +22,7 @@ describe("docnode to lexical sync", () => {
       },
     });
     const doc = createLexicalDoc();
-    docToLexical(editor, doc);
+    syncLexicalWithDoc(editor, doc);
 
     // Initially empty
     editor.getEditorState().read(() => {
@@ -64,7 +64,7 @@ describe("docnode to lexical sync", () => {
       },
     });
     const doc = createLexicalDoc();
-    docToLexical(editor, doc);
+    syncLexicalWithDoc(editor, doc);
 
     // Create paragraph with text in DocNode
     const paragraphJson: SerializedParagraphNode = {
@@ -119,7 +119,7 @@ describe("docnode to lexical sync", () => {
       },
     });
     const doc = createLexicalDoc();
-    docToLexical(editor, doc);
+    syncLexicalWithDoc(editor, doc);
 
     // Create two paragraphs in DocNode
     const paragraphJson: SerializedParagraphNode = {
@@ -187,7 +187,7 @@ describe("docnode to lexical sync", () => {
       },
     });
     const doc = createLexicalDoc();
-    docToLexical(editor, doc);
+    syncLexicalWithDoc(editor, doc);
 
     // Create initial paragraph with text
     const paragraphJson: SerializedParagraphNode = {
@@ -254,7 +254,7 @@ describe("docnode to lexical sync", () => {
       },
     });
     const doc = createLexicalDoc();
-    docToLexical(editor, doc);
+    syncLexicalWithDoc(editor, doc);
 
     // Create two paragraphs
     const paragraphJson: SerializedParagraphNode = {
@@ -332,7 +332,7 @@ describe("docnode to lexical sync", () => {
       },
     });
     const doc = createLexicalDoc();
-    docToLexical(editor, doc);
+    syncLexicalWithDoc(editor, doc);
 
     const paragraphJson: SerializedParagraphNode = {
       children: [],

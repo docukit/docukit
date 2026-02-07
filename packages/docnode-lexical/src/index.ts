@@ -43,10 +43,10 @@ export type PresenceSelection = {
 };
 
 /**
- * Optional presence options for docToLexical.
+ * Optional presence options for syncLexicalWithDoc.
  * Pass as third argument when you want to sync selection to presence and/or render remote cursors.
  */
-export type DocToLexicalPresenceOptions = {
+export type syncLexicalWithDocPresenceOptions = {
   /** When provided, local selection is synced to presence and remote cursors can be rendered. */
   setPresence?:
     | ((selection: PresenceSelection | undefined) => void)
@@ -85,12 +85,12 @@ export function updatePresence(
  * @param presenceOptions - Optional. When setPresence is provided, selection is synced to presence and renderPresence is returned for remote cursors.
  * @returns Result with editor, doc, keyBinding, cleanup, and optional renderPresence.
  */
-export function docToLexical(
+export function syncLexicalWithDoc(
   editor: LexicalEditor,
   doc: Doc,
-  presenceOptions?: DocToLexicalPresenceOptions,
+  presenceOptions?: syncLexicalWithDocPresenceOptions,
 ) {
-  const core = docToLexicalCore(editor, doc);
+  const core = syncLexicalWithDocCore(editor, doc);
 
   const { setPresence: rawSetPresence, user } = presenceOptions ?? {};
   const presenceHandle = rawSetPresence
@@ -117,7 +117,7 @@ export function docToLexical(
   return cleanup;
 }
 
-function docToLexicalCore(
+function syncLexicalWithDocCore(
   editor: LexicalEditor,
   doc: Doc,
 ): {

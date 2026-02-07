@@ -1,5 +1,5 @@
 export {
-  docToLexical,
+  syncLexicalWithDoc,
   LexicalDocNode,
   lexicalDocNodeConfig,
   syncPresence,
@@ -7,7 +7,7 @@ export {
   updatePresence,
 } from "../index.js";
 export type {
-  DocToLexicalPresenceOptions,
+  syncLexicalWithDocPresenceOptions,
   KeyBinding,
   Presence,
   PresenceHandle,

@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import type { Doc } from "@docukit/docnode";
 import {
-  docToLexical,
+  syncLexicalWithDoc,
   updatePresence,
   type Presence,
   type PresenceSelection,
@@ -63,7 +63,7 @@ export function DocNodePlugin({
 
   useEffect(() => {
     if (!doc) return;
-    return docToLexical(editor, doc, { setPresence, user });
+    return syncLexicalWithDoc(editor, doc, { setPresence, user });
     // Intentionally only [editor, doc]: avoid re-binding on re-renders so cursor does not jump.
   }, [editor, doc]);
 

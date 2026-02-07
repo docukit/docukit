@@ -319,7 +319,7 @@ export type PresenceHandle = {
  * Sets up presence synchronization between a Lexical editor and a presence system.
  *
  * @param editor - The Lexical editor instance
- * @param keyBinding - The key mapping from docToLexical for converting between Lexical keys and DocNode IDs
+ * @param keyBinding - The key mapping from syncLexicalWithDoc for converting between Lexical keys and DocNode IDs
  * @param setPresence - Callback invoked when local selection changes (sends selection data only)
  * @returns A handle with updateRemoteCursors and cleanup functions
  *
