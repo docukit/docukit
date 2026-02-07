@@ -62,11 +62,9 @@ export function syncLexicalWithDoc(
   const presenceHandle = rawSetPresence
     ? syncPresence(editor, keyBinding, (selection) =>
         rawSetPresence(
-          selection == null
-            ? undefined
-            : user?.name != null && user?.color != null
-              ? { ...selection, name: user.name, color: user.color }
-              : selection,
+          selection && user?.name != null && user?.color != null
+            ? { ...selection, name: user.name, color: user.color }
+            : selection,
         ),
       )
     : undefined;
