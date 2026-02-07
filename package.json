@@ -53,6 +53,7 @@
     "bun": "^1.1.42",
     "concurrently": "^9.1.2",
     "eslint": "^9.19.0",
+    "eslint-config-next": "^16.1.6",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-playwright": "^2.2.0",
     "eslint-plugin-regexp": "^2.10.0",

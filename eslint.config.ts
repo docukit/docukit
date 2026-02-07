@@ -3,6 +3,7 @@ import vitest from "@vitest/eslint-plugin";
 import playwright from "eslint-plugin-playwright";
 import * as regexpPlugin from "eslint-plugin-regexp";
 import eslintPluginImport from "eslint-plugin-import";
+import nextVitals from "eslint-config-next/core-web-vitals";
 
 // import eslintPluginUnicorn from "eslint-plugin-unicorn";
 
@@ -196,6 +197,18 @@ export const rootEslintConfig = tseslint.config(
       ],
     },
     ignores: ["**/*.test.ts"],
+  },
+  ...nextVitals.map((config) => ({
+    ...config,
+    files: ["**/*.{jsx,tsx}"],
+  })),
+  {
+    files: ["**/*.{jsx,tsx}"],
+    settings: {
+      next: {
+        rootDir: ["docs/", "examples/"],
+      },
+    },
   },
   {
     ignores: [
