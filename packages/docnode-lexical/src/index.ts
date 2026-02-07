@@ -42,21 +42,10 @@ export function syncLexicalWithDoc(
   presenceOptions?: syncLexicalWithDocPresenceOptions,
 ): () => void {
   const keyBinding = initializeEditorFromDoc(editor, doc);
-  const { lexicalKeyToDocNodeId, docNodeIdToLexicalKey } = keyBinding;
 
-  const unregisterLexicalListener = syncLexicalToDocNode(
-    doc,
-    editor,
-    lexicalKeyToDocNodeId,
-    docNodeIdToLexicalKey,
-  );
+  const offLexicalListener = syncLexicalToDocNode(doc, editor, keyBinding);
 
-  const unregisterDocListener = syncDocNodeToLexical(
-    doc,
-    editor,
-    lexicalKeyToDocNodeId,
-    docNodeIdToLexicalKey,
-  );
+  const offDocListener = syncDocNodeToLexical(doc, editor, keyBinding);
 
   const { setPresence: rawSetPresence, user } = presenceOptions ?? {};
   const presenceHandle = rawSetPresence
@@ -75,8 +64,8 @@ export function syncLexicalWithDoc(
     const binding = bindingByEditor.get(editor);
     bindingByEditor.delete(editor);
     binding?.presenceHandle?.cleanup();
-    unregisterLexicalListener();
-    unregisterDocListener();
+    offLexicalListener();
+    offDocListener();
     keyBinding.lexicalKeyToDocNodeId.clear();
     keyBinding.docNodeIdToLexicalKey.clear();
   };

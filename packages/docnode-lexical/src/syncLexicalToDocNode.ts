@@ -10,6 +10,7 @@ import {
 } from "lexical";
 
 import { LexicalDocNode } from "./lexicalDocNode.js";
+import type { KeyBinding } from "./types.js";
 
 // Track which editor is currently making changes to prevent reapplying own changes
 // without this, a change in lexical would trigger a change in docnode,
@@ -30,8 +31,7 @@ export function setIsApplyingOwnChanges(
 export function syncLexicalToDocNode(
   doc: Doc,
   editor: LexicalEditor,
-  lexicalKeyToDocNodeId: Map<string, string>,
-  docNodeIdToLexicalKey: Map<string, string>,
+  keyBinding: KeyBinding,
 ) {
   // Sync Lexical → DocNode
   const unregisterEditorListener = editor.registerUpdateListener(
@@ -64,8 +64,7 @@ export function syncLexicalToDocNode(
             lexicalRoot,
             dirtyElements,
             dirtyLeaves,
-            lexicalKeyToDocNodeId,
-            docNodeIdToLexicalKey,
+            keyBinding,
           );
         });
 
@@ -90,9 +89,9 @@ function $syncLexicalToDocNode(
   lexicalNode: ElementNode,
   dirtyElements: Map<NodeKey, boolean>,
   dirtyLeaves: Set<NodeKey>,
-  lexicalKeyToDocNodeId: Map<string, string>,
-  docNodeIdToLexicalKey: Map<string, string>,
+  keyBinding: KeyBinding,
 ): void {
+  const { lexicalKeyToDocNodeId, docNodeIdToLexicalKey } = keyBinding;
   const lexicalChildren = lexicalNode.getChildren();
 
   // Build map of existing DocNode children for O(1) lookup
@@ -124,8 +123,7 @@ function $syncLexicalToDocNode(
         lexicalChild,
         dirtyElements,
         dirtyLeaves,
-        lexicalKeyToDocNodeId,
-        docNodeIdToLexicalKey,
+        keyBinding,
       );
 
       // Ensure correct position (handle moves)
@@ -153,8 +151,7 @@ function $syncLexicalToDocNode(
         lexicalChild,
         dirtyElements,
         dirtyLeaves,
-        lexicalKeyToDocNodeId,
-        docNodeIdToLexicalKey,
+        keyBinding,
       );
 
       // Insert at correct position
@@ -193,8 +190,7 @@ function $syncNodeContent(
   lexicalNode: LexicalNode,
   dirtyElements: Map<NodeKey, boolean>,
   dirtyLeaves: Set<NodeKey>,
-  lexicalKeyToDocNodeId: Map<string, string>,
-  docNodeIdToLexicalKey: Map<string, string>,
+  keyBinding: KeyBinding,
 ): void {
   const lexicalKey = lexicalNode.getKey();
   const isDirty = dirtyElements.has(lexicalKey) || dirtyLeaves.has(lexicalKey);
@@ -220,8 +216,7 @@ function $syncNodeContent(
       lexicalNode,
       dirtyElements,
       dirtyLeaves,
-      lexicalKeyToDocNodeId,
-      docNodeIdToLexicalKey,
+      keyBinding,
     );
   }
 }
@@ -234,8 +229,7 @@ function createDocNodeFromLexical(
   lexicalNode: LexicalNode,
   dirtyElements: Map<NodeKey, boolean>,
   dirtyLeaves: Set<NodeKey>,
-  lexicalKeyToDocNodeId: Map<string, string>,
-  docNodeIdToLexicalKey: Map<string, string>,
+  keyBinding: KeyBinding,
 ): DocNode {
   const newDocNode = doc.createNode(LexicalDocNode);
 
@@ -243,8 +237,8 @@ function createDocNodeFromLexical(
   newDocNode.state.j.set(serialized);
 
   // Store mapping
-  lexicalKeyToDocNodeId.set(lexicalNode.getKey(), newDocNode.id);
-  docNodeIdToLexicalKey.set(newDocNode.id, lexicalNode.getKey());
+  keyBinding.lexicalKeyToDocNodeId.set(lexicalNode.getKey(), newDocNode.id);
+  keyBinding.docNodeIdToLexicalKey.set(newDocNode.id, lexicalNode.getKey());
 
   // Recursively create children if element
   if ($isElementNode(lexicalNode)) {
@@ -254,8 +248,7 @@ function createDocNodeFromLexical(
         child,
         dirtyElements,
         dirtyLeaves,
-        lexicalKeyToDocNodeId,
-        docNodeIdToLexicalKey,
+        keyBinding,
       );
       newDocNode.append(childDocNode);
     });
