@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useId } from "react";
 import { GREEN, BLUE } from "@/lib/brand-colors";
 
 // ViewBox size (internal coordinate system)
@@ -16,7 +16,7 @@ export default function DocuKitFavicon({
   className,
   size = 100,
 }: FaviconProps) {
-  const clipId = `rounded-clip-favicon-${Math.random().toString(36).substr(2, 9)}`;
+  const clipId = `rounded-clip-favicon-${useId()}`;
 
   return (
     <svg
@@ -85,7 +85,7 @@ export function DocuKitFaviconCircular({
   className,
   size = 100,
 }: FaviconProps) {
-  const clipId = `circle-clip-favicon-${Math.random().toString(36).substr(2, 9)}`;
+  const clipId = `circle-clip-favicon-${useId()}`;
 
   return (
     <svg

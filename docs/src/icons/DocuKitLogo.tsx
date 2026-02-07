@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useId } from "react";
 import { GREEN, BLUE, WHITE } from "@/lib/brand-colors";
 
 // ViewBox size (internal coordinate system)
@@ -207,7 +207,7 @@ function DocGridIcon({ x, y, size }: { x: number; y: number; size: number }) {
 
 // Main combined logo - 4 squares with icons and rounded corners
 export default function DocuKitLogo({ className, size = 200 }: LogoProps) {
-  const clipId = `rounded-clip-${Math.random().toString(36).substr(2, 9)}`;
+  const clipId = `rounded-clip-${useId()}`;
 
   return (
     <svg
@@ -289,7 +289,7 @@ export default function DocuKitLogo({ className, size = 200 }: LogoProps) {
 
 // Circular version of the main logo
 export function DocuKitLogoCircular({ className, size = 200 }: LogoProps) {
-  const clipId = `circle-clip-${Math.random().toString(36).substr(2, 9)}`;
+  const clipId = `circle-clip-${useId()}`;
 
   return (
     <svg

@@ -104,7 +104,7 @@ function InitialContentPlugin({ clientId }: { clientId: string }) {
       p3.append(text3);
       root.append(p1, p2, p3);
     });
-  }, [editor]);
+  }, [editor, clientId]);
 
   return null;
 }

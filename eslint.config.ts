@@ -209,6 +209,9 @@ export const rootEslintConfig = tseslint.config(
         rootDir: ["docs/", "examples/"],
       },
     },
+    rules: {
+      "react/no-unescaped-entities": "off",
+    },
   },
   {
     ignores: [
