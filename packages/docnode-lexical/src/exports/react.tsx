@@ -2,5 +2,5 @@ export {
   DocNodePlugin,
   type PresenceUser,
   type Presence,
-  type LocalSelection,
+  type PresenceSelection,
 } from "../bindings/react.js";

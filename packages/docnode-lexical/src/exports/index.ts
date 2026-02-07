@@ -9,8 +9,8 @@ export type {
   DocToLexicalPresenceOptions,
   DocToLexicalResult,
   KeyBinding,
-  LocalSelection,
   Presence,
   PresenceHandle,
   LexicalPresence,
+  PresenceSelection,
 } from "../index.js";

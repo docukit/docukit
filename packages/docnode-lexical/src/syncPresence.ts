@@ -19,18 +19,10 @@ import {
   type NodeKey,
   type NodeMap,
 } from "lexical";
-import type { KeyBinding } from "./index.js";
+import type { KeyBinding, PresenceSelection } from "./index.js";
 
-/** Selection data for the local user (sent via setPresence, uses DocNode IDs) */
-export type LocalSelection = {
-  anchor: { key: string; offset: number };
-  focus: { key: string; offset: number };
-};
-
-/** Presence data for a remote user (uses DocNode IDs, includes name and color for rendering) */
-export type LexicalPresence = {
-  anchor: { key: string; offset: number };
-  focus: { key: string; offset: number };
+/** Presence data for a remote user (required name/color for rendering). */
+export type LexicalPresence = PresenceSelection & {
   name: string;
   color: string;
 };
@@ -279,7 +271,7 @@ function syncRemoteCursors(binding: PresenceBinding, presence: Presence): void {
 function syncLocalSelectionToPresence(
   editor: LexicalEditor,
   keyBinding: KeyBinding,
-  setPresence: (selection: LocalSelection | undefined) => void,
+  setPresence: (selection: PresenceSelection | undefined) => void,
 ): void {
   const selection = $getSelection();
 
@@ -353,7 +345,7 @@ export type PresenceHandle = {
 export function syncPresence(
   editor: LexicalEditor,
   keyBinding: KeyBinding,
-  setPresence: (selection: LocalSelection | undefined) => void,
+  setPresence: (selection: PresenceSelection | undefined) => void,
 ): PresenceHandle {
   // Create cursors container
   const rootElement = editor.getRootElement();

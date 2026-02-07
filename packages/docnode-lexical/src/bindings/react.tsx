@@ -6,20 +6,16 @@ import type { Doc } from "@docukit/docnode";
 import {
   docToLexical,
   updatePresence,
-  type LexicalPresence,
-  type LocalSelection,
   type Presence,
+  type PresenceSelection,
 } from "../index.js";
 
-export type { LexicalPresence, LocalSelection, Presence } from "../index.js";
+export type { LexicalPresence, Presence, PresenceSelection } from "../index.js";
 
 export type PresenceUser = {
   name: string;
   color: string;
 };
-
-/** Selection data that can be sent via setPresence (LocalSelection or enriched with user info) */
-export type PresenceSelection = LocalSelection | LexicalPresence;
 
 export type DocNodePluginProps = {
   doc: Doc;

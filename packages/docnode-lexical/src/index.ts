@@ -19,15 +19,10 @@ import { syncDocNodeToLexical } from "./syncDocNodeToLexical.js";
 import { syncLexicalToDocNode } from "./syncLexicalToDocNode.js";
 import { syncPresence } from "./syncPresence.js";
 
-import type {
-  LexicalPresence,
-  LocalSelection,
-  Presence,
-} from "./syncPresence.js";
+import type { Presence } from "./syncPresence.js";
 
 export { syncPresence } from "./syncPresence.js";
 export type {
-  LocalSelection,
   Presence,
   PresenceHandle,
   LexicalPresence,
@@ -35,10 +30,16 @@ export type {
 
 /** Key mapping between Lexical keys and DocNode IDs */
 export type KeyBinding = {
-  /** Convert a Lexical node key to a DocNode ID */
   lexicalKeyToDocNodeId: Map<string, string>;
-  /** Convert a DocNode ID to a Lexical node key */
   docNodeIdToLexicalKey: Map<string, string>;
+};
+
+/** Selection data (DocNode IDs). Optional name/color when enriched for presence. */
+export type PresenceSelection = {
+  anchor: { key: string; offset: number };
+  focus: { key: string; offset: number };
+  name?: string;
+  color?: string;
 };
 
 /**
@@ -48,7 +49,7 @@ export type KeyBinding = {
 export type DocToLexicalPresenceOptions = {
   /** When provided, local selection is synced to presence and remote cursors can be rendered. */
   setPresence?:
-    | ((selection: LocalSelection | LexicalPresence | undefined) => void)
+    | ((selection: PresenceSelection | undefined) => void)
     | undefined;
   /** When provided, outgoing presence is enriched with name and color. */
   user?: { name: string; color: string } | undefined;
@@ -113,7 +114,7 @@ export function docToLexical(
   const { setPresence: rawSetPresence, user } = presenceOptions ?? {};
   let presenceHandle: ReturnType<typeof syncPresence> | undefined;
   if (rawSetPresence) {
-    const setPresence = (selection: LocalSelection | undefined) => {
+    const setPresence = (selection: PresenceSelection | undefined) => {
       if (!selection) {
         rawSetPresence(undefined);
         return;

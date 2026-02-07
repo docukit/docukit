@@ -9,9 +9,9 @@ import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import ToolbarPlugin from "./ToolbarPlugin";
 import { $createParagraphNode, $createTextNode, $getRoot } from "lexical";
+import type { PresenceSelection } from "@docukit/docnode-lexical";
 import {
   DocNodePlugin,
-  type LocalSelection,
   type Presence,
   type PresenceUser,
 } from "@docukit/docnode-lexical/react";
@@ -22,7 +22,7 @@ type EditorPanelProps = {
   doc: Doc;
   clientId: string;
   presence?: Presence;
-  setPresence?: (selection: LocalSelection | undefined) => void;
+  setPresence?: (selection: PresenceSelection | undefined) => void;
   user?: PresenceUser;
 };
 
