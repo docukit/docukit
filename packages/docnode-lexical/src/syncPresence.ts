@@ -19,7 +19,11 @@ import {
   type NodeKey,
   type NodeMap,
 } from "lexical";
-import type { KeyBinding, PresenceSelection } from "./types.js";
+import type {
+  KeyBinding,
+  PresenceSelection,
+  syncLexicalWithDocPresenceOptions,
+} from "./types.js";
 
 /** Presence data for a remote user (required name/color for rendering). */
 export type LexicalPresence = PresenceSelection & {
@@ -317,36 +321,28 @@ export type PresenceHandle = {
 
 /**
  * Sets up presence synchronization between a Lexical editor and a presence system.
+ * Returns undefined if no setPresence callback is provided in presenceOptions.
  *
  * @param editor - The Lexical editor instance
  * @param keyBinding - The key mapping from syncLexicalWithDoc for converting between Lexical keys and DocNode IDs
- * @param setPresence - Callback invoked when local selection changes (sends selection data only)
- * @returns A handle with updateRemoteCursors and cleanup functions
- *
- * @example
- * ```tsx
- * function PresencePlugin({ presence, setPresence, keyBinding }) {
- *   const [editor] = useLexicalComposerContext();
- *   const handleRef = useRef<PresenceHandle>();
- *
- *   useEffect(() => {
- *     handleRef.current = syncPresence(editor, keyBinding, setPresence);
- *     return () => handleRef.current?.cleanup();
- *   }, [editor, keyBinding, setPresence]);
- *
- *   useEffect(() => {
- *     handleRef.current?.updateRemoteCursors(presence);
- *   }, [presence]);
- *
- *   return null;
- * }
- * ```
+ * @param presenceOptions - Optional presence options. When setPresence is provided, local selection is synced.
+ *   When user is provided, outgoing presence is enriched with name and color.
+ * @returns A handle with updateRemoteCursors and cleanup functions, or undefined if no setPresence is provided
  */
 export function syncPresence(
   editor: LexicalEditor,
   keyBinding: KeyBinding,
-  setPresence: (selection: PresenceSelection | undefined) => void,
-): PresenceHandle {
+  presenceOptions?: syncLexicalWithDocPresenceOptions,
+): PresenceHandle | undefined {
+  const { setPresence: rawSetPresence, user } = presenceOptions ?? {};
+  if (!rawSetPresence) return undefined;
+
+  const setPresence = (selection: PresenceSelection | undefined) =>
+    rawSetPresence(
+      selection && user?.name != null && user?.color != null
+        ? { ...selection, name: user.name, color: user.color }
+        : selection,
+    );
   // Create cursors container
   const rootElement = editor.getRootElement();
   let cursorsContainer: HTMLElement | undefined;

@@ -3,14 +3,18 @@ import { type LexicalEditor } from "lexical";
 import { initializeEditorFromDoc } from "./initializeEditorFromDoc.js";
 import { syncDocNodeToLexical } from "./syncDocNodeToLexical.js";
 import { syncLexicalToDocNode } from "./syncLexicalToDocNode.js";
-import { syncPresence, type Presence } from "./syncPresence.js";
+import {
+  syncPresence,
+  type Presence,
+  type PresenceHandle,
+} from "./syncPresence.js";
 
 import type { syncLexicalWithDocPresenceOptions } from "./types.js";
 
 const bindingByEditor = new WeakMap<
   LexicalEditor,
   {
-    presenceHandle: ReturnType<typeof syncPresence> | undefined;
+    presenceHandle: PresenceHandle | undefined;
     lastPresence: Presence | undefined;
   }
 >();
@@ -50,16 +54,8 @@ export function syncLexicalWithDoc(
   // 3. Sync DocNode → Lexical. Every time DocNode changes, Lexical is updated.
   const offDocListener = syncDocNodeToLexical(doc, editor, keyBinding);
 
-  const { setPresence: rawSetPresence, user } = presenceOptions ?? {};
-  const presenceHandle = rawSetPresence
-    ? syncPresence(editor, keyBinding, (selection) =>
-        rawSetPresence(
-          selection && user?.name != null && user?.color != null
-            ? { ...selection, name: user.name, color: user.color }
-            : selection,
-        ),
-      )
-    : undefined;
+  // 4. Sync presence (optional). Handles local selection → presence and remote cursors.
+  const presenceHandle = syncPresence(editor, keyBinding, presenceOptions);
 
   bindingByEditor.set(editor, { presenceHandle, lastPresence: undefined });
 
