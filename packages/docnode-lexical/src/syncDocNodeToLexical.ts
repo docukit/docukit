@@ -11,7 +11,7 @@ import {
   type SerializedLexicalNode,
 } from "lexical";
 
-import { LexicalDocNode } from "./index.js";
+import { LexicalDocNode } from "./lexicalDocNode.js";
 import {
   getIsApplyingOwnChanges,
   setIsApplyingOwnChanges,

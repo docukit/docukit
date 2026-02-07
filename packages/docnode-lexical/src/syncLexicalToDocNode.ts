@@ -9,7 +9,7 @@ import {
   type NodeKey,
 } from "lexical";
 
-import { LexicalDocNode } from "./index.js";
+import { LexicalDocNode } from "./lexicalDocNode.js";
 
 // Track which editor is currently making changes to prevent reapplying own changes
 // without this, a change in lexical would trigger a change in docnode,

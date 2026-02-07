@@ -19,7 +19,7 @@ import {
   type NodeKey,
   type NodeMap,
 } from "lexical";
-import type { KeyBinding, PresenceSelection } from "./index.js";
+import type { KeyBinding, PresenceSelection } from "./types.js";
 
 /** Presence data for a remote user (required name/color for rendering). */
 export type LexicalPresence = PresenceSelection & {

@@ -1,25 +1,18 @@
-import {
-  defineNode,
-  defineState,
-  Doc,
-  type DocConfig,
-  type DocNode,
-} from "@docukit/docnode";
-import {
-  $getRoot,
-  $isElementNode,
-  $parseSerializedNode,
-  COLLABORATION_TAG,
-  type LexicalEditor,
-  type LexicalNode,
-  type SerializedLexicalNode,
-} from "lexical";
+import { type Doc } from "@docukit/docnode";
+import { type LexicalEditor } from "lexical";
 
+import { initializeEditorFromDoc } from "./initializeEditorFromDoc.js";
+import {
+  LexicalDocNode,
+  createLexicalDoc,
+  lexicalDocNodeConfig,
+} from "./lexicalDocNode.js";
 import { syncDocNodeToLexical } from "./syncDocNodeToLexical.js";
 import { syncLexicalToDocNode } from "./syncLexicalToDocNode.js";
 import { syncPresence } from "./syncPresence.js";
 
 import type { Presence } from "./syncPresence.js";
+import type { syncLexicalWithDocPresenceOptions } from "./types.js";
 
 export { syncPresence } from "./syncPresence.js";
 export type {
@@ -28,32 +21,11 @@ export type {
   LexicalPresence,
 } from "./syncPresence.js";
 
-/** Key mapping between Lexical keys and DocNode IDs */
-export type KeyBinding = {
-  lexicalKeyToDocNodeId: Map<string, string>;
-  docNodeIdToLexicalKey: Map<string, string>;
-};
-
-/** Selection data (DocNode IDs). Optional name/color when enriched for presence. */
-export type PresenceSelection = {
-  anchor: { key: string; offset: number };
-  focus: { key: string; offset: number };
-  name?: string;
-  color?: string;
-};
-
-/**
- * Optional presence options for syncLexicalWithDoc.
- * Pass as third argument when you want to sync selection to presence and/or render remote cursors.
- */
-export type syncLexicalWithDocPresenceOptions = {
-  /** When provided, local selection is synced to presence and remote cursors can be rendered. */
-  setPresence?:
-    | ((selection: PresenceSelection | undefined) => void)
-    | undefined;
-  /** When provided, outgoing presence is enriched with name and color. */
-  user?: { name: string; color: string } | undefined;
-};
+export type {
+  KeyBinding,
+  PresenceSelection,
+  syncLexicalWithDocPresenceOptions,
+} from "./types.js";
 
 type EditorBinding = {
   presenceHandle: ReturnType<typeof syncPresence> | undefined;
@@ -88,45 +60,8 @@ export function syncLexicalWithDoc(
   doc: Doc,
   presenceOptions?: syncLexicalWithDocPresenceOptions,
 ): () => void {
-  const keyBinding: KeyBinding = {
-    lexicalKeyToDocNodeId: new Map<string, string>(),
-    docNodeIdToLexicalKey: new Map<string, string>(),
-  };
+  const keyBinding = initializeEditorFromDoc(editor, doc);
   const { lexicalKeyToDocNodeId, docNodeIdToLexicalKey } = keyBinding;
-
-  editor.update(
-    () => {
-      const root = $getRoot();
-      root.clear();
-
-      const processChildren = (
-        parentDocNode: DocNode,
-        parentLexicalNode: LexicalNode,
-      ) => {
-        parentDocNode.children().forEach((child) => {
-          if (!child.is(LexicalDocNode))
-            throw new Error("Expected child to be a LexicalDocNode");
-          const serializedLexicalNode = child.state.j.get();
-
-          const lexicalNode = $parseSerializedNode(serializedLexicalNode);
-          lexicalKeyToDocNodeId.set(lexicalNode.getKey(), child.id);
-          docNodeIdToLexicalKey.set(child.id, lexicalNode.getKey());
-
-          if ($isElementNode(parentLexicalNode)) {
-            parentLexicalNode.append(lexicalNode);
-          }
-
-          // Recursively process children
-          if ($isElementNode(lexicalNode)) {
-            processChildren(child, lexicalNode);
-          }
-        });
-      };
-
-      processChildren(doc.root, root);
-    },
-    { discrete: true, tag: COLLABORATION_TAG },
-  );
 
   const unregisterLexicalListener = syncLexicalToDocNode(
     doc,
@@ -168,25 +103,4 @@ export function syncLexicalWithDoc(
   };
 }
 
-export const LexicalDocNode = defineNode({
-  type: "l",
-  state: {
-    j: defineState({
-      fromJSON: (json) =>
-        (json ?? {}) as SerializedLexicalNode & { [key: string]: unknown },
-    }),
-  },
-});
-
-export const lexicalDocNodeConfig: DocConfig = {
-  type: "docnode-lexical",
-  extensions: [{ nodes: [LexicalDocNode] }],
-};
-
-export const createLexicalDoc = (): Doc => {
-  return Doc.fromJSON({ extensions: [{ nodes: [LexicalDocNode] }] }, [
-    "01kc52hq510g6y44jhq0wqrjb3",
-    "root",
-    {},
-  ]);
-};
+export { LexicalDocNode, lexicalDocNodeConfig, createLexicalDoc };
