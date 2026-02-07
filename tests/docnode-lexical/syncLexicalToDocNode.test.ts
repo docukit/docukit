@@ -3,6 +3,7 @@ import {
   $createParagraphNode,
   $createTextNode,
   $getRoot,
+  createEditor,
   type ParagraphNode,
   type TextNode,
   type SerializedParagraphNode,
@@ -15,14 +16,16 @@ import { assertJson } from "../docnode/utils.js";
 
 describe("docnode to lexical", () => {
   test("no doc provided", () => {
-    const { editor, doc } = docToLexical({
+    const editor = createEditor({
       namespace: "MyEditor",
       onError: (error) => {
         console.error(error);
       },
     });
+    const { editor: boundEditor, doc } = docToLexical(editor);
+    const editorToUse = boundEditor;
     expect(doc).toBeInstanceOf(Doc);
-    const jsonEditorState = editor.getEditorState().toJSON();
+    const jsonEditorState = editorToUse.getEditorState().toJSON();
     expect(jsonEditorState).toStrictEqual({
       root: {
         children: [],
@@ -93,17 +96,15 @@ describe("docnode to lexical", () => {
       ],
     ]);
 
-    const { editor } = docToLexical(
-      {
-        namespace: "MyEditor",
-        onError: (error) => {
-          console.error(error);
-        },
+    const editor = createEditor({
+      namespace: "MyEditor",
+      onError: (error) => {
+        console.error(error);
       },
-      doc,
-    );
+    });
+    const { editor: boundEditor } = docToLexical(editor, doc);
     expect(doc).toBeInstanceOf(Doc);
-    const jsonEditorState = editor.getEditorState().toJSON();
+    const jsonEditorState = boundEditor.getEditorState().toJSON();
     expect(jsonEditorState).toStrictEqual({
       root: {
         children: [
@@ -128,12 +129,13 @@ describe("docnode to lexical", () => {
 
 describe("lexical to docnode sync", () => {
   test("add paragraph to empty editor", () => {
-    const { editor, doc } = docToLexical({
+    const editor = createEditor({
       namespace: "MyEditor",
       onError: (error) => {
         console.error(error);
       },
     });
+    const { doc } = docToLexical(editor);
 
     // Initially empty
     expect(doc.root.first).toBeUndefined();
@@ -157,12 +159,13 @@ describe("lexical to docnode sync", () => {
   });
 
   test("add text to paragraph", () => {
-    const { editor, doc } = docToLexical({
+    const editor = createEditor({
       namespace: "MyEditor",
       onError: (error) => {
         console.error(error);
       },
     });
+    const { doc } = docToLexical(editor);
 
     // Add paragraph with text
     editor.update(
@@ -193,12 +196,13 @@ describe("lexical to docnode sync", () => {
   });
 
   test("add multiple paragraphs", () => {
-    const { editor, doc } = docToLexical({
+    const editor = createEditor({
       namespace: "MyEditor",
       onError: (error) => {
         console.error(error);
       },
     });
+    const { doc } = docToLexical(editor);
 
     // Add two paragraphs
     editor.update(
@@ -233,12 +237,13 @@ describe("lexical to docnode sync", () => {
   });
 
   test("update existing text", () => {
-    const { editor, doc } = docToLexical({
+    const editor = createEditor({
       namespace: "MyEditor",
       onError: (error) => {
         console.error(error);
       },
     });
+    const { doc } = docToLexical(editor);
 
     // Add initial text
     editor.update(
@@ -275,12 +280,13 @@ describe("lexical to docnode sync", () => {
   });
 
   test("remove paragraph", () => {
-    const { editor, doc } = docToLexical({
+    const editor = createEditor({
       namespace: "MyEditor",
       onError: (error) => {
         console.error(error);
       },
     });
+    const { doc } = docToLexical(editor);
 
     // Add two paragraphs
     editor.update(
@@ -316,12 +322,13 @@ describe("lexical to docnode sync", () => {
   });
 
   test("complex edit sequence", () => {
-    const { editor, doc } = docToLexical({
+    const editor = createEditor({
       namespace: "MyEditor",
       onError: (error) => {
         console.error(error);
       },
     });
+    const { doc } = docToLexical(editor);
 
     // Step 1: Add initial content
     editor.update(

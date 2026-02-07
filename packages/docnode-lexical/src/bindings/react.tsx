@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import type { Doc } from "@docukit/docnode";
 import {
   docToLexical,
-  syncPresence,
+  updatePresence,
   type LexicalPresence,
   type LocalSelection,
   type Presence,
@@ -39,6 +39,10 @@ export type DocNodePluginProps = {
  * Lexical plugin that syncs a DocNode document with the editor.
  * Optionally handles presence (collaborative cursors) if setPresence is provided.
  *
+ * Binding runs only when `editor` or `doc` change (by reference), so the cursor is not
+ * reset on parent re-renders. Pass stable setPresence/user (e.g. useCallback/useMemo) or
+ * key the editor when they change.
+ *
  * @example
  * ```tsx
  * import { DocNodePlugin } from "@docukit/docnode-lexical/react";
@@ -53,67 +57,28 @@ export type DocNodePluginProps = {
  * }
  * ```
  */
-// TODO: The docnode-lexical core should do more, and bindings like this should be much simpler.
 export function DocNodePlugin({
   doc,
   presence,
-  setPresence: rawSetPresence,
+  setPresence,
   user,
 }: DocNodePluginProps) {
   const [editor] = useLexicalComposerContext();
-  const presenceHandleRef = useRef<ReturnType<typeof syncPresence> | undefined>(
-    undefined,
-  );
 
-  // Extract primitive values to avoid re-creating callback when user object reference changes
-  const userName = user?.name;
-  const userColor = user?.color;
-
-  // Wrap setPresence to include user info when provided
-  const setPresence = useCallback(
-    (selection: LocalSelection | undefined) => {
-      if (!rawSetPresence) return;
-      if (!selection) {
-        rawSetPresence(undefined);
-        return;
-      }
-      // Enrich with user info if provided
-      if (userName !== undefined && userColor !== undefined) {
-        rawSetPresence({
-          ...selection,
-          name: userName,
-          color: userColor,
-        });
-      } else {
-        rawSetPresence(selection);
-      }
-    },
-    [rawSetPresence, userName, userColor],
-  );
-
-  // Set up doc sync and presence together (they share keyBinding)
   useEffect(() => {
     if (!doc) return;
-    const { cleanup, keyBinding } = docToLexical(editor, doc);
+    const presenceOptions =
+      setPresence != null
+        ? { setPresence, ...(user != null && { user }) }
+        : undefined;
+    const { cleanup } = docToLexical(editor, doc, presenceOptions);
+    return cleanup;
+    // Intentionally only [editor, doc]: avoid re-binding on re-renders so cursor does not jump.
+  }, [editor, doc]);
 
-    // Set up presence if setPresence is available
-    if (rawSetPresence) {
-      presenceHandleRef.current = syncPresence(editor, keyBinding, setPresence);
-    }
-
-    return () => {
-      presenceHandleRef.current?.cleanup();
-      presenceHandleRef.current = undefined;
-      cleanup();
-    };
-  }, [editor, doc, rawSetPresence, setPresence]);
-
-  // Update remote cursors when presence changes
   useEffect(() => {
-    if (presence && presenceHandleRef.current) {
-      presenceHandleRef.current.updateRemoteCursors(presence);
-    }
-  }, [presence]);
+    updatePresence(editor, presence ?? {});
+  }, [editor, presence]);
 
   return null;
 }

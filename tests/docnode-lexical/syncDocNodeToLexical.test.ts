@@ -1,5 +1,6 @@
 import {
   $getRoot,
+  createEditor,
   type ParagraphNode,
   type SerializedParagraphNode,
   type SerializedTextNode,
@@ -10,12 +11,13 @@ import { docToLexical, LexicalDocNode } from "@docukit/docnode-lexical";
 
 describe("docnode to lexical sync", () => {
   test("add paragraph to empty doc", () => {
-    const { editor, doc } = docToLexical({
+    const editor = createEditor({
       namespace: "MyEditor",
       onError: (error) => {
         console.error(error);
       },
     });
+    const { doc } = docToLexical(editor);
 
     // Initially empty
     editor.getEditorState().read(() => {
@@ -50,12 +52,13 @@ describe("docnode to lexical sync", () => {
   });
 
   test("add text to paragraph", () => {
-    const { editor, doc } = docToLexical({
+    const editor = createEditor({
       namespace: "MyEditor",
       onError: (error) => {
         console.error(error);
       },
     });
+    const { doc } = docToLexical(editor);
 
     // Create paragraph with text in DocNode
     const paragraphJson: SerializedParagraphNode = {
@@ -103,12 +106,13 @@ describe("docnode to lexical sync", () => {
   });
 
   test("add multiple paragraphs", () => {
-    const { editor, doc } = docToLexical({
+    const editor = createEditor({
       namespace: "MyEditor",
       onError: (error) => {
         console.error(error);
       },
     });
+    const { doc } = docToLexical(editor);
 
     // Create two paragraphs in DocNode
     const paragraphJson: SerializedParagraphNode = {
@@ -169,12 +173,13 @@ describe("docnode to lexical sync", () => {
   });
 
   test("update existing text", () => {
-    const { editor, doc } = docToLexical({
+    const editor = createEditor({
       namespace: "MyEditor",
       onError: (error) => {
         console.error(error);
       },
     });
+    const { doc } = docToLexical(editor);
 
     // Create initial paragraph with text
     const paragraphJson: SerializedParagraphNode = {
@@ -234,12 +239,13 @@ describe("docnode to lexical sync", () => {
   });
 
   test("remove paragraph", () => {
-    const { editor, doc } = docToLexical({
+    const editor = createEditor({
       namespace: "MyEditor",
       onError: (error) => {
         console.error(error);
       },
     });
+    const { doc } = docToLexical(editor);
 
     // Create two paragraphs
     const paragraphJson: SerializedParagraphNode = {
@@ -310,12 +316,13 @@ describe("docnode to lexical sync", () => {
   });
 
   test("complex edit sequence", () => {
-    const { editor, doc } = docToLexical({
+    const editor = createEditor({
       namespace: "MyEditor",
       onError: (error) => {
         console.error(error);
       },
     });
+    const { doc } = docToLexical(editor);
 
     const paragraphJson: SerializedParagraphNode = {
       children: [],
