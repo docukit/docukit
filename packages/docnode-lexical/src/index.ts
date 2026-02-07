@@ -47,11 +47,11 @@ export type KeyBinding = {
  */
 export type DocToLexicalPresenceOptions = {
   /** When provided, local selection is synced to presence and remote cursors can be rendered. */
-  setPresence: (
-    selection: LocalSelection | LexicalPresence | undefined,
-  ) => void;
+  setPresence?:
+    | ((selection: LocalSelection | LexicalPresence | undefined) => void)
+    | undefined;
   /** When provided, outgoing presence is enriched with name and color. */
-  user?: { name: string; color: string };
+  user?: { name: string; color: string } | undefined;
 };
 
 /** Result of docToLexical. renderPresence is only present when presence options were passed. */

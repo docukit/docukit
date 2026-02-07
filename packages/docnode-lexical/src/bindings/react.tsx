@@ -67,11 +67,7 @@ export function DocNodePlugin({
 
   useEffect(() => {
     if (!doc) return;
-    const presenceOptions =
-      setPresence != null
-        ? { setPresence, ...(user != null && { user }) }
-        : undefined;
-    const { cleanup } = docToLexical(editor, doc, presenceOptions);
+    const { cleanup } = docToLexical(editor, doc, { setPresence, user });
     return cleanup;
     // Intentionally only [editor, doc]: avoid re-binding on re-renders so cursor does not jump.
   }, [editor, doc]);
