@@ -1,0 +1,23 @@
+{
+  "title": "DocNode",
+  "description": "Docs without conflicts",
+  "icon": "DocNode",
+  "root": true,
+  "pages": [
+    "index",
+    "getting-started",
+    "external:[License and Pricing](/license)",
+    "--- Learn ---",
+    "overview",
+    "nodes",
+    "doc-lifecycle",
+    "operations-and-diff",
+    "persistence",
+    "undo-manager",
+    "render",
+    "--- Editor Bindings ---",
+    "lexical",
+    "tiptap"
+  ],
+  "defaultOpen": true
+}

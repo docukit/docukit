@@ -11,7 +11,13 @@ import {
   TestNode,
   checkUndoManager,
 } from "./utils.js";
-import { Doc, type DocNode, defineNode, string, defineState } from "docnode";
+import {
+  Doc,
+  type DocNode,
+  defineNode,
+  string,
+  defineState,
+} from "@docukit/docnode";
 import { test, expect, describe } from "vitest";
 import * as v from "valibot";
 

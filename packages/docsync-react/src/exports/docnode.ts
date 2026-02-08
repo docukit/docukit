@@ -1,1 +1,1 @@
-export * from "@docnode/docsync/docnode";
+export * from "@docukit/docsync/docnode";

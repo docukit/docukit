@@ -1,5 +1,5 @@
 {
-  "name": "@docnode/lexical",
+  "name": "@docukit/docnode-lexical",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE.md",
   "private": true,
@@ -25,10 +25,33 @@
       "vitest": "./src/exports/index.ts",
       "types": "./dist/src/exports/index.d.ts",
       "default": "./dist/src/exports/index.js"
+    },
+    "./*": {
+      "vitest": "./src/exports/*.ts",
+      "types": "./dist/src/exports/*.d.ts",
+      "default": "./dist/src/exports/*.js"
     }
   },
   "dependencies": {
-    "docnode": "workspace:*",
+    "@lexical/selection": "^0.38.2",
+    "@docukit/docnode": "workspace:*",
     "lexical": "^0.38.2"
+  },
+  "peerDependencies": {
+    "@lexical/react": "^0.38.2",
+    "react": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@lexical/react": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@lexical/react": "^0.38.2",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0"
   }
 }

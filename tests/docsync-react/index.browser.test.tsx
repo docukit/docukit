@@ -2,10 +2,10 @@ import { test, expectTypeOf, expect } from "vitest";
 import {
   createDocSyncClient,
   IndexedDBProvider,
-} from "@docnode/docsync-react/client";
-import { DocNodeBinding } from "@docnode/docsync-react/docnode";
-import type { Doc } from "docnode";
-import type { DocData, QueryResult } from "@docnode/docsync/client";
+} from "@docukit/docsync-react/client";
+import { DocNodeBinding } from "@docukit/docsync-react/docnode";
+import type { Doc } from "@docukit/docnode";
+import type { DocData, QueryResult } from "@docukit/docsync/client";
 import { renderHook } from "vitest-browser-react";
 import { docConfig, id } from "./utils.js";
 
@@ -60,8 +60,8 @@ test("createDocSyncClient", async () => {
     .poll(() => _2.current.status, { interval: 100, timeout: 2000 })
     .toBe("success");
   expect(_2.current.data?.doc).toBeDefined();
-  expect(_2.current.data?.id.endsWith("002")).toBe(true);
-  expect(_2.current.data?.id).toBe(_2.current.data?.doc?.root.id);
+  expect(_2.current.data?.docId.endsWith("002")).toBe(true);
+  expect(_2.current.data?.docId).toBe(_2.current.data?.doc?.root.id);
 
   // without id, with createIfMissing true
   // prettier-ignore

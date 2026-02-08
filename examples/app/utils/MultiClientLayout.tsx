@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, useState } from "react";
-import type { DocSyncClient } from "@docnode/docsync-react/client";
+import type { DocSyncClient } from "@docukit/docsync-react/client";
 
 interface MultiClientLayoutProps {
   children: (clientId: string, userId: string) => ReactNode;

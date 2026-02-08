@@ -1,8 +1,13 @@
 import tseslint from "typescript-eslint";
 import vitest from "@vitest/eslint-plugin";
 import playwright from "eslint-plugin-playwright";
+import type { ESLint } from "eslint";
 import * as regexpPlugin from "eslint-plugin-regexp";
+// eslint-plugin-barrel-files has no type declarations
+// @ts-expect-error -- untyped package
+import barrelFiles from "eslint-plugin-barrel-files";
 import eslintPluginImport from "eslint-plugin-import";
+import nextVitals from "eslint-config-next/core-web-vitals";
 
 // import eslintPluginUnicorn from "eslint-plugin-unicorn";
 
@@ -73,6 +78,9 @@ export const rootEslintConfig = tseslint.config(
           },
         },
       ],
+      // TODO: enable
+      // "@typescript-eslint/no-shadow": "error",
+      // "@typescript-eslint/no-redeclare": "error",
     },
     languageOptions: {
       parserOptions: {
@@ -176,6 +184,23 @@ export const rootEslintConfig = tseslint.config(
     },
     rules: regexpPlugin.configs["flat/recommended"].rules,
   },
+  // Barrel files (re-exports) allowed only in **/exports/**; override below turns rule off there
+  {
+    files: ["packages/**"],
+    plugins: { "barrel-files": barrelFiles as ESLint.Plugin },
+    rules: {
+      "barrel-files/avoid-barrel-files": [
+        "error",
+        { amountOfExportsToConsiderModuleAsBarrel: 0 },
+      ],
+    },
+  },
+  {
+    files: ["packages/**/exports/**"],
+    rules: {
+      "barrel-files/avoid-barrel-files": "off",
+    },
+  },
 
   {
     rules: {
@@ -193,6 +218,21 @@ export const rootEslintConfig = tseslint.config(
       ],
     },
     ignores: ["**/*.test.ts"],
+  },
+  ...nextVitals.map((config) => ({
+    ...config,
+    files: ["**/*.{jsx,tsx}"],
+  })),
+  {
+    files: ["**/*.{jsx,tsx}"],
+    settings: {
+      next: {
+        rootDir: ["docs/", "examples/"],
+      },
+    },
+    rules: {
+      "react/no-unescaped-entities": "off",
+    },
   },
   {
     ignores: [

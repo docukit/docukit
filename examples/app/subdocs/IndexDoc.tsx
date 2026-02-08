@@ -1,5 +1,5 @@
 import { IndexNode } from "./ClientProviders";
-import { type DocNode, type Doc } from "docnode";
+import { type DocNode, type Doc } from "@docukit/docnode";
 import { DocRenderer } from "../../components/Renderers";
 
 export function IndexDoc({

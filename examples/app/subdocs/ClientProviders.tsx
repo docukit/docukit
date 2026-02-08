@@ -1,6 +1,6 @@
 "use client";
 
-import type { DocConfig } from "docnode";
+import type { DocConfig } from "@docukit/docnode";
 import {
   IndexNode,
   createIndexNode,

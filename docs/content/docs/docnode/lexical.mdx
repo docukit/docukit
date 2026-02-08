@@ -1,0 +1,97 @@
+---
+title: Lexical
+description: Lexical Editor Binding for DocNode.
+---
+
+import { TypeTable } from "fumadocs-ui/components/type-table";
+
+## 1. Installation
+
+```npm
+npm i @docukit/lexical
+```
+
+## 2. Usage
+
+`DocNodePlugin` receives a DocNode Doc and syncs it with the Lexical editor. It is unopinionated about
+how you should sync that Doc across different clients. We recommend using DocSync as explained
+in the next section.
+
+```tsx tab="React"
+import { LexicalComposer } from "@lexical/react/LexicalComposer";
+import { DocNodePlugin } from "@docukit/lexical/react";
+
+function Editor({ doc, presence, setPresence }) {
+  return (
+    <LexicalComposer initialConfig={initialConfig}>
+      // [!code highlight:5]
+      <DocNodePlugin
+        doc={doc}
+        presence={presence}
+        setPresence={setPresence}
+        user={{ name: "John Doe", color: "#ff0000" }}
+      />
+      {/* ... The rest of your Lexical Plugins ... */}
+    </LexicalComposer>
+  );
+}
+```
+
+```ts tab="Vanilla"
+// TODO: Add vanilla example
+```
+
+### Props
+
+<TypeTable
+  type={{
+    doc: {
+      description: "The DocNode document instance to sync with the editor.",
+      type: "Doc",
+      required: true,
+    },
+    presence: {
+      description: "Remote presence data for collaborative cursors.",
+      type: "Presence | undefined",
+      required: false,
+    },
+    setPresence: {
+      description: "Callback to send local cursor position to other users.",
+      type: "(selection: PresenceSelection | undefined) => void | undefined",
+      required: false,
+    },
+    user: {
+      description:
+        "User information to attach to presence data. When provided, the plugin automatically enriches presence updates with the user's name and color.",
+      type: "{ name: string; color: string } | undefined",
+      required: false,
+    },
+  }}
+/>
+
+## 3. With DocSync (recommended)
+
+```tsx tab="React"
+import { LexicalComposer } from "@lexical/react/LexicalComposer";
+import { DocNodePlugin } from "@docukit/lexical/react";
+// see the DocSync docs for more info on how to generate these hooks
+import { useDoc, usePresence } from "../docsync/client";
+
+function Editor() {
+  // [!code highlight:2]
+  const { doc, docId } = useDoc({ type: "lexical", createIfMissing: true });
+  const [presence, setPresence] = usePresence({ docId });
+
+  return (
+    <LexicalComposer initialConfig={initialConfig}>
+      <DocNodePlugin
+        doc={doc}
+        presence={presence}
+        setPresence={setPresence}
+        user={{ name: "John Doe", color: "#ff0000" }}
+      />
+      {/* ... The rest of your Lexical Plugins ... */}
+    </LexicalComposer>
+  );
+}
+```

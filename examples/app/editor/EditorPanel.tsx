@@ -9,27 +9,30 @@ import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import ToolbarPlugin from "./ToolbarPlugin";
 import { $createParagraphNode, $createTextNode, $getRoot } from "lexical";
-import { docToLexical } from "@docnode/lexical";
-import type { Doc } from "docnode";
+import type { PresenceSelection } from "@docukit/docnode-lexical";
+import {
+  DocNodePlugin,
+  type Presence,
+  type PresenceUser,
+} from "@docukit/docnode-lexical/react";
+import type { Doc } from "@docukit/docnode";
 import { useEffect } from "react";
 
-function DocSyncPlugin({ doc, clientId }: { doc: Doc; clientId: string }) {
-  const [editor] = useLexicalComposerContext();
+type EditorPanelProps = {
+  doc: Doc;
+  clientId: string;
+  presence?: Presence;
+  setPresence?: (selection: PresenceSelection | undefined) => void;
+  user?: PresenceUser;
+};
 
-  useEffect(() => {
-    if (!doc) return;
-
-    // Set up bidirectional sync between DocNode and Lexical
-    const { cleanup } = docToLexical(editor, doc);
-
-    // TODO: the user should not need to call cleanup. Maybe I should export a hook
-    return cleanup;
-  }, [editor, doc, clientId]);
-
-  return null;
-}
-
-export function EditorPanel({ doc, clientId }: { doc: Doc; clientId: string }) {
+export function EditorPanel({
+  doc,
+  clientId,
+  presence,
+  setPresence,
+  user,
+}: EditorPanelProps) {
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-700/50 bg-zinc-900/50 shadow-2xl shadow-black/50 backdrop-blur-sm">
       <LexicalComposer
@@ -55,7 +58,12 @@ export function EditorPanel({ doc, clientId }: { doc: Doc; clientId: string }) {
           },
         }}
       >
-        <DocSyncPlugin doc={doc} clientId={clientId} />
+        <DocNodePlugin
+          doc={doc}
+          presence={presence}
+          setPresence={setPresence}
+          user={user}
+        />
         <InitialContentPlugin clientId={clientId} />
         <ToolbarPlugin />
         <div className="relative">
@@ -96,7 +104,7 @@ function InitialContentPlugin({ clientId }: { clientId: string }) {
       p3.append(text3);
       root.append(p1, p2, p3);
     });
-  }, [editor]);
+  }, [editor, clientId]);
 
   return null;
 }

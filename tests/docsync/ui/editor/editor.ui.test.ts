@@ -7,3 +7,5 @@ test("editor", async ({ page }) => {
   await page.keyboard.type(" Hello");
   await dn.assertContent(["One Hello", "Two", "Three"]);
 });
+
+// TODO: selection should not jump to the start when switching clients

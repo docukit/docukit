@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   DocSyncClient,
   type ClientConfig,
   type GetDocArgs,
   type QueryResult,
-} from "@docnode/docsync/client";
-import { type DocBinding } from "@docnode/docsync";
+  type Presence,
+} from "@docukit/docsync/client";
+import { type DocBinding } from "@docukit/docsync";
 
 // Helper types to infer D, S, O from ClientConfig
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,7 +38,7 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
       ? new DocSyncClient(config as ClientConfig<D, S, O>)
       : undefined;
 
-  type DocData = { doc: D; id: string };
+  type DocData = { doc: D; docId: string };
 
   function useDoc(args: {
     type: string;
@@ -65,5 +66,26 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
     return result;
   }
 
-  return { useDoc, client };
+  function usePresence(args: { docId: string | undefined }) {
+    const [presence, INTERNAL_setPresence] = useState<Presence>({});
+    const { docId } = args;
+
+    // Wrap in useCallback to maintain stable reference across renders
+    const setPresence = useCallback(
+      (newPresence: unknown) => {
+        if (!docId) return;
+        void client?.setPresence({ docId, presence: newPresence });
+      },
+      [docId],
+    );
+
+    useEffect(() => {
+      if (!client) return;
+      return client.getPresence(args, INTERNAL_setPresence);
+    }, [client, docId]);
+
+    return [presence, setPresence] as const;
+  }
+
+  return { useDoc, usePresence, client };
 }

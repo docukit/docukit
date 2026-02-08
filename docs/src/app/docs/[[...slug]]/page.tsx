@@ -11,6 +11,7 @@ import type { Metadata } from "next";
 import { createRelativeLink } from "fumadocs-ui/mdx";
 import { GitHubIcon } from "@/icons/GithubIcon";
 import { ArrowLink } from "@/icons/ArrowLink";
+import Footer from "@/components/Footer";
 
 export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
   const params = await props.params;
@@ -55,6 +56,9 @@ export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
       }}
       toc={toc}
       full={page.data.full}
+      footer={{
+        children: <Footer variant="docs" />,
+      }}
     >
       <DocsTitle>{page.data.title}</DocsTitle>
       <DocsDescription>{page.data.description}</DocsDescription>
@@ -81,9 +85,19 @@ export async function generateMetadata(
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
+  let icon = "/favicon.svg";
+  const slug = params.slug?.[0];
+  if (slug === "docnode") icon = "/docnode-icon.svg";
+  else if (slug === "docsync") icon = "/docsync-icon.svg";
+  else if (slug === "doceditor") icon = "/doceditor-icon.svg";
+  else if (slug === "docgrid") icon = "/docgrid-icon.svg";
+
   return {
-    title: `${page.data.title} | DocNode`,
+    title: `${page.data.title}`,
     description: page.data.description,
+    icons: {
+      icon,
+    },
     openGraph: {
       images: getPageImage(page).url,
     },

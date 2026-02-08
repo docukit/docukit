@@ -1,0 +1,153 @@
+---
+title: Introduction
+---
+
+import {
+  TypeFeature,
+  SyncBackendFeature,
+  PricingFeature,
+  LicenseFeature,
+  TypesOfNodesFeature,
+  BundleSizeFeature,
+  TypeSafeSchemasFeature,
+  MoveOperationFeature,
+  HardDeletesFeature,
+  P2PSupportFeature,
+  SchemaNormalizationFeature,
+  AutomaticBatchingFeature,
+  NodeIDsPublicFeature,
+  NoInsertsMetadataFeature,
+} from "@/components/ComparisonFeatures";
+
+## What is DocNode
+
+DocNode is a highly performant type-safe document manager with atomic transactions and an undo manager.
+It supports Operational Transformation (OT) and in the future also a Conflict-free Replicated Data Type (CRDT) mode.
+
+For the story behind DocNode and acknowledgements, see [About](/about).
+
+## How does it compare to Yjs?
+
+<div id="comparison-table">
+  <table>
+    <thead>
+      <tr>
+        <th>Feature</th>
+        <th>DocNode</th>
+        <th>Yjs</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <TypeFeature />
+        </td>
+        <td>ID-based OT</td>
+        <td>CRDT</td>
+      </tr>
+      <tr>
+        <td>
+          <SyncBackendFeature />
+        </td>
+        <td>DocSync</td>
+        <td>Hocuspocus, Y-Sweet, DocSync</td>
+      </tr>
+      <tr>
+        <td>
+          <PricingFeature />
+        </td>
+        <td>Free</td>
+        <td>Free</td>
+      </tr>
+      <tr>
+        <td>
+          <LicenseFeature />
+        </td>
+        <td>A Fair Code License</td>
+        <td>MIT</td>
+      </tr>
+      <tr>
+        <td>
+          <TypesOfNodesFeature />
+        </td>
+        <td>DocNode</td>
+        <td>YMap, YArray, YText, YxmlFragment, YXmlElement, YXmlText</td>
+      </tr>
+      <tr>
+        <td>
+          <BundleSizeFeature />
+        </td>
+        <td>6.8 kb</td>
+        <td>26.3 kb</td>
+      </tr>
+      <tr>
+        <td>
+          <TypeSafeSchemasFeature />
+        </td>
+        <td>✅</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>
+          <MoveOperationFeature />
+        </td>
+        <td>✅</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>
+          <HardDeletesFeature />
+        </td>
+        <td>✅</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>
+          <NoInsertsMetadataFeature />
+        </td>
+        <td>✅</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>
+          <P2PSupportFeature />
+        </td>
+        <td>❌</td>
+        <td>✅</td>
+      </tr>
+      <tr>
+        <td>
+          <SchemaNormalizationFeature />
+        </td>
+        <td>✅</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>
+          <AutomaticBatchingFeature />
+        </td>
+        <td>✅</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>
+          <NodeIDsPublicFeature />
+        </td>
+        <td>✅</td>
+        <td>❌</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+## Why another CRDT / OT library?
+
+- **Operational Transformation (OT)**: DocNode is the only actively maintained OT framework. Since it relies on a server, documents avoid soft-deletes and tombstones like CRDTs, keeping them compact. A CRDT mode is planned for scenarios requiring P2P collaboration.
+- **Type-safety**: TypeScript is a first-class citizen. You define the shape of your nodes, and DocNode ensures correct parsing and validation.
+- **Performance**: DocNode is incredibly fast. Updates are batched automatically, there's no double-buffering/virtual DOM, the event system is designed for fine-grained updates, and serialization is extremely small.
+- **Simplicity**: You don't need to worry about which data type to use, since there's only one (DocNode). This makes modeling your document a near-obvious task.
+- **API Design**: The API has gone through two years of iteration and refinement. Get ready for many aha moments.
+- **Composability**: DocNode is designed from the ground up to support independent extensions and customizations of documents, nodes, and features without conflicts.
+- **Schema enforcement**: Do you want your document to always start with a heading? Or never have more than five bullets in a row? DocNode lets you define your own Normalizers to enforce any structure you can imagine.
+  {/* - Bundle size and dependencies? */}
+  {/* - Batteries included? (backend, editor bindings, auth, history version, multiplexing, encryption, etc.)? */}

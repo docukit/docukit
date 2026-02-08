@@ -103,14 +103,7 @@ export function SyncBackendFeature() {
             >
               Hocuspocus
             </a>{" "}
-            or{" "}
-            <a
-              href="https://jamsocket.com/y-sweet"
-              className="text-blue-600 hover:underline"
-            >
-              Y-Sweet
-            </a>{" "}
-            are to Yjs.
+            is to Yjs.
           </p>
         </div>
       }
@@ -127,7 +120,7 @@ export function PricingFeature() {
         <div className="prose prose-sm prose-a:text-inherit space-y-2">
           <p className="text-sm">
             Read our{" "}
-            <a href="/docs/license" className="text-blue-600 hover:underline">
+            <a href="/license" className="text-blue-600 hover:underline">
               License and Pricing page
             </a>
             .
@@ -147,7 +140,7 @@ export function LicenseFeature() {
         <div className="prose prose-sm prose-a:text-inherit space-y-2">
           <p className="text-sm">
             Read our{" "}
-            <a href="/docs/license" className="text-blue-600 hover:underline">
+            <a href="/license" className="text-blue-600 hover:underline">
               License and Pricing page
             </a>
             .
@@ -172,7 +165,7 @@ export function TypesOfNodesFeature() {
             DocNode you can define different types of nodes, but the only thing
             that changes between them is their state. In everything else, they
             are instances of DocNode, a tree node.{" "}
-            <a href="/docs/nodes" className="text-blue-600 hover:underline">
+            <a href="/docnode/nodes" className="text-blue-600 hover:underline">
               See more in Nodes
             </a>
             .
@@ -316,7 +309,7 @@ export function SchemaNormalizationFeature() {
             bullets to five? DocNode's Normalizers let you define custom rules
             to enforce any structure automatically.{" "}
             <a
-              href="/docs/doc-lifecycle"
+              href="/docnode/doc-lifecycle"
               className="text-blue-600 hover:underline"
             >
               Learn more
@@ -339,7 +332,7 @@ export function AutomaticBatchingFeature() {
           <h4 className="text-sm font-semibold">Smart Operation Batching</h4>
           <p className="text-sm">
             DocNode{" "}
-            <a href="/docs/doc-lifecycle#batching">
+            <a href="/docnode/doc-lifecycle#batching">
               automatically batches operations
             </a>{" "}
             within the same synchronous execution context, reducing overhead and

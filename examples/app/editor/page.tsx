@@ -3,8 +3,11 @@
 import { useEffect, Suspense } from "react";
 import {
   useReferenceDoc,
+  useReferencePresence,
   useOtherTabDoc,
+  useOtherTabPresence,
   useOtherDeviceDoc,
+  useOtherDevicePresence,
   referenceClient,
   otherTabClient,
   otherDeviceClient,
@@ -12,16 +15,26 @@ import {
 import { EditorPanel } from "./EditorPanel";
 import { MultiClientLayout } from "../utils/MultiClientLayout";
 import { useDocId } from "../utils/useDocId";
+import type { Presence } from "@docukit/docnode-lexical";
+
+// User colors for cursor display
+const USER_COLORS: Record<string, string> = {
+  user1: "#3b82f6", // blue
+  user2: "#22c55e", // green
+};
 
 function EditorContent({
   clientId,
+  userId,
   docId,
   useDocHook,
+  usePresenceHook,
 }: {
   clientId: string;
   userId: string;
   docId: string;
   useDocHook: typeof useReferenceDoc;
+  usePresenceHook: typeof useReferencePresence;
 }) {
   // All clients create doc if missing (safe with CRDT)
   const { status, data, error } = useDocHook({
@@ -30,13 +43,16 @@ function EditorContent({
     createIfMissing: true,
   });
 
+  // Get presence for this document
+  const [presence, setPresence] = usePresenceHook({ docId });
+
   useEffect(() => {
     // Only initialize from reference client
     if (clientId !== "reference") return;
     if (!data?.doc.root.first) return;
 
     // Initialize doc with default content
-    // The docToLexical binding will handle Lexical initialization
+    // The syncLexicalWithDoc binding will handle Lexical initialization
   }, [data, clientId]);
 
   if (status === "error")
@@ -48,7 +64,15 @@ function EditorContent({
 
   const { doc } = data;
 
-  return <EditorPanel doc={doc} clientId={clientId} />;
+  return (
+    <EditorPanel
+      doc={doc}
+      clientId={clientId}
+      presence={presence as Presence}
+      setPresence={setPresence}
+      user={{ name: userId, color: USER_COLORS[userId] ?? "#888888" }}
+    />
+  );
 }
 
 function EditorPageContent() {
@@ -79,6 +103,7 @@ function EditorPageContent() {
                 userId={userId}
                 docId={docId}
                 useDocHook={useReferenceDoc}
+                usePresenceHook={useReferencePresence}
               />
             );
           }
@@ -90,6 +115,7 @@ function EditorPageContent() {
                 userId={userId}
                 docId={docId}
                 useDocHook={useOtherTabDoc}
+                usePresenceHook={useOtherTabPresence}
               />
             );
           }
@@ -101,6 +127,7 @@ function EditorPageContent() {
               userId={userId}
               docId={docId}
               useDocHook={useOtherDeviceDoc}
+              usePresenceHook={useOtherDevicePresence}
             />
           );
         }}

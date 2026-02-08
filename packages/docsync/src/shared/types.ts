@@ -51,7 +51,12 @@ export type QueryResult<D, E = Error> =
 
 export type DocSyncEvents<S, O> = {
   "sync-operations": {
-    request: { docId: string; operations?: O[]; clock: number };
+    request: {
+      docId: string;
+      operations?: O[];
+      clock: number;
+      presence?: unknown;
+    };
     response: Result<
       {
         docId: string;
@@ -64,6 +69,11 @@ export type DocSyncEvents<S, O> = {
         message: string;
       }
     >;
+  };
+  presence: {
+    // Client sends raw presence data; server wraps with socket.id
+    request: { docId: string; presence: unknown };
+    response: Result<void>;
   };
   "delete-doc": {
     request: { docId: string };
@@ -237,6 +247,7 @@ export type SyncRequestEvent<O = unknown, S = unknown> = {
     docId: string;
     operations?: O[];
     clock: number;
+    presence?: unknown;
   };
 
   // Response context (optional - may be partial if error occurs)
@@ -275,6 +286,15 @@ export type SyncRequestHandler<O = unknown, S = unknown> = (
 // #region Client Types
 // ============================================================================
 
+/**
+ * State for deferred operations (batching and debouncing).
+ * Used to track pending timeouts and their associated data.
+ */
+export type DeferredState<T> = {
+  timeout?: ReturnType<typeof setTimeout>;
+  data: T;
+};
+
 export type Identity = {
   userId: string;
   secret: string;
@@ -291,13 +311,22 @@ export type GetDocArgs =
   | { type: string; id: string; createIfMissing?: boolean }
   | { type: string; createIfMissing: true };
 
-export type DocData<D> = { doc: D; id: string };
+export type DocData<D> = { doc: D; docId: string };
 
-export type BroadcastMessage<O> = {
-  type: "OPERATIONS";
-  operations: O;
-  docId: string;
-};
+/**
+ * Presence is a record of user IDs to their presence data.
+ * It is used to track the presence of users in a document.
+ */
+export type Presence<T = unknown> = Record<string, T>;
+
+export type BroadcastMessage<O> =
+  | {
+      type: "OPERATIONS";
+      operations: O;
+      docId: string;
+      presence?: Record<string, unknown>;
+    }
+  | { type: "PRESENCE"; docId: string; presence: Record<string, unknown> };
 
 export type ClientConfig<
   D extends {} = {},
@@ -448,6 +477,8 @@ type ClientToServerEvents<S, O> = {
 type ServerToClientEvents = {
   // Server notifies clients that a document has been modified
   dirty: (payload: { docId: string }) => void;
+  // Server notifies clients about presence updates
+  presence: (payload: { docId: string; presence: Presence }) => void;
 };
 
 export type ServerSocket<S, O> = import("socket.io").Server<

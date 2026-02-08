@@ -11,7 +11,13 @@ import {
   emptyUpdate,
   assertError,
 } from "./utils.js";
-import { type DocNode, Doc, defineNode, UndoManager, string } from "docnode";
+import {
+  type DocNode,
+  Doc,
+  defineNode,
+  UndoManager,
+  string,
+} from "@docukit/docnode";
 
 //common to all mutators
 describe("base", () => {

@@ -1,4 +1,4 @@
-import { defineNode, string, type DocConfig, type Doc } from "docnode";
+import { defineNode, string, type DocConfig, type Doc } from "@docukit/docnode";
 
 // Shared node definition for both client and server
 export const IndexNode = defineNode({

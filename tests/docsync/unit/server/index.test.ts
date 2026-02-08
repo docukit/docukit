@@ -3,9 +3,11 @@
 
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { describe, test, expect, expectTypeOf } from "vitest";
-import { testWrapper } from "./utils.js";
-import { DocSyncServer, InMemoryServerProvider } from "@docnode/docsync/server";
-import { DocNodeBinding } from "@docnode/docsync/docnode";
+import { testWrapper, testPort } from "./utils.js";
+import { DocSyncServer, InMemoryServerProvider } from "@docukit/docsync/server";
+import { DocNodeBinding } from "@docukit/docsync/docnode";
+import { DocSyncClient } from "@docukit/docsync/client";
+import type { Provider } from "@docukit/docsync";
 
 describe("authentication", () => {
   test("rejects without token", async () => {
@@ -32,6 +34,220 @@ describe("authentication", () => {
     });
   });
 });
+
+describe("presence", () => {
+  test("cleans up presence on disconnect", async () => {
+    // Manually create server and clients to test multi-client scenarios
+    const port = testPort(10);
+    globalThis.window = {} as Window & typeof globalThis;
+    globalThis.localStorage = {
+      getItem: () => "device-id",
+    } as unknown as Storage;
+
+    const server = new DocSyncServer({
+      docBinding: DocNodeBinding([]),
+      port,
+      provider: InMemoryServerProvider,
+      authenticate: async ({ token }) => {
+        if (token.startsWith("valid-")) {
+          return { userId: token.replace("valid-", "") };
+        }
+      },
+    });
+
+    // Create two clients
+    const client1 = createMockDocSyncClient(port, "valid-user1");
+    const client2 = createMockDocSyncClient(port, "valid-user2");
+
+    const socket1 = client1["_socket"];
+    const socket2 = client2["_socket"];
+
+    // Wait for connections
+    await Promise.all([
+      new Promise<void>((resolve) => socket1.on("connect", resolve)),
+      new Promise<void>((resolve) => socket2.on("connect", resolve)),
+    ]);
+
+    const docId = "01kfpgjsabrpdcw0qgh5evhy2g";
+
+    // Both clients sync to join the document room
+    await Promise.all([
+      new Promise((resolve) =>
+        socket1.emit(
+          "sync-operations",
+          { docId, operations: [], clock: 0 },
+          resolve,
+        ),
+      ),
+      new Promise((resolve) =>
+        socket2.emit(
+          "sync-operations",
+          { docId, operations: [], clock: 0 },
+          resolve,
+        ),
+      ),
+    ]);
+
+    // Client 1 sets presence
+    await new Promise((resolve) => {
+      socket1.emit(
+        "presence",
+        { docId, presence: { cursor: "position-1" } },
+        resolve,
+      );
+    });
+
+    // Client 2 sets presence
+    await new Promise((resolve) => {
+      socket2.emit(
+        "presence",
+        { docId, presence: { cursor: "position-2" } },
+        resolve,
+      );
+    });
+
+    // Listen for presence updates on client 1
+    const presenceUpdates: Array<{
+      docId: string;
+      presence: Record<string, unknown>;
+    }> = [];
+
+    // IMPORTANT: Simulate real Socket.IO JSON serialization
+    // In real Socket.IO, messages are JSON.stringify'd before sending
+    // and JSON.parse'd on receive. This test needs to mirror that behavior.
+    socket1.on(
+      "presence",
+      (payload: { docId: string; presence: Record<string, unknown> }) => {
+        // Simulate Socket.IO's JSON serialization round-trip
+        const serialized = JSON.stringify(payload);
+        const deserialized = JSON.parse(serialized) as {
+          docId: string;
+          presence: Record<string, unknown>;
+        };
+        presenceUpdates.push(deserialized);
+      },
+    );
+
+    // Store socket2.id before disconnecting (it exists since socket is connected)
+    const socket2Id = socket2.id!;
+
+    // Disconnect client 2
+    socket2.disconnect();
+
+    // Wait for the disconnect to propagate
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Client 1 should receive a presence update with client 2's presence as null
+    // If the server sent undefined, JSON serialization would drop it and we'd get {}
+    expect(presenceUpdates.length).toBeGreaterThan(0);
+    const lastUpdate = presenceUpdates[presenceUpdates.length - 1];
+    if (lastUpdate) {
+      expect(lastUpdate.docId).toBe(docId);
+      expect(lastUpdate.presence[socket2Id]).toBe(null);
+      // Ensure the socketId key exists (wasn't dropped by JSON serialization)
+      expect(Object.keys(lastUpdate.presence)).toContain(socket2Id);
+    }
+
+    // Clean up
+    client1.disconnect();
+    await server.close();
+  });
+
+  test("broadcasts presence only to other clients in the same room", async () => {
+    const port = testPort(11);
+    globalThis.window = {} as Window & typeof globalThis;
+    globalThis.localStorage = {
+      getItem: () => "device-id",
+    } as unknown as Storage;
+
+    const server = new DocSyncServer({
+      docBinding: DocNodeBinding([]),
+      port,
+      provider: InMemoryServerProvider,
+      authenticate: async ({ token }) => {
+        if (token.startsWith("valid-")) {
+          return { userId: token.replace("valid-", "") };
+        }
+      },
+    });
+
+    // Create two clients
+    const client1 = createMockDocSyncClient(port, "valid-user1");
+    const client2 = createMockDocSyncClient(port, "valid-user2");
+
+    const socket1 = client1["_socket"];
+    const socket2 = client2["_socket"];
+
+    // Wait for connections
+    await Promise.all([
+      new Promise<void>((resolve) => socket1.on("connect", resolve)),
+      new Promise<void>((resolve) => socket2.on("connect", resolve)),
+    ]);
+
+    const docId = "01kfpgjsabrpdcw0qgh5evhy2g";
+
+    // Only client 1 joins the room
+    await new Promise((resolve) => {
+      socket1.emit(
+        "sync-operations",
+        { docId, operations: [], clock: 0 },
+        resolve,
+      );
+    });
+
+    // Listen for presence updates on client 2
+    const presenceUpdates: Array<{
+      docId: string;
+      presence: Record<string, unknown>;
+    }> = [];
+    socket2.on("presence", (payload) => {
+      presenceUpdates.push(payload);
+    });
+
+    // Client 1 sets presence
+    await new Promise((resolve) => {
+      socket1.emit(
+        "presence",
+        { docId, presence: { cursor: "position-1" } },
+        resolve,
+      );
+    });
+
+    // Wait a bit
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Client 2 should NOT receive presence update (not in the room)
+    expect(presenceUpdates.length).toBe(0);
+
+    // Clean up
+    client1.disconnect();
+    client2.disconnect();
+    await server.close();
+  });
+});
+
+// Helper to create a mock client for testing
+function createMockDocSyncClient(port: number, token: string): DocSyncClient {
+  return new DocSyncClient({
+    server: {
+      url: `ws://localhost:${port}`,
+      auth: {
+        getToken: async () => token,
+      },
+    },
+    local: {
+      provider: InMemoryServerProvider as unknown as new (
+        identity: { userId: string; secret: string },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ) => Provider<any, any, "client">,
+      getIdentity: async () => ({
+        userId: token.replace("valid-", ""),
+        secret: "test-secret",
+      }),
+    },
+    docBinding: DocNodeBinding([]),
+  }) as unknown as DocSyncClient;
+}
 
 describe("sync-operations", () => {
   test("returns incremented clock", async () => {

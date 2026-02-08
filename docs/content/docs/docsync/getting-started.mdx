@@ -1,0 +1,104 @@
+---
+title: Getting Started
+---
+
+## Installation
+
+```npm tab="React"
+npm i @docukit/docsync-react
+```
+
+```npm tab="Vanilla"
+npm i @docukit/docsync
+```
+
+{/* TODO: ### Bundle size */}
+
+## 1. Client
+
+```ts tab="React"
+// client.ts
+import { createDocSyncClient } from "@docukit/docsync-react/client";
+import { DocNodeBinding } from "@docukit/docsync-react/docnode";
+import { IndexedDBProvider } from "@docukit/docsync-react/indexeddb";
+// Refer to the DocNode documentation for more information
+// on how to define a DocConfig
+import { yourDocConfigs } from "./shared.ts";
+import { fetchAuthToken, fetchIdentity } from "./utils.ts";
+
+export const { useDoc, usePresence, client } = createDocSyncClient({
+  docBinding: DocNodeBinding([...yourDocConfigs]),
+  server: {
+    url: "http://localhost:8080",
+    auth: {
+      getToken: async () => await fetchAuthToken(),
+    },
+  },
+  local: {
+    provider: IndexedDBProvider,
+    getIdentity: async () => await fetchIdentity(),
+  },
+});
+```
+
+```ts tab="Vanilla"
+// client.ts
+import { DocSyncClient } from "@docukit/docsync/client";
+import { DocNodeBinding } from "@docukit/docsync/docnode";
+import { IndexedDBProvider } from "@docukit/docsync/indexeddb";
+// Refer to the DocNode documentation for more information
+// on how to define a DocConfig
+import { yourDocConfigs } from "./shared.ts";
+import { fetchAuthToken, fetchIdentity } from "./utils.ts";
+
+export const client = new DocSyncClient({
+  docBinding: DocNodeBinding([...yourDocConfigs]),
+  server: {
+    url: "http://localhost:8080",
+    auth: {
+      getToken: async () => await fetchAuthToken(),
+    },
+  },
+  local: {
+    provider: IndexedDBProvider,
+    getIdentity: async () => await fetchIdentity(),
+  },
+});
+```
+
+## 2. Server
+
+```ts
+// server.ts
+import { DocSyncServer } from "@docukit/docsync-react/server";
+import { DocNodeBinding } from "@docukit/docsync-react/docnode";
+import { PostgresProvider } from "@docukit/docsync-react/postgres";
+// Refer to the DocNode documentation for more information
+// on how to define a DocConfig
+import { yourDocConfigs } from "./shared.ts";
+
+// this will start the server on port 8080
+const server = new DocSyncServer({
+  docBinding: DocNodeBinding([...yourDocConfigs]),
+  port: 8080,
+  provider: PostgresProvider,
+  authenticate: async ({ token }) => ({ userId: token }),
+});
+```
+
+## 3. Client Usage
+
+```tsx tab="React"
+// App.tsx
+import { useDoc } from "./client";
+
+const App = () => {
+  const { doc } = useDoc({ type: "notes" });
+  return <div>{doc.root.state.title.get()}</div>;
+};
+```
+
+```ts tab="Vanilla"
+// TODO: Are there people actually writing frontends without UI libraries?
+// If you are that strange person, let me know and I will document how to use it.
+```

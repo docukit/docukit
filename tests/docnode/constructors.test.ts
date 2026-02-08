@@ -1,12 +1,18 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { Doc, DocNode, defineState, defineNode, string } from "docnode";
+import {
+  Doc,
+  DocNode,
+  defineState,
+  defineNode,
+  string,
+} from "@docukit/docnode";
 import type {
   Json,
   StateDefinition,
   NodeDefinition,
   DefaultStateMethods,
   JsonDoc,
-} from "docnode";
+} from "@docukit/docnode";
 import {
   checkUndoManager,
   TestNode,

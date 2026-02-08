@@ -1,4 +1,4 @@
-import type { DocNode } from "docnode";
+import type { DocNode } from "@docukit/docnode";
 
 export const descendants = {
   customToArray: function (docnode: DocNode, includeSelf = false) {

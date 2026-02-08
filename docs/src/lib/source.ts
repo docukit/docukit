@@ -2,11 +2,23 @@ import { docs, blogPosts } from "../../.source/server";
 import { type InferPageType, loader } from "fumadocs-core/source";
 import { lucideIconsPlugin } from "fumadocs-core/source/lucide-icons";
 import { toFumadocsSource } from "fumadocs-mdx/runtime/server";
+import { createElement } from "react";
+import DocNodeLogo from "@/icons/DocNodeLogo";
+import DocSyncLogo from "@/icons/DocSyncLogo";
+import DocEditorLogo from "@/icons/DocEditorLogo";
+import DocGridLogo from "@/icons/DocGridLogo";
 
 // See https://fumadocs.dev/docs/headless/source-api for more info
 export const source = loader({
-  baseUrl: "/docs",
+  baseUrl: "",
   source: docs.toFumadocsSource(),
+  icon(name) {
+    if (!name) return;
+    if (name === "DocNode") return createElement(DocNodeLogo);
+    if (name === "DocSync") return createElement(DocSyncLogo);
+    if (name === "DocEditor") return createElement(DocEditorLogo);
+    if (name === "DocGrid") return createElement(DocGridLogo);
+  },
   plugins: [lucideIconsPlugin()],
 });
 
@@ -21,7 +33,7 @@ export function getPageImage(page: InferPageType<typeof source>) {
 
   return {
     segments,
-    url: `/og/docs/${segments.join("/")}`,
+    url: `/og/${segments.join("/")}`,
   };
 }
 

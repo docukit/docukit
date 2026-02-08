@@ -12,7 +12,7 @@ import {
   ChildNode,
   spyOnRequest,
 } from "./utils.js";
-import type { Operations } from "docnode";
+import type { Operations } from "@docukit/docnode";
 
 describe("Client 2", () => {
   // ──────────────────────────────────────────────────────────────────────────

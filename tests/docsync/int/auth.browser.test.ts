@@ -1,9 +1,9 @@
 // TODO: move to unit tests
 
 import { describe, test, expect, vi } from "vitest";
-import { DocSyncClient, IndexedDBProvider } from "@docnode/docsync/client";
-import { DocNodeBinding } from "@docnode/docsync/docnode";
-import { defineNode, string } from "docnode";
+import { DocSyncClient, IndexedDBProvider } from "@docukit/docsync/client";
+import { DocNodeBinding } from "@docukit/docsync/docnode";
+import { defineNode, string } from "@docukit/docnode";
 
 const docBinding = DocNodeBinding([
   {

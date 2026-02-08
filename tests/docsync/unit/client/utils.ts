@@ -7,9 +7,9 @@ import {
   type DocData,
   type ClientConfig,
   type Identity,
-} from "@docnode/docsync/client";
-import { DocNodeBinding } from "@docnode/docsync/docnode";
-import { type Doc, defineNode } from "docnode";
+} from "@docukit/docsync/client";
+import { DocNodeBinding } from "@docukit/docsync/docnode";
+import { type Doc, defineNode } from "@docukit/docnode";
 
 // ============================================================================
 // Node Definitions

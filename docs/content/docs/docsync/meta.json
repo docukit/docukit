@@ -1,0 +1,19 @@
+{
+  "title": "DocSync",
+  "description": "Agnostic sync engine",
+  "root": true,
+  "pages": [
+    "index",
+    "getting-started",
+    "external:[License and Pricing](/license)",
+    "--- Learn ---",
+    "client",
+    "server",
+    "--- Guides ---",
+    "auth",
+    "persistence",
+    "subdocuments"
+  ],
+  "defaultOpen": true,
+  "icon": "DocSync"
+}

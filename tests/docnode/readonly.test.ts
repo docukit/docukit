@@ -5,7 +5,7 @@ import {
   type DeepImmutable,
   defineNode,
   string,
-} from "docnode";
+} from "@docukit/docnode";
 import {
   TestNode,
   Text,

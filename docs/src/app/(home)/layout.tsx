@@ -1,6 +1,7 @@
 import { HomeLayout } from "fumadocs-ui/layouts/home";
 import { baseOptions } from "@/lib/layout.shared";
 import { RootProvider } from "fumadocs-ui/provider/next";
+import Footer from "@/components/Footer";
 
 const options = {
   ...baseOptions,
@@ -12,7 +13,10 @@ const options = {
 export default function Layout({ children }: LayoutProps<"/">) {
   return (
     <RootProvider theme={{ ...baseOptions, forcedTheme: "dark" }}>
-      <HomeLayout {...options}>{children}</HomeLayout>
+      <HomeLayout {...options}>
+        {children}
+        <Footer />
+      </HomeLayout>
     </RootProvider>
   );
 }

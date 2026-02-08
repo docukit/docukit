@@ -1,4 +1,4 @@
-import { type Doc, type Operations } from "docnode";
+import { type Doc, type Operations } from "@docukit/docnode";
 import {
   $getNodeByKey,
   $getRoot,
@@ -11,17 +11,17 @@ import {
   type SerializedLexicalNode,
 } from "lexical";
 
-import { LexicalDocNode } from "./index.js";
+import { LexicalDocNode } from "./lexicalDocNode.js";
 import {
   getIsApplyingOwnChanges,
   setIsApplyingOwnChanges,
 } from "./syncLexicalToDocNode.js";
+import type { KeyBinding } from "./types.js";
 
 export function syncDocNodeToLexical(
   doc: Doc,
   editor: LexicalEditor,
-  lexicalKeyToDocNodeId: Map<string, string>,
-  docNodeIdToLexicalKey: Map<string, string>,
+  keyBinding: KeyBinding,
 ) {
   // Sync DocNode → Lexical using operations
   const unregisterDocListener = doc.onChange(({ operations }) => {
@@ -37,12 +37,7 @@ export function syncDocNodeToLexical(
     try {
       editor.update(
         () => {
-          $applyDocNodeOperations(
-            doc,
-            operations,
-            lexicalKeyToDocNodeId,
-            docNodeIdToLexicalKey,
-          );
+          $applyDocNodeOperations(doc, operations, keyBinding);
         },
         {
           discrete: true,
@@ -67,9 +62,9 @@ export function syncDocNodeToLexical(
 function $applyDocNodeOperations(
   doc: Doc,
   operations: Operations,
-  lexicalKeyToDocNodeId: Map<string, string>,
-  docNodeIdToLexicalKey: Map<string, string>,
+  keyBinding: KeyBinding,
 ): void {
+  const { lexicalKeyToDocNodeId, docNodeIdToLexicalKey } = keyBinding;
   const [orderedOps, statePatch] = operations;
   const lexicalRoot = $getRoot();
 

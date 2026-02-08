@@ -1,6 +1,6 @@
 // OLD PROOF OF CONCEPT - A LOT OF THINGS ARE DIFFERENT NOW, NEED TO REVISE
 // import React from "react";
-// import { type Doc, DocNode } from "docnode";
+// import { type Doc, DocNode } from "@docukit/docnode";
 
 // // MAYBE: should mimic the methods of Lexical/Element/DecoratorNode that are not implemented in DocNode (very few)
 // // also maybe should be an interface instead of a class

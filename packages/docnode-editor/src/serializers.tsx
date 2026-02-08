@@ -4,7 +4,7 @@
 // import React, { type JSX } from "react";
 // import { renderToString } from "react-dom/server";
 // import type { BlockNode } from "./nodes.js";
-// import type { DocNode } from "docnode";
+// import type { DocNode } from "@docukit/docnode";
 
 // type serializedEditor = object;
 // type Converter<T extends DocNode = DocNode> = (arg: {

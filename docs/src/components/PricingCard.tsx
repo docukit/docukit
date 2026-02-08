@@ -16,12 +16,13 @@ interface PricingCardProps {
   footer: string;
   highlighted?: boolean;
   badge?: string;
+  variant?: "emerald" | "blue";
 }
 
-function CheckIcon() {
+function CheckIcon({ className }: { className?: string }) {
   return (
     <svg
-      className="mt-0.5 size-5 shrink-0 text-emerald-500"
+      className={`mt-0.5 size-5 shrink-0 ${className}`}
       fill="none"
       stroke="currentColor"
       viewBox="0 0 24 24"
@@ -47,36 +48,66 @@ export function PricingCard({
   footer,
   highlighted = false,
   badge,
+  variant = "emerald",
 }: PricingCardProps) {
+  const styles = {
+    emerald: {
+      border: "border-emerald-500/50",
+      shadow: "shadow-emerald-900/20",
+      badge: "bg-emerald-600",
+      textGradient: "from-emerald-400 to-emerald-200",
+      button: "bg-emerald-600 hover:bg-emerald-500 text-white",
+      icon: "text-emerald-500",
+    },
+    blue: {
+      border: "border-blue-500/50",
+      shadow: "shadow-blue-900/20",
+      badge: "bg-blue-600",
+      textGradient: "from-blue-400 to-blue-200",
+      button: "bg-blue-600 hover:bg-blue-500 text-white",
+      icon: "text-blue-500",
+    },
+  };
+
+  const theme = styles[variant];
+
   return (
     <div
-      className={`bg-fd-card relative flex flex-col rounded-lg p-6 ${
+      className={`relative flex flex-col rounded-xl p-6 backdrop-blur-sm ${
         highlighted
-          ? "border-fd-primary border-2 shadow-md dark:shadow-lg"
-          : "border-fd-border border shadow-sm dark:shadow-md"
+          ? `border-2 ${theme.border} bg-slate-800/60 shadow-lg ${theme.shadow}`
+          : "border border-slate-700/50 bg-slate-800/40 shadow-md"
       }`}
     >
       {badge && (
-        <div className="bg-fd-primary text-fd-primary-foreground absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-xs font-semibold">
+        <div
+          className={`absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-xs font-semibold text-white ${theme.badge}`}
+        >
           {badge}
         </div>
       )}
 
       <div className="mb-4">
-        <h3 className="text-fd-foreground text-2xl font-bold">{title}</h3>
+        <h3 className="text-2xl font-bold text-slate-100">{title}</h3>
         <div className="mt-2 flex items-baseline gap-2">
-          <span className="text-fd-primary text-4xl font-bold">{price}</span>
-          <span className="text-fd-muted-foreground">{priceSubtext}</span>
+          <span
+            className={`bg-linear-to-r bg-clip-text text-4xl font-bold text-transparent ${theme.textGradient}`}
+          >
+            {price}
+          </span>
+          <span className="text-slate-400">{priceSubtext}</span>
         </div>
       </div>
 
-      <p className="text-fd-muted-foreground mb-6">{description}</p>
+      <p className="mb-6 text-slate-400">{description}</p>
 
       <ul className="mb-6 grow space-y-3">
         {features.map((feature, index) => (
           <li key={index} className="flex items-start gap-2">
-            <CheckIcon />
-            <span className={`text-sm ${feature.bold ? "font-medium" : ""}`}>
+            <CheckIcon className={theme.icon} />
+            <span
+              className={`text-sm text-slate-300 ${feature.bold ? "font-medium" : ""}`}
+            >
               {feature.text}
             </span>
           </li>
@@ -85,18 +116,18 @@ export function PricingCard({
 
       <a
         href={ctaHref}
-        className={`w-full rounded-md px-4 py-2.5 text-center font-medium transition-colors ${
+        className={`w-full rounded-md px-4 py-2.5 text-center font-medium transition-all ${
           highlighted
-            ? "bg-fd-primary hover:bg-fd-primary/90 text-fd-primary-foreground"
-            : "bg-fd-secondary hover:bg-fd-secondary/80 text-fd-secondary-foreground"
+            ? `${theme.button}`
+            : "border border-slate-600 bg-slate-700/50 text-slate-200 hover:border-slate-500 hover:bg-slate-700"
         }`}
       >
         {ctaText}
       </a>
 
-      <p className="text-fd-muted-foreground mt-4 text-center text-xs">
-        {footer}
-      </p>
+      {footer && (
+        <p className="mt-4 text-center text-xs text-slate-500">{footer}</p>
+      )}
     </div>
   );
 }
