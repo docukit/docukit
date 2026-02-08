@@ -1,7 +1,11 @@
 import tseslint from "typescript-eslint";
 import vitest from "@vitest/eslint-plugin";
 import playwright from "eslint-plugin-playwright";
+import type { ESLint } from "eslint";
 import * as regexpPlugin from "eslint-plugin-regexp";
+// eslint-plugin-barrel-files has no type declarations
+// @ts-expect-error -- untyped package
+import barrelFiles from "eslint-plugin-barrel-files";
 import eslintPluginImport from "eslint-plugin-import";
 import nextVitals from "eslint-config-next/core-web-vitals";
 
@@ -179,6 +183,23 @@ export const rootEslintConfig = tseslint.config(
       regexp: regexpPlugin,
     },
     rules: regexpPlugin.configs["flat/recommended"].rules,
+  },
+  // Barrel files (re-exports) allowed only in **/exports/**; override below turns rule off there
+  {
+    files: ["packages/**"],
+    plugins: { "barrel-files": barrelFiles as ESLint.Plugin },
+    rules: {
+      "barrel-files/avoid-barrel-files": [
+        "error",
+        { amountOfExportsToConsiderModuleAsBarrel: 0 },
+      ],
+    },
+  },
+  {
+    files: ["packages/**/exports/**"],
+    rules: {
+      "barrel-files/avoid-barrel-files": "off",
+    },
   },
 
   {
