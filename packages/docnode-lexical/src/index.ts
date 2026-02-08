@@ -25,10 +25,10 @@ export function syncLexicalWithDoc(
   const offDocListener = syncDocNodeToLexical(doc, editor, keyBinding);
 
   // 4. Sync presence (optional). Handles local selection → presence and remote cursors.
-  const presenceHandle = syncPresence(editor, keyBinding, presenceOptions);
+  const offSyncPresence = syncPresence(editor, keyBinding, presenceOptions);
 
   return () => {
-    presenceHandle?.cleanup();
+    offSyncPresence?.();
     offLexicalListener();
     offDocListener();
     keyBinding.lexicalKeyToDocNodeId.clear();

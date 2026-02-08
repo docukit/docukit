@@ -51,13 +51,13 @@ export function updatePresence(
  * @param keyBinding - The key mapping from syncLexicalWithDoc for converting between Lexical keys and DocNode IDs
  * @param presenceOptions - Optional presence options. When setPresence is provided, local selection is synced.
  *   When user is provided, outgoing presence is enriched with name and color.
- * @returns A handle with updateRemoteCursors and cleanup functions, or undefined if no setPresence is provided
+ * @returns Cleanup function to unbind, or undefined if no setPresence is provided
  */
 export function syncPresence(
   editor: LexicalEditor,
   keyBinding: KeyBinding,
   presenceOptions?: syncLexicalWithDocPresenceOptions,
-): PresenceHandle | undefined {
+): (() => void) | undefined {
   const { setPresence: rawSetPresence, user } = presenceOptions ?? {};
   if (!rawSetPresence) return undefined;
 
@@ -183,5 +183,5 @@ export function syncPresence(
   };
 
   bindingByEditor.set(editor, { handle, lastPresence: undefined });
-  return handle;
+  return handle.cleanup;
 }
