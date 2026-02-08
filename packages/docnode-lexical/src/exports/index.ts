@@ -1,10 +1,10 @@
-export { syncLexicalWithDoc, updatePresence } from "../index.js";
+export { syncLexicalWithDoc } from "../index.js";
 export {
   LexicalDocNode,
   lexicalDocNodeConfig,
   createLexicalDoc,
 } from "../lexicalDocNode.js";
-export { syncPresence } from "../presence/index.js";
+export { syncPresence, updatePresence } from "../presence/index.js";
 export type {
   syncLexicalWithDocPresenceOptions,
   KeyBinding,

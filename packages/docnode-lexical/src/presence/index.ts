@@ -23,6 +23,26 @@ import { syncPresenceToSelection } from "./syncPresenceToSelection.js";
 import { transformCursorSelection } from "./transformOffset.js";
 import type { Presence, PresenceBinding, PresenceHandle } from "./types.js";
 
+const bindingByEditor = new WeakMap<
+  LexicalEditor,
+  { handle: PresenceHandle; lastPresence: Presence | undefined }
+>();
+
+/**
+ * Update remote cursors for an editor. Call this when presence data changes
+ * (e.g. from a React effect). Uses referential equality to no-op when unchanged.
+ */
+export function updatePresence(
+  editor: LexicalEditor,
+  presence: Presence,
+): void {
+  const binding = bindingByEditor.get(editor);
+  if (!binding?.handle) return;
+  if (presence === binding.lastPresence) return;
+  binding.lastPresence = presence;
+  binding.handle.updateRemoteCursors(presence);
+}
+
 /**
  * Sets up presence synchronization between a Lexical editor and a presence system.
  * Returns undefined if no setPresence callback is provided in presenceOptions.
@@ -142,7 +162,7 @@ export function syncPresence(
     },
   );
 
-  return {
+  const handle: PresenceHandle = {
     updateRemoteCursors: (presence: Presence) => {
       syncPresenceToSelection(binding, presence);
     },
@@ -158,6 +178,10 @@ export function syncPresence(
       if (cursorsContainer?.parentElement) {
         cursorsContainer.parentElement.removeChild(cursorsContainer);
       }
+      bindingByEditor.delete(editor);
     },
   };
+
+  bindingByEditor.set(editor, { handle, lastPresence: undefined });
+  return handle;
 }

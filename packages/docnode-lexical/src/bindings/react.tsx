@@ -3,7 +3,8 @@
 import { useEffect } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import type { Doc } from "@docukit/docnode";
-import { syncLexicalWithDoc, updatePresence } from "../index.js";
+import { syncLexicalWithDoc } from "../index.js";
+import { updatePresence } from "../presence/index.js";
 import type { PresenceSelection } from "../types.js";
 import type { Presence } from "../presence/types.js";
 

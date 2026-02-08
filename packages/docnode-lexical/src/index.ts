@@ -3,33 +3,9 @@ import { type LexicalEditor } from "lexical";
 import { initializeEditorFromDoc } from "./initializeEditorFromDoc.js";
 import { syncDocNodeToLexical } from "./syncDocNodeToLexical.js";
 import { syncLexicalToDocNode } from "./syncLexicalToDocNode.js";
-import { type Presence, type PresenceHandle } from "./presence/types.js";
 import { syncPresence } from "./presence/index.js";
 
 import type { syncLexicalWithDocPresenceOptions } from "./types.js";
-
-const bindingByEditor = new WeakMap<
-  LexicalEditor,
-  {
-    presenceHandle: PresenceHandle | undefined;
-    lastPresence: Presence | undefined;
-  }
->();
-
-/**
- * Update remote cursors for an editor. Call this when presence data changes
- * (e.g. from a React effect). Uses referential equality to no-op when unchanged.
- */
-export function updatePresence(
-  editor: LexicalEditor,
-  presence: Presence,
-): void {
-  const binding = bindingByEditor.get(editor);
-  if (!binding?.presenceHandle) return;
-  if (presence === binding.lastPresence) return;
-  binding.lastPresence = presence;
-  binding.presenceHandle.updateRemoteCursors(presence);
-}
 
 /**
  * Sync Lexical and DocNode. Presence is optional. Returns a cleanup function to unbind.
@@ -51,12 +27,8 @@ export function syncLexicalWithDoc(
   // 4. Sync presence (optional). Handles local selection → presence and remote cursors.
   const presenceHandle = syncPresence(editor, keyBinding, presenceOptions);
 
-  bindingByEditor.set(editor, { presenceHandle, lastPresence: undefined });
-
   return () => {
-    const binding = bindingByEditor.get(editor);
-    bindingByEditor.delete(editor);
-    binding?.presenceHandle?.cleanup();
+    presenceHandle?.cleanup();
     offLexicalListener();
     offDocListener();
     keyBinding.lexicalKeyToDocNodeId.clear();
