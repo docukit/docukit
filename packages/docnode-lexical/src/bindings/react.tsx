@@ -58,6 +58,7 @@ export function DocNodePlugin({
 
   useEffect(() => {
     return syncLexicalWithDoc(editor, doc, { setPresence, user });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, doc]);
 
   useEffect(() => {
