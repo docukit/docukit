@@ -5,7 +5,7 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import type { Doc } from "@docukit/docnode";
 import { syncLexicalWithDoc, updatePresence } from "../index.js";
 import type { PresenceSelection } from "../types.js";
-import type { Presence } from "../syncPresence.js";
+import type { Presence } from "../presence/types.js";
 
 export type PresenceUser = {
   name: string;

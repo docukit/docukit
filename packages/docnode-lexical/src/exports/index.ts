@@ -4,7 +4,7 @@ export {
   lexicalDocNodeConfig,
   createLexicalDoc,
 } from "../lexicalDocNode.js";
-export { syncPresence } from "../syncPresence.js";
+export { syncPresence } from "../presence/index.js";
 export type {
   syncLexicalWithDocPresenceOptions,
   KeyBinding,
@@ -14,4 +14,4 @@ export type {
   Presence,
   PresenceHandle,
   LexicalPresence,
-} from "../syncPresence.js";
+} from "../presence/types.js";

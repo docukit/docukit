@@ -3,11 +3,8 @@ import { type LexicalEditor } from "lexical";
 import { initializeEditorFromDoc } from "./initializeEditorFromDoc.js";
 import { syncDocNodeToLexical } from "./syncDocNodeToLexical.js";
 import { syncLexicalToDocNode } from "./syncLexicalToDocNode.js";
-import {
-  syncPresence,
-  type Presence,
-  type PresenceHandle,
-} from "./syncPresence.js";
+import { type Presence, type PresenceHandle } from "./presence/types.js";
+import { syncPresence } from "./presence/index.js";
 
 import type { syncLexicalWithDocPresenceOptions } from "./types.js";
 
