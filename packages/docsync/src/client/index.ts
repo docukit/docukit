@@ -439,6 +439,7 @@ export class DocSyncClient<
   }
 
   async setPresence({ docId, presence }: { docId: string; presence: unknown }) {
+    if (!this._socket.connected) return;
     const cacheEntry = this._docsCache.get(docId);
     if (!cacheEntry)
       throw new Error(`Doc ${docId} is not loaded, cannot set presence`);
