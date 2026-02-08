@@ -168,6 +168,37 @@ export class DocSyncServer<
         return this._authorize(event);
       };
 
+      const applyPresenceUpdate = ({
+        docId,
+        presence,
+      }: {
+        docId: string;
+        presence: unknown;
+      }) => {
+        // Update server's presence state for this document
+        const currentPresence = this._presenceByDoc.get(docId) ?? {};
+
+        if (presence === null || presence === undefined) {
+          // Delete the presence entry for this socket
+          delete currentPresence[socket.id];
+          // Only keep the map entry if there are other sockets with presence
+          if (Object.keys(currentPresence).length > 0) {
+            this._presenceByDoc.set(docId, currentPresence);
+          } else {
+            this._presenceByDoc.delete(docId);
+          }
+        } else {
+          // Set the presence for this socket
+          const newPresence = { ...currentPresence, [socket.id]: presence };
+          this._presenceByDoc.set(docId, newPresence);
+        }
+        // Broadcast to other clients (undefined → null for JSON)
+        socket.to(`doc:${docId}`).emit("presence", {
+          docId,
+          presence: { [socket.id]: presence ?? null },
+        });
+      };
+
       // TypeScript errors if any handler is missing
       const handlers: SocketHandlers<S, O> = {
         "sync-operations": async (payload, cb) => {
@@ -218,6 +249,10 @@ export class DocSyncServer<
             // Send current presence state to newly joined client
             const presence = this._presenceByDoc.get(docId);
             if (presence) socket.emit("presence", { docId, presence });
+          }
+
+          if ("presence" in payload) {
+            applyPresenceUpdate({ docId, presence: payload.presence });
           }
 
           try {
@@ -442,31 +477,7 @@ export class DocSyncServer<
           cb({ success: true });
         },
         presence: async ({ docId, presence }, cb) => {
-          // Update server's presence state for this document
-          const currentPresence = this._presenceByDoc.get(docId) ?? {};
-
-          if (presence === null || presence === undefined) {
-            // Delete the presence entry for this socket
-            delete currentPresence[socket.id];
-            // Only keep the map entry if there are other sockets with presence
-            if (Object.keys(currentPresence).length > 0) {
-              this._presenceByDoc.set(docId, currentPresence);
-            } else {
-              this._presenceByDoc.delete(docId);
-            }
-          } else {
-            // Set the presence for this socket
-            const newPresence = { ...currentPresence, [socket.id]: presence };
-            this._presenceByDoc.set(docId, newPresence);
-          }
-
-          // Immediately broadcast to OTHER clients (excludes sender)
-          // Note: Convert undefined to null because JSON.stringify strips undefined values
-          const broadcastPresence = presence ?? null;
-          socket.to(`doc:${docId}`).emit("presence", {
-            docId,
-            presence: { [socket.id]: broadcastPresence },
-          });
+          applyPresenceUpdate({ docId, presence });
 
           // Return success
           cb({ data: void undefined });

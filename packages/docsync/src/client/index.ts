@@ -660,10 +660,17 @@ export class DocSyncClient<
 
     let response;
     try {
+      const presenceState = this._presenceDebounceState.get(docId);
+      if (presenceState) {
+        clearTimeout(presenceState.timeout);
+        this._presenceDebounceState.delete(docId);
+      }
+
       response = await this._request("sync-operations", {
         clock: clientClock,
         docId,
         operations,
+        ...(presenceState ? { presence: presenceState.data } : {}),
       });
     } catch (error) {
       // Emit sync event (network error)

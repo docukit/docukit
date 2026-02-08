@@ -7,6 +7,7 @@
 
 import {
   BLUR_COMMAND,
+  COLLABORATION_TAG,
   COMMAND_PRIORITY_EDITOR,
   FOCUS_COMMAND,
   SELECTION_CHANGE_COMMAND,
@@ -134,7 +135,13 @@ export function syncPresence(
   );
 
   const unregisterUpdateListener = editor.registerUpdateListener(
-    ({ editorState, prevEditorState, dirtyLeaves }) => {
+    ({ editorState, prevEditorState, dirtyLeaves, tags }) => {
+      if (tags.has(COLLABORATION_TAG)) {
+        requestAnimationFrame(() => {
+          const presence = bindingByEditor.get(editor)?.lastPresence;
+          if (presence != null) syncPresenceToSelection(binding, presence);
+        });
+      }
       if (dirtyLeaves.size === 0) return;
       if (binding.cursors.size === 0) return;
 

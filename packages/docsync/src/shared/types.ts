@@ -51,7 +51,12 @@ export type QueryResult<D, E = Error> =
 
 export type DocSyncEvents<S, O> = {
   "sync-operations": {
-    request: { docId: string; operations?: O[]; clock: number };
+    request: {
+      docId: string;
+      operations?: O[];
+      clock: number;
+      presence?: unknown;
+    };
     response: Result<
       {
         docId: string;
@@ -242,6 +247,7 @@ export type SyncRequestEvent<O = unknown, S = unknown> = {
     docId: string;
     operations?: O[];
     clock: number;
+    presence?: unknown;
   };
 
   // Response context (optional - may be partial if error occurs)
