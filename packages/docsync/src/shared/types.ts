@@ -319,11 +319,14 @@ export type DocData<D> = { doc: D; docId: string };
  */
 export type Presence<T = unknown> = Record<string, T>;
 
-export type BroadcastMessage<O> = {
-  type: "OPERATIONS";
-  operations: O;
-  docId: string;
-};
+export type BroadcastMessage<O> =
+  | {
+      type: "OPERATIONS";
+      operations: O;
+      docId: string;
+      presence?: Record<string, unknown>;
+    }
+  | { type: "PRESENCE"; docId: string; presence: Record<string, unknown> };
 
 export type ClientConfig<
   D extends {} = {},

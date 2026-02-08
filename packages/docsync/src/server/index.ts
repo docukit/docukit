@@ -17,6 +17,8 @@ import type { DocBinding } from "../shared/docBinding.js";
 type AuthenticatedContext<TContext> = {
   userId: string;
   deviceId: string;
+  /** Client-generated id for presence (set from auth or socket.id in connection handler) */
+  clientId: string;
   context: TContext;
 };
 
@@ -35,7 +37,7 @@ export class DocSyncServer<
   private _authorize?: ServerConfig<TContext, D, S, O>["authorize"];
   // TODO: see comment in sync-operations
   private _LRUCache = new Map<string, { deviceId: string; clock: number }>();
-  // Track presence state per document: docId -> Record<socketId, presence data>
+  // Track presence state per document: docId -> Record<clientId, presence data>
   private _presenceByDoc = new Map<string, Presence>();
   // Track which sockets are subscribed to which documents (for cleanup on disconnect)
   private _socketToDocsMap = new Map<string, Set<string>>();
@@ -64,7 +66,7 @@ export class DocSyncServer<
   private _setupSocketServer() {
     // Middleware: authenticate before allowing connection
     this._io.use((socket, next) => {
-      const { token, deviceId } = socket.handshake.auth;
+      const { token, deviceId, clientId } = socket.handshake.auth;
       if (!token || typeof token !== "string") {
         next(new Error("Authentication required: no token provided"));
         return;
@@ -72,6 +74,12 @@ export class DocSyncServer<
 
       if (!deviceId || typeof deviceId !== "string") {
         next(new Error("Device ID required"));
+        return;
+      }
+
+      // TODO: should I check that no one is using an already taken ID, presumably intentionally?
+      if (!clientId || typeof clientId !== "string" || clientId.length === 0) {
+        next(new Error("Client ID required"));
         return;
       }
 
@@ -86,6 +94,7 @@ export class DocSyncServer<
           socket.data = {
             userId: authResult.userId,
             deviceId,
+            clientId,
             context: authResult.context ?? ({} as TContext),
           } satisfies AuthenticatedContext<TContext>;
 
@@ -112,7 +121,7 @@ export class DocSyncServer<
     );
 
     this._io.on("connection", (socket) => {
-      const { userId, deviceId, context } =
+      const { userId, deviceId, clientId, context } =
         socket.data as AuthenticatedContext<TContext>;
 
       // Emit client connect event
@@ -136,12 +145,12 @@ export class DocSyncServer<
             // Immediately broadcast removal to OTHER clients
             socket.to(`doc:${docId}`).emit("presence", {
               docId,
-              presence: { [socket.id]: null },
+              presence: { [clientId]: null },
             });
 
             // Clean up presence map if the socket had presence
-            if (presenceForDoc?.[socket.id] !== undefined) {
-              delete presenceForDoc[socket.id];
+            if (presenceForDoc?.[clientId] !== undefined) {
+              delete presenceForDoc[clientId];
               if (Object.keys(presenceForDoc).length === 0) {
                 this._presenceByDoc.delete(docId);
               }
@@ -179,8 +188,8 @@ export class DocSyncServer<
         const currentPresence = this._presenceByDoc.get(docId) ?? {};
 
         if (presence === null || presence === undefined) {
-          // Delete the presence entry for this socket
-          delete currentPresence[socket.id];
+          // Delete the presence entry for this client
+          delete currentPresence[clientId];
           // Only keep the map entry if there are other sockets with presence
           if (Object.keys(currentPresence).length > 0) {
             this._presenceByDoc.set(docId, currentPresence);
@@ -188,14 +197,14 @@ export class DocSyncServer<
             this._presenceByDoc.delete(docId);
           }
         } else {
-          // Set the presence for this socket
-          const newPresence = { ...currentPresence, [socket.id]: presence };
+          // Set the presence for this client
+          const newPresence = { ...currentPresence, [clientId]: presence };
           this._presenceByDoc.set(docId, newPresence);
         }
         // Broadcast to other clients (undefined → null for JSON)
         socket.to(`doc:${docId}`).emit("presence", {
           docId,
-          presence: { [socket.id]: presence ?? null },
+          presence: { [clientId]: presence ?? null },
         });
       };
 
@@ -461,13 +470,13 @@ export class DocSyncServer<
           const presenceForDoc = this._presenceByDoc.get(docId);
           if (presenceForDoc) {
             // Immediately broadcast presence removal to OTHER clients
-            if (presenceForDoc[socket.id] !== undefined) {
+            if (presenceForDoc[clientId] !== undefined) {
               socket.to(`doc:${docId}`).emit("presence", {
                 docId,
-                presence: { [socket.id]: null },
+                presence: { [clientId]: null },
               });
             }
-            delete presenceForDoc[socket.id];
+            delete presenceForDoc[clientId];
             // Only delete the map entry if no sockets remain
             if (Object.keys(presenceForDoc).length === 0) {
               this._presenceByDoc.delete(docId);

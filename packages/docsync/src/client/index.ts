@@ -47,6 +47,8 @@ export class DocSyncClient<
   >();
   protected _localPromise: Promise<LocalResolved<S, O>>;
   protected _deviceId: string;
+  /** Client-generated id for presence (works offline; sent in auth so server uses same key) */
+  protected _clientId: string;
   private _shouldBroadcast = true;
   protected _broadcastChannel?: BroadcastChannel;
   protected _socket: ClientSocket<S, O>;
@@ -71,6 +73,7 @@ export class DocSyncClient<
       throw new Error("DocSyncClient can only be used in the browser");
     const { docBinding, local } = config;
     this._docBinding = docBinding;
+    this._clientId = crypto.randomUUID();
 
     // Initialize local provider (if configured)
     this._localPromise = (async () => {
@@ -100,7 +103,19 @@ export class DocSyncClient<
           // If the sender is offline, the push will happen when they reconnect
 
           void this._applyOperations(ev.data.operations, ev.data.docId);
+          // Apply presence after ops so the doc is updated first (avoids cursor lag)
+          if (ev.data.presence) {
+            const cacheEntry = this._docsCache.get(ev.data.docId);
+            if (cacheEntry)
+              this._applyPresencePatch(cacheEntry, ev.data.presence);
+          }
           return;
+        }
+        if (ev.data.type === "PRESENCE") {
+          const { docId, presence } = ev.data;
+          const cacheEntry = this._docsCache.get(docId);
+          if (!cacheEntry) return;
+          this._applyPresencePatch(cacheEntry, presence);
         }
       };
 
@@ -111,7 +126,7 @@ export class DocSyncClient<
     this._socket = io(config.server.url, {
       auth: (cb) => {
         void config.server.auth.getToken().then((token) => {
-          cb({ token, deviceId: this._deviceId });
+          cb({ token, deviceId: this._deviceId, clientId: this._clientId });
         });
       },
       // Performance optimizations for testing
@@ -128,6 +143,19 @@ export class DocSyncClient<
     });
     this._socket.on("disconnect", (reason) => {
       this._pushStatusByDocId.clear();
+      // Clear pending presence debounce timers so their callbacks never run after disconnect
+      for (const state of this._presenceDebounceState.values()) {
+        clearTimeout(state.timeout);
+      }
+      this._presenceDebounceState.clear();
+      // Tell other tabs to remove this client's presence (clientId works offline)
+      for (const docId of this._docsCache.keys()) {
+        this._sendMessage({
+          type: "PRESENCE",
+          docId,
+          presence: { [this._clientId]: null },
+        });
+      }
       this._emit(this._disconnectHandlers, { reason });
     });
     this._socket.on("connect_error", (err) => {
@@ -141,23 +169,7 @@ export class DocSyncClient<
     this._socket.on("presence", (payload) => {
       const cacheEntry = this._docsCache.get(payload.docId);
       if (!cacheEntry) return;
-
-      // Update cached presence with the patch from server
-      // Handle null/undefined values as deletions
-      const newPresence = { ...cacheEntry.presence };
-      for (const [key, value] of Object.entries(payload.presence)) {
-        if (value === undefined || value === null) {
-          delete newPresence[key];
-        } else {
-          newPresence[key] = value;
-        }
-      }
-      cacheEntry.presence = newPresence;
-
-      // Notify all registered handlers with FULL presence state
-      cacheEntry.presenceHandlers.forEach((handler) =>
-        handler(cacheEntry.presence),
-      );
+      this._applyPresencePatch(cacheEntry, payload.presence);
     });
   }
 
@@ -184,6 +196,40 @@ export class DocSyncClient<
       origin: "broadcast",
       operations: [operations],
     });
+  }
+
+  private _applyPresencePatch(
+    cacheEntry: {
+      presence: Presence;
+      presenceHandlers: Set<(p: Presence) => void>;
+    },
+    patch: Record<string, unknown>,
+  ): void {
+    const newPresence = { ...cacheEntry.presence };
+    for (const [key, value] of Object.entries(patch)) {
+      if (key === this._clientId) continue; // never store own presence in cache; local tab must not render self as remote
+      if (value === undefined || value === null) {
+        delete newPresence[key];
+      } else {
+        newPresence[key] = value;
+      }
+    }
+    cacheEntry.presence = newPresence;
+    cacheEntry.presenceHandlers.forEach((handler) =>
+      handler(cacheEntry.presence),
+    );
+  }
+
+  /** Current presence for this client (debounce state or cache); does not clear the timer */
+  private _getOwnPresencePatch(
+    docId: string,
+  ): Record<string, unknown> | undefined {
+    const debounced = this._presenceDebounceState.get(docId);
+    if (debounced) return { [this._clientId]: debounced.data };
+    const cacheEntry = this._docsCache.get(docId);
+    if (cacheEntry?.presence[this._clientId] !== undefined)
+      return { [this._clientId]: cacheEntry.presence[this._clientId] };
+    return undefined;
   }
 
   // TODO: used when server responds with a new doc (squashing)
@@ -439,7 +485,6 @@ export class DocSyncClient<
   }
 
   async setPresence({ docId, presence }: { docId: string; presence: unknown }) {
-    if (!this._socket.connected) return;
     const cacheEntry = this._docsCache.get(docId);
     if (!cacheEntry)
       throw new Error(`Doc ${docId} is not loaded, cannot set presence`);
@@ -455,17 +500,30 @@ export class DocSyncClient<
 
       this._presenceDebounceState.delete(docId);
 
-      // Note: We send raw presence data. Server will use socket.id as the key.
-      // We do NOT update local cache here - server broadcasts only to others.
-      void (async () => {
-        const { error } = await this._request("presence", {
-          docId,
-          presence: state.data,
-        });
-        if (error) {
-          console.error(`Error setting presence for doc ${docId}:`, error);
-        }
-      })();
+      const patch = { [this._clientId]: state.data };
+
+      // Update local cache and notify handlers (so own cursor shows and UI stays in sync)
+      this._applyPresencePatch(cacheEntry, patch);
+
+      // Same device: broadcast to other tabs (works offline)
+      this._sendMessage({
+        type: "PRESENCE",
+        docId,
+        presence: patch,
+      });
+      // Other devices: send via WebSocket only when connected
+      if (this._socket.connected) {
+        void (async () => {
+          if (!this._socket.connected) return;
+          const { error } = await this._request("presence", {
+            docId,
+            presence: state.data,
+          });
+          if (error) {
+            console.error(`Error setting presence for doc ${docId}:`, error);
+          }
+        })();
+      }
     }, this._presenceDebounce);
 
     this._presenceDebounceState.set(docId, { timeout, data: presence });
@@ -474,14 +532,26 @@ export class DocSyncClient<
   private _setupChangeListener(doc: D, docId: string) {
     this._docBinding.onChange(doc, ({ operations }) => {
       if (this._shouldBroadcast) {
-        this._sendMessage({ type: "OPERATIONS", operations, docId });
         void this.onLocalOperations({ docId, operations: [operations] });
 
-        // Emit change event for local operations
         this._emit(this._changeHandlers, {
           docId,
           origin: "local",
           operations: [operations],
+        });
+
+        // Defer BC send so Lexical can update selection first; then the presence we
+        // include is the new cursor. Two frames so setPresence (from selection change) has run.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const presencePatch = this._getOwnPresencePatch(docId);
+            this._sendMessage({
+              type: "OPERATIONS",
+              operations,
+              docId,
+              ...(presencePatch && { presence: presencePatch }),
+            });
+          });
         });
       }
       // Don't automatically reset _shouldBroadcast here!
@@ -665,6 +735,11 @@ export class DocSyncClient<
       if (presenceState) {
         clearTimeout(presenceState.timeout);
         this._presenceDebounceState.delete(docId);
+        this._sendMessage({
+          type: "PRESENCE",
+          docId,
+          presence: { [this._clientId]: presenceState.data },
+        });
       }
 
       response = await this._request("sync-operations", {
@@ -792,8 +867,14 @@ export class DocSyncClient<
       });
 
       // Broadcast server operations to other tabs so they can apply them too
+      const presencePatch = this._getOwnPresencePatch(docId);
       for (const op of data.operations) {
-        this._sendMessage({ type: "OPERATIONS", operations: op, docId });
+        this._sendMessage({
+          type: "OPERATIONS",
+          operations: op,
+          docId,
+          ...(presencePatch && { presence: presencePatch }),
+        });
       }
     }
 
