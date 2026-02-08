@@ -58,7 +58,6 @@ export function DocNodePlugin({
 
   useEffect(() => {
     return syncLexicalWithDoc(editor, doc, { setPresence, user });
-    // Intentionally only [editor, doc]: avoid re-binding on re-renders so cursor does not jump.
   }, [editor, doc]);
 
   useEffect(() => {
