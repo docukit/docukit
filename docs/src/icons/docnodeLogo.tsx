@@ -35,7 +35,7 @@ export default function Logo({ className }: { className?: string }) {
         xmlns="http://www.w3.org/2000/svg"
         className={className}
       >
-        {/* Conexiones */}
+        {/* Edges */}
         <line
           x1={centerX}
           y1={topY}
@@ -61,7 +61,7 @@ export default function Logo({ className }: { className?: string }) {
           strokeWidth={GRAPH_LINES_WIDTH}
         />
 
-        {/* Nodos */}
+        {/* Nodes */}
         <circle cx={centerX} cy={topY} r={TOP_CIRCLE_RADIUS} fill={COLOR} />
         <circle cx={leftX} cy={bottomY} r={BOTTOM_CIRCLE_RADIUS} fill={COLOR} />
         <circle

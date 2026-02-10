@@ -7,6 +7,19 @@ import {
 } from "@docukit/docsync-react/client";
 import type { DocConfig } from "@docukit/docnode";
 
+/**
+ * Clears all content from the demo IndexedDB. Call before creating the DocSync
+ * client so each page load starts with a clean local state.
+ */
+export function clearDemoIndexedDB(): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.deleteDatabase("docsync-user1");
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(new Error(req.error?.message));
+  });
+}
+
 function createClient(
   userId: string,
   deviceId: string,

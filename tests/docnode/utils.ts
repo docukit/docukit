@@ -19,13 +19,6 @@ import { expect } from "vitest";
 export const DOCNODE_ID = (sessionId = "[\\w-]", clockId = "[\\w-]") =>
   new RegExp(`^${sessionId}[\\w-]{3}\\.${clockId}$`);
 
-export const date = (defaultValue: Date) =>
-  defineState({
-    fromJSON: (json) =>
-      typeof json === "string" ? new Date(json) : defaultValue,
-    // toJSON: (date) => date.toISOString(),
-  });
-
 export const Text = defineNode({
   type: "text",
   state: {

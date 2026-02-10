@@ -5,6 +5,7 @@ import { lexicalDocNodeConfig } from "@docukit/docnode-lexical";
 import { createTwoClients } from "@/lib/synced-editors-demo/createTwoClients";
 import { SyncedEditorPanel } from "./SyncedEditorPanel";
 import type { Presence } from "@docukit/docnode-lexical";
+import { useDemoIndexedDBReady } from "./useDemoIndexedDBReady";
 
 // Fixed doc id for the home demo (must be a valid lowercase ULID per DocNode)
 const DEMO_DOC_ID = "01j8d0cs0h0me0dem000000001";
@@ -17,13 +18,11 @@ const USER_COLORS: Record<string, string> = {
 type TwoClients = ReturnType<typeof createTwoClients>;
 
 function EditorSlot({
-  label,
   isPrimary,
   useDoc,
   usePresence,
   userId,
 }: {
-  label: string;
   isPrimary: boolean;
   useDoc: TwoClients["useEditor1Doc"];
   usePresence: TwoClients["useEditor1Presence"];
@@ -58,7 +57,6 @@ function EditorSlot({
   return (
     <SyncedEditorPanel
       doc={doc}
-      label={label}
       isPrimary={isPrimary}
       presence={presence as Presence}
       setPresence={setPresence}
@@ -71,41 +69,55 @@ function EditorSlot({
 }
 
 export function SyncedEditorsDemo() {
-  const clients = useMemo(() => createTwoClients([lexicalDocNodeConfig]), []);
+  const idbReady = useDemoIndexedDBReady();
+
+  const clients = useMemo(
+    () => (idbReady ? createTwoClients([lexicalDocNodeConfig]) : null),
+    [idbReady],
+  );
 
   return (
-    <section className="mx-auto max-w-5xl">
-      <h2 className="mb-2 text-2xl font-bold text-slate-100">
-        Two editors, one document
-      </h2>
-      <p className="mb-6 text-slate-400">
-        Built with{" "}
-        <code className="rounded bg-slate-700/50 px-1.5 py-0.5 font-mono text-sm">
-          docnode-lexical
-        </code>{" "}
-        and{" "}
-        <code className="rounded bg-slate-700/50 px-1.5 py-0.5 font-mono text-sm">
-          docsync-react
-        </code>
-        . Type in either editor — changes sync in real time. Run the examples
-        server to try it live.
-      </p>
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        <EditorSlot
-          label="Editor 1"
-          isPrimary
-          useDoc={clients.useEditor1Doc}
-          usePresence={clients.useEditor1Presence}
-          userId="user1"
-        />
-        <EditorSlot
-          label="Editor 2"
-          isPrimary={false}
-          useDoc={clients.useEditor2Doc}
-          usePresence={clients.useEditor2Presence}
-          userId="user2"
-        />
+    <section className="mx-auto max-w-5xl px-2 py-12 md:py-16">
+      <div className="mb-10 text-center md:mb-14">
+        <h2 className="mb-4 text-3xl font-bold tracking-tight text-slate-100 md:text-4xl">
+          See it in action
+        </h2>
+        <p className="mx-auto max-w-2xl text-slate-400 md:text-lg">
+          Built with{" "}
+          <code className="rounded bg-slate-700/50 px-1.5 py-0.5 font-mono text-sm">
+            docnode-lexical
+          </code>{" "}
+          and{" "}
+          <code className="rounded bg-slate-700/50 px-1.5 py-0.5 font-mono text-sm">
+            docsync-react
+          </code>
+          .
+        </p>
+        <p className="mx-auto max-w-2xl text-slate-400 md:text-lg">
+          {" "}
+          Type in either editor — changes sync in real time.
+        </p>
       </div>
+      {!clients ? (
+        <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-slate-700/50 bg-slate-900/50 text-slate-500">
+          Loading…
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 md:gap-10">
+          <EditorSlot
+            isPrimary
+            useDoc={clients.useEditor1Doc}
+            usePresence={clients.useEditor1Presence}
+            userId="user1"
+          />
+          <EditorSlot
+            isPrimary={false}
+            useDoc={clients.useEditor2Doc}
+            usePresence={clients.useEditor2Presence}
+            userId="user2"
+          />
+        </div>
+      )}
     </section>
   );
 }

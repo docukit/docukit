@@ -1,6 +1,6 @@
 "use client";
 
-import { HeadingNode } from "@lexical/rich-text";
+import { $createHeadingNode, HeadingNode } from "@lexical/rich-text";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -15,6 +15,7 @@ import {
 } from "@docukit/docnode-lexical/react";
 import type { Doc } from "@docukit/docnode";
 import { useEffect } from "react";
+import { ToolbarPlugin } from "./ToolbarPlugin";
 
 type SyncedEditorPanelProps = {
   doc: Doc;
@@ -22,7 +23,7 @@ type SyncedEditorPanelProps = {
   setPresence?: (selection: unknown) => void;
   user?: PresenceUser;
   isPrimary?: boolean;
-  label: string;
+  label?: string;
 };
 
 export function SyncedEditorPanel({
@@ -34,9 +35,11 @@ export function SyncedEditorPanel({
   label,
 }: SyncedEditorPanelProps) {
   return (
-    <div className="flex flex-col gap-2">
-      <div className="text-sm font-medium text-slate-400">{label}</div>
-      <div className="overflow-hidden rounded-xl border border-slate-700/50 bg-slate-900/50 shadow-xl">
+    <div className="flex flex-col gap-3">
+      {label ? (
+        <div className="text-sm font-medium text-slate-400">{label}</div>
+      ) : null}
+      <div className="overflow-hidden rounded-2xl border border-slate-600/40 bg-slate-900/60 shadow-xl backdrop-blur-sm">
         <LexicalComposer
           initialConfig={{
             namespace: "SyncedEditorsDemo",
@@ -67,10 +70,11 @@ export function SyncedEditorPanel({
             user={user}
           />
           {isPrimary ? <InitialContentPlugin /> : null}
+          <ToolbarPlugin />
           <div className="relative">
             <RichTextPlugin
               contentEditable={
-                <ContentEditable className="min-h-[200px] px-4 py-3 text-slate-300 outline-none focus:outline-none" />
+                <ContentEditable className="min-h-[220px] bg-slate-800/80 px-5 py-4 text-slate-300 outline-none focus:outline-none" />
               }
               ErrorBoundary={LexicalErrorBoundary}
               placeholder={
@@ -95,13 +99,36 @@ function InitialContentPlugin() {
     editor.update(() => {
       const root = $getRoot();
       if (root.getChildrenSize() !== 0) return;
+
+      const heading = $createHeadingNode("h1");
+      heading.append($createTextNode("This is a Lexical editor."));
+
       const p1 = $createParagraphNode();
+      const syncIntro = $createTextNode(
+        "It stays collaborative and in sync thanks to ",
+      );
+      const docNode = $createTextNode("DocNode");
+      docNode.setFormat("bold");
+      const and = $createTextNode(" and ");
+      const docSync = $createTextNode("DocSync");
+      docSync.setFormat("bold");
+      const syncOutro = $createTextNode(
+        ": type here or in the other panel — changes flow in real time.",
+      );
+      p1.append(syncIntro, docNode, and, docSync, syncOutro);
+
       const p2 = $createParagraphNode();
-      const text1 = $createTextNode("Edit this text. ");
-      const text2 = $createTextNode("Both editors stay in sync.");
-      p1.append(text1);
-      p2.append(text2);
-      root.append(p1, p2);
+      const pitchStart = $createTextNode(
+        "DocNode gives you type-safe documents and conflict-free merges. ",
+      );
+      const pitchSync = $createTextNode("DocSync");
+      pitchSync.setFormat("bold");
+      const pitchEnd = $createTextNode(
+        " keeps every client in sync over the wire—no custom server logic required.",
+      );
+      p2.append(pitchStart, pitchSync, pitchEnd);
+
+      root.append(heading, p1, p2);
     });
   }, [editor]);
 

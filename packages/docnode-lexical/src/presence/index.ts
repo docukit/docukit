@@ -7,10 +7,8 @@
 
 import {
   BLUR_COMMAND,
-  COLLABORATION_TAG,
   COMMAND_PRIORITY_EDITOR,
   FOCUS_COMMAND,
-  SELECTION_CHANGE_COMMAND,
   type LexicalEditor,
 } from "lexical";
 import type {
@@ -18,10 +16,9 @@ import type {
   PresenceSelection,
   syncLexicalWithDocPresenceOptions,
 } from "../types.js";
-import { destroyCursor, updateCursor } from "./cursorRendering.js";
+import { destroyCursor } from "./cursorRendering.js";
 import { syncSelectionToPresence } from "./syncSelectionToPresence.js";
 import { syncPresenceToSelection } from "./syncPresenceToSelection.js";
-import { transformCursorSelection } from "./transformOffset.js";
 import type { Presence, PresenceBinding, PresenceHandle } from "./types.js";
 
 const bindingByEditor = new WeakMap<
@@ -102,16 +99,16 @@ export function syncPresence(
     );
   };
 
-  const unregisterSelectionListener = editor.registerCommand(
-    SELECTION_CHANGE_COMMAND,
-    () => {
-      if (!editorHasFocus()) return false;
-      editor.getEditorState().read(() => {
+  const unregisterUpdateListener = editor.registerUpdateListener(
+    ({ editorState }) => {
+      if (!editorHasFocus()) return;
+      // Note: We have to re-render selections even if the Lexical
+      // selection hasn't changed. For example, when pressing enter
+      // at the beginning of a non-empty paragraph.
+      editorState.read(() => {
         syncSelectionToPresence(keyBinding, setPresence);
       });
-      return false;
     },
-    COMMAND_PRIORITY_EDITOR,
   );
 
   const unregisterFocusListener = editor.registerCommand(
@@ -134,50 +131,14 @@ export function syncPresence(
     COMMAND_PRIORITY_EDITOR,
   );
 
-  const unregisterUpdateListener = editor.registerUpdateListener(
-    ({ editorState, prevEditorState, dirtyLeaves, tags }) => {
-      if (tags.has(COLLABORATION_TAG)) {
-        requestAnimationFrame(() => {
-          const presence = bindingByEditor.get(editor)?.lastPresence;
-          if (presence != null) syncPresenceToSelection(binding, presence);
-        });
-      }
-      if (dirtyLeaves.size === 0) return;
-      if (binding.cursors.size === 0) return;
-
-      let anyTransformed = false;
-      for (const cursor of binding.cursors.values()) {
-        if (!cursor.selection) continue;
-        if (
-          transformCursorSelection(
-            cursor.selection,
-            dirtyLeaves,
-            prevEditorState,
-            editorState,
-          )
-        ) {
-          anyTransformed = true;
-        }
-      }
-
-      if (anyTransformed) {
-        const nodeMap = editorState._nodeMap;
-        for (const cursor of binding.cursors.values()) {
-          updateCursor(binding, cursor, cursor.selection, nodeMap);
-        }
-      }
-    },
-  );
-
   const handle: PresenceHandle = {
     updateRemoteCursors: (presence: Presence) => {
       syncPresenceToSelection(binding, presence);
     },
     cleanup: () => {
-      unregisterSelectionListener();
+      unregisterUpdateListener();
       unregisterFocusListener();
       unregisterBlurListener();
-      unregisterUpdateListener();
       for (const cursor of binding.cursors.values()) {
         destroyCursor(binding, cursor);
       }

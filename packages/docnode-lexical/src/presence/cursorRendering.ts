@@ -10,7 +10,7 @@ export function createCursor(name: string, color: string): Cursor {
   };
 }
 
-export function destroySelection(
+function destroySelection(
   binding: PresenceBinding,
   selection: CursorSelection,
 ): void {

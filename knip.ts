@@ -10,6 +10,7 @@ const config: KnipConfig = {
     "packages/docnode-editor/src/**",
     "docs/source.config.ts",
     "docs/src/components/ui/**",
+    "examples/docsync-server.ts",
   ],
   // TODO: maybe I should ignore specifically for each package instead of the whole monorepo
   // Dependencies that are used in the package.json scripts

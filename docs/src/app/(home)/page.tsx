@@ -89,24 +89,24 @@ const Index = () => {
               {" "}
               local-first{" "}
             </span>
-            apps easily
+            apps, faster.
           </h1>
 
           {/* Subheading */}
           <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-400 sm:text-xl">
             Type-safe documents, conflict-free sync, and real-time
-            collaboration. Build modern local-first applications with the tools
-            you already know.
+            collaboration. Building modern local-first applications has never
+            been easier.
           </p>
         </header>
 
-        <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 md:grid-cols-2 lg:gap-8">
+        <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 md:grid-cols-2 lg:gap-10">
           {products.map((product, i) => (
             <ProductCard key={product.title} {...product} delay={i * 0.1} />
           ))}
         </div>
 
-        <div className="mx-auto mt-20 max-w-6xl">
+        <div className="mx-auto mt-28 max-w-6xl md:mt-36">
           <SyncedEditorsDemo />
         </div>
       </main>
