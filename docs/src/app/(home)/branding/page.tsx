@@ -205,12 +205,12 @@ export default function BrandingPage() {
               <tr className="border-b">
                 <td className="px-4 py-4 font-mono">100px</td>
                 <td className="px-4 py-4">
-                  <div className="h-[100px] w-[100px]">
+                  <div className="h-25 w-25">
                     <DocuKitLogo className="h-full w-full" />
                   </div>
                 </td>
                 <td className="px-4 py-4">
-                  <div className="h-[100px] w-[100px]">
+                  <div className="h-25 w-25">
                     <DocuKitFavicon className="h-full w-full" />
                   </div>
                 </td>
@@ -218,12 +218,12 @@ export default function BrandingPage() {
               <tr className="border-b">
                 <td className="px-4 py-4 font-mono">200px</td>
                 <td className="px-4 py-4">
-                  <div className="h-[200px] w-[200px]">
+                  <div className="h-50 w-50">
                     <DocuKitLogo className="h-full w-full" />
                   </div>
                 </td>
                 <td className="px-4 py-4">
-                  <div className="h-[200px] w-[200px]">
+                  <div className="h-50 w-50">
                     <DocuKitFavicon className="h-full w-full" />
                   </div>
                 </td>

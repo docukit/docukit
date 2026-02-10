@@ -47,7 +47,7 @@ function EditorSlot({
 
   if (status === "loading") {
     return (
-      <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-slate-700/50 bg-slate-900/50 text-slate-500">
+      <div className="flex min-h-50 items-center justify-center rounded-xl border border-slate-700/50 bg-slate-900/50 text-slate-500">
         Connecting…
       </div>
     );
@@ -99,7 +99,7 @@ export function SyncedEditorsDemo() {
         </p>
       </div>
       {!clients ? (
-        <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-slate-700/50 bg-slate-900/50 text-slate-500">
+        <div className="flex min-h-55 items-center justify-center rounded-2xl border border-slate-700/50 bg-slate-900/50 text-slate-500">
           Loading…
         </div>
       ) : (

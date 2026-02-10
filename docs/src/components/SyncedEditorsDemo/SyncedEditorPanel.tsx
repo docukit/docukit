@@ -74,7 +74,7 @@ export function SyncedEditorPanel({
           <div className="relative">
             <RichTextPlugin
               contentEditable={
-                <ContentEditable className="min-h-[220px] bg-slate-800/80 px-5 py-4 text-slate-300 outline-none focus:outline-none" />
+                <ContentEditable className="min-h-55 bg-slate-800/80 px-5 py-4 text-slate-300 outline-none focus:outline-none" />
               }
               ErrorBoundary={LexicalErrorBoundary}
               placeholder={

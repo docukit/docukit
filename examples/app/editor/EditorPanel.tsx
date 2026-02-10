@@ -69,7 +69,7 @@ export function EditorPanel({
         <div className="relative">
           <RichTextPlugin
             contentEditable={
-              <ContentEditable className="min-h-[400px] px-6 py-4 text-zinc-300 outline-none focus:outline-none" />
+              <ContentEditable className="min-h-100 px-6 py-4 text-zinc-300 outline-none focus:outline-none" />
             }
             ErrorBoundary={LexicalErrorBoundary}
             placeholder={
