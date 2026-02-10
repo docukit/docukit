@@ -21,4 +21,4 @@ export interface EditorExtension extends Extension {
   onMouseDoubleClick: (ev: MouseEvent) => void;
 }
 
-const _editor = new Editor({ extensions: [] });
+const _editor = new Editor({ type: "editor", extensions: [] });

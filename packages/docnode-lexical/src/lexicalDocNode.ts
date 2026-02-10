@@ -17,9 +17,8 @@ export const lexicalDocNodeConfig: DocConfig = {
 };
 
 export const createLexicalDoc = (): Doc => {
-  return Doc.fromJSON({ extensions: [{ nodes: [LexicalDocNode] }] }, [
-    "01kc52hq510g6y44jhq0wqrjb3",
-    "root",
-    {},
-  ]);
+  return Doc.fromJSON(
+    { type: "root", extensions: [{ nodes: [LexicalDocNode] }] },
+    ["01kc52hq510g6y44jhq0wqrjb3", "root", {}],
+  );
 };

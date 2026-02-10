@@ -38,7 +38,7 @@ describe("accessors & getters", () => {
           .spyOn(Date, "now")
           .mockImplementationOnce(() => msBase) // ulid() in Doc constructor
           .mockImplementationOnce(() => msBase + ms);
-        const doc = new Doc({ extensions: [{ nodes: [Text] }] });
+        const doc = new Doc({ type: "root", extensions: [{ nodes: [Text] }] });
         spy.mockRestore();
         let id!: string;
         for (let i = 0; i <= ms; i++) {
@@ -59,6 +59,7 @@ describe("accessors & getters", () => {
 
     test("id generator with nodeIdGenerator: 'ulid' generates lowercase ULIDs for all nodes", () => {
       const doc = new Doc({
+        type: "test",
         extensions: [TextExtension],
         nodeIdGenerator: "ulid",
       });
@@ -148,6 +149,7 @@ describe("is", () => {
     },
   });
   const doc = new Doc({
+    type: "root",
     extensions: [{ nodes: [TestNode, TestNode2, TestNode3, X] }],
   });
   const node = doc.createNode(TestNode);
@@ -358,7 +360,7 @@ describe("descendants", () => {
     expect(node3_1?.state.value.get()).toBe("3.1");
   });
   test("find with type guard", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const isText = (node: DocNode) => node.is(Text);
     const node = doc.root.descendants().find(isText);
     expectTypeOf(node).toEqualTypeOf<DocNode<typeof Text> | undefined>();
@@ -476,7 +478,7 @@ describe("ancestors", () => {
   });
 
   test("find with type guard", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.append(...text(doc, "test"));
       const isText = (node: DocNode) => node.is(Text);
@@ -582,7 +584,7 @@ describe("prevSiblings", () => {
   });
 
   test("find with type guard", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.append(...text(doc, "test"));
       const isText = (node: DocNode) => node.is(Text);
@@ -683,7 +685,7 @@ describe("nextSiblings", () => {
   });
 
   test("find with type guard", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.append(...text(doc, "test"));
       const isText = (node: DocNode) => node.is(Text);
@@ -806,7 +808,7 @@ describe("children", () => {
   });
 
   test("find with type guard", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const isText = (node: DocNode) => node.is(Text);
     const node = doc.root.children().find(isText);
     expectTypeOf(node).toEqualTypeOf<DocNode<typeof Text> | undefined>();
@@ -880,7 +882,7 @@ describe("to()", () => {
   });
 
   test("find with type guard", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.append(...text(doc, "test"));
       const isText = (node: DocNode) => node.is(Text);
@@ -939,7 +941,7 @@ describe("to()", () => {
 });
 
 test("DocNode.doc is readonly and not enumerable", () => {
-  const doc = new Doc({ extensions: [TextExtension] });
+  const doc = new Doc({ type: "root", extensions: [TextExtension] });
   const { root } = doc;
   expect(root.doc).toBe(doc);
   expect(Object.keys(root)).toStrictEqual([
@@ -952,7 +954,7 @@ test("DocNode.doc is readonly and not enumerable", () => {
     "first",
     "last",
   ]);
-  const newDoc = new Doc({ extensions: [TextExtension] });
+  const newDoc = new Doc({ type: "root", extensions: [TextExtension] });
   // @ts-expect-error - readonly
   const fn = () => (root.doc = newDoc);
   expect(fn).toThrowError(

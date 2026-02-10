@@ -107,7 +107,7 @@ export function init(
     node4: DocNode<typeof Text>;
   }) => void,
 ) {
-  const doc = new Doc({ extensions: [TextExtension] });
+  const doc = new Doc({ type: "root", extensions: [TextExtension] });
   const { root } = doc;
   checkUndoManager(1, doc, () => {
     root.append(...text(doc, "1", "2", "3", "4"));
@@ -284,15 +284,15 @@ export function checkUndoManager(
   const jsonDoc = doc.toJSON();
   const nodes = Array.from(doc["_nodeDefs"]);
   // This document will replay all doc operations in a single update
-  const doc2 = Doc.fromJSON({ extensions: [{ nodes }] }, jsonDoc);
+  const doc2 = Doc.fromJSON({ type: "root", extensions: [{ nodes }] }, jsonDoc);
   const undoManager2 = new UndoManager(doc2, { maxUndoSteps: 1 });
 
   // This document will replay all doc operations in different updates
-  const doc3 = Doc.fromJSON({ extensions: [{ nodes }] }, jsonDoc);
+  const doc3 = Doc.fromJSON({ type: "root", extensions: [{ nodes }] }, jsonDoc);
   const undoManager3 = new UndoManager(doc3, { maxUndoSteps: 10000000 });
 
   // This document will replay all operations, but twice each operation
-  const doc4 = Doc.fromJSON({ extensions: [{ nodes }] }, jsonDoc);
+  const doc4 = Doc.fromJSON({ type: "root", extensions: [{ nodes }] }, jsonDoc);
 
   const changeEvents: ChangeEvent[] = [];
   const snapshots: unknown[] = [getStateSnapshot(doc, IS_TEST_NODE)];

@@ -33,7 +33,7 @@ void (await wrapper(async () => {
       return node;
     });
 
-  const doc = new Doc({ extensions: [TextExtension] });
+  const doc = new Doc({ type: "root", extensions: [TextExtension] });
   let count = 0;
   const EXPECTED = 100_000;
   const increment = () => {

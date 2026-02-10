@@ -47,7 +47,10 @@ describe("docnode to lexical", () => {
   });
 
   test("doc provided", () => {
-    const doc = new Doc({ extensions: [{ nodes: [LexicalDocNode] }] });
+    const doc = new Doc({
+      type: "root",
+      extensions: [{ nodes: [LexicalDocNode] }],
+    });
     const paragraphJson: SerializedParagraphNode = {
       children: [],
       direction: "ltr",

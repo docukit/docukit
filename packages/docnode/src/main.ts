@@ -574,9 +574,8 @@ export class Doc {
   constructor(config: DocConfig) {
     this._nodeDefs = new Set();
     this._resolvedNodeDefs = new Map();
-    const type = config.type ?? "root";
     const RootNode = defineNode({
-      type,
+      type: config.type,
       state: {},
     });
     const nodeDefs: UnsafeDefinition[] = [

@@ -22,15 +22,15 @@ import {
 //common to all mutators
 describe("base", () => {
   test("if node to be attached is from a different doc, should throw", () => {
-    const doc1 = new Doc({ extensions: [TextExtension] });
-    const doc2 = new Doc({ extensions: [TextExtension] });
+    const doc1 = new Doc({ type: "root", extensions: [TextExtension] });
+    const doc2 = new Doc({ type: "root", extensions: [TextExtension] });
     const node1 = doc1.createNode(Text);
     const fn = () => doc2.root.append(node1);
     expect(fn).toThrowError("Node is from a different doc");
   });
 
   test("if id of node to be attached already exists in the doc, should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const node1 = doc.createNode(Text);
     doc.root.append(node1);
     const fn = () => doc.root.append(node1);
@@ -42,7 +42,7 @@ describe("base", () => {
 
 describe("mixed operations", () => {
   test("delete and insert in the same update", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       updateAndListen(
         doc,
@@ -82,7 +82,7 @@ describe("mixed operations", () => {
   });
 
   test("delete and insert in the same update node with children", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(2, doc, () => {
       doc.root.append(...text(doc, "1", "2", "3"));
       const node1 = doc.root.first!;
@@ -126,7 +126,7 @@ describe("mixed operations", () => {
   });
 
   test("delete and insert in the same update node with children, do the same with one of the children", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(2, doc, () => {
       doc.root.append(...text(doc, "1", "2", "3"));
       const node1 = doc.root.first!;
@@ -178,7 +178,7 @@ describe("mixed operations", () => {
   });
 
   test("delete and insert in the same update node with grand children", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(2, doc, () => {
       doc.root.append(...text(doc, "1", "2", "3"));
       const node2 = doc.root.first!.next!;
@@ -254,7 +254,7 @@ describe("mixed operations", () => {
         value2: string(""),
       },
     });
-    const doc = new Doc({ extensions: [{ nodes: [Text2] }] });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [Text2] }] });
     let node1: DocNode<typeof Text2>;
     checkUndoManager(2, doc, () => {
       node1 = doc.createNode(Text2);
@@ -302,7 +302,7 @@ describe("mixed operations", () => {
   });
 
   test("setState multiple times in the same update", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(2, doc, () => {
       let node1: DocNode<typeof Text>;
       emptyUpdate(doc, () => {
@@ -355,7 +355,7 @@ describe("mixed operations", () => {
   });
 
   test("insert, setState multiple times in the same update", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       updateAndListen(
         doc,
@@ -386,7 +386,7 @@ describe("mixed operations", () => {
   });
 
   test("delete and insert multiple nodes in different order and position", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       const node1 = doc.createNode(Text);
       const node2 = doc.createNode(Text);
@@ -429,7 +429,7 @@ describe("mixed operations", () => {
 
 describe("append", () => {
   test("to root", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(2, doc, () => {
       doc.root.append(text(doc, "1").at(0)!);
       doc.root.append(text(doc, "2").at(0)!);
@@ -440,7 +440,7 @@ describe("append", () => {
     });
   });
   test("to non-root node", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(3, doc, () => {
       const node1 = text(doc, "1").at(0)!;
       doc.root.append(node1);
@@ -455,14 +455,14 @@ describe("append", () => {
     });
   });
   test("multiple args", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.append(...text(doc, "1", "2", "3"));
       assertDoc(doc, ["1", "2", "3"]);
     });
   });
   test("unattached.append(unattached)", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       let node1: DocNode<typeof Text>;
       emptyUpdate(doc, () => {
@@ -496,7 +496,7 @@ describe("append", () => {
     });
   });
   test("attached.append(attached) should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.append(...text(doc, "1", "2", "3"));
       const node1 = doc.root.first!;
@@ -512,7 +512,7 @@ describe("append", () => {
   });
 
   test("unattached.append(attached) should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.append(...text(doc, "1", "2", "3"));
       const node1 = doc.root.first!;
@@ -528,7 +528,7 @@ describe("append", () => {
   });
 
   test("zero args", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       emptyUpdate(doc, () => {
         doc.root.append();
@@ -538,7 +538,7 @@ describe("append", () => {
     });
   });
   test("append to itself should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(0, doc, () => {
       const node = doc.createNode(Text);
       assertError(
@@ -555,7 +555,7 @@ describe("append", () => {
 
 describe("prepend", () => {
   test("to root", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(2, doc, () => {
       doc.root.prepend(text(doc, "1").at(0)!);
       doc.root.prepend(text(doc, "2").at(0)!);
@@ -566,7 +566,7 @@ describe("prepend", () => {
     });
   });
   test("to non-root node", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(3, doc, () => {
       const node1 = text(doc, "1").at(0)!;
       doc.root.prepend(node1);
@@ -581,14 +581,14 @@ describe("prepend", () => {
     });
   });
   test("multiple args", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.prepend(...text(doc, "1", "2", "3"));
       assertDoc(doc, ["1", "2", "3"]);
     });
   });
   test("prepend on an unattached node should work", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       let node1!: DocNode<typeof Text>;
       emptyUpdate(doc, () => {
@@ -606,7 +606,7 @@ describe("prepend", () => {
   // - append ancestor
   // - append descendant
   test("prepend on an unattached but one attached node should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.prepend(...text(doc, "1", "2", "3"));
       const node1 = doc.root.first!;
@@ -621,7 +621,7 @@ describe("prepend", () => {
     });
   });
   test("zero args", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       emptyUpdate(doc, () => {
         doc.root.prepend();
@@ -632,7 +632,7 @@ describe("prepend", () => {
   });
 
   test("prepend to itself should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(0, doc, () => {
       const node = doc.createNode(Text);
       assertError(
@@ -658,7 +658,7 @@ describe("insertAfter", () => {
     });
   });
   test("insert after root should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(0, doc, () => {
       assertError(
         doc,
@@ -670,7 +670,7 @@ describe("insertAfter", () => {
     });
   });
   test("zero args", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(0, doc, () => {
       emptyUpdate(doc, () => {
         doc.root.insertAfter();
@@ -679,7 +679,7 @@ describe("insertAfter", () => {
     });
   });
   test("insert after itself should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(0, doc, () => {
       const node = doc.createNode(Text);
       assertError(
@@ -694,7 +694,7 @@ describe("insertAfter", () => {
   });
 
   test("node.insertAfter(attached) should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.append(...text(doc, "1", "2", "3", "4"));
       const node1 = doc.root.first!;
@@ -712,7 +712,7 @@ describe("insertAfter", () => {
   // Maybe: This is allowed in DOM API. Should be allowed in DocNode?
   // See mutators.browser.test.ts
   test("insert after an unattached node should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.append(...text(doc, "1"));
       assertError(
@@ -737,7 +737,7 @@ describe("insertBefore", () => {
     });
   });
   test("insert before root should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(0, doc, () => {
       assertError(
         doc,
@@ -778,7 +778,7 @@ describe("delete", () => {
     });
   });
   test("delete root should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(0, doc, () => {
       assertError(
         doc,
@@ -798,7 +798,7 @@ describe("delete", () => {
   // Maybe: this is allowed in DOM API. Should be allowed in DocNode?
   // In DocNode currently it throws an error.
   // test("delete unattached node shouldn't do anything", () => {
-  //   const doc = new Doc({ extensions: [TextExtension] });
+  //   const doc = new Doc({ type: "root", extensions: [TextExtension] });
   //   checkUndoManager(1, doc, () => {
   //     emptyUpdate(doc, () => {
   //       const node = doc.createNode(Text);
@@ -811,7 +811,7 @@ describe("delete", () => {
 
 describe("deleteChildren", () => {
   test("deleteChildren", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(2, doc, () => {
       emptyUpdate(doc, () => {
         doc.root.append(...text(doc, "1", "2", "3"));
@@ -874,7 +874,7 @@ describe("replace", () => {
   });
 
   test("replace when there is no siblings", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(2, doc, () => {
       const node1 = text(doc, "1").at(0)!;
       doc.root.append(node1);
@@ -886,7 +886,7 @@ describe("replace", () => {
     });
   });
   test("replace root should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(0, doc, () => {
       assertError(
         doc,
@@ -933,7 +933,7 @@ describe("replace", () => {
     });
   });
   test("unattached.replace() should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(0, doc, () => {
       assertError(
         doc,
@@ -953,7 +953,7 @@ describe("replace", () => {
 
 describe("replaceChildren", () => {
   test("empty args should delete all children", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(0, doc, () => {
       emptyUpdate(doc, () => {
         doc.root.append(...text(doc, "1", "2", "3"));
@@ -995,7 +995,7 @@ describe("replaceChildren", () => {
 
 describe("move", () => {
   test("simple move", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(3, doc, () => {
       doc.root.append(...text(doc, "1", "2"));
       assertDoc(doc, ["1", "2"]);
@@ -1038,7 +1038,7 @@ describe("move", () => {
   });
 
   test("target is in the range", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.append(...text(doc, "1", "2", "3", "4"));
       const node1 = doc.root.first!;
@@ -1069,7 +1069,7 @@ describe("move", () => {
   });
 
   test("target is descendant of the range", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.append(...text(doc, "1", "2", "3", "4"));
       const node1 = doc.root.first!;
@@ -1126,7 +1126,7 @@ describe("move", () => {
   });
 
   test("move to the same position should do nothing", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.append(...text(doc, "1", "2", "3", "4"));
       emptyUpdate(doc, () => {
@@ -1138,7 +1138,7 @@ describe("move", () => {
   });
 
   test("move before or after the root should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     // checkUndoManager(1, doc, () => {
     doc.root.append(...text(doc, "1", "2", "3", "4"));
     const node1 = doc.root.first!;
@@ -1307,7 +1307,7 @@ describe("to", () => {
   // 1. It is possible to get the "to" range, mutate the document, and then execute the methods
   // 2. performance reasons. One loop only.
   test("if is not a later sibling, should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const { root } = doc;
     checkUndoManager(1, doc, () => {
       root.append(...text(doc, "1", "2", "3", "4"));
@@ -1330,8 +1330,8 @@ describe("to", () => {
     });
   });
   test("if is not a later sibling, should throw (different documents)", () => {
-    const doc1 = new Doc({ extensions: [TextExtension] });
-    const doc2 = new Doc({ extensions: [TextExtension] });
+    const doc1 = new Doc({ type: "root", extensions: [TextExtension] });
+    const doc2 = new Doc({ type: "root", extensions: [TextExtension] });
     const node1 = doc1.createNode(Text);
     const node2 = doc2.createNode(Text);
     const range = node1.to(node2);
@@ -1350,7 +1350,7 @@ describe("to", () => {
     fn(() => range.move(doc2.root, "append"));
   });
   test("node to itself should work", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(0, doc, () => {
       emptyUpdate(doc, () => {
         let count = 0;
@@ -1371,7 +1371,7 @@ test("A root node cannot be inserted (there cannot be two root nodes)", () => {
     type: "docType",
     state: {},
   });
-  const doc = new Doc({ extensions: [TextExtension], type: "docType" });
+  const doc = new Doc({ type: "docType", extensions: [TextExtension] });
   checkUndoManager(0, doc, () => {
     assertError(
       doc,

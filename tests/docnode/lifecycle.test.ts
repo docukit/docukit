@@ -23,7 +23,7 @@ describe("register lifecycle", () => {
       },
     };
 
-    const doc = new Doc({ extensions: [TestExtension] });
+    const doc = new Doc({ type: "root", extensions: [TestExtension] });
 
     expect(registerCalled).toBe(true);
     expect(receivedDoc).toBe(doc);
@@ -50,7 +50,7 @@ describe("register lifecycle", () => {
       },
     };
 
-    new Doc({ extensions: [Extension1, Extension2, Extension3] });
+    new Doc({ type: "root", extensions: [Extension1, Extension2, Extension3] });
 
     expect(callOrder).toStrictEqual([1, 2, 3]);
   });
@@ -64,7 +64,7 @@ describe("register lifecycle", () => {
       },
     };
 
-    new Doc({ extensions: [TestExtension] });
+    new Doc({ type: "root", extensions: [TestExtension] });
 
     expect(called).toBe(true);
   });
@@ -82,13 +82,14 @@ describe("register lifecycle", () => {
     };
 
     expect(() => {
-      new Doc({ extensions: [TestExtension] });
+      new Doc({ type: "root", extensions: [TestExtension] });
     }).toThrowError("You can't trigger an update inside a init stage");
   });
 
   test("can register change event inside and outside register", () => {
     const logs: string[] = [];
     const doc = new Doc({
+      type: "root",
       extensions: [
         TextExtension,
         {
@@ -125,7 +126,7 @@ describe("doc.onNormalize", () => {
       },
     };
 
-    const doc = new Doc({ extensions: [TestExtension] });
+    const doc = new Doc({ type: "root", extensions: [TestExtension] });
 
     // Normalize should be called when a transaction is committed
     checkUndoManager(1, doc, () => {
@@ -138,7 +139,7 @@ describe("doc.onNormalize", () => {
   });
 
   test("onNormalize throws when called outside register", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
 
     expect(() => {
       doc.onNormalize(() => {
@@ -161,7 +162,7 @@ describe("doc.onNormalize", () => {
       },
     };
 
-    const doc = new Doc({ extensions: [TestExtension] });
+    const doc = new Doc({ type: "root", extensions: [TestExtension] });
 
     checkUndoManager(1, doc, () => {
       const node = doc.createNode(Text);
@@ -196,6 +197,7 @@ describe("doc.onNormalize", () => {
     };
 
     const doc = new Doc({
+      type: "root",
       extensions: [Extension1, Extension2],
       strictMode: false,
     });
@@ -228,7 +230,11 @@ describe("doc.onNormalize", () => {
       },
     };
 
-    const doc = new Doc({ extensions: [TestExtension], strictMode: false });
+    const doc = new Doc({
+      type: "root",
+      extensions: [TestExtension],
+      strictMode: false,
+    });
 
     // Initially, root should be empty
     expect(doc.root.first).toBeFalsy();
@@ -256,7 +262,7 @@ describe("doc.onNormalize", () => {
       },
     };
 
-    const doc = new Doc({ extensions: [TestExtension] });
+    const doc = new Doc({ type: "root", extensions: [TestExtension] });
 
     checkUndoManager(3, doc, () => {
       // Transaction 1
@@ -295,7 +301,11 @@ describe("doc.onNormalize", () => {
       },
     };
 
-    const doc = new Doc({ extensions: [TestExtension], strictMode: false });
+    const doc = new Doc({
+      type: "root",
+      extensions: [TestExtension],
+      strictMode: false,
+    });
 
     // Root should be empty initially
     expect(doc.root.first).toBeFalsy();
@@ -331,7 +341,11 @@ describe("onNormalize in strict mode", () => {
       },
     };
 
-    const doc = new Doc({ extensions: [TestExtension], strictMode: true });
+    const doc = new Doc({
+      type: "root",
+      extensions: [TestExtension],
+      strictMode: true,
+    });
 
     // This should throw because normalize keeps mutating on second pass
     expect(() => {
@@ -368,7 +382,11 @@ describe("onNormalize in strict mode", () => {
       },
     };
 
-    const doc = new Doc({ extensions: [TestExtension], strictMode: true });
+    const doc = new Doc({
+      type: "root",
+      extensions: [TestExtension],
+      strictMode: true,
+    });
 
     // In strict mode, this should throw because normalize keeps adding nodes
     expect(() => {
@@ -399,7 +417,11 @@ describe("onNormalize in strict mode", () => {
       },
     };
 
-    const doc = new Doc({ extensions: [TestExtension], strictMode: true });
+    const doc = new Doc({
+      type: "root",
+      extensions: [TestExtension],
+      strictMode: true,
+    });
 
     // This should work because the callback is idempotent
     // Add then delete a node to trigger normalization
@@ -434,7 +456,11 @@ describe("onNormalize with operations", () => {
       },
     };
 
-    const doc = new Doc({ extensions: [TestExtension], strictMode: false });
+    const doc = new Doc({
+      type: "root",
+      extensions: [TestExtension],
+      strictMode: false,
+    });
 
     checkUndoManager(1, doc, () => {
       updateAndListen(
@@ -473,7 +499,7 @@ describe("lifecycle transitions", () => {
       },
     };
 
-    const doc = new Doc({ extensions: [TestExtension] });
+    const doc = new Doc({ type: "root", extensions: [TestExtension] });
     stages.push(doc["_lifeCycleStage"] as string);
 
     // Should start in init, then move to idle
@@ -493,7 +519,7 @@ describe("lifecycle transitions", () => {
   });
 
   test("cannot call onNormalize during update phase", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
 
     let normalizeCallAttempted = false;
 
@@ -513,7 +539,7 @@ describe("lifecycle transitions", () => {
   });
 
   test("cannot call onNormalize during change event", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
 
     checkUndoManager(1, doc, () => {
       const unregister = doc.onChange(() => {
@@ -545,7 +571,7 @@ describe("onNormalize edge cases", () => {
       },
     };
 
-    const doc = new Doc({ extensions: [TestExtension] });
+    const doc = new Doc({ type: "root", extensions: [TestExtension] });
 
     checkUndoManager(1, doc, () => {
       const node = doc.createNode(Text);
@@ -565,7 +591,7 @@ describe("onNormalize edge cases", () => {
       },
     };
 
-    const doc = new Doc({ extensions: [TestExtension] });
+    const doc = new Doc({ type: "root", extensions: [TestExtension] });
 
     expect(() => {
       checkUndoManager(1, doc, () => {
@@ -581,7 +607,7 @@ describe("onNormalize edge cases", () => {
       // No register
     };
 
-    const doc = new Doc({ extensions: [TestExtension] });
+    const doc = new Doc({ type: "root", extensions: [TestExtension] });
 
     checkUndoManager(1, doc, () => {
       const node = doc.createNode(Text);
@@ -594,6 +620,7 @@ describe("onNormalize edge cases", () => {
 
   test("if normalize reverts the tx, the change event should not be triggered", () => {
     const doc = new Doc({
+      type: "root",
       extensions: [
         TextExtension,
         {
@@ -619,7 +646,7 @@ describe("onNormalize edge cases", () => {
 
 describe("applyOperations", () => {
   test("applyOperations triggers events with manual operations", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const nodeId = doc["_nodeIdGenerator"](doc);
 
     checkUndoManager(1, doc, () => {
@@ -634,7 +661,7 @@ describe("applyOperations", () => {
 
 describe("dispose", () => {
   test("dispose throws if called during an update event", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       const node = doc.createNode(Text);
       doc.root.append(node);
@@ -645,7 +672,7 @@ describe("dispose", () => {
   });
 
   test("dispose throws if called during a change event", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     doc.onChange(() => {
       expect(() => {
         doc.dispose();
@@ -658,6 +685,7 @@ describe("dispose", () => {
 
   test("dispose throws if called during a normalize event", () => {
     const doc = new Doc({
+      type: "root",
       extensions: [
         TextExtension,
         {
@@ -680,7 +708,7 @@ describe("dispose", () => {
   });
 
   test("can't update a document after being disposed", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const node = doc.createNode(Text);
     doc.dispose();
     expect(() => {

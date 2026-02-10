@@ -190,9 +190,9 @@ export type DocConfig = {
   strictMode?: boolean;
   /**
    * The type of the document, which is also the root node type.
-   * @default "root"
+   * @example "editor", "file-explorer", "todo-list"
    */
-  type?: string;
+  type: string;
   /**
    * The document id, which is also the root node id.
    * It must be a lowercase ulid.
