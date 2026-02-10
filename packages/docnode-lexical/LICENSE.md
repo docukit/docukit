@@ -1,4 +1,4 @@
-# DocNode License 1.0
+# DocuKit Fair License 1.0
 
 ## Notice
 

@@ -3,7 +3,7 @@
   "license": "SEE LICENSE IN LICENSE.md",
   "private": true,
   "type": "module",
-  "homepage": "https://docnode.dev/docsync",
+  "homepage": "https://docukit.dev/docsync",
   "repository": {
     "type": "git",
     "url": "https://github.com/docukit/docukit.git",

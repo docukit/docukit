@@ -262,9 +262,9 @@ export default function LicensePage() {
 
             <Accordion title="Can I contribute to the project?" id="contribute">
               <p>
-                Absolutely! We welcome contributions to all parts of DocNode.
-                DocNode is source-available, and we're happy to accept PRs, bug
-                reports, and feature requests. Check out our{" "}
+                Absolutely! We welcome contributions to any of our libraries.
+                They are all source-available, and we're happy to accept PRs,
+                bug reports, and feature requests. Check out our{" "}
                 <a
                   href="https://github.com/docukit/docukit"
                   target="_blank"

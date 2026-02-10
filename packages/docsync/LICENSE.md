@@ -17,4 +17,4 @@ You may NOT:
 
 ## Obtaining a License
 
-For production use, please obtain a license at: https://docnode.dev/license
+For production use, please obtain a license at: https://docukit.dev/license

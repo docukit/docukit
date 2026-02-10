@@ -4,7 +4,7 @@
   "license": "SEE LICENSE IN LICENSE.md",
   "description": "A type-safe, fast, ID-based Operational Transformation (OT) framework.",
   "type": "module",
-  "homepage": "https://docnode.dev",
+  "homepage": "https://docukit.dev",
   "repository": {
     "type": "git",
     "url": "https://github.com/docukit/docukit.git",

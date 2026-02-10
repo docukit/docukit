@@ -29,7 +29,7 @@ Remote edit (DocNode → Lexical):
 
 ## Overview
 
-This document outlines the design and implementation strategies for `docnode-lexical`, a binding between [Lexical](https://lexical.dev) editor and [DocNode](https://docnode.dev), a modern alternative to Yjs for collaborative editing.
+This document outlines the design and implementation strategies for `docnode-lexical`, a binding between [Lexical](https://lexical.dev) editor and [DocNode](https://docukit.dev), a modern alternative to Yjs for collaborative editing.
 
 DocNode differs from Yjs in its approach:
 
@@ -350,7 +350,7 @@ This leverages Lexical's existing `exportJSON()` and node creation from JSON.
 ## References
 
 - [Lexical Reconciler](../lexical/src/LexicalReconciler.ts) - Dirty tracking pattern
-- [DocNode Docs](https://docnode.dev/llms-full.txt) - Full API reference
+- [DocNode Docs](https://docukit.dev/llms-full.txt) - Full API reference
 - [Implementation](./src/index.ts) - Current code
 
 ## Implementation Status

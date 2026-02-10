@@ -2,31 +2,31 @@
 
 This document describes how authentication works in **DocSync**.
 
-DocNode does **not** implement authentication itself. Instead, it defines clear extension points so applications can plug in their own auth system while DocNode focuses strictly on synchronization.
+DocSync does **not** implement authentication itself. Instead, it defines clear extension points so applications can plug in their own auth system while DocSync focuses strictly on synchronization.
 
-DocNode provides **authentication and authorization hooks**, but it does not impose any model for authentication (JWT, OAuth, API keys) or authorization (ACLs, sharing, roles).
+DocSync provides **authentication and authorization hooks**, but it does not impose any model for authentication (JWT, OAuth, API keys) or authorization (ACLs, sharing, roles).
 
 ---
 
 ## Core Principles
 
-- DocNode **never issues credentials**.
-- DocNode **never refreshes credentials**.
-- DocNode **never persists credentials**.
-- DocNode treats authentication as a **connection concern**, not a business concern.
+- DocSync **never issues credentials**.
+- DocSync **never refreshes credentials**.
+- DocSync **never persists credentials**.
+- DocSync treats authentication as a **connection concern**, not a business concern.
 
-If your app can authenticate users today, it can authenticate DocNode.
+If your app can authenticate users today, it can authenticate DocSync.
 
 ---
 
 ## Authentication vs Authorization
 
-DocNode makes a strict distinction:
+DocSync makes a strict distinction:
 
 - **Authentication**: Who is this connection?
 - **Authorization**: What is this user allowed to do?
 
-DocNode only defines **authentication**.
+DocSync only defines **authentication**.
 Authorization (document sharing, ACLs, permissions) is intentionally left to the application layer.
 
 ---
@@ -86,7 +86,7 @@ export type ClientConfig = {
 - On initial WebSocket connection
 - On reconnection after disconnect
 
-DocNode does **not** call `getToken` per operation.
+DocSync does **not** call `getToken` per operation.
 
 ---
 
@@ -241,7 +241,7 @@ Flow:
 Example:
 
 ```ts
-IndexedDB name = `docnode:${userId}`
+IndexedDB name = `DocSync:${userId}`
 ```
 
 This ensures:
@@ -277,11 +277,11 @@ Results consistently showed:
 
 **Separate databases > Separate object stores > Single object store**
 
-DocNode uses **separate databases per user** for local persistence.
+DocSync uses **separate databases per user** for local persistence.
 
 ### Local Encryption Secret Management (Recommended Pattern)
 
-DocNode does not manage encryption secrets. However, for most applications, the following **server-backed secret** flow is recommended, as it provides good security, excellent UX, and optimal Core Web Vitals (CWV).
+DocSync does not manage encryption secrets. However, for most applications, the following **server-backed secret** flow is recommended, as it provides good security, excellent UX, and optimal Core Web Vitals (CWV).
 
 #### Secret Creation (Server)
 
@@ -322,7 +322,7 @@ This avoids an additional roundtrip to the server and preserves fast startup and
 
 ### Convenience Helpers (Recommended)
 
-While DocNode keeps secret management application-defined, it is recommended to provide **official helper utilities** for common setups.
+While DocSync keeps secret management application-defined, it is recommended to provide **official helper utilities** for common setups.
 
 For example, a server-backed secret helper can encapsulate best practices:
 
@@ -331,7 +331,7 @@ import { serverBackedSecret } from "@docukit/auth-helpers";
 
 local: {
   getIdentity: serverBackedSecret({
-    fetchSecret: () => fetch("/docnode/secret"),
+    fetchSecret: () => fetch("/DocSync/secret"),
     storage: "secure-cookie",
     cookieTtlDays: 365,
   }),
@@ -345,7 +345,7 @@ Such helpers:
 - Reuse the locally stored secret on subsequent startups
 - Avoid unnecessary network roundtrips
 
-This provides a batteries-included path for most users while keeping the DocNode core minimal, flexible, and honest about its security boundaries.
+This provides a batteries-included path for most users while keeping the DocSync core minimal, flexible, and honest about its security boundaries.
 
 For most applications, this trade-off provides the best balance between security, usability, and performance.
 
@@ -368,13 +368,13 @@ Authentication and encryption are intentionally separate.
 - No authentication occurs
 - Sync resumes when connection is re-established
 
-DocNode does not attempt to validate identity while offline.
+DocSync does not attempt to validate identity while offline.
 
 ---
 
 ## Token Expiry, Revalidation, and Disconnects
 
-DocNode treats tokens as **opaque**.
+DocSync treats tokens as **opaque**.
 
 It does not parse tokens, infer expiry, or manage refresh.
 
@@ -396,7 +396,7 @@ This is strongly recommended when the auth system knows the token TTL (e.g. JWT 
 
 If `expiresAt` is **not** provided:
 
-- DocNode periodically re-calls `authenticate`
+- DocSync periodically re-calls `authenticate`
 - If authentication fails, the socket is disconnected
 - The interval is controlled via `authRevalidation.intervalMs`
 
@@ -422,7 +422,7 @@ When a socket is disconnected (e.g. due to token expiry):
 - `auth.getToken()` is called again
 - A new authenticated connection is established
 
-This ensures DocNode works correctly with:
+This ensures DocSync works correctly with:
 
 - short-lived tokens
 - refresh and rotation
@@ -430,11 +430,11 @@ This ensures DocNode works correctly with:
 
 ### Proactive Token Refresh (Optional)
 
-By default, DocNode relies on **disconnect + reconnect** when a token expires.
+By default, DocSync relies on **disconnect + reconnect** when a token expires.
 
-If an application wanted to update a token **without losing the connection**, an explicit re-authentication flow could be implemented on DocNode (for example, a custom `refresh_auth` event that re-executes `authenticate` and reschedules the expiration).
+If an application wanted to update a token **without losing the connection**, an explicit re-authentication flow could be implemented on DocSync (for example, a custom `refresh_auth` event that re-executes `authenticate` and reschedules the expiration).
 
-However, this event is not supported in DocNode, at least not at the moment. Reconnection happens very quickly, so this procedure doesn't seem worthwhile.
+However, this event is not supported in DocSync, at least not at the moment. Reconnection happens very quickly, so this procedure doesn't seem worthwhile.
 
 ---
 
@@ -449,7 +449,7 @@ However, this event is not supported in DocNode, at least not at the moment. Rec
 
 ## Design Intent
 
-DocNode’s auth model is deliberately minimal.
+DocSync’s auth model is deliberately minimal.
 
 This allows it to:
 
@@ -457,4 +457,4 @@ This allows it to:
 - Avoid security assumptions
 - Remain stable as applications evolve
 
-If you need more than this, DocNode is intentionally not the place to add it.
+If you need more than this, DocSync is intentionally not the place to add it.

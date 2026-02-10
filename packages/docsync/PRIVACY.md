@@ -1,6 +1,6 @@
-# Privacy Policy for DocNode Library
+# Privacy Policy for DocSync Library
 
-The DocNode library collects the following information for license validation and usage statistics purposes:
+The DocSync library may collect and send the following information to DocuKit for license validation and usage statistics:
 
-- The environment variable `DOCNODE_LICENSE_KEY`, which is used to validate the license of the library.
-- The URL of the website where the library is being utilized, unless it is being used on localhost.
+- **License key**: Used to validate your license.
+- **Origin URL**: The URL of the app or site where the library runs, unless it runs on localhost.
