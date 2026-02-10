@@ -119,7 +119,7 @@ const Footer = ({ variant = "home" }: FooterProps) => {
 
           {/* Social Icons */}
           <div>
-            <div className="mb-4 h-[1.25rem]"></div>
+            <div className="mb-4 h-5"></div>
             <div className="flex gap-3">
               <a
                 href="https://x.com/docnode"

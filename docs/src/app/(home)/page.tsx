@@ -85,7 +85,7 @@ const Index = () => {
           {/* Heading */}
           <h1 className="text-4xl font-black tracking-tight sm:text-5xl md:text-7xl">
             Build
-            <span className="bg-gradient-to-r from-blue-400 to-emerald-500 bg-clip-text text-transparent">
+            <span className="bg-linear-to-r from-blue-400 to-emerald-500 bg-clip-text text-transparent">
               {" "}
               local-first{" "}
             </span>
@@ -136,7 +136,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
   return (
     <Link
       href={href}
-      className={`animate-fade-in-up group relative isolate flex [transform:translateZ(0)] flex-col overflow-hidden rounded-[2.5rem] p-6 transition-all duration-500 [backface-visibility:hidden] hover:-translate-y-2 hover:shadow-[0_20px_50px_rgba(0,0,0,0.3)] ${
+      className={`animate-fade-in-up group relative isolate flex transform-[translateZ(0)] flex-col overflow-hidden rounded-[2.5rem] p-6 transition-all duration-500 backface-hidden hover:-translate-y-2 hover:shadow-[0_20px_50px_rgba(0,0,0,0.3)] ${
         isGreen
           ? "bg-emerald-600 shadow-emerald-900/20 hover:bg-emerald-500"
           : "bg-blue-600 shadow-blue-900/20 hover:bg-blue-500"
@@ -157,7 +157,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
       />
 
       <div className="relative z-10">
-        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-[1.5rem] bg-white p-3 shadow-2xl transition-all duration-500 group-hover:scale-110 group-hover:rotate-12">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-white p-3 shadow-2xl transition-all duration-500 group-hover:scale-110 group-hover:rotate-12">
           {icon}
         </div>
 
