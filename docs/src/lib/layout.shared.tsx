@@ -14,7 +14,7 @@ export const baseOptions: BaseLayoutProps = {
   themeSwitch: {
     mode: "light-dark",
   },
-  githubUrl: "https://github.com/docnode/docnode",
+  githubUrl: "https://github.com/docukit/docukit",
   links: [
     // {
     //   type: "main",

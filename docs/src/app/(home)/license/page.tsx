@@ -221,7 +221,7 @@ export default function LicensePage() {
               <p className="mb-4">
                 <strong>DocNode packages</strong> are distributed under the{" "}
                 <a
-                  href="https://github.com/docnode/docnode/blob/main/packages/docnode/LICENSE.md"
+                  href="https://github.com/docukit/docukit/blob/main/packages/docnode/LICENSE.md"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"
@@ -244,7 +244,7 @@ export default function LicensePage() {
                 <strong>DocSync packages</strong> are proprietary software
                 distributed under the{" "}
                 <a
-                  href="https://github.com/docnode/docnode/blob/main/packages/docsync/LICENSE.md"
+                  href="https://github.com/docukit/docukit/blob/main/packages/docsync/LICENSE.md"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"
@@ -266,7 +266,7 @@ export default function LicensePage() {
                 DocNode is source-available, and we're happy to accept PRs, bug
                 reports, and feature requests. Check out our{" "}
                 <a
-                  href="https://github.com/docnode/docnode"
+                  href="https://github.com/docukit/docukit"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"

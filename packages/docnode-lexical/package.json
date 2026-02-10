@@ -6,7 +6,7 @@
   "homepage": "https://docnode.dev",
   "repository": {
     "type": "git",
-    "url": "https://github.com/docnode/docnode.git",
+    "url": "https://github.com/docukit/docukit.git",
     "directory": "packages/docnode-lexical"
   },
   "files": [
