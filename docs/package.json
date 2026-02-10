@@ -41,7 +41,9 @@
     "remark": "^15.0.1",
     "remark-gfm": "^4.0.1",
     "remark-rehype": "^11.1.2",
+    "shiki": "^3.21.0",
     "tailwind-merge": "^3.3.1",
+    "ts-morph": "^27.0.2",
     "unist-util-visit": "^5.0.0",
     "zod": "^4.1.12"
   },
