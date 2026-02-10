@@ -697,7 +697,7 @@ describe("DocSyncClient", () => {
 
         // Trigger a document change
         doc.root.append(doc.createNode(ChildNode));
-        await tick();
+        await tick(50);
 
         // Verify postMessage was called with OPERATIONS
         expect(postMessageSpy).toHaveBeenCalledWith({
