@@ -747,7 +747,7 @@ export class Doc {
     const id = config.id ?? ulid().toLowerCase();
     // @ts-expect-error - private constructor
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    this.root = new DocNode(this, type, id);
+    this.root = new DocNode(this, config.type, id);
     this._nodeMap.set(id, this.root);
     this._nodeIdGenerator =
       config.nodeIdGenerator === "ulid"
