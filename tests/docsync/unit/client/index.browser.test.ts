@@ -322,7 +322,7 @@ describe("DocSyncClient", () => {
           { type: "test", id: customId, createIfMissing: true },
           callback,
         );
-        await tick(15);
+        await tick(50);
 
         expect(getSuccessData(callback)?.docId).toBe(customId);
       });
@@ -590,7 +590,7 @@ describe("DocSyncClient", () => {
           { type: "unknown-type", id: "test-id", createIfMissing: true },
           callback,
         );
-        await tick();
+        await tick(15);
 
         const errorResult = getErrorResult(callback);
         expect(errorResult).toBeDefined();

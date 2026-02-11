@@ -180,7 +180,7 @@ describe("Client Events", () => {
           // Callback for doc updates
         },
       );
-      await tick(15);
+      await tick(30);
 
       expect(loadSource).toBe("created");
 

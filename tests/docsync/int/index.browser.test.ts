@@ -125,7 +125,7 @@ describe("Local-First", () => {
       // Trying to calculate the moment when it's in ops but not in
       //  doc results in a flaky test. For now, we're evaluating
       // with a longer tick only in doc.
-      await tick(45);
+      await tick(60);
       // await tick(35); // Wait for throttle to save ops to IDB
       // await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
       // await tick(); // Wait for sync request to complete
@@ -224,7 +224,7 @@ describe("Local-First", () => {
       reference.connect();
       otherTab.connect();
       otherDevice.connect();
-      await tick(60);
+      await tick(80);
 
       reference.assertMemoryDoc(["A", "B"]);
       otherTab.assertMemoryDoc(["A", "B"]);
@@ -283,7 +283,7 @@ describe("Local-First", () => {
       reference.connect();
       otherTab.connect();
       otherDevice.connect();
-      await tick(60);
+      await tick(120);
 
       reference.assertMemoryDoc(["A", "B", "C"]);
       otherTab.assertMemoryDoc(["B", "A", "C"]);

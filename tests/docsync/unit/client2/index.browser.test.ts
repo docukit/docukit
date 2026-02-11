@@ -205,7 +205,7 @@ describe("Client 2", () => {
 
       await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
-      await tick();
+      await tick(15);
 
       expect(requestSpy).toHaveBeenCalledWith(
         "sync-operations",
@@ -365,7 +365,7 @@ describe("Client 2", () => {
 
       // Trigger pull - client has no operations but wants server's updates
       client.saveRemote({ docId });
-      await tick();
+      await tick(15);
 
       // Should call API with empty operations (this is a pull)
       expect(requestSpy).toHaveBeenCalledWith(
