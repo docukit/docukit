@@ -56,6 +56,13 @@ export default defineConfig({
     // Node tests should be fast (2s max)
     testTimeout: 2000, // 2 seconds max per test
     hookTimeout: 2000, // 2 seconds max per hook (beforeAll, afterEach, etc)
+    // Defaults for expect.poll() – interval ms between attempts, timeout ms total
+    expect: {
+      poll: {
+        interval: 5,
+        timeout: 1000,
+      },
+    },
     coverage: {
       reportsDirectory: ".test-results/vitest",
       reporter: ["text", "html"],
