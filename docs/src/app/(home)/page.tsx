@@ -47,6 +47,7 @@ const Index = () => {
       icon: <DocSyncLogo className="h-10 w-auto" />,
       href: "/docsync",
       color: "blue",
+      badge: "alpha",
     },
     // {
     //   title: "DocEditor",
@@ -121,6 +122,7 @@ interface ProductCardProps {
   href: string;
   color: "green" | "blue";
   delay: number;
+  badge?: string;
 }
 
 const ProductCard: React.FC<ProductCardProps> = ({
@@ -130,6 +132,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
   href,
   color,
   delay,
+  badge,
 }) => {
   const isGreen = color === "green";
 
@@ -147,6 +150,13 @@ const ProductCard: React.FC<ProductCardProps> = ({
     >
       {/* Top highlight border */}
       <div className="absolute inset-x-0 top-0 z-20 h-px bg-white/20" />
+
+      {/* Badge (e.g. alpha) - top right */}
+      {badge && (
+        <div className="absolute top-6 right-6 z-20 rounded-md bg-white px-3 py-1.5 text-xs font-bold tracking-wider text-blue-600 uppercase">
+          {badge}
+        </div>
+      )}
 
       {/* Decorative background shapes */}
       <div
