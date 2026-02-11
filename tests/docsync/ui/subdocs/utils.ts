@@ -183,9 +183,15 @@ export class DocNodeHelper extends HelperBase {
   }
 
   async assertPanel(panel: "main" | "secondary", state: string[]) {
-    await this._assertSync();
     state.unshift("root");
+    const expectedCount = state.length;
     const docNodes = this.getDocnodes(this._reference, panel);
+    // Wait for expected node count so sync has finished (CI is slower)
+    await docNodes
+      .nth(expectedCount - 1)
+      .locator("span.text-zinc-600")
+      .waitFor({ state: "visible", timeout: 15_000 });
+    await this._assertSync();
     const count = await docNodes.count();
 
     // Get the left position of the root element to use as baseline

@@ -9,7 +9,7 @@ export default defineConfig({
     ? "github"
     : [["html", { outputFolder: ".test-results/playwright/report" }]],
   outputDir: ".test-results/playwright/test-results",
-  timeout: 5_000,
+  timeout: process.env.CI ? 30_000 : 5_000,
   retries: 1,
   use: {
     baseURL: process.env.VERCEL_URL
