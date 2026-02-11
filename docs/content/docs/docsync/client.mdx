@@ -1,0 +1,200 @@
+---
+title: Client
+description: Client-side implementation of DocSync
+---
+
+import { TypeTable } from "fumadocs-ui/components/type-table";
+
+## createDocSyncClient
+
+Creates a DocSync client instance along with React hooks for document synchronization.
+
+```tsx
+import { createDocSyncClient } from "@docukit/docsync-react";
+
+const { client, useDoc, usePresence } = createDocSyncClient({
+  docBinding,
+  server: {
+    url: "http://localhost:8080",
+    auth: {
+      getToken: async () => await fetchAuthToken(),
+    },
+  },
+  local: {
+    provider: IndexedDBProvider,
+    getIdentity: async () => ({
+      userId: "user-123",
+      secret: await fetchUserSecret(),
+    }),
+  },
+});
+```
+
+### Props
+
+<TypeTable
+  type={{
+    docBinding: {
+      description:
+        "Document binding that maps document types to their serialization/deserialization configs.",
+      type: "DocBinding<D, S, O>",
+      required: true,
+    },
+    server: {
+      description: "Remote server configuration object.",
+      type: "object",
+      required: true,
+    },
+    "server.url": {
+      description: "WebSocket URL of the DocSync server.",
+      type: "string",
+      required: true,
+    },
+    "server.auth.getToken": {
+      description:
+        "Async function called on every connection attempt to retrieve the authentication token. The token is passed verbatim to the server.",
+      type: "() => Promise<string>",
+      required: true,
+    },
+    local: {
+      description: "Local storage configuration for offline-first persistence.",
+      type: "object",
+      required: true,
+    },
+    "local.provider": {
+      description:
+        "Storage provider class constructor (e.g., IndexedDBProvider) for persistent local storage.",
+      type: "Provider",
+      required: true,
+    },
+    "local.getIdentity": {
+      description:
+        "Async function that resolves the local storage identity. Returns userId (for namespacing) and secret (for encryption). The secret must never be persisted client-side.",
+      type: "() => Promise<Identity>",
+      required: true,
+    },
+  }}
+/>
+
+### Returns
+
+<TypeTable
+  type={{
+    client: {
+      description:
+        "The underlying DocSyncClient instance. May be undefined during SSR.",
+      type: "DocSyncClient | undefined",
+    },
+    useDoc: {
+      description:
+        "React hook that subscribes to a document with reactive state updates.",
+      type: "(args: GetDocArgs) => QueryResult<DocData | undefined>",
+    },
+    usePresence: {
+      description:
+        "React hook that subscribes to presence updates for a document and provides a setter.",
+      type: "(args: { docId: string | undefined }) => [Presence, setPresence]",
+    },
+  }}
+/>
+
+---
+
+## useDoc
+
+React hook that subscribes to a document with reactive state updates.
+
+```tsx
+const result = useDoc({ type: "notes", id: "doc-123" });
+
+const result = useDoc({ type: "notes", createIfMissing: true });
+
+const result = useDoc({ type: "notes", id: "doc-123", createIfMissing: true });
+```
+
+### Props
+
+<TypeTable
+  type={{
+    type: {
+      description:
+        "The document type to load (must match a type defined in docBinding).",
+      type: "string",
+      required: true,
+    },
+    id: {
+      description:
+        "The document ID to load. If omitted with createIfMissing: true, a new ID will be auto-generated.",
+      type: "string",
+    },
+    createIfMissing: {
+      description:
+        "If true, creates the document if it doesn't exist. When true without id, generates a new document with auto-generated ID.",
+      type: "boolean",
+      default: "false",
+    },
+  }}
+/>
+
+### Returns
+
+<TypeTable
+  type={{
+    status: {
+      description: "Current state of the query.",
+      type: '"loading" | "success" | "error"',
+      required: true,
+    },
+    data: {
+      description:
+        "The document data when status is 'success'. Contains doc (the DocNode instance) and id (document ID). Undefined if document not found.",
+      type: "{ doc: D; id: string } | undefined",
+    },
+    error: {
+      description: "Error information when status is 'error'.",
+      type: "Error",
+    },
+  }}
+/>
+
+---
+
+## usePresence
+
+React hook that subscribes to presence updates for a document and provides a setter function.
+
+```tsx
+const [presence, setPresence] = usePresence({ docId: "doc-123" });
+
+setPresence({ cursor: { x: 100, y: 200 }, color: "#ff0000" });
+```
+
+### Props
+
+<TypeTable
+  type={{
+    docId: {
+      description:
+        "The document ID to subscribe to presence updates for. The document must already be loaded via useDoc.",
+      type: "string | undefined",
+      required: true,
+    },
+  }}
+/>
+
+### Returns
+
+<TypeTable
+  type={{
+    presence: {
+      description:
+        "Record of socket IDs to their presence data for all connected users.",
+      type: "Record<string, T>",
+    },
+    setPresence: {
+      description:
+        "Function to update this client's presence for the document.",
+      type: "(presence: T) => void",
+    },
+  }}
+/>

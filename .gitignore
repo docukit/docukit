@@ -41,9 +41,6 @@ yarn-error.log*
 # vitest
 tsconfig.vitest-temp.json
 
-# docnode
-**/docnode-worker.js
-
 # tests
 /.test-results/
 

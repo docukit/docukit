@@ -1,0 +1,17 @@
+---
+title: Subdocuments
+description: How to use DocSync with subdocuments
+---
+
+## Subdocuments
+
+DocSync can be used with subdocuments.
+
+```ts
+const client = new DocSyncClient({
+  server: {
+    url: "http://localhost:8080",
+    auth: { getToken: async () => await fetchAuthToken() },
+  },
+});
+```

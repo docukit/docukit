@@ -1,12 +1,18 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { Doc, DocNode, defineState, defineNode, string } from "docnode";
+import {
+  Doc,
+  DocNode,
+  defineState,
+  defineNode,
+  string,
+} from "@docukit/docnode";
 import type {
   Json,
   StateDefinition,
   NodeDefinition,
   DefaultStateMethods,
   JsonDoc,
-} from "docnode";
+} from "@docukit/docnode";
 import {
   checkUndoManager,
   TestNode,
@@ -133,7 +139,10 @@ describe("types", () => {
           }),
         },
       });
-      const doc = new Doc({ extensions: [{ nodes: [CounterNode] }] });
+      const doc = new Doc({
+        type: "root",
+        extensions: [{ nodes: [CounterNode] }],
+      });
       checkUndoManager(1, doc, () => {
         const node = doc.createNode(CounterNode);
         doc.root.append(node);
@@ -145,7 +154,7 @@ describe("types", () => {
         expect(node.state.counter.get().counter).toBe(2);
         const json = doc.toJSON({ unsafe: true });
         const doc2 = Doc.fromJSON(
-          { extensions: [{ nodes: [CounterNode] }] },
+          { type: "root", extensions: [{ nodes: [CounterNode] }] },
           json,
         );
         const node2 = doc2.root.first as DocNode<typeof CounterNode>;
@@ -201,7 +210,9 @@ describe("types", () => {
           value: state,
         },
       });
-      expect(() => new Doc({ extensions: [{ nodes: [MyNode] }] })).toThrowError(
+      expect(
+        () => new Doc({ type: "root", extensions: [{ nodes: [MyNode] }] }),
+      ).toThrowError(
         `JSON serialization of the default value for state 'value' of node type 'myNode' is 'undefined', which is not allowed.`,
       );
     });
@@ -231,7 +242,6 @@ describe("types", () => {
         StateDefinition<Date, string, DefaultStateMethods<Date>>
       >();
     });
-    // eslint-disable-next-line vitest/expect-expect
     test("fromJSON cannot be assigned to anything other than unknown", () => {
       defineState({
         // @ts-expect-error - fromJSON cannot be assigned to anything other than unknown
@@ -283,7 +293,7 @@ describe("types", () => {
       >();
     });
     test("DocNode without NodeDefinition should not accept unknown keys", () => {
-      const doc = new Doc({ extensions: [TestExtension] });
+      const doc = new Doc({ type: "root", extensions: [TestExtension] });
       const unknownNode = doc.root as unknown as DocNode;
       const state = unknownNode.state;
       expectTypeOf(state).toEqualTypeOf<Record<never, never>>();
@@ -295,7 +305,7 @@ describe("types", () => {
     });
 
     test("NodeState.State", () => {
-      const doc = new Doc({ extensions: [TestExtension] });
+      const doc = new Doc({ type: "root", extensions: [TestExtension] });
       const node = doc.createNode(TestNode);
       expectTypeOf(node["_state"]).toEqualTypeOf<{
         string?: string;
@@ -318,18 +328,66 @@ describe("new Doc", () => {
       },
     });
     expect(
-      () => new Doc({ extensions: [{ nodes: [TextColliding, Text] }] }),
+      () =>
+        new Doc({
+          type: "root",
+          extensions: [{ nodes: [TextColliding, Text] }],
+        }),
     ).toThrowError(
       "Collision error: attempt to register 2 node definitions of type 'text' " +
         "that share the state property value. Remove that and any other " +
         "repeated states in either of the two node definitions.",
     );
   });
+
+  describe("document id validation", () => {
+    test("should throw for invalid ULID (wrong characters)", () => {
+      expect(
+        () =>
+          new Doc({
+            type: "root",
+            extensions: [TextExtension],
+            id: "invalid-id",
+          }),
+      ).toThrowError(
+        "Invalid document id: invalid-id. It must be a lowercase ULID.",
+      );
+    });
+
+    test("should throw for uppercase ULID", () => {
+      // Uppercase ULIDs should be rejected - user should normalize to lowercase
+      expect(
+        () =>
+          new Doc({
+            type: "root",
+            extensions: [TextExtension],
+            id: "01KCFHZZ66V3393XHGGX6AEB6T",
+          }),
+      ).toThrowError(
+        "Invalid document id: 01KCFHZZ66V3393XHGGX6AEB6T. It must be a lowercase ULID.",
+      );
+    });
+
+    test("should accept valid lowercase ULID", () => {
+      const doc = new Doc({
+        type: "root",
+        extensions: [TextExtension],
+        id: "01kcfhzz66v3393xhggx6aeb6t",
+      });
+      expect(doc.root.id).toBe("01kcfhzz66v3393xhggx6aeb6t");
+    });
+
+    test("should auto-generate lowercase ULID when id is not provided", () => {
+      const doc = new Doc({ type: "root", extensions: [TextExtension] });
+      // Generated ULIDs should be lowercase and 26 characters
+      expect(doc.root.id).toMatch(/^[0-7][0-9a-hjkmnp-tv-z]{25}$/);
+    });
+  });
 });
 
 describe("createNode", () => {
   test("create node with definition not registered should throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const fn = () => doc.root.append(doc.createNode(TestNode));
     expect(fn).toThrowError(
       "You attempted to create a node of type 'test' with a node definition that was not registered.",
@@ -337,14 +395,13 @@ describe("createNode", () => {
   });
 
   test("create node outside of a transaction should NOT throw", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const node = doc.createNode(Text);
     expect(node).toBeDefined();
   });
 
-  // eslint-disable-next-line vitest/expect-expect
   test("private constructor", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     // @ts-expect-error - private constructor
     new DocNode(doc, "text");
   });

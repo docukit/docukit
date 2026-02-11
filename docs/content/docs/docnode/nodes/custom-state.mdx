@@ -1,0 +1,111 @@
+---
+title: Custom State
+description: Custom state definitions and methods for nodes
+---
+
+<Callout type="info">
+  If the built-in `StateDefinitions` that come with DocNode (`string`,
+  `boolean`, and `number`) are enough for you, you can skip this page. But if
+  you need other types (e.g., `Date`, `Set`, `Customer`, etc.), or want to use
+  different methods than the default `get`, `set`, and `getPrev`, this page is
+  for you.
+</Callout>
+
+## Custom State Definitions
+
+You can create your own custom State Definitions. As an example, the following code shows how the three primitive State Definitions are implemented:
+
+```ts
+import { defineState } from "@docukit/docnode";
+
+export const string = (defaultValue: string) =>
+  defineState({
+    fromJSON: (json) => (typeof json === "string" ? json : defaultValue),
+  });
+
+export const number = (defaultValue: number) =>
+  defineState({
+    fromJSON: (json) => (typeof json === "number" ? json : defaultValue),
+  });
+
+// We serialize booleans as numbers (0 or 1) because it's more compact in JSON.
+export const boolean = (defaultValue: boolean) =>
+  defineState({
+    fromJSON: (json) => (json === 0 ? false : json === 1 ? true : defaultValue),
+    toJSON: (value) => (!value ? 0 : 1),
+  });
+```
+
+Like `defineNode`, `defineState` is an identity function (it simply returns the same object that is passed to it), and its purpose is to provide convenient type inference.
+
+```js tab="Javascript"
+// This is what TypeScript compiles the function to. See the types in the next tab →
+function defineState(definition) {
+  return definition;
+}
+```
+
+```ts tab="TypeScript"
+// Simplified implementation
+
+type StateDefinition<V = unknown, J extends Json = DefaultJ<V>, M = unknown> = {
+  fromJSON(json: unknown): V;
+  toJSON?(value: V): J;
+  methods?(methods: DefaultStateMethods<V>): M;
+};
+
+function defineState<V, J extends Json, M>(
+  definition: StateDefinition<V, J, M>,
+): StateDefinition<V, J, M> {
+  return definition;
+}
+```
+
+A StateDefinition consists of up to 3 functions (only 1 is required):
+
+- `fromJSON`: The only required function. The value it returns when passed `undefined` will be the default value.
+- `toJSON?`: This function is required when the return type of `fromJSON` is not JSON serializable.
+- `methods?`: We will discuss this function in the next section.
+
+{/* TODO: should each of those 3 be a subheading? */}
+{/* You can still provide generics when you need to fine‑tune JSON shapes or method typing, but most scenarios work with full inference */}
+{/* date example that converts to number or string. */}
+{/* mention that for more complex types you can use a schema validation library like zod or valibot */}
+
+<Callout type="warning">
+  Due to a [limitation in
+  TypeScript](https://www.totaltypescript.com/property-order-matters), the order
+  of the properties in the `defineState` function's parameter matters.{" "}
+  <strong>fromJSON must come first</strong>, otherwise the inference won't work
+  correctly.
+</Callout>
+
+## Custom State Methods
+
+The `methods` property of the `StateDefinition` allows you to customize the default methods.
+
+```ts
+const counter = defineState({
+  fromJSON: (json) => (typeof json === "number" ? json : 0),
+  methods: ({ get, getPrev, set }) => ({
+    get,
+    getPrev,
+    increment(step = 1) {
+      set((n) => (n as number) + step);
+    },
+    decrement(step = 1) {
+      set((n) => (n as number) - step);
+    },
+  }),
+});
+
+const Counter = defineNode({
+  type: "counter",
+  state: { value: counter },
+});
+
+const counter = doc.createNode(Counter);
+counter.state.value.increment(3);
+counter.state.value.decrement();
+counter.state.value.get(); // 2
+```

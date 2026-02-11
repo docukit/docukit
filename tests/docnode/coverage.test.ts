@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { Doc, defineNode, UndoManager } from "docnode";
+import { Doc, defineNode, UndoManager } from "@docukit/docnode";
 import {
   TextExtension,
   Text,
@@ -12,7 +12,7 @@ import {
 describe("main.ts coverage", () => {
   // Line 280-282: move with "prepend" position (newPrev = undefined)
   test("move with prepend", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     doc.root.append(...text(doc, "1", "2", "3"));
     const node1 = doc.root.first!;
     const node3 = doc.root.last!;
@@ -22,7 +22,7 @@ describe("main.ts coverage", () => {
 
   // Line 394: children().find() with includeSelf: true
   test("children find with includeSelf", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     doc.root.append(...text(doc, "1"));
     const node = doc.root.first!;
     const found = node.children({ includeSelf: true }).find(() => true);
@@ -31,7 +31,7 @@ describe("main.ts coverage", () => {
 
   // Line 473: descendants().find() with includeSelf: true
   test("descendants find with includeSelf", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     doc.root.append(...text(doc, "1"));
     const node = doc.root.first!;
     const found = node.descendants({ includeSelf: true }).find(() => true);
@@ -42,6 +42,7 @@ describe("main.ts coverage", () => {
   test("node without type throws", () => {
     expect(() => {
       new Doc({
+        type: "root",
         extensions: [
           {
             nodes: [
@@ -58,7 +59,7 @@ describe("main.ts coverage", () => {
 
   // Line 659: setState with same value (early return)
   test("setState with same value", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const node = doc.createNode(Text);
     doc.root.append(node);
     node.state.value.set("hello");
@@ -73,7 +74,7 @@ describe("main.ts coverage", () => {
 
 describe("stateDefinitions.ts coverage", () => {
   test("number and boolean fromJSON not default", () => {
-    const doc = new Doc({ extensions: [TestExtension] });
+    const doc = new Doc({ type: "root", extensions: [TestExtension] });
     checkUndoManager(2, doc, () => {
       const node = doc.createNode(TestNode);
       doc.root.append(node);
@@ -90,7 +91,7 @@ describe("stateDefinitions.ts coverage", () => {
 describe("undoManager.ts coverage", () => {
   // Lines 67-71: canUndo() and canRedo() returning false
   test("canUndo and canRedo when empty", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const undoManager = new UndoManager(doc);
     expect(undoManager.canUndo()).toBe(false);
     expect(undoManager.canRedo()).toBe(false);
@@ -98,7 +99,7 @@ describe("undoManager.ts coverage", () => {
 
   // Lines 34, 41, 61: UndoManager with max steps and redo
   test("undoManager with operations", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const undoManager = new UndoManager(doc, { maxUndoSteps: 2 });
 
     doc.root.append(...text(doc, "1"));
@@ -116,7 +117,7 @@ describe("undoManager.ts coverage", () => {
 
   // Line 61: redo when redoStack is empty
   test("undoManager redo when empty", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const undoManager = new UndoManager(doc);
 
     doc.root.append(...text(doc, "1"));
@@ -132,7 +133,7 @@ describe("undoManager.ts coverage", () => {
 describe("operations.ts coverage", () => {
   // Line 110: ": 0" branch - occurs when deleting and reinserting a node with a single child that has descendants
   test("delete and reinsert node with single child with grandchildren", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     // Create a parent with a SINGLE child that has grandchildren
     const parent = doc.createNode(Text);
     const singleChild = doc.createNode(Text);
@@ -150,7 +151,7 @@ describe("operations.ts coverage", () => {
 describe("utils.ts coverage", () => {
   // Line 18: detachRange with nodes that have different parents
   test("move range with different parents throws", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const parent1 = doc.createNode(Text);
     const parent2 = doc.createNode(Text);
     doc.root.append(parent1, parent2);

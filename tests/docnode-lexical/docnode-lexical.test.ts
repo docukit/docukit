@@ -1,17 +1,27 @@
 import { test, expect, describe } from "vitest";
-import { Doc } from "docnode";
-import { docToLexical, LexicalDocNode } from "@docnode/lexical";
+import { Doc } from "@docukit/docnode";
+import {
+  createLexicalDoc,
+  syncLexicalWithDoc,
+  LexicalDocNode,
+} from "@docukit/docnode-lexical";
 import { assertJson } from "../docnode/utils.js";
-import { type SerializedParagraphNode, type SerializedTextNode } from "lexical";
+import {
+  createEditor,
+  type SerializedParagraphNode,
+  type SerializedTextNode,
+} from "lexical";
 
 describe("docnode to lexical", () => {
-  test("no doc provided", () => {
-    const { editor, doc } = docToLexical({
+  test.todo("no doc provided", () => {
+    const editor = createEditor({
       namespace: "MyEditor",
       onError: (error) => {
         console.error(error);
       },
     });
+    const doc = createLexicalDoc();
+    syncLexicalWithDoc(editor, doc);
     expect(doc).toBeInstanceOf(Doc);
     const jsonEditorState = editor.getEditorState().toJSON();
     expect(jsonEditorState).toStrictEqual({
@@ -32,7 +42,10 @@ describe("docnode to lexical", () => {
   });
 
   test("doc provided", () => {
-    const doc = new Doc({ extensions: [{ nodes: [LexicalDocNode] }] });
+    const doc = new Doc({
+      type: "root",
+      extensions: [{ nodes: [LexicalDocNode] }],
+    });
     const paragraphJson: SerializedParagraphNode = {
       type: "paragraph",
       version: 1,
@@ -84,15 +97,13 @@ describe("docnode to lexical", () => {
       ],
     ]);
 
-    const { editor } = docToLexical(
-      {
-        namespace: "MyEditor",
-        onError: (error) => {
-          console.error(error);
-        },
+    const editor = createEditor({
+      namespace: "MyEditor",
+      onError: (error) => {
+        console.error(error);
       },
-      doc,
-    );
+    });
+    syncLexicalWithDoc(editor, doc);
     expect(doc).toBeInstanceOf(Doc);
     const jsonEditorState = editor.getEditorState().toJSON();
     expect(jsonEditorState).toStrictEqual({

@@ -1,20 +1,17 @@
 {
-  "name": "@docnode/grid",
+  "name": "@docukit/docgrid",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE.md",
   "private": true,
-  "homepage": "https://docnode.dev",
+  "homepage": "https://docukit.dev",
   "repository": {
     "type": "git",
-    "url": "https://github.com/docnode/docnode.git",
+    "url": "https://github.com/docukit/docukit.git",
     "directory": "packages/docnode-grid"
   },
   "files": [
     "dist",
     "LICENSE.md",
     "README.md"
-  ],
-  "dependencies": {
-    "docnode": "workspace:*"
-  }
+  ]
 }

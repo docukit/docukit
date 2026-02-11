@@ -1,75 +1,37 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import {
-  defineNode,
-  type DocNode,
-  string,
-  Doc,
-  type JsonDoc,
-  defineState,
-} from "docnode";
-import {
-  $getRoot,
-  $parseSerializedNode,
-  createEditor,
-  type CreateEditorArgs,
-  type LexicalEditor,
-  type SerializedLexicalNode,
-  type LexicalNode,
-  $isElementNode,
-} from "lexical";
+import { type Doc } from "@docukit/docnode";
+import { type LexicalEditor } from "lexical";
+import { initializeEditorFromDoc } from "./initializeEditorFromDoc.js";
+import { syncDocNodeToLexical } from "./syncDocNodeToLexical.js";
+import { syncLexicalToDocNode } from "./syncLexicalToDocNode.js";
+import { syncPresence } from "./presence/index.js";
 
-export function docToLexical(
-  config: CreateEditorArgs,
-  // If no doc is provided, it will create a new one.
-  doc = new Doc({ extensions: [{ nodes: [LexicalDocNode] }] }),
-): { editor: LexicalEditor; doc: Doc } {
-  const lexicalKeyToDocNodeId = new Map<string, string>();
-  const docNodeIdToLexicalKey = new Map<string, string>();
+import type { syncLexicalWithDocPresenceOptions } from "./types.js";
 
-  const editor = createEditor(config);
-  editor.update(
-    () => {
-      const root = $getRoot();
-      root.clear();
+/**
+ * Sync Lexical and DocNode. Presence is optional. Returns a cleanup function to unbind.
+ */
+export function syncLexicalWithDoc(
+  editor: LexicalEditor,
+  doc: Doc,
+  presenceOptions?: syncLexicalWithDocPresenceOptions,
+): () => void {
+  // 1. Set Lexical content to match DocNode and build key binding
+  const keyBinding = initializeEditorFromDoc(editor, doc);
 
-      const processChildren = (
-        parentDocNode: DocNode,
-        parentLexicalNode: LexicalNode,
-      ) => {
-        parentDocNode.children().forEach((child) => {
-          if (!child.is(LexicalDocNode))
-            throw new Error("Expected child to be a LexicalDocNode");
-          const serializedLexicalNode = child.state.j.get();
+  // 2. Sync Lexical → DocNode. Every time Lexical content changes, DocNode is updated.
+  const offLexicalListener = syncLexicalToDocNode(doc, editor, keyBinding);
 
-          const lexicalNode = $parseSerializedNode(serializedLexicalNode);
-          lexicalKeyToDocNodeId.set(lexicalNode.getKey(), child.id);
-          docNodeIdToLexicalKey.set(child.id, lexicalNode.getKey());
+  // 3. Sync DocNode → Lexical. Every time DocNode changes, Lexical is updated.
+  const offDocListener = syncDocNodeToLexical(doc, editor, keyBinding);
 
-          if ($isElementNode(parentLexicalNode)) {
-            parentLexicalNode.append(lexicalNode);
-          }
+  // 4. Sync presence (optional). Handles local selection → presence and remote cursors.
+  const offSyncPresence = syncPresence(editor, keyBinding, presenceOptions);
 
-          // Recursively process children
-          if ($isElementNode(lexicalNode)) {
-            processChildren(child, lexicalNode);
-          }
-        });
-      };
-
-      processChildren(doc.root, root);
-    },
-    { discrete: true },
-  );
-
-  return { editor, doc };
+  return () => {
+    offSyncPresence?.();
+    offLexicalListener();
+    offDocListener();
+    keyBinding.lexicalKeyToDocNodeId.clear();
+    keyBinding.docNodeIdToLexicalKey.clear();
+  };
 }
-
-export const LexicalDocNode = defineNode({
-  type: "l",
-  state: {
-    j: defineState({
-      fromJSON: (json) =>
-        (json ?? {}) as SerializedLexicalNode & { [key: string]: unknown },
-    }),
-  },
-});

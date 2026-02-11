@@ -1,0 +1,53 @@
+{
+  "name": "@docukit/docsync",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "private": true,
+  "type": "module",
+  "homepage": "https://docukit.dev/docsync",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/docukit/docukit.git",
+    "directory": "packages/docsync"
+  },
+  "files": [
+    "dist",
+    "LICENSE.md",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf .next node_modules .turbo dist tsconfig.build.tsbuildinfo || rmdir /s /q .next node_modules .turbo dist tsconfig.build.tsbuildinfo",
+    "db:push": "drizzle-kit push --config=./src/server/providers/postgres/drizzle.config.ts",
+    "test-db:push": "drizzle-kit push --config=./src/tests-int/db-models-bench/test-drizzle.config.ts",
+    "db:studio": "drizzle-kit studio --config=./src/server/providers/postgres/drizzle.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "bin": {
+    "docsync-server": "./dist/src/server/cli.js"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "drizzle-kit": "^0.31.8"
+  },
+  "exports": {
+    ".": {
+      "vitest": "./src/exports/index.ts",
+      "types": "./dist/src/exports/index.d.ts",
+      "default": "./dist/src/exports/index.js"
+    },
+    "./*": {
+      "vitest": "./src/exports/*.ts",
+      "types": "./dist/src/exports/*.d.ts",
+      "default": "./dist/src/exports/*.js"
+    }
+  },
+  "dependencies": {
+    "@docukit/docnode": "workspace:*",
+    "drizzle-orm": "^0.38.4",
+    "idb": "^8.0.1",
+    "postgres": "^3.4.5",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
+  }
+}

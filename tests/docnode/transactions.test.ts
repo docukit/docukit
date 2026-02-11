@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { Doc, type DocNode, UndoManager } from "docnode";
+import { Doc, type DocNode, UndoManager } from "@docukit/docnode";
 import {
   assertDoc,
   checkUndoManager,
@@ -15,7 +15,7 @@ import {
 describe("update", () => {
   // TODO: test normalize event too.
   test("Updates that do not mutate the document should not trigger listeners", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       emptyUpdate(doc, () => void {});
       emptyUpdate(doc, () => {
@@ -36,7 +36,7 @@ describe("update", () => {
 
 describe("throw errors and abort", () => {
   test("abort should rollback to previous state and not trigger listeners", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const { root } = doc;
     checkUndoManager(0, doc, () => {
       root.append(...text(doc, "1"));
@@ -47,7 +47,7 @@ describe("throw errors and abort", () => {
   });
 
   test("should rollback to previous state and not trigger listeners", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const { root } = doc;
     checkUndoManager(2, doc, () => {
       // normal update, no error
@@ -89,7 +89,7 @@ describe("throw errors and abort", () => {
   });
 
   test("throw error in change event", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const node = doc.createNode(Text);
     doc.onChange(() => {
       throw new Error("error in change event");
@@ -104,7 +104,7 @@ describe("throw errors and abort", () => {
 
 describe("undoManager", () => {
   test("simplest case", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const undoManager = new UndoManager(doc, { maxUndoSteps: 1 });
     doc.root.append(...text(doc, "1", "2"));
     assertDoc(doc, ["1", "2"]);
@@ -115,7 +115,7 @@ describe("undoManager", () => {
   });
 
   test("undo/redo - adding and deleting nodes", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
 
     // inserte only
@@ -200,7 +200,7 @@ describe("undoManager", () => {
   });
 
   test("Deleting an updated node should not appear in patchState", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const node = doc.createNode(Text);
     doc.root.append(node);
     node.state.value.set("1");
@@ -243,7 +243,7 @@ describe("undoManager", () => {
    * - mutate nested object directly?
    **/
   test("undo/redo - mutating state", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
     doc.root.append(...text(doc, "1", "2", "3", "4", "5"));
     doc.root.first?.next?.append(...text(doc, "2.1", "2.2"));
@@ -288,7 +288,7 @@ describe("undoManager", () => {
   });
 
   test.skip("ignore one update", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
     doc.root.append(...text(doc, "1", "2"));
     doc.forceCommit();
@@ -316,7 +316,7 @@ describe.todo("applyOperations", () => {
 
 describe("change", () => {
   test("Can't trigger an update inside a change event", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const node = doc.createNode(Text);
 
     const assertMutation = (i: string, fn: () => void) => {
@@ -324,9 +324,7 @@ describe("change", () => {
       doc.forceCommit();
       doc.onChange(() => {
         count++;
-        expect(fn).toThrowError(
-          "You can't trigger an update inside a change event",
-        );
+        expect(fn).toThrowError("You can't trigger an update inside a change");
       });
       node.state.value.set((current) => String(Number(current) + 1));
       doc.forceCommit();
@@ -360,7 +358,7 @@ describe("change", () => {
   });
 
   test("read only methods don't trigger a change event", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const node = doc.createNode(Text);
 
     const assertReadOnly = (i: string, fn: () => void) => {
@@ -410,7 +408,7 @@ describe("change", () => {
   });
 
   test("Can't register a change event inside a change event", async () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
 
     const errorP = new Promise<never>((_, reject) => {
       doc.onChange(() => {
@@ -424,7 +422,7 @@ describe("change", () => {
     doc.root.append(...text(doc, "1", "2", "3", "4"));
 
     await expect(errorP).rejects.toThrowError(
-      "You can't register a change event listener inside a transaction or another change event",
+      "You can't register a change event listener during the change stage",
     );
   });
 
@@ -434,7 +432,7 @@ describe("change", () => {
 
 describe("diff", () => {
   test("diff.updated shouldn't include nodes that were inserted in the same transaction", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       updateAndListen(
         doc,
@@ -463,7 +461,7 @@ describe("diff", () => {
   });
 
   test("a node can be in diff.updated and diff.moved at the same time", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(2, doc, () => {
       doc.root.append(...text(doc, "1", "2", "3"));
       updateAndListen(
@@ -499,7 +497,7 @@ describe("diff", () => {
 
 describe("batching", () => {
   test("batch updates", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const logOp: string[] = [];
     doc.onChange(() => {
       logOp.push("change");
@@ -520,7 +518,7 @@ describe("batching", () => {
   });
 
   test("batch updates - queueMicrotask", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const logOp: string[] = [];
     doc.onChange(() => {
       logOp.push("change");
@@ -534,7 +532,7 @@ describe("batching", () => {
   });
 
   test("batch updates - await", async () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const logOp: string[] = [];
     doc.onChange(() => {
       logOp.push("change");

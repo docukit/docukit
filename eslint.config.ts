@@ -1,16 +1,19 @@
 import tseslint from "typescript-eslint";
 import vitest from "@vitest/eslint-plugin";
 import playwright from "eslint-plugin-playwright";
+import type { ESLint } from "eslint";
 import * as regexpPlugin from "eslint-plugin-regexp";
+// eslint-plugin-barrel-files has no type declarations
+// @ts-expect-error -- untyped package
+import barrelFiles from "eslint-plugin-barrel-files";
+import eslintPluginImport from "eslint-plugin-import";
+import nextVitals from "eslint-config-next/core-web-vitals";
 
 // import eslintPluginUnicorn from "eslint-plugin-unicorn";
 
 // import perfectionist from 'eslint-plugin-perfectionist'
 // import { configs as regexpPluginConfigs } from 'eslint-plugin-regexp'
 // import eslintConfigPrettier from 'eslint-config-prettier'
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import type { FlatConfig } from "@typescript-eslint/utils/ts-eslint";
 
 export const rootEslintConfig = tseslint.config(
   {
@@ -75,6 +78,9 @@ export const rootEslintConfig = tseslint.config(
           },
         },
       ],
+      // TODO: enable
+      // "@typescript-eslint/no-shadow": "error",
+      // "@typescript-eslint/no-redeclare": "error",
     },
     languageOptions: {
       parserOptions: {
@@ -88,10 +94,6 @@ export const rootEslintConfig = tseslint.config(
       vitest,
     },
     rules: {
-      "vitest/expect-expect": [
-        "error",
-        { assertFunctionNames: ["expect*", "assert*"] },
-      ],
       "vitest/prefer-strict-equal": "error",
     },
     settings: {
@@ -102,13 +104,58 @@ export const rootEslintConfig = tseslint.config(
   },
   {
     plugins: {
+      import: eslintPluginImport,
+    },
+    rules: {
+      // Prevent imports that escape package boundaries
+      "import/no-relative-packages": "error",
+      // Prevent circular dependencies
+      "import/no-cycle": ["error", { maxDepth: 5 }],
+      // Prevent a module from importing itself
+      "import/no-self-import": "error",
+      // Ensure all imports are declared in package.json
+      "import/no-extraneous-dependencies": [
+        "error",
+        {
+          // prevent importing devDependencies except
+          // in paths listed here
+          devDependencies: [
+            "**/*.test.ts",
+            "**/*.test.tsx",
+            "**/*.browser.test.ts",
+            "**/*.browser.test.tsx",
+            "**/*.ui.test.ts",
+            "**/tests/**",
+            "**/vitest.config.ts",
+            "**/playwright.config.ts",
+            "**/eslint.config.ts",
+            "**/turbo.json",
+            "**/next.config.mjs",
+            "**/next.config.ts",
+            "**/drizzle.config.ts",
+            "**/*.config.ts",
+            "**/benchmarks/**",
+          ],
+        },
+      ],
+      // Prevent duplicate imports from the same module
+      "import/no-duplicates": "error",
+      // Ensure imports come before other statements
+      "import/first": "error",
+      // Enforce a newline after import statements
+      "import/newline-after-import": "error",
+      // TODO: import/no-unused-modules doesn't work with flat config yet
+      // See: https://github.com/import-js/eslint-plugin-import/issues/3079
+    },
+  },
+  {
+    plugins: {
       playwright,
     },
     rules: {
       // I probably need to tune the additional options
       "playwright/no-get-by-title": "error",
       "playwright/no-duplicate-hooks": "error",
-      "playwright/expect-expect": "error",
       "playwright/no-element-handle": "error",
       "playwright/no-nth-methods": "error",
       "playwright/missing-playwright-await": "error",
@@ -129,13 +176,30 @@ export const rootEslintConfig = tseslint.config(
       "playwright/valid-expect-in-promise": "error",
       "playwright/valid-expect": "error",
     },
-    files: ["**/*.e2e.test.ts"],
+    files: ["**/*.ui.test.ts"],
   },
   {
     plugins: {
       regexp: regexpPlugin,
     },
     rules: regexpPlugin.configs["flat/recommended"].rules,
+  },
+  // Barrel files (re-exports) allowed only in **/exports/**; override below turns rule off there
+  {
+    files: ["packages/**"],
+    plugins: { "barrel-files": barrelFiles as ESLint.Plugin },
+    rules: {
+      "barrel-files/avoid-barrel-files": [
+        "error",
+        { amountOfExportsToConsiderModuleAsBarrel: 0 },
+      ],
+    },
+  },
+  {
+    files: ["packages/**/exports/**"],
+    rules: {
+      "barrel-files/avoid-barrel-files": "off",
+    },
   },
 
   {
@@ -155,6 +219,21 @@ export const rootEslintConfig = tseslint.config(
     },
     ignores: ["**/*.test.ts"],
   },
+  ...nextVitals.map((config) => ({
+    ...config,
+    files: ["**/*.{jsx,tsx}"],
+  })),
+  {
+    files: ["**/*.{jsx,tsx}"],
+    settings: {
+      next: {
+        rootDir: ["docs/", "examples/"],
+      },
+    },
+    rules: {
+      "react/no-unescaped-entities": "off",
+    },
+  },
   {
     ignores: [
       "**/dist",
@@ -163,7 +242,6 @@ export const rootEslintConfig = tseslint.config(
       "**/.test-results",
       "**/.source",
       "**/next-env.d.ts",
-      "**/worker/**/*.js",
     ],
   },
 );

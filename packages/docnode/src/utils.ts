@@ -1,16 +1,14 @@
 import type { Doc, DocNode } from "./main.js";
 import type { NodeDefinition, StateRecord } from "./types.js";
 
+// lowercase ulid
+export const ULID_REGEX = /^[0-7][0-9a-hjkmnp-tv-z]{25}$/;
+
 export function defineNode<T extends string, S extends StateRecord>(
   nodeDefinition: NodeDefinition<T, S>,
 ) {
   return nodeDefinition;
 }
-
-export const RootNode = defineNode({
-  type: "root",
-  state: {},
-});
 
 export function detachRange(startNode: DocNode, endNode: DocNode) {
   const oldPrev = startNode.prev;
@@ -37,10 +35,18 @@ export function isObjectEmpty(obj: object) {
  * - Rolls back if it fails,
  * - Schedules the commit at the end of the microtask.
  */
-export function withTransaction(doc: Doc, fn: () => void): void {
-  if (doc["_lifeCycleStage"] === "change" || doc["_lifeCycleStage"] === "init")
+export function withTransaction(
+  doc: Doc,
+  fn: () => void,
+  isApplyOperations = false,
+): void {
+  if (
+    doc["_lifeCycleStage"] === "change" ||
+    doc["_lifeCycleStage"] === "init" ||
+    doc["_lifeCycleStage"] === "disposed"
+  )
     throw new Error(
-      `You can't trigger an update inside a ${doc["_lifeCycleStage"]} event`,
+      `You can't trigger an update inside a ${doc["_lifeCycleStage"]} stage`,
     );
 
   if (doc["_lifeCycleStage"] === "normalize2") {
@@ -67,6 +73,6 @@ export function withTransaction(doc: Doc, fn: () => void): void {
       /* v8 ignore next -- @preserve */
       console.error("Error applying inverse operations: ", errorInRevert);
     }
-    throw errorInUpdate;
+    if (!isApplyOperations) throw errorInUpdate;
   }
 }

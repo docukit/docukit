@@ -10,7 +10,7 @@ import { CollapsibleTable } from "./components/CollapsibleTable";
 const baseGenerator = createGenerator({
   basePath: "../",
 });
-export const generator = {
+const generator = {
   ...baseGenerator,
   generateTypeTable: async (
     ...args: Parameters<typeof baseGenerator.generateTypeTable>

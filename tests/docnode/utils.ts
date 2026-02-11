@@ -3,26 +3,21 @@ import {
   type ChangeEvent,
   type DocNode,
   defineNode,
-  type RootNode,
   type Operations,
   defineState,
   type Extension,
-} from "docnode";
-import { boolean, number, string } from "docnode";
-import { type Diff, type JsonDoc, type NodeDefinition } from "docnode";
-import { UndoManager } from "docnode";
+  boolean,
+  number,
+  string,
+  type Diff,
+  type JsonDoc,
+  UndoManager,
+} from "@docukit/docnode";
 import { ULID_REGEX } from "valibot";
 import { expect } from "vitest";
 
 export const DOCNODE_ID = (sessionId = "[\\w-]", clockId = "[\\w-]") =>
   new RegExp(`^${sessionId}[\\w-]{3}\\.${clockId}$`);
-
-export const date = (defaultValue: Date) =>
-  defineState({
-    fromJSON: (json) =>
-      typeof json === "string" ? new Date(json) : defaultValue,
-    // toJSON: (date) => date.toISOString(),
-  });
 
 export const Text = defineNode({
   type: "text",
@@ -41,7 +36,9 @@ export const TestNode = defineNode({
     string: string(""),
     number: number(0),
     boolean: boolean(false),
-    date: date(new Date(0)),
+    date: defineState({
+      fromJSON: (json) => new Date(typeof json === "string" ? json : 0),
+    }),
   },
 });
 
@@ -103,14 +100,14 @@ export function assertJson(doc: Doc, expected: JsonWithoutId) {
 export function init(
   fn: (ctx: {
     doc: Doc;
-    root: DocNode<typeof RootNode>;
+    root: DocNode;
     node1: DocNode<typeof Text>;
     node2: DocNode<typeof Text>;
     node3: DocNode<typeof Text>;
     node4: DocNode<typeof Text>;
   }) => void,
 ) {
-  const doc = new Doc({ extensions: [TextExtension] });
+  const doc = new Doc({ type: "root", extensions: [TextExtension] });
   const { root } = doc;
   checkUndoManager(1, doc, () => {
     root.append(...text(doc, "1", "2", "3", "4"));
@@ -285,17 +282,17 @@ export function checkUndoManager(
 ) {
   const IS_TEST_NODE = false;
   const jsonDoc = doc.toJSON();
-  const nodes = Array.from(doc["_nodeDefs"]).filter(
-    (nodeDef) =>
-      !(nodeDef.type === "root" && Object.keys(nodeDef.state).length === 0),
-  ) as unknown as [NodeDefinition, ...NodeDefinition[]];
+  const nodes = Array.from(doc["_nodeDefs"]);
   // This document will replay all doc operations in a single update
-  const doc2 = Doc.fromJSON({ extensions: [{ nodes }] }, jsonDoc);
+  const doc2 = Doc.fromJSON({ type: "root", extensions: [{ nodes }] }, jsonDoc);
   const undoManager2 = new UndoManager(doc2, { maxUndoSteps: 1 });
 
   // This document will replay all doc operations in different updates
-  const doc3 = Doc.fromJSON({ extensions: [{ nodes }] }, jsonDoc);
+  const doc3 = Doc.fromJSON({ type: "root", extensions: [{ nodes }] }, jsonDoc);
   const undoManager3 = new UndoManager(doc3, { maxUndoSteps: 10000000 });
+
+  // This document will replay all operations, but twice each operation
+  const doc4 = Doc.fromJSON({ type: "root", extensions: [{ nodes }] }, jsonDoc);
 
   const changeEvents: ChangeEvent[] = [];
   const snapshots: unknown[] = [getStateSnapshot(doc, IS_TEST_NODE)];
@@ -463,7 +460,25 @@ export function checkUndoManager(
     );
   }
 
-  // 4. UNDO
+  // 4. REPLAY TWICE EACH OPERATION
+  for (const [i, changeEvent] of changeEvents.entries()) {
+    updateAndListen(
+      doc4,
+      () => {
+        doc4.applyOperations(changeEvent.operations);
+      },
+      (changeEvent) => {
+        expect(doc4.toJSON()).toStrictEqual(jsonDocs[i + 1]);
+        expect(getStateSnapshot(doc4, IS_TEST_NODE)).toStrictEqual(
+          snapshots[i + 1],
+        );
+        expect(changeEvent).toStrictEqual(changeEvents[i]);
+      },
+    );
+    doc4.applyOperations(changeEvent.operations);
+  }
+
+  // 5. UNDO
   for (let i = 0; i < sizeDo; i++) {
     listen(
       doc3,
@@ -489,7 +504,7 @@ export function checkUndoManager(
     );
   }
 
-  // 5. REDO
+  // 6. REDO
   for (let i = 0; i < sizeDo; i++) {
     listen(
       doc3,
@@ -514,7 +529,7 @@ export const getPrevError = [
 ].join(" ");
 
 // not used anywhere. Written here just in case I need it later.
-export const sessionSort = (a: string, b: string): number => {
+const _sessionSort = (a: string, b: string): number => {
   a = a.split(".")[0]!.padStart(12, "z");
   b = b.split(".")[0]!.padStart(12, "z");
   return a > b ? 1 : a < b ? -1 : 0;

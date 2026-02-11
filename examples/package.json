@@ -1,0 +1,43 @@
+{
+  "name": "examples",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail \"next dev -p 4000\" \"pnpm:docsync-server\"",
+    "docsync-server": "node --env-file=.env --watch --watch-preserve-output ./docsync-server.ts",
+    "build": "next build",
+    "start": "next start -p 4000",
+    "clean": "rm -rf .next node_modules .turbo || rmdir /s /q .next node_modules .turbo",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@docukit/docsync-react": "workspace:*",
+    "@docukit/docnode-lexical": "workspace:*",
+    "@lexical/react": "^0.38.2",
+    "@lexical/rich-text": "^0.38.2",
+    "@lexical/selection": "^0.38.2",
+    "@lexical/utils": "^0.38.2",
+    "@docukit/docnode": "workspace:*",
+    "lexical": "^0.38.2",
+    "lucide-react": "^0.469.0",
+    "next": "16.1.3",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "ulid": "^2.4.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^9.1.2",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "postcss": {
+    "plugins": {
+      "@tailwindcss/postcss": {}
+    }
+  }
+}

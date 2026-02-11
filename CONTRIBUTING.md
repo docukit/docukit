@@ -10,12 +10,10 @@ By submitting a contribution to this repository, you agree to the following:
 ## Release Process
 
 1. **Update version in `package.json`**
-
    - Modify **only** the `version` field of the packages you are releasing.
    - Commit the changes to `main` with the message: `chore: release v${version}`
 
 2. **Publish packages to npm**
-
    - `pnpm publish`. You'll need to add the 2FA code with --otp=XXXXXX.
 
 3. **Create GitHub release notes**

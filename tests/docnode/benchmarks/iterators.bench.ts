@@ -12,7 +12,7 @@
  * which further increases the memory cost of using iterators in what are essentially linear traversals.
  */
 
-import { Doc, defineNode, string } from "docnode";
+import { Doc, defineNode, string } from "@docukit/docnode";
 import { children, descendants, nextSiblings } from "./shared.js";
 import { assert, bench, describe, wrapper } from "./utils.js";
 import { TextExtension } from "../utils.js";
@@ -33,7 +33,7 @@ void (await wrapper(async () => {
       return node;
     });
 
-  const doc = new Doc({ extensions: [TextExtension] });
+  const doc = new Doc({ type: "root", extensions: [TextExtension] });
   let count = 0;
   const EXPECTED = 100_000;
   const increment = () => {

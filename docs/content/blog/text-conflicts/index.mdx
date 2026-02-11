@@ -9,7 +9,7 @@ date: 2025-11-26
 
 Every collaborative document must decide at what level of granularity it wants to resolve conflicts arising from concurrency.
 
-<div className="max-w-[400px]">
+<div className="max-w-100">
 
 | App           | Conflict-resolution Granularity <br/> or LWW scope |
 | ------------- | -------------------------------------------------- |
@@ -37,7 +37,7 @@ In this article, I will explain three problems with character-level conflict res
 In DocNode, conflicts are resolved at the node state level (not the entire node!). Let's consider the following example:
 
 ```ts
-import { defineNode, string, boolean } from "docnode";
+import { defineNode, string, boolean } from "@docukit/docnode";
 
 const TextNode = defineNode({
   type: "text",

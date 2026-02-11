@@ -3,10 +3,9 @@ import {
   Doc,
   type DocNode,
   type DeepImmutable,
-  type RootNode,
   defineNode,
   string,
-} from "docnode";
+} from "@docukit/docnode";
 import {
   TestNode,
   Text,
@@ -18,12 +17,13 @@ import {
   DOCNODE_ID,
   checkUndoManager,
 } from "./utils.js";
+import { ULID_REGEX } from "valibot";
 
 describe("accessors & getters", () => {
   init(({ doc, root, node1, node2, node4 }) => {
     test("id", () => {
       expect(node1.id.length).toBe(6); // can be greater than 6 in other conditions
-      expect(node1.id).toMatch(DOCNODE_ID("[-0]", "-"));
+      expect(node1.id).toMatch(DOCNODE_ID("[-01234]", "-"));
       const ULID = /^[0-7][0-9a-hjkmnp-tv-z]{25}$/;
       expect(root.id).toMatch(ULID);
       // @ts-expect-error - id is read-only. Should I make it non-writable?
@@ -38,7 +38,7 @@ describe("accessors & getters", () => {
           .spyOn(Date, "now")
           .mockImplementationOnce(() => msBase) // ulid() in Doc constructor
           .mockImplementationOnce(() => msBase + ms);
-        const doc = new Doc({ extensions: [{ nodes: [Text] }] });
+        const doc = new Doc({ type: "root", extensions: [{ nodes: [Text] }] });
         spy.mockRestore();
         let id!: string;
         for (let i = 0; i <= ms; i++) {
@@ -55,6 +55,17 @@ describe("accessors & getters", () => {
       assertTimeId(64, "0-");
       assertTimeId(64 ** 3 - 1, "zzz");
       assertTimeId(64 ** 3, "0---");
+    });
+
+    test("id generator with nodeIdGenerator: 'ulid' generates lowercase ULIDs for all nodes", () => {
+      const doc = new Doc({
+        type: "test",
+        extensions: [TextExtension],
+        nodeIdGenerator: "ulid",
+      });
+      expect(doc.root.id).toMatch(ULID_REGEX);
+      const node = doc.createNode(Text);
+      expect(node.id).toMatch(ULID_REGEX);
     });
 
     test("type", () => {
@@ -108,7 +119,7 @@ describe("accessors & getters", () => {
 
     test("root", () => {
       expect(doc.root).toBe(root);
-      expectTypeOf(doc.root).toEqualTypeOf<DocNode<typeof RootNode>>();
+      expectTypeOf(doc.root).toEqualTypeOf<DocNode>();
     });
 
     test("getNodeById", () => {
@@ -138,6 +149,7 @@ describe("is", () => {
     },
   });
   const doc = new Doc({
+    type: "root",
     extensions: [{ nodes: [TestNode, TestNode2, TestNode3, X] }],
   });
   const node = doc.createNode(TestNode);
@@ -162,7 +174,6 @@ describe("is", () => {
   });
 
   // typeScript-only test. We don't verify this in runtime.
-  // eslint-disable-next-line vitest/expect-expect
   test("does not accept parameters of different types", () => {
     // @ts-expect-error - parameters need to have the same type
     unknownNode.is(TestNode, X);
@@ -349,7 +360,7 @@ describe("descendants", () => {
     expect(node3_1?.state.value.get()).toBe("3.1");
   });
   test("find with type guard", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const isText = (node: DocNode) => node.is(Text);
     const node = doc.root.descendants().find(isText);
     expectTypeOf(node).toEqualTypeOf<DocNode<typeof Text> | undefined>();
@@ -467,7 +478,7 @@ describe("ancestors", () => {
   });
 
   test("find with type guard", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.append(...text(doc, "test"));
       const isText = (node: DocNode) => node.is(Text);
@@ -573,7 +584,7 @@ describe("prevSiblings", () => {
   });
 
   test("find with type guard", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.append(...text(doc, "test"));
       const isText = (node: DocNode) => node.is(Text);
@@ -674,7 +685,7 @@ describe("nextSiblings", () => {
   });
 
   test("find with type guard", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.append(...text(doc, "test"));
       const isText = (node: DocNode) => node.is(Text);
@@ -797,7 +808,7 @@ describe("children", () => {
   });
 
   test("find with type guard", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const isText = (node: DocNode) => node.is(Text);
     const node = doc.root.children().find(isText);
     expectTypeOf(node).toEqualTypeOf<DocNode<typeof Text> | undefined>();
@@ -871,7 +882,7 @@ describe("to()", () => {
   });
 
   test("find with type guard", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       doc.root.append(...text(doc, "test"));
       const isText = (node: DocNode) => node.is(Text);
@@ -930,7 +941,7 @@ describe("to()", () => {
 });
 
 test("DocNode.doc is readonly and not enumerable", () => {
-  const doc = new Doc({ extensions: [TextExtension] });
+  const doc = new Doc({ type: "root", extensions: [TextExtension] });
   const { root } = doc;
   expect(root.doc).toBe(doc);
   expect(Object.keys(root)).toStrictEqual([
@@ -943,7 +954,7 @@ test("DocNode.doc is readonly and not enumerable", () => {
     "first",
     "last",
   ]);
-  const newDoc = new Doc({ extensions: [TextExtension] });
+  const newDoc = new Doc({ type: "root", extensions: [TextExtension] });
   // @ts-expect-error - readonly
   const fn = () => (root.doc = newDoc);
   expect(fn).toThrowError(

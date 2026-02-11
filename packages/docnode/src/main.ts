@@ -16,9 +16,10 @@ import {
 } from "./types.js";
 import {
   detachRange,
-  RootNode,
   withTransaction,
   isObjectEmpty,
+  ULID_REGEX,
+  defineNode,
 } from "./utils.js";
 import * as operations from "./operations.js";
 import { nodeIdFactory } from "./idGenerator.js";
@@ -557,7 +558,8 @@ export class Doc {
     | "update"
     | "normalize"
     | "normalize2"
-    | "change" = "idle";
+    | "change"
+    | "disposed" = "idle";
   protected _operations: operations.Operations = [[], {}];
   protected _inverseOperations: operations.Operations = [[], {}];
   protected _diff: Diff = {
@@ -567,11 +569,15 @@ export class Doc {
     updated: new Set(),
   };
   protected _nodeIdGenerator: (doc: Doc) => string;
-  readonly root: DocNode<typeof RootNode>;
+  readonly root: DocNode;
 
   constructor(config: DocConfig) {
     this._nodeDefs = new Set();
     this._resolvedNodeDefs = new Map();
+    const RootNode = defineNode({
+      type: config.type,
+      state: {},
+    });
     const nodeDefs: UnsafeDefinition[] = [
       RootNode,
       ...config.extensions.flatMap((extension) => extension.nodes ?? []),
@@ -726,12 +732,27 @@ export class Doc {
       };
     });
 
+    // Reasons why root id is required to be lowercase ulid:
+    // - The ulid timestamp is used by nodeIdFactory to generate small IDs on other nodes.
+    // - Database providers can be optimized by using ULIDs column type.
+    // I could allow it when using a custom nodeIdFactory, but that's not supported
+    // and is complex, error-prone, and confusing. For example, a user might want
+    // to use ulid but accidentally make a mistake (e.g., uppercase).
+    if (config.id && !ULID_REGEX.test(config.id)) {
+      throw new Error(
+        `Invalid document id: ${config.id}. It must be a lowercase ULID.`,
+      );
+    }
+
+    const id = config.id ?? ulid().toLowerCase();
     // @ts-expect-error - private constructor
-    this.root = new DocNode(this, "root", ulid().toLowerCase()) as DocNode<
-      typeof RootNode
-    >;
-    this._nodeMap.set(this.root.id, this.root);
-    this._nodeIdGenerator = nodeIdFactory(this);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    this.root = new DocNode(this, config.type, id);
+    this._nodeMap.set(id, this.root);
+    this._nodeIdGenerator =
+      config.nodeIdGenerator === "ulid"
+        ? () => ulid().toLowerCase()
+        : nodeIdFactory(this);
 
     this._lifeCycleStage = "init";
     config.extensions.forEach((extension) => {
@@ -788,7 +809,7 @@ export class Doc {
             throw new Error(
               `Node '${node.id}' cannot be inserted because it already exists in the doc.`,
             );
-          if (node.type === "root")
+          if (node.type === this.root.type)
             throw new Error("You cannot insert nodes of type 'root'");
         });
       });
@@ -870,16 +891,20 @@ export class Doc {
    *
    * @throws If the document is **not** in the `idle` stage at the time of registration.
    */
-  onChange(callback: (ev: ChangeEvent) => void) {
-    if (this._lifeCycleStage !== "idle" && this._lifeCycleStage !== "init")
+  onChange = (callback: (ev: ChangeEvent) => void) => {
+    if (
+      this._lifeCycleStage !== "idle" &&
+      this._lifeCycleStage !== "init" &&
+      this._lifeCycleStage !== "update"
+    )
       throw new Error(
-        "You can't register a change event listener inside a transaction or another change event",
+        `You can't register a change event listener during the ${this._lifeCycleStage} stage`,
       );
     this._changeListeners.add(callback);
     return () => {
       this._changeListeners.delete(callback);
     };
-  }
+  };
 
   /**
    * Registers a callback to be executed during the document's normalization phase.
@@ -929,10 +954,14 @@ export class Doc {
   }
 
   applyOperations(_operations: operations.Operations) {
-    withTransaction(this, () => {
-      if (!_operations[0].length && isObjectEmpty(_operations[1])) return;
-      operations.onApplyOperations(this, _operations);
-    });
+    withTransaction(
+      this,
+      () => {
+        if (!_operations[0].length && isObjectEmpty(_operations[1])) return;
+        operations.onApplyOperations(this, _operations);
+      },
+      true,
+    );
   }
 
   /**
@@ -975,6 +1004,21 @@ export class Doc {
     this["_lifeCycleStage"] = "idle";
   }
 
+  /**
+   * This method unregisters all event listeners so the instance can be garbage-collected.
+   *
+   * After calling this method, the document can no longer be modified.
+   */
+  dispose() {
+    if (this._lifeCycleStage !== "idle")
+      throw new Error(
+        `You can't dispose a document during the ${this._lifeCycleStage} stage`,
+      );
+    this._changeListeners.clear();
+    this._normalizeListeners.clear();
+    this._lifeCycleStage = "disposed";
+  }
+
   toJSON(options?: { unsafe?: boolean }): JsonDoc {
     if (
       !options?.unsafe &&
@@ -1010,11 +1054,22 @@ export class Doc {
   // For safety, I think I would make the strategy a required property. E.g.:
   // doc.fromJSON({jsonDoc, strategy: "overwrite" | "merge"});
   // What should happen to the listeners in this case? Should be configurable?
+  // EDIT: I haven't needed it. It's super unsafe and dangerous. Best not to.
   /**
    * Creates a new doc from the given JSON.
+   *
+   * In the process, it dispatches an initial transaction,
+   * so if you want to register listeners events immediately
+   * afterward, you must first call doc.forceCommit().
    */
   static fromJSON(config: DocConfig, jsonDoc: JsonDoc): Doc {
-    const doc = new Doc(config);
+    const id = jsonDoc[0];
+    if (config.id && config.id !== id) {
+      throw new Error(
+        `Attempted to create a document with id '${config.id}' that does not match the root node id '${id}'.`,
+      );
+    }
+    const doc = new Doc({ ...config, id });
     const jsonDocToDocNode = (node: DocNode, childrenJsonDoc: JsonDoc[]) => {
       const childrenNodes = childrenJsonDoc?.map((child) => {
         const childNode = doc._createNodeFromJson(child);

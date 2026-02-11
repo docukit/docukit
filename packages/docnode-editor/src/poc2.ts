@@ -1,4 +1,4 @@
-import { Doc, type Extension } from "docnode";
+import { Doc, type Extension } from "@docukit/docnode";
 
 class Editor extends Doc {
   selection: unknown;
@@ -21,4 +21,4 @@ export interface EditorExtension extends Extension {
   onMouseDoubleClick: (ev: MouseEvent) => void;
 }
 
-const _editor = new Editor({ extensions: [] });
+const _editor = new Editor({ type: "editor", extensions: [] });

@@ -1,13 +1,13 @@
 {
-  "name": "docnode",
+  "name": "@docukit/docnode",
   "version": "0.1.1",
   "license": "SEE LICENSE IN LICENSE.md",
   "description": "A type-safe, fast, ID-based Operational Transformation (OT) framework.",
   "type": "module",
-  "homepage": "https://docnode.dev",
+  "homepage": "https://docukit.dev",
   "repository": {
     "type": "git",
-    "url": "https://github.com/docnode/docnode.git",
+    "url": "https://github.com/docukit/docukit.git",
     "directory": "packages/docnode"
   },
   "scripts": {
@@ -23,6 +23,7 @@
   ],
   "exports": {
     ".": {
+      "vitest": "./src/exports/index.ts",
       "types": "./dist/src/exports/index.d.ts",
       "default": "./dist/src/exports/index.js"
     }

@@ -8,7 +8,7 @@ import {
   type DeepImmutable,
   type StateDefinition,
   type NodeDefinition,
-} from "docnode";
+} from "@docukit/docnode";
 import {
   Text,
   TextExtension,
@@ -27,7 +27,7 @@ import {
 
 describe("state", () => {
   test("state of DocNode<NodeDefinition> should have the correct type", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const node = doc.createNode(Text);
     expectTypeOf(node.state).toEqualTypeOf<{
       value: {
@@ -39,7 +39,7 @@ describe("state", () => {
   });
 
   test("state should have the correct type", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const node = doc.createNode(Text);
     expectTypeOf(node.state).toEqualTypeOf<{
       value: {
@@ -51,7 +51,7 @@ describe("state", () => {
   });
 
   test("get and set state", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const node = doc.createNode(Text);
     const value = node.state.value.get();
     expect(value).toBe("");
@@ -70,7 +70,7 @@ describe("state", () => {
         }),
       },
     });
-    const doc = new Doc({ extensions: [{ nodes: [MyNode] }] });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [MyNode] }] });
     checkUndoManager(1, doc, () => {
       const node = doc.createNode(MyNode);
       doc.root.append(node);
@@ -79,7 +79,10 @@ describe("state", () => {
       node.state.value.set(20n);
       assertJson(doc, ["root", {}, [["myNode", { value: '"20"' }]]]);
       const json = doc.toJSON({ unsafe: true });
-      const doc2 = Doc.fromJSON({ extensions: [{ nodes: [MyNode] }] }, json);
+      const doc2 = Doc.fromJSON(
+        { type: "root", extensions: [{ nodes: [MyNode] }] },
+        json,
+      );
       const node2 = doc2.root.first as DocNode<typeof MyNode>;
       expect(node2.state.value.get()).toBe(20n);
       assertJson(doc2, ["root", {}, [["myNode", { value: '"20"' }]]]);
@@ -87,7 +90,10 @@ describe("state", () => {
       node.state.value.set(10n);
       assertJson(doc, ["root", {}, [["myNode", {}]]]);
       const json2 = doc.toJSON({ unsafe: true });
-      const doc3 = Doc.fromJSON({ extensions: [{ nodes: [MyNode] }] }, json2);
+      const doc3 = Doc.fromJSON(
+        { type: "root", extensions: [{ nodes: [MyNode] }] },
+        json2,
+      );
       const node3 = doc3.root.first as DocNode<typeof MyNode>;
       expect(node3.state.value.get()).toBe(10n);
       assertJson(doc3, ["root", {}, [["myNode", {}]]]);
@@ -97,7 +103,7 @@ describe("state", () => {
 
 describe("getState", () => {
   test("recently created, not attached yet", () => {
-    const doc = new Doc({ extensions: [{ nodes: [TestNode] }] });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [TestNode] }] });
     const x1 = doc.createNode(TestNode);
     expect(x1.state.string.get()).toStrictEqual("");
     expect(x1.state.number.get()).toStrictEqual(0);
@@ -105,7 +111,7 @@ describe("getState", () => {
     expect(x1.state.date.get()).toStrictEqual(new Date(0));
   });
   test("after setState", () => {
-    const doc = new Doc({ extensions: [{ nodes: [TestNode] }] });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [TestNode] }] });
     const x1 = doc.createNode(TestNode);
     x1.state.string.set("foo");
     expect(x1.state.string.get()).toStrictEqual("foo");
@@ -115,6 +121,7 @@ describe("getState", () => {
   });
   test("in normalize and change events", () => {
     const doc = new Doc({
+      type: "root",
       extensions: [
         { nodes: [TestNode] },
         {
@@ -157,7 +164,7 @@ describe("getState", () => {
     });
   });
   test("getState returns deep immutable", () => {
-    const doc = new Doc({ extensions: [{ nodes: [TestNode] }] });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [TestNode] }] });
     const x1 = doc.createNode(TestNode);
     expectTypeOf<keyof typeof x1.state>().toEqualTypeOf<
       "string" | "number" | "boolean" | "date"
@@ -176,7 +183,10 @@ describe("getState", () => {
         string: string(""),
       },
     });
-    const doc = new Doc({ extensions: [{ nodes: [Text, Root2] }] });
+    const doc = new Doc({
+      type: "root",
+      extensions: [{ nodes: [Text, Root2] }],
+    });
     checkUndoManager(1, doc, () => {
       const { root } = doc;
       expect(root.is(Root2)).toBe(true);
@@ -200,7 +210,7 @@ describe("getState", () => {
     ]);
   });
   test("getState", () => {
-    const doc = new Doc({ extensions: [{ nodes: [TestNode] }] });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [TestNode] }] });
     const nodeX = doc.createNode(TestNode);
     doc.root.append(nodeX);
     // 1. Default state
@@ -227,7 +237,7 @@ describe("getState", () => {
 
 describe("getPrev", () => {
   test("get prev big/mixed test", () => {
-    const doc = new Doc({ extensions: [{ nodes: [TestNode] }] });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [TestNode] }] });
     checkUndoManager(3, doc, () => {
       const node = doc.createNode(TestNode);
       doc.root.append(node);
@@ -288,7 +298,7 @@ describe("getPrev", () => {
   });
 
   test("getPrev in idle", () => {
-    const doc = new Doc({ extensions: [{ nodes: [Text] }] });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [Text] }] });
     checkUndoManager(0, doc, () => {
       const node = doc.createNode(Text);
       expect(() => node.state.value.getPrev()).toThrowError(getPrevError);
@@ -297,6 +307,7 @@ describe("getPrev", () => {
 
   test("getPrev in change and normalize", () => {
     const doc = new Doc({
+      type: "root",
       extensions: [
         {
           nodes: [Text],
@@ -337,7 +348,7 @@ describe("getPrev", () => {
   });
 
   test("unatached node, not yet inserted", () => {
-    const doc = new Doc({ extensions: [{ nodes: [Text] }] });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [Text] }] });
     checkUndoManager(0, doc, () => {
       const node = doc.createNode(Text);
       // I am not sure about this one. "false" may be inaccurate. It has changed
@@ -346,7 +357,7 @@ describe("getPrev", () => {
   });
 
   test("unatached node, deleted", () => {
-    const doc = new Doc({ extensions: [{ nodes: [Text] }] });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [Text] }] });
     checkUndoManager(2, doc, () => {
       const node = doc.createNode(Text);
       node.state.value.set("foo");
@@ -358,7 +369,7 @@ describe("getPrev", () => {
   });
 
   test("inserted in same transaction", () => {
-    const doc = new Doc({ extensions: [{ nodes: [Text] }] });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [Text] }] });
     checkUndoManager(1, doc, () => {
       const node = doc.createNode(Text);
       doc.root.append(node);
@@ -367,7 +378,7 @@ describe("getPrev", () => {
   });
 
   test("already inserted, not updated", () => {
-    const doc = new Doc({ extensions: [{ nodes: [Text] }] });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [Text] }] });
     checkUndoManager(1, doc, () => {
       const node = doc.createNode(Text);
       doc.root.append(node);
@@ -377,7 +388,7 @@ describe("getPrev", () => {
   });
 
   test("already inserted, updated", () => {
-    const doc = new Doc({ extensions: [{ nodes: [Text] }] });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [Text] }] });
     checkUndoManager(2, doc, () => {
       const node = doc.createNode(Text);
       doc.root.append(node);
@@ -389,7 +400,7 @@ describe("getPrev", () => {
 });
 
 test("setState should update patchState only if the node is inserted", () => {
-  const doc = new Doc({ extensions: [TextExtension] });
+  const doc = new Doc({ type: "root", extensions: [TextExtension] });
   const node = doc.createNode(Text);
   checkUndoManager(2, doc, () => {
     // setting state for a node that is not attached yet
@@ -451,7 +462,7 @@ test("setState should update patchState only if the node is inserted", () => {
 
 describe("setState", () => {
   test("types error for invalid keys or values, runtime error for invalid keys", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(0, doc, () => {
       const node = doc.createNode(Text);
       emptyUpdate(doc, () => {
@@ -469,7 +480,7 @@ describe("setState", () => {
     });
   });
   test("DocNode without NodeDefinition should not accept unknown keys", () => {
-    const doc = new Doc({ extensions: [TestExtension] });
+    const doc = new Doc({ type: "root", extensions: [TestExtension] });
     checkUndoManager(0, doc, () => {
       const unknownNode = doc.root as unknown as DocNode<typeof TestNode>;
       assertError(
@@ -483,7 +494,7 @@ describe("setState", () => {
   });
 
   test("setting state from default value should set default value in inverse operations", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(2, doc, () => {
       const node = doc.createNode(Text);
       doc.root.append(node);
@@ -518,7 +529,7 @@ describe("setState", () => {
         }),
       },
     });
-    const doc = new Doc({ extensions: [{ nodes: [MyNode] }] });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [MyNode] }] });
     checkUndoManager(2, doc, () => {
       const node = doc.createNode(MyNode);
       doc.root.append(node);
@@ -574,7 +585,10 @@ describe("setState", () => {
       },
     });
 
-    const doc = new Doc({ extensions: [{ nodes: [MyNode, MyNode2] }] });
+    const doc = new Doc({
+      type: "root",
+      extensions: [{ nodes: [MyNode, MyNode2] }],
+    });
     checkUndoManager(1, doc, () => {
       const node = doc.createNode(MyNode);
       doc.root.append(node);
@@ -588,7 +602,7 @@ describe("setState", () => {
       assertJson(doc, ["root", {}, [["myNode2", { value: '"undefined"' }]]]);
       const json = doc.toJSON({ unsafe: true });
       const doc2 = Doc.fromJSON(
-        { extensions: [{ nodes: [MyNode, MyNode2] }] },
+        { type: "root", extensions: [{ nodes: [MyNode, MyNode2] }] },
         json,
       );
       const node3 = doc2.root.first as DocNode<typeof MyNode2>;
@@ -598,7 +612,7 @@ describe("setState", () => {
   });
 
   test("setting state to default value", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     let node: DocNode<typeof Text>;
     checkUndoManager(3, doc, () => {
       node = doc.createNode(Text);
@@ -625,7 +639,7 @@ describe("setState", () => {
   });
 
   test("updater function", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const node = doc.createNode(Text);
     checkUndoManager(2, doc, () => {
       doc.root.append(node);
@@ -655,7 +669,7 @@ describe("setState", () => {
         }),
       },
     });
-    const doc = new Doc({ extensions: [{ nodes: [Text2] }] });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [Text2] }] });
     checkUndoManager(3, doc, () => {
       const node = doc.createNode(Text2);
       doc.root.append(node);
@@ -670,7 +684,7 @@ describe("setState", () => {
   });
 
   test("setting state to prev value should be a no-op", () => {
-    const doc = new Doc({ extensions: [TextExtension] });
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {
       const node = doc.createNode(Text);
       doc.root.append(node);
@@ -687,7 +701,7 @@ describe("setState", () => {
   });
 
   test("setting state to prev value in real transaction shouldn't include statePatch", () => {
-    const doc = new Doc({ extensions: [{ nodes: [TestNode] }] });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [TestNode] }] });
     checkUndoManager(2, doc, () => {
       const node = doc.createNode(TestNode);
       doc.root.append(node);
@@ -764,7 +778,10 @@ describe("custom methods", () => {
       >
     >();
 
-    const doc = new Doc({ extensions: [{ nodes: [CounterNode] }] });
+    const doc = new Doc({
+      type: "root",
+      extensions: [{ nodes: [CounterNode] }],
+    });
     const node = doc.createNode(CounterNode);
 
     // Let's test individual methods to see which ones work
@@ -780,7 +797,10 @@ describe("custom methods", () => {
   });
 
   test("counter - runtime", () => {
-    const doc = new Doc({ extensions: [{ nodes: [CounterNode] }] });
+    const doc = new Doc({
+      type: "root",
+      extensions: [{ nodes: [CounterNode] }],
+    });
     checkUndoManager(1, doc, () => {
       const node = doc.createNode(CounterNode);
       doc.root.append(node);

@@ -1,0 +1,155 @@
+/**
+ * Presence sync for Lexical editor
+ * Adapted from @lexical/yjs SyncCursors.ts
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * MIT License
+ */
+
+import {
+  BLUR_COMMAND,
+  COMMAND_PRIORITY_EDITOR,
+  FOCUS_COMMAND,
+  type LexicalEditor,
+} from "lexical";
+import type {
+  KeyBinding,
+  PresenceSelection,
+  syncLexicalWithDocPresenceOptions,
+} from "../types.js";
+import { destroyCursor } from "./cursorRendering.js";
+import { syncSelectionToPresence } from "./syncSelectionToPresence.js";
+import { syncPresenceToSelection } from "./syncPresenceToSelection.js";
+import type { Presence, PresenceBinding, PresenceHandle } from "./types.js";
+
+const bindingByEditor = new WeakMap<
+  LexicalEditor,
+  { handle: PresenceHandle; lastPresence: Presence | undefined }
+>();
+
+/**
+ * Update remote cursors for an editor. Call this when presence data changes
+ * (e.g. from a React effect). Uses referential equality to no-op when unchanged.
+ */
+export function updatePresence(
+  editor: LexicalEditor,
+  presence: Presence,
+): void {
+  const binding = bindingByEditor.get(editor);
+  if (!binding?.handle) return;
+  if (presence === binding.lastPresence) return;
+  binding.lastPresence = presence;
+  binding.handle.updateRemoteCursors(presence);
+}
+
+/**
+ * Sets up presence synchronization between a Lexical editor and a presence system.
+ * Returns undefined if no setPresence callback is provided in presenceOptions.
+ *
+ * @param editor - The Lexical editor instance
+ * @param keyBinding - The key mapping from syncLexicalWithDoc for converting between Lexical keys and DocNode IDs
+ * @param presenceOptions - Optional presence options. When setPresence is provided, local selection is synced.
+ *   When user is provided, outgoing presence is enriched with name and color.
+ * @returns Cleanup function to unbind, or undefined if no setPresence is provided
+ */
+export function syncPresence(
+  editor: LexicalEditor,
+  keyBinding: KeyBinding,
+  presenceOptions?: syncLexicalWithDocPresenceOptions,
+): (() => void) | undefined {
+  const { setPresence: rawSetPresence, user } = presenceOptions ?? {};
+  if (!rawSetPresence) return undefined;
+
+  const setPresence = (selection: PresenceSelection | undefined) =>
+    rawSetPresence(
+      selection && user?.name != null && user?.color != null
+        ? { ...selection, name: user.name, color: user.color }
+        : selection,
+    );
+
+  const rootElement = editor.getRootElement();
+  let cursorsContainer: HTMLElement | undefined;
+
+  if (rootElement) {
+    const parent = rootElement.parentElement;
+    if (parent) {
+      const parentStyle = window.getComputedStyle(parent);
+      if (parentStyle.position === "static") {
+        parent.style.position = "relative";
+      }
+      cursorsContainer = document.createElement("div");
+      cursorsContainer.style.cssText =
+        "position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;overflow:hidden;";
+      parent.appendChild(cursorsContainer);
+    }
+  }
+
+  const binding: PresenceBinding = {
+    editor,
+    cursorsContainer,
+    cursors: new Map(),
+    keyBinding,
+  };
+
+  const editorHasFocus = (): boolean => {
+    const rootElement = editor.getRootElement();
+    if (!rootElement) return false;
+    return (
+      rootElement.contains(document.activeElement) ||
+      rootElement === document.activeElement
+    );
+  };
+
+  const unregisterUpdateListener = editor.registerUpdateListener(
+    ({ editorState }) => {
+      if (!editorHasFocus()) return;
+      // Note: We have to re-render selections even if the Lexical
+      // selection hasn't changed. For example, when pressing enter
+      // at the beginning of a non-empty paragraph.
+      editorState.read(() => {
+        syncSelectionToPresence(keyBinding, setPresence);
+      });
+    },
+  );
+
+  const unregisterFocusListener = editor.registerCommand(
+    FOCUS_COMMAND,
+    () => {
+      editor.getEditorState().read(() => {
+        syncSelectionToPresence(keyBinding, setPresence);
+      });
+      return false;
+    },
+    COMMAND_PRIORITY_EDITOR,
+  );
+
+  const unregisterBlurListener = editor.registerCommand(
+    BLUR_COMMAND,
+    () => {
+      if (!editorHasFocus()) setPresence(undefined);
+      return false;
+    },
+    COMMAND_PRIORITY_EDITOR,
+  );
+
+  const handle: PresenceHandle = {
+    updateRemoteCursors: (presence: Presence) => {
+      syncPresenceToSelection(binding, presence);
+    },
+    cleanup: () => {
+      unregisterUpdateListener();
+      unregisterFocusListener();
+      unregisterBlurListener();
+      for (const cursor of binding.cursors.values()) {
+        destroyCursor(binding, cursor);
+      }
+      binding.cursors.clear();
+      if (cursorsContainer?.parentElement) {
+        cursorsContainer.parentElement.removeChild(cursorsContainer);
+      }
+      bindingByEditor.delete(editor);
+    },
+  };
+
+  bindingByEditor.set(editor, { handle, lastPresence: undefined });
+  return handle.cleanup;
+}

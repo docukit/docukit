@@ -1,0 +1,318 @@
+---
+title: Server
+description: Server-side implementation of DocSync
+---
+
+import { TypeTable } from "fumadocs-ui/components/type-table";
+
+## DocSyncServer
+
+Creates a DocSync server that handles WebSocket connections, authentication, authorization, and document synchronization.
+
+```ts
+import { DocSyncServer, PostgresProvider } from "@docukit/docsync/server";
+
+const server = new DocSyncServer({
+  port: 8080,
+  docBinding,
+  provider: PostgresProvider,
+  async authenticate({ token }) {
+    const user = await verifyToken(token);
+    if (!user) return undefined;
+    return { userId: user.id, context: { role: user.role } };
+  },
+  async authorize({ type, payload, userId, context }) {
+    return true;
+  },
+});
+```
+
+### Props
+
+<TypeTable
+  type={{
+    docBinding: {
+      description:
+        "Document binding that maps document types to their serialization/deserialization configs.",
+      type: "DocBinding<D, S, O>",
+      required: true,
+    },
+    port: {
+      description: "Port number for the WebSocket server.",
+      type: "number",
+      default: "8080",
+    },
+    provider: {
+      description:
+        "Storage provider class constructor (e.g., PostgresProvider or InMemoryServerProvider for testing).",
+      type: "Provider",
+      required: true,
+    },
+    authenticate: {
+      description:
+        "Async function called once per connection attempt. Must validate the token and return userId with optional context, or undefined to reject.",
+      type: "(ev: { token: string }) => Promise<{ userId: string; context?: TContext } | undefined>",
+      required: true,
+    },
+    authorize: {
+      description:
+        "Async function called for each operation. Receives the type, payload, userId, and context from authenticate. Returns true to allow, false to deny.",
+      type: "(ev: AuthorizeEvent<TContext>) => Promise<boolean>",
+    },
+  }}
+/>
+
+---
+
+## authenticate
+
+Called once per WebSocket connection attempt. Must validate the provided token and resolve the canonical userId.
+
+```ts
+async authenticate({ token }) {
+  const user = await verifyToken(token);
+  if (!user) return undefined;
+  return {
+    userId: user.id,
+    context: { role: user.role, orgId: user.orgId },
+  };
+}
+```
+
+### Props
+
+<TypeTable
+  type={{
+    token: {
+      description: "Authentication token sent by the client via getToken().",
+      type: "string",
+      required: true,
+    },
+  }}
+/>
+
+### Returns
+
+<TypeTable
+  type={{
+    userId: {
+      description: "Canonical user identifier.",
+      type: "string",
+      required: true,
+    },
+    context: {
+      description:
+        "Optional context object passed to authorize() for each operation.",
+      type: "TContext",
+    },
+  }}
+/>
+
+Return `undefined` to reject the connection.
+
+---
+
+## authorize
+
+Called for each operation after authentication. Use this to implement fine-grained access control.
+
+```ts
+async authorize({ type, payload, userId, context }) {
+  if (type === "sync-operations") {
+    const { docId } = payload;
+    return await canUserAccessDoc(userId, docId, context.orgId);
+  }
+  return true;
+}
+```
+
+### Props
+
+<TypeTable
+  type={{
+    type: {
+      description: "The operation type being authorized.",
+      type: '"sync-operations" | "delete-doc" | "presence" | "unsubscribe-doc"',
+      required: true,
+    },
+    payload: {
+      description: "The request payload. Shape depends on the operation type.",
+      type: "object",
+      required: true,
+    },
+    userId: {
+      description: "Authenticated user ID from authenticate().",
+      type: "string",
+      required: true,
+    },
+    context: {
+      description: "Context object returned from authenticate().",
+      type: "TContext",
+      required: true,
+    },
+  }}
+/>
+
+### Returns
+
+Return `true` to allow the operation, `false` to deny.
+
+---
+
+## Events
+
+### onClientConnect
+
+Called when a client successfully connects after authentication.
+
+```ts
+server.onClientConnect((event) => {
+  console.log(`User ${event.userId} connected from device ${event.deviceId}`);
+});
+```
+
+<TypeTable
+  type={{
+    userId: {
+      description: "Authenticated user ID.",
+      type: "string",
+    },
+    deviceId: {
+      description: "Unique device identifier.",
+      type: "string",
+    },
+    socketId: {
+      description: "Socket.IO socket ID.",
+      type: "string",
+    },
+    context: {
+      description: "Context object from authenticate().",
+      type: "TContext",
+    },
+  }}
+/>
+
+### onClientDisconnect
+
+Called when a client disconnects.
+
+```ts
+server.onClientDisconnect((event) => {
+  console.log(`User ${event.userId} disconnected: ${event.reason}`);
+});
+```
+
+<TypeTable
+  type={{
+    userId: {
+      description: 'User ID (or "unknown" if auth failed).',
+      type: "string",
+    },
+    deviceId: {
+      description: 'Device ID (or "unknown" if auth failed).',
+      type: "string",
+    },
+    socketId: {
+      description: 'Socket ID (or "unknown" if auth failed).',
+      type: "string",
+    },
+    reason: {
+      description:
+        'Disconnect reason (e.g., "transport close", "Authentication failed: invalid token").',
+      type: "string",
+    },
+  }}
+/>
+
+### onSyncRequest
+
+Called after each sync-operations request completes. Follows "wide events" philosophy: one event per operation with all context.
+
+```ts
+server.onSyncRequest((event) => {
+  console.log(
+    `Sync ${event.status} for doc ${event.req.docId} in ${event.durationMs}ms`,
+  );
+});
+```
+
+<TypeTable
+  type={{
+    userId: {
+      description: "User who made the request.",
+      type: "string",
+    },
+    deviceId: {
+      description: "Device that made the request.",
+      type: "string",
+    },
+    socketId: {
+      description: "Socket ID.",
+      type: "string",
+    },
+    status: {
+      description: "Request outcome.",
+      type: '"success" | "error"',
+    },
+    durationMs: {
+      description: "Processing time in milliseconds.",
+      type: "number",
+    },
+    clientsCount: {
+      description: "Number of clients viewing this document.",
+      type: "number",
+    },
+    devicesCount: {
+      description: "Number of unique devices viewing this document.",
+      type: "number",
+    },
+    "req.docId": {
+      description: "Document ID.",
+      type: "string",
+    },
+    "req.operations": {
+      description: "Operations sent by client (if any).",
+      type: "O[]",
+    },
+    "req.clock": {
+      description: "Client's clock value.",
+      type: "number",
+    },
+    "res.operations": {
+      description:
+        "Operations returned to client (if any). Present on success.",
+      type: "O[]",
+    },
+    "res.serializedDoc": {
+      description:
+        "Full document snapshot (if squashing occurred). Present on success.",
+      type: "S",
+    },
+    "res.clock": {
+      description: "New clock value. Present on success.",
+      type: "number",
+    },
+    "error.type": {
+      description: "Error type. Present on error.",
+      type: '"AuthorizationError" | "DatabaseError" | "ValidationError"',
+    },
+    "error.message": {
+      description: "Error message. Present on error.",
+      type: "string",
+    },
+    "error.stack": {
+      description: "Stack trace (if available). Present on error.",
+      type: "string",
+    },
+  }}
+/>
+
+---
+
+## close
+
+Closes the server and all connections.
+
+```ts
+await server.close();
+```

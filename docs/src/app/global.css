@@ -9,13 +9,11 @@
 }
 
 .gradient-mesh {
-  background: radial-gradient(
-      at 40% 20%,
-      hsla(142, 76%, 36%, 0.3) 0px,
-      transparent 50%
-    ),
-    radial-gradient(at 80% 0%, hsla(142, 76%, 46%, 0.2) 0px, transparent 50%),
-    radial-gradient(at 0% 50%, hsla(142, 76%, 26%, 0.2) 0px, transparent 50%);
+  background:
+    radial-gradient(at 40% 20%, hsla(142, 76%, 36%, 0.25) 0px, transparent 50%),
+    radial-gradient(at 80% 0%, hsla(217, 91%, 53%, 0.2) 0px, transparent 50%),
+    radial-gradient(at 0% 50%, hsla(217, 91%, 40%, 0.15) 0px, transparent 50%),
+    radial-gradient(at 90% 60%, hsla(142, 76%, 30%, 0.15) 0px, transparent 50%);
 }
 
 @custom-variant dark (&:is(.dark *));
@@ -58,6 +56,12 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* Detect product path and apply blue theme automatically */
+html:has(a[data-active="true"][href*="/docnode"]),
+html:has(a[data-active="true"][href*="/docgrid"]) {
+  --primary: var(--color-emerald-600) !important;
+}
+
 :root {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
@@ -66,7 +70,7 @@
   --card-foreground: oklch(0.13 0.028 261.692);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.13 0.028 261.692);
-  --primary: var(--color-emerald-600);
+  --primary: var(--color-blue-400);
   --primary-foreground: oklch(0.985 0.002 247.839);
   --secondary: oklch(0.967 0.003 264.542);
   --secondary-foreground: oklch(0.21 0.034 264.665);
@@ -100,7 +104,7 @@
   --card-foreground: oklch(0.985 0.002 247.839);
   --popover: oklch(0.21 0.034 264.665);
   --popover-foreground: oklch(0.985 0.002 247.839);
-  --primary: var(--color-emerald-600);
+  --primary: var(--color-blue-400);
   --primary-foreground: oklch(0.21 0.034 264.665);
   --secondary: oklch(0.278 0.033 256.848);
   --secondary-foreground: oklch(0.985 0.002 247.839);
@@ -130,6 +134,45 @@
 @layer base {
   html {
     @apply scroll-smooth;
+  }
+
+  @keyframes float {
+    0%,
+    100% {
+      transform: translate(0, 0);
+    }
+    50% {
+      transform: translate(20px, -20px);
+    }
+  }
+  @keyframes float-delayed {
+    0%,
+    100% {
+      transform: translate(0, 0);
+    }
+    50% {
+      transform: translate(-20px, 20px);
+    }
+  }
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-float {
+    animation: float 10s ease-in-out infinite;
+  }
+  .animate-float-delayed {
+    animation: float-delayed 12s ease-in-out infinite;
+  }
+  .animate-fade-in-up {
+    animation: fade-in-up 0.6s ease-out both;
   }
 
   /* My styles */

@@ -13,7 +13,7 @@ export {
   type Extension,
   type ChangeEvent,
 } from "../types.js";
-export { defineNode, RootNode } from "../utils.js";
+export { defineNode } from "../utils.js";
 export { boolean, number, string, defineState } from "../stateDefinitions.js";
 export { type Operations } from "../operations.js";
 export { UndoManager } from "../undoManager.js";

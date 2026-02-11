@@ -7,16 +7,22 @@
     "clean": "rm -rf .next node_modules .turbo dist tsconfig.build.tsbuildinfo || rmdir /s /q .next node_modules .turbo dist tsconfig.build.tsbuildinfo"
   },
   "dependencies": {
-    "@docnode/lexical": "workspace:*",
-    "@docnode/sync": "workspace:*",
-    "@docnode/sync-react": "workspace:*",
-    "docnode": "workspace:*",
-    "drizzle-orm": "^0.38.4",
-    "lexical": "^0.36.1",
-    "postgres": "^3.4.5",
+    "@docukit/docnode-lexical": "workspace:*",
+    "@docukit/docsync": "workspace:*",
+    "@docukit/docsync-react": "workspace:*",
+    "@docukit/docnode": "workspace:*",
+    "lexical": "^0.38.2",
+    "ulid": "^2.3.0",
     "valibot": "^1.0.0"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.30.2"
+    "@playwright/test": "1.51.0",
+    "@types/react": "^19.1.0",
+    "drizzle-kit": "^0.30.2",
+    "mitata": "^1.0.34",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "vitest": "^4.0.8",
+    "vitest-browser-react": "^2.0.2"
   }
 }

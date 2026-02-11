@@ -1,12 +1,12 @@
 {
-  "name": "@docnode/editor",
+  "name": "@docukit/doceditor",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE.md",
   "private": true,
-  "homepage": "https://docnode.dev",
+  "homepage": "https://docukit.dev",
   "repository": {
     "type": "git",
-    "url": "https://github.com/docnode/docnode.git",
+    "url": "https://github.com/docukit/docukit.git",
     "directory": "packages/docnode-editor"
   },
   "files": [
@@ -15,6 +15,6 @@
     "README.md"
   ],
   "dependencies": {
-    "docnode": "workspace:*"
+    "@docukit/docnode": "workspace:*"
   }
 }
