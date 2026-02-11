@@ -146,21 +146,22 @@ export const testWrapper = async (
     ];
 
     for (const client of allClients) {
-      // Close socket if exists
       const socket = client["_socket"];
       if (socket?.connected) {
         socket.disconnect();
       }
+    }
 
-      // Close broadcast channel if exists
+    // Let disconnect handlers run (they call _sendMessage to notify other tabs).
+    // Close BroadcastChannel only after that to avoid "Channel is closed" errors.
+    await new Promise((resolve) => setTimeout(resolve, 15));
+
+    for (const client of allClients) {
       const bc = client["_broadcastChannel"];
       if (bc) {
         bc.close();
       }
     }
-
-    // Give time for cleanup to complete
-    await new Promise((resolve) => setTimeout(resolve, 10));
   }
 };
 
