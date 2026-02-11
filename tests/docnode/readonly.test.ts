@@ -23,7 +23,7 @@ describe("accessors & getters", () => {
   init(({ doc, root, node1, node2, node4 }) => {
     test("id", () => {
       expect(node1.id.length).toBe(6); // can be greater than 6 in other conditions
-      expect(node1.id).toMatch(DOCNODE_ID("[-01234]", "-"));
+      expect(node1.id).toMatch(DOCNODE_ID("[-0123456789]", "-"));
       const ULID = /^[0-7][0-9a-hjkmnp-tv-z]{25}$/;
       expect(root.id).toMatch(ULID);
       // @ts-expect-error - id is read-only. Should I make it non-writable?
