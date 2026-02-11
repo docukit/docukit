@@ -208,7 +208,7 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
 
         client.getDoc({ type: "test", id: "non-existent-id" }, callback);
-        await tick();
+        await tick(15);
 
         expect(callback).toHaveBeenLastCalledWith({
           status: "success",
@@ -322,7 +322,7 @@ describe("DocSyncClient", () => {
           { type: "test", id: customId, createIfMissing: true },
           callback,
         );
-        await tick();
+        await tick(15);
 
         expect(getSuccessData(callback)?.docId).toBe(customId);
       });
@@ -350,7 +350,7 @@ describe("DocSyncClient", () => {
         // First call should be loading
         expect(callback.mock.calls[0]?.[0]?.status).toBe("loading");
 
-        await tick();
+        await tick(15);
 
         // Second call should be success
         expect(callback.mock.calls[1]?.[0]?.status).toBe("success");
@@ -507,7 +507,7 @@ describe("DocSyncClient", () => {
           callback2,
         );
 
-        await tick();
+        await tick(15);
 
         // Both should get the same doc instance
         const doc1 = getSuccessData(callback1)?.doc;

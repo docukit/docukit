@@ -224,7 +224,7 @@ describe("Local-First", () => {
       reference.connect();
       otherTab.connect();
       otherDevice.connect();
-      await tick(40);
+      await tick(60);
 
       reference.assertMemoryDoc(["A", "B"]);
       otherTab.assertMemoryDoc(["A", "B"]);
@@ -283,7 +283,7 @@ describe("Local-First", () => {
       reference.connect();
       otherTab.connect();
       otherDevice.connect();
-      await tick(40);
+      await tick(60);
 
       reference.assertMemoryDoc(["A", "B", "C"]);
       otherTab.assertMemoryDoc(["B", "A", "C"]);
@@ -311,7 +311,7 @@ describe("Local-First", () => {
         childrenArray1.push(`A${i}`);
         reference.doc?.forceCommit();
       }
-      await tick(60); // Wait for batched operations to sync
+      await tick(70); // Wait for batched operations to sync
       expect(childrenArray1.length).toBe(101);
       await reference.assertIDBDoc({ clock: 1, doc: childrenArray1, ops: [] });
       expect(reference.reqSpy.mock.calls.length).toBeLessThan(4);

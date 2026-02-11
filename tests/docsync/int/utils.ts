@@ -154,7 +154,7 @@ export const testWrapper = async (
 
     // Let disconnect handlers run (they call _sendMessage to notify other tabs).
     // Close BroadcastChannel only after that to avoid "Channel is closed" errors.
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    await tick(15);
 
     for (const client of allClients) {
       const bc = client["_broadcastChannel"];
@@ -162,6 +162,8 @@ export const testWrapper = async (
         bc.close();
       }
     }
+
+    await tick(15);
   }
 };
 

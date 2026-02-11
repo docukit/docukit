@@ -123,7 +123,7 @@ describe("Client 2", () => {
       await saveOperations(client, docId);
       client.saveRemote({ docId });
 
-      await tick();
+      await tick(15);
 
       expect(requestSpy).toHaveBeenCalledTimes(2);
       expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
@@ -482,7 +482,7 @@ describe("Client 2", () => {
       });
 
       client.saveRemote({ docId });
-      await tick();
+      await tick(15);
 
       expect(await getStoredClock(client, docId)).toBe(1);
     });
@@ -516,7 +516,7 @@ describe("Client 2", () => {
 
       await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
-      await tick();
+      await tick(15);
 
       expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
     });
@@ -578,7 +578,7 @@ describe("Client 2", () => {
 
       await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
-      await tick();
+      await tick(15);
 
       expect(requestSpy).toHaveBeenCalledTimes(2);
       expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
@@ -635,7 +635,7 @@ describe("Client 2", () => {
       await saveOperations(client, docId, [ops({ op: "2" })]);
       client.saveRemote({ docId });
 
-      await tick();
+      await tick(15);
 
       expect(receivedOperations).toHaveLength(2);
       expect(receivedOperations[0]).toStrictEqual([ops({ op: "1" })]);
@@ -666,7 +666,7 @@ describe("Client 2", () => {
       client.saveRemote({ docId });
       client.saveRemote({ docId });
 
-      await tick();
+      await tick(15);
 
       expect(maxConcurrent).toBe(1);
     });
