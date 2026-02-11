@@ -35,6 +35,8 @@ jobs:
         run: pnpm --filter @docukit/docsync db:push
       - name: Create examples .env
         run: echo "DOCNODE_DB_URL=$DOCNODE_DB_URL" > examples/.env
+      - name: Build examples and workspace dependencies
+        run: pnpm exec turbo build --filter=examples
       - name: Install Playwright Browsers
         run: pnpm exec playwright install --with-deps
       - name: Run Playwright tests

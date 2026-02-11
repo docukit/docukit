@@ -9,7 +9,7 @@ export default defineConfig({
     ? "github"
     : [["html", { outputFolder: ".test-results/playwright/report" }]],
   outputDir: ".test-results/playwright/test-results",
-  timeout: process.env.CI ? 30_000 : 5_000,
+  timeout: 5_000,
   retries: 1,
   use: {
     baseURL: process.env.VERCEL_URL
@@ -20,7 +20,7 @@ export default defineConfig({
     colorScheme: "dark",
   },
   webServer: {
-    command: "cd examples && pnpm dev",
+    command: "pnpm --filter examples dev",
     url: "http://localhost:4000",
     reuseExistingServer: !process.env.CI,
   },
