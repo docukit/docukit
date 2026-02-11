@@ -43,7 +43,7 @@ describe("docnode to lexical", () => {
 
   test("doc provided", () => {
     const doc = new Doc({
-      type: "_",
+      type: "root",
       extensions: [{ nodes: [LexicalDocNode] }],
     });
     const paragraphJson: SerializedParagraphNode = {
