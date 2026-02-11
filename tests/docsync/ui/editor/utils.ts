@@ -31,11 +31,6 @@ export class EditorHelper extends HelperBase {
   private _createClientUtils(clientLocator: Locator): ClientUtils {
     return {
       select: async (block: number, offset: number) => {
-        console.log(
-          "[EditorHelper.select] start block=%s offset=%s",
-          block,
-          offset,
-        );
         await clientLocator.click();
         // Move to start of document: in CI focus may land in the last paragraph,
         // so press ArrowUp multiple times to reach the first block.
@@ -44,40 +39,12 @@ export class EditorHelper extends HelperBase {
         }
         for (let i = 0; i < block; i++) {
           await this._page.keyboard.press("ArrowDown");
-          const blockText = await this._reference
-            .locator("[data-lexical-editor] p")
-            .nth(i + 1)
-            .textContent()
-            .catch(() => null);
-          console.log(
-            "[EditorHelper.select] ArrowDown step %s -> block %s, paragraph text: %s",
-            i + 1,
-            i + 1,
-            JSON.stringify(blockText),
-          );
         }
         for (let i = 0; i < offset; i++) {
           await this._page.keyboard.press("ArrowRight");
-          const charAtCaret = await this._page.evaluate(() => {
-            const sel = window.getSelection();
-            if (!sel || sel.rangeCount === 0) return null;
-            const range = sel.getRangeAt(0);
-            const node = range.startContainer;
-            const off = range.startOffset;
-            if (node.nodeType === Node.TEXT_NODE && node.textContent)
-              return node.textContent[off] ?? null;
-            return null;
-          });
-          console.log(
-            "[EditorHelper.select] ArrowRight step %s -> offset %s, char at caret: %s",
-            i + 1,
-            i + 1,
-            JSON.stringify(charAtCaret),
-          );
         }
         // Allow selection to settle before typing (CI is slower than local)
-        await this._page.waitForTimeout(150);
-        console.log("[EditorHelper.select] done (after 150ms settle)");
+        await this._page.waitForTimeout(10);
       },
     };
   }
@@ -92,23 +59,6 @@ export class EditorHelper extends HelperBase {
     const otherDeviceContent = await this._otherDevice
       .locator("[data-lexical-editor] p")
       .allTextContents();
-
-    console.log(
-      "[EditorHelper.assertContent] expected:",
-      JSON.stringify(blocks),
-    );
-    console.log(
-      "[EditorHelper.assertContent] reference:",
-      JSON.stringify(referenceContent),
-    );
-    console.log(
-      "[EditorHelper.assertContent] otherTab:",
-      JSON.stringify(otherTabContent),
-    );
-    console.log(
-      "[EditorHelper.assertContent] otherDevice:",
-      JSON.stringify(otherDeviceContent),
-    );
 
     expect(referenceContent).toStrictEqual(blocks);
     expect(otherTabContent).toStrictEqual(blocks);
