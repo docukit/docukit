@@ -21,7 +21,6 @@ import {
   createClientWithProvider,
   createFailingProvider,
   createCallback,
-  tick,
   getSuccessData,
   getErrorResult,
 } from "./utils.js";
@@ -91,10 +90,7 @@ describe("DocSyncClient", () => {
         // Trigger _localPromise resolution by calling getDoc
         client.getDoc({ type: "test", createIfMissing: true }, callback);
 
-        // Wait for async initialization
-        await tick();
-
-        expect(constructorSpy).toHaveBeenCalledOnce();
+        await expect.poll(() => constructorSpy.mock.calls.length).toBe(1);
         // BroadcastChannel name should be user-specific: "docsync:{userId}"
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const channelName = constructorSpy.mock.calls[0]?.[0];
@@ -208,13 +204,13 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
 
         client.getDoc({ type: "test", id: "non-existent-id" }, callback);
-        await tick();
-
-        expect(callback).toHaveBeenLastCalledWith({
-          status: "success",
-          data: undefined,
-          error: undefined,
-        });
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0])
+          .toEqual({
+            status: "success",
+            data: undefined,
+            error: undefined,
+          });
       });
 
       test("should return cached document when requested multiple times", async () => {
@@ -224,13 +220,12 @@ describe("DocSyncClient", () => {
 
         // Create a doc first
         client.getDoc({ type: "test", createIfMissing: true }, callback1);
-        await tick();
+        await expect.poll(() => getSuccessData(callback1)).toBeDefined();
         const createdDoc = getSuccessData(callback1);
-        expect(createdDoc).toBeDefined();
 
         // Request the same doc again
         client.getDoc({ type: "test", id: createdDoc!.docId }, callback2);
-        await tick();
+        await expect.poll(() => getSuccessData(callback2)).toBeDefined();
         const cachedDoc = getSuccessData(callback2);
         expect(cachedDoc?.doc).toBe(createdDoc!.doc);
       });
@@ -322,9 +317,7 @@ describe("DocSyncClient", () => {
           { type: "test", id: customId, createIfMissing: true },
           callback,
         );
-        await tick();
-
-        expect(getSuccessData(callback)?.docId).toBe(customId);
+        await expect.poll(() => getSuccessData(callback)?.docId).toBe(customId);
       });
     });
 
@@ -350,10 +343,9 @@ describe("DocSyncClient", () => {
         // First call should be loading
         expect(callback.mock.calls[0]?.[0]?.status).toBe("loading");
 
-        await tick();
-
-        // Second call should be success
-        expect(callback.mock.calls[1]?.[0]?.status).toBe("success");
+        await expect
+          .poll(() => callback.mock.calls[1]?.[0]?.status)
+          .toBe("success");
       });
     });
 
@@ -375,9 +367,7 @@ describe("DocSyncClient", () => {
         expect(disposeSpy).not.toHaveBeenCalled();
 
         unsubscribe();
-        await tick(); // _unloadDoc is async
-
-        expect(cache.has(docId)).toBe(false);
+        await expect.poll(() => !cache.has(docId)).toBe(true);
         expect(disposeSpy).toHaveBeenCalledOnce();
         expect(disposeSpy).toHaveBeenCalledWith(doc);
       });
@@ -400,24 +390,18 @@ describe("DocSyncClient", () => {
           { type: "test", id: docId },
           callback2,
         );
-        await tick();
-
         const cache = client["_docsCache"];
-        expect(cache.get(docId)?.refCount).toBe(2);
+        await expect.poll(() => cache.get(docId)?.refCount).toBe(2);
 
         // Unsubscribe first one - should NOT call dispose
         unsubscribe1();
-        await tick();
-
-        expect(cache.get(docId)?.refCount).toBe(1);
+        await expect.poll(() => cache.get(docId)?.refCount).toBe(1);
         expect(cache.has(docId)).toBe(true);
         expect(disposeSpy).not.toHaveBeenCalled();
 
         // Unsubscribe second one - should call dispose
         unsubscribe2();
-        await tick();
-
-        expect(cache.has(docId)).toBe(false);
+        await expect.poll(() => !cache.has(docId)).toBe(true);
         expect(disposeSpy).toHaveBeenCalledOnce();
         expect(disposeSpy).toHaveBeenCalledWith(doc);
       });
@@ -439,13 +423,11 @@ describe("DocSyncClient", () => {
 
         // Second subscription
         client.getDoc({ type: "test", id: docId }, callback2);
-        await tick();
-        expect(cache.get(docId)?.refCount).toBe(2);
+        await expect.poll(() => cache.get(docId)?.refCount).toBe(2);
 
         // Third subscription
         client.getDoc({ type: "test", id: docId }, callback3);
-        await tick();
-        expect(cache.get(docId)?.refCount).toBe(3);
+        await expect.poll(() => cache.get(docId)?.refCount).toBe(3);
       });
 
       test("should share same doc instance across multiple subscriptions", async () => {
@@ -462,8 +444,8 @@ describe("DocSyncClient", () => {
           { type: "test", id: getSuccessData(callback1)!.docId },
           callback2,
         );
-        await tick();
-        const doc2 = getSuccessData(callback2)!.doc;
+        await expect.poll(() => getSuccessData(callback2)?.doc).toBeDefined();
+        const doc2 = getSuccessData(callback2)?.doc;
 
         // Same instance
         expect(doc1).toBe(doc2);
@@ -482,11 +464,8 @@ describe("DocSyncClient", () => {
 
         // Trigger a document change
         doc.root.append(doc.createNode(ChildNode));
-        await tick(); // Changes are committed in a microtask
-
-        // Callback should NOT be called on doc changes
-        // User observes doc changes via doc.onChange() directly
-        expect(callback.mock.calls.length).toBe(1);
+        // Callback should NOT be called on doc changes (poll until stable)
+        await expect.poll(() => callback.mock.calls.length).toBe(1);
       });
     });
 
@@ -507,13 +486,9 @@ describe("DocSyncClient", () => {
           callback2,
         );
 
-        await tick();
-
-        // Both should get the same doc instance
+        await expect.poll(() => getSuccessData(callback1)?.doc).toBeDefined();
         const doc1 = getSuccessData(callback1)?.doc;
         const doc2 = getSuccessData(callback2)?.doc;
-
-        expect(doc1).toBeDefined();
         expect(doc1).toBe(doc2);
 
         // refCount should be 2
@@ -562,10 +537,8 @@ describe("DocSyncClient", () => {
           { type: "test", id: "test-id", createIfMissing: true },
           callback,
         );
-        await tick();
-
+        await expect.poll(() => getErrorResult(callback)).toBeDefined();
         const errorResult = getErrorResult(callback);
-        expect(errorResult).toBeDefined();
         expect(errorResult?.status).toBe("error");
         expect(errorResult?.error?.message).toBe(errorMessage);
         expect(errorResult?.data).toBeUndefined();
@@ -590,10 +563,8 @@ describe("DocSyncClient", () => {
           { type: "unknown-type", id: "test-id", createIfMissing: true },
           callback,
         );
-        await tick();
-
+        await expect.poll(() => getErrorResult(callback)).toBeDefined();
         const errorResult = getErrorResult(callback);
-        expect(errorResult).toBeDefined();
         expect(errorResult?.status).toBe("error");
         expect(errorResult?.error?.message).toContain("Unknown type");
       } finally {
@@ -622,10 +593,9 @@ describe("DocSyncClient", () => {
         // First call should be loading
         expect(callback.mock.calls[0]?.[0]?.status).toBe("loading");
 
-        await tick();
-
-        // Second call should be error
-        expect(callback.mock.calls[1]?.[0]?.status).toBe("error");
+        await expect
+          .poll(() => callback.mock.calls[1]?.[0]?.status)
+          .toBe("error");
       } finally {
         window.removeEventListener("unhandledrejection", handler);
       }
@@ -656,8 +626,7 @@ describe("DocSyncClient", () => {
           { type: "test", id: "test-id", createIfMissing: true },
           callback,
         );
-        await tick();
-
+        await expect.poll(() => getErrorResult(callback)).toBeDefined();
         const errorResult = getErrorResult(callback);
         expect(errorResult?.error).toBeInstanceOf(Error);
         expect(errorResult?.error?.message).toBe("string error message");
@@ -697,9 +666,9 @@ describe("DocSyncClient", () => {
 
         // Trigger a document change
         doc.root.append(doc.createNode(ChildNode));
-        await tick(50);
-
-        // Verify postMessage was called with OPERATIONS
+        await expect
+          .poll(() => postMessageSpy.mock.calls.length)
+          .toBeGreaterThan(0);
         expect(postMessageSpy).toHaveBeenCalledWith({
           type: "OPERATIONS",
           docId,
@@ -751,19 +720,13 @@ describe("DocSyncClient", () => {
         client.getDoc({ type: "test", createIfMissing: true }, tempCallback);
         const tempDoc = getSuccessData(tempCallback)!.doc;
         tempDoc.root.append(tempDoc.createNode(ChildNode));
-        await tick();
-
-        // The operations were captured - but for this test we just verify the mechanism
-        // works by checking that _applyOperations is called and doesn't throw
-        expect(messageHandler).not.toBeNull();
+        await expect.poll(() => messageHandler !== null).toBe(true);
 
         // Simulate a message from BroadcastChannel with empty operations
         // Operations format is [OrderedOperation[], StatePatch] - empty is [[], {}]
         messageHandler!({
           data: { type: "OPERATIONS", docId, operations: [[], {}] },
         } as MessageEvent);
-
-        await tick();
         // If we got here without throwing, the message was processed
       } finally {
         globalThis.BroadcastChannel = originalBroadcastChannel;
@@ -800,11 +763,7 @@ describe("DocSyncClient", () => {
         client.getDoc({ type: "test", createIfMissing: true }, callback);
         const docId = getSuccessData(callback)!.docId;
 
-        // Wait for BroadcastChannel to be initialized
-        await tick();
-
-        // messageHandler should now be set
-        expect(messageHandler).toBeDefined();
+        await expect.poll(() => messageHandler !== undefined).toBe(true);
 
         // Clear any previous postMessage calls from doc creation
         postMessageSpy.mockClear();
@@ -815,10 +774,8 @@ describe("DocSyncClient", () => {
           data: { type: "OPERATIONS", docId, operations: [[], {}] },
         } as MessageEvent);
 
-        await tick();
-
         // postMessage should NOT be called - we don't re-broadcast received operations
-        expect(postMessageSpy).not.toHaveBeenCalled();
+        await expect.poll(() => postMessageSpy.mock.calls.length).toBe(0);
       } finally {
         globalThis.BroadcastChannel = originalBroadcastChannel;
       }

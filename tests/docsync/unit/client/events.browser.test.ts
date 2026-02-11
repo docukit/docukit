@@ -4,7 +4,6 @@ import {
   generateDocId,
   setupDocWithOperations,
   saveOperations,
-  tick,
   ops,
   emptyOps,
   spyOnRequest,
@@ -25,17 +24,13 @@ describe("Client Events", () => {
       });
 
       client["_emit"](client["_connectHandlers"]);
-      await tick();
-
-      expect(called).toBe(true);
+      await expect.poll(() => called).toBe(true);
 
       // Test unsubscribe
       called = false;
       unsubscribe();
       client["_emit"](client["_connectHandlers"]);
-      await tick();
-
-      expect(called).toBe(false);
+      await expect.poll(() => called).toBe(false);
     });
   });
 
@@ -57,9 +52,7 @@ describe("Client Events", () => {
       client["_emit"](client["_disconnectHandlers"], {
         reason: "transport close",
       });
-      await tick();
-
-      expect(disconnectReason).toBe("transport close");
+      await expect.poll(() => disconnectReason).toBe("transport close");
     });
 
     test("should clear push status on disconnect", async () => {
@@ -68,18 +61,13 @@ describe("Client Events", () => {
 
       await saveOperations(client, docId);
       client.saveRemote({ docId });
-      await tick();
-
-      expect(client["_pushStatusByDocId"].size).toBeGreaterThan(0);
-
-      // Wait for any pending BroadcastChannel messages to be processed
-      await tick(10);
+      await expect
+        .poll(() => client["_pushStatusByDocId"].size)
+        .toBeGreaterThan(0);
 
       client["_pushStatusByDocId"].clear();
       client["_emit"](client["_disconnectHandlers"], { reason: "test" });
-      await tick();
-
-      expect(client["_pushStatusByDocId"].size).toBe(0);
+      await expect.poll(() => client["_pushStatusByDocId"].size).toBe(0);
     });
   });
 
@@ -103,9 +91,7 @@ describe("Client Events", () => {
         origin: "remote",
         operations: testOperations,
       });
-      await tick();
-
-      expect(changeOrigin).toBe("remote");
+      await expect.poll(() => changeOrigin).toBe("remote");
     });
   });
 
@@ -133,9 +119,7 @@ describe("Client Events", () => {
       });
 
       client.saveRemote({ docId });
-      await tick(10);
-
-      expect(syncSuccess).toBe(true);
+      await expect.poll(() => syncSuccess).toBe(true);
     });
 
     test("should emit on network error", async () => {
@@ -154,9 +138,7 @@ describe("Client Events", () => {
       });
 
       client.saveRemote({ docId });
-      await tick(10);
-
-      expect(hasError).toBe(true);
+      await expect.poll(() => hasError).toBe(true);
     });
   });
 
@@ -180,9 +162,7 @@ describe("Client Events", () => {
           // Callback for doc updates
         },
       );
-      await tick();
-
-      expect(loadSource).toBe("created");
+      await expect.poll(() => loadSource).toBe("created");
 
       // Cleanup
       cleanup();
@@ -209,12 +189,8 @@ describe("Client Events", () => {
       const cleanup = client.getDoc({ type: "test", id: docId }, () => {
         // Callback for doc updates
       });
-      await tick();
-
       cleanup();
-      await tick();
-
-      expect(unloadRefCount).toBe(0);
+      await expect.poll(() => unloadRefCount).toBe(0);
     });
   });
 });

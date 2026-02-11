@@ -43,12 +43,11 @@ describe("Client 2", () => {
 
       await saveOperations(client, docId);
       client.saveRemote({ docId });
-      await tick();
       client.saveRemote({ docId });
 
-      expect(client["_pushStatusByDocId"].get(docId)).toBe(
-        "pushing-with-pending",
-      );
+      await expect
+        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .toBe("pushing-with-pending");
     });
 
     test("should allow concurrent pushes for different docIds", async () => {
@@ -73,10 +72,12 @@ describe("Client 2", () => {
 
       client.saveRemote({ docId: docId1 });
       client.saveRemote({ docId: docId2 });
-      await tick();
-
-      expect(client["_pushStatusByDocId"].get(docId1)).toBe("pushing");
-      expect(client["_pushStatusByDocId"].get(docId2)).toBe("pushing");
+      await expect
+        .poll(() => client["_pushStatusByDocId"].get(docId1))
+        .toBe("pushing");
+      await expect
+        .poll(() => client["_pushStatusByDocId"].get(docId2))
+        .toBe("pushing");
     });
 
     test("should be idempotent for same docId during push", async () => {
@@ -94,9 +95,7 @@ describe("Client 2", () => {
       client.saveRemote({ docId });
       client.saveRemote({ docId });
       client.saveRemote({ docId });
-      await tick();
-
-      expect(doPushSpy).toHaveBeenCalledTimes(1);
+      await expect.poll(() => doPushSpy.mock.calls.length).toBe(1);
       expect(client["_pushStatusByDocId"].get(docId)).toBe(
         "pushing-with-pending",
       );
@@ -123,10 +122,10 @@ describe("Client 2", () => {
       await saveOperations(client, docId);
       client.saveRemote({ docId });
 
-      await tick();
-
-      expect(requestSpy).toHaveBeenCalledTimes(2);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+      await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
+      await expect
+        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .toBe("idle");
     });
   });
 
@@ -158,8 +157,7 @@ describe("Client 2", () => {
       });
 
       client.saveRemote({ docId });
-      await tick();
-
+      await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith("sync-operations", {
         clock: 0,
         docId,
@@ -178,9 +176,7 @@ describe("Client 2", () => {
 
       await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
-      await tick();
-
-      expect(statusDuringPush).toBe("pushing");
+      await expect.poll(() => statusDuringPush).toBe("pushing");
     });
 
     test("should send operations to API via sync-operations endpoint", async () => {
@@ -190,8 +186,7 @@ describe("Client 2", () => {
 
       await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
-      await tick();
-
+      await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
         "sync-operations",
         expect.objectContaining({ docId }),
@@ -205,8 +200,7 @@ describe("Client 2", () => {
 
       await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
-      await tick();
-
+      await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
         "sync-operations",
         expect.objectContaining({ clock: 0, docId }),
@@ -235,8 +229,7 @@ describe("Client 2", () => {
       });
 
       client.saveRemote({ docId });
-      await tick();
-
+      await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
         "sync-operations",
         expect.objectContaining({
@@ -270,8 +263,7 @@ describe("Client 2", () => {
       });
 
       client.saveRemote({ docId });
-      await tick();
-
+      await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
         "sync-operations",
         expect.objectContaining({
@@ -307,9 +299,7 @@ describe("Client 2", () => {
       });
 
       client.saveRemote({ docId });
-      await tick();
-
-      // Should call API even with no local operations (this is a pull)
+      await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
         "sync-operations",
         expect.objectContaining({
@@ -365,9 +355,7 @@ describe("Client 2", () => {
 
       // Trigger pull - client has no operations but wants server's updates
       client.saveRemote({ docId });
-      await tick();
-
-      // Should call API with empty operations (this is a pull)
+      await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
         "sync-operations",
         expect.objectContaining({
@@ -414,9 +402,9 @@ describe("Client 2", () => {
       expect(await getOperationsCount(client, docId)).toBe(2);
 
       client.saveRemote({ docId });
-      await tick();
-
-      expect(await getOperationsCount(client, docId)).toBe(0);
+      await expect
+        .poll(async () => await getOperationsCount(client, docId))
+        .toBe(0);
     });
 
     test("should delete exact count of pushed operations", async () => {
@@ -444,14 +432,12 @@ describe("Client 2", () => {
       });
 
       client.saveRemote({ docId });
-      await tick();
-
       await saveOperations(client, docId, [ops({ batch: "2" })]);
       client.saveRemote({ docId });
 
-      await tick(100);
-
-      expect(await getOperationsCount(client, docId)).toBe(0);
+      await expect
+        .poll(async () => await getOperationsCount(client, docId))
+        .toBe(0);
       expect(requestSpy).toHaveBeenCalledTimes(2);
     });
 
@@ -482,9 +468,9 @@ describe("Client 2", () => {
       });
 
       client.saveRemote({ docId });
-      await tick();
-
-      expect(await getStoredClock(client, docId)).toBe(1);
+      await expect
+        .poll(async () => await getStoredClock(client, docId))
+        .toBe(1);
     });
 
     test("should increment clock after consolidation", async () => {
@@ -499,9 +485,9 @@ describe("Client 2", () => {
 
       await setupDocWithOperations(client, docId, { clock: 5 });
       client.saveRemote({ docId });
-      await tick();
-
-      expect(await getStoredClock(client, docId)).toBe(6);
+      await expect
+        .poll(async () => await getStoredClock(client, docId))
+        .toBe(6);
     });
 
     test("should set status to idle after successful push", async () => {
@@ -516,9 +502,9 @@ describe("Client 2", () => {
 
       await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
-      await tick();
-
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+      await expect
+        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .toBe("idle");
     });
   });
 
@@ -549,14 +535,10 @@ describe("Client 2", () => {
 
       await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
-      await tick();
-
       await saveOperations(client, docId);
       client.saveRemote({ docId });
 
-      await tick(100);
-
-      expect(requestSpy).toHaveBeenCalledTimes(2);
+      await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
     });
 
     test("should retry on API failure", async () => {
@@ -578,10 +560,10 @@ describe("Client 2", () => {
 
       await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
-      await tick();
-
-      expect(requestSpy).toHaveBeenCalledTimes(2);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+      await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
+      await expect
+        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .toBe("idle");
     });
 
     test("should set status to idle before retry", async () => {
@@ -604,9 +586,9 @@ describe("Client 2", () => {
 
       await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
-      await tick();
-
-      expect(statusHistory).toStrictEqual(["pushing", "pushing"]);
+      await expect
+        .poll(() => statusHistory)
+        .toStrictEqual(["pushing", "pushing"]);
     });
 
     test("should handle retry with new operations", async () => {
@@ -630,14 +612,10 @@ describe("Client 2", () => {
         operations: [ops({ op: "1" })],
       });
       client.saveRemote({ docId });
-      await tick();
-
       await saveOperations(client, docId, [ops({ op: "2" })]);
       client.saveRemote({ docId });
 
-      await tick();
-
-      expect(receivedOperations).toHaveLength(2);
+      await expect.poll(() => receivedOperations.length).toBe(2);
       expect(receivedOperations[0]).toStrictEqual([ops({ op: "1" })]);
       expect(receivedOperations[1]).toStrictEqual([ops({ op: "2" })]);
     });
@@ -666,9 +644,7 @@ describe("Client 2", () => {
       client.saveRemote({ docId });
       client.saveRemote({ docId });
 
-      await tick();
-
-      expect(maxConcurrent).toBe(1);
+      await expect.poll(() => maxConcurrent).toBe(1);
     });
 
     test("should queue operations that arrive during push", async () => {
@@ -696,16 +672,12 @@ describe("Client 2", () => {
       });
 
       client.saveRemote({ docId });
-      await tick();
-
       await saveOperations(client, docId, [ops({ second: "true" })]);
       client.saveRemote({ docId });
       await saveOperations(client, docId, [ops({ third: "true" })]);
       client.saveRemote({ docId });
 
-      await tick(100);
-
-      expect(requestSpy).toHaveBeenCalledTimes(2);
+      await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
       const secondCall = requestSpy.mock.calls[1] as
         | [string, { operations: unknown[] }]
         | undefined;
@@ -736,8 +708,7 @@ describe("Client 2", () => {
       client.saveRemote({ docId: docId1 });
       client.saveRemote({ docId: docId2 });
 
-      await tick();
-
+      await expect.poll(() => callOrder.length).toBe(2);
       expect(callOrder).toContain(docId1);
       expect(callOrder).toContain(docId2);
       expect(requestSpy).toHaveBeenCalledTimes(2);
@@ -765,16 +736,18 @@ describe("Client 2", () => {
       await setupDocWithOperations(client, docId);
 
       client.saveRemote({ docId });
-      await tick();
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("pushing");
+      await expect
+        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .toBe("pushing");
 
       client.saveRemote({ docId });
       expect(client["_pushStatusByDocId"].get(docId)).toBe(
         "pushing-with-pending",
       );
 
-      await tick(100);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+      await expect
+        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .toBe("idle");
     });
   });
 });

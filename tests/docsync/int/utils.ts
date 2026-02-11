@@ -103,7 +103,7 @@ type ClientUtils = {
     doc: string[];
     ops: string[];
   }) => Promise<void>;
-  assertMemoryDoc: (children?: string[]) => void;
+  assertMemoryDoc: (children?: string[]) => Promise<void>;
   reqSpy: Mock<DocSyncClient["_request"]>;
   waitSync: () => Promise<void>;
   disconnect: () => void;
@@ -154,7 +154,7 @@ export const testWrapper = async (
 
     // Let disconnect handlers run (they call _sendMessage to notify other tabs).
     // Close BroadcastChannel only after that to avoid "Channel is closed" errors.
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    await tick(15);
 
     for (const client of allClients) {
       const bc = client["_broadcastChannel"];
@@ -162,6 +162,8 @@ export const testWrapper = async (
         bc.close();
       }
     }
+
+    await tick(15);
   }
 };
 
@@ -341,88 +343,96 @@ const createClientUtils = async (
       doc: string[];
       ops: string[];
     }) => {
-      // Get the provider from the client's internal state
-      if (!local) {
-        throw new Error("Client has no local provider configured");
-      }
+      await expect
+        .poll(async () => {
+          if (!local) {
+            throw new Error("Client has no local provider configured");
+          }
 
-      // Read the document AND operations from IndexedDB
-      const result = await local.provider.transaction(
-        "readonly",
-        async (ctx) => {
-          const docResult = await ctx.getSerializedDoc(docId);
-          const operations = await ctx.getOperations({ docId });
-          return { docResult, operations };
-        },
-      );
+          const result = await local.provider.transaction(
+            "readonly",
+            async (ctx) => {
+              const docResult = await ctx.getSerializedDoc(docId);
+              const operations = await ctx.getOperations({ docId });
+              return { docResult, operations };
+            },
+          );
 
-      if (!expected) {
-        expect(result.docResult).toBeUndefined();
-        expect(result.operations).toStrictEqual([]);
-        return;
-      }
+          if (!expected) {
+            expect(result.docResult).toBeUndefined();
+            expect(result.operations).toStrictEqual([]);
+            return true;
+          }
 
-      if (!result.docResult) {
-        throw new Error(
-          `Document ${docId} not found in IndexedDB for user ${userId}`,
-        );
-      }
+          if (!result.docResult) {
+            throw new Error(
+              `Document ${docId} not found in IndexedDB for user ${userId}`,
+            );
+          }
 
-      const deserializedDoc = client["_docBinding"].deserialize(
-        result.docResult.serializedDoc,
-      );
+          const deserializedDoc = client["_docBinding"].deserialize(
+            result.docResult.serializedDoc,
+          );
 
-      const actualDocChildren: string[] = [];
-      deserializedDoc.root.children().forEach((child) => {
-        const typedChild = child as unknown as DocNode<typeof ChildNode>;
-        actualDocChildren.push(typedChild.state.value.get());
-      });
+          const actualDocChildren: string[] = [];
+          deserializedDoc.root.children().forEach((child) => {
+            const typedChild = child as unknown as DocNode<typeof ChildNode>;
+            actualDocChildren.push(typedChild.state.value.get());
+          });
 
-      const opsChildren: string[] = [];
+          const opsChildren: string[] = [];
 
-      for (const batch of result.operations) {
-        if (batch.length === 0) continue;
-        for (const item of batch) {
-          if (!Array.isArray(item) || item.length < 2) continue;
-          const stateUpdates = item[1];
-          if (!stateUpdates || typeof stateUpdates !== "object") continue;
+          for (const batch of result.operations) {
+            if (batch.length === 0) continue;
+            for (const item of batch) {
+              if (!Array.isArray(item) || item.length < 2) continue;
+              const stateUpdates = item[1];
+              if (!stateUpdates || typeof stateUpdates !== "object") continue;
 
-          for (const [, nodeState] of Object.entries(stateUpdates)) {
-            if (
-              nodeState &&
-              typeof nodeState === "object" &&
-              "value" in nodeState
-            ) {
-              const jsonValue = nodeState.value;
-              const parsedValue = JSON.parse(jsonValue) as string;
-              opsChildren.push(parsedValue);
+              for (const [, nodeState] of Object.entries(stateUpdates)) {
+                if (
+                  nodeState &&
+                  typeof nodeState === "object" &&
+                  "value" in nodeState
+                ) {
+                  const jsonValue = nodeState.value;
+                  const parsedValue = JSON.parse(jsonValue) as string;
+                  opsChildren.push(parsedValue);
+                }
+              }
             }
           }
-        }
-      }
 
-      expect({
-        clock: result.docResult.clock,
-        doc: actualDocChildren,
-        ops: opsChildren,
-      }).toStrictEqual(expected);
+          expect({
+            clock: result.docResult.clock,
+            doc: actualDocChildren,
+            ops: opsChildren,
+          }).toStrictEqual(expected);
+          return true;
+        })
+        .toBe(true);
     },
-    assertMemoryDoc: (expectedChildren?: string[]) => {
-      if (!expectedChildren) {
-        expect(cachedDoc).toBeUndefined();
-        return;
-      }
+    assertMemoryDoc: async (expectedChildren?: string[]) => {
+      await expect
+        .poll(() => {
+          if (!expectedChildren) {
+            expect(cachedDoc).toBeUndefined();
+            return true;
+          }
 
-      if (!cachedDoc)
-        throw new Error("Doc not loaded - cannot assert memory doc");
+          if (!cachedDoc)
+            throw new Error("Doc not loaded - cannot assert memory doc");
 
-      const actualChildren: string[] = [];
-      cachedDoc.root.children().forEach((child) => {
-        const typedChild = child as unknown as DocNode<typeof ChildNode>;
-        actualChildren.push(typedChild.state.value.get());
-      });
+          const actualChildren: string[] = [];
+          cachedDoc.root.children().forEach((child) => {
+            const typedChild = child as unknown as DocNode<typeof ChildNode>;
+            actualChildren.push(typedChild.state.value.get());
+          });
 
-      expect(actualChildren).toStrictEqual(expectedChildren);
+          expect(actualChildren).toStrictEqual(expectedChildren);
+          return true;
+        })
+        .toBe(true);
     },
     disconnect: () => {
       api.disconnect();

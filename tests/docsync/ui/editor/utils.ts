@@ -32,7 +32,11 @@ export class EditorHelper extends HelperBase {
     return {
       select: async (block: number, offset: number) => {
         await clientLocator.click();
-        await this._page.keyboard.press("ControlOrMeta+ArrowUp");
+        // Move to start of document: in CI focus may land in the last paragraph,
+        // so press ArrowUp multiple times to reach the first block.
+        for (let i = 0; i < 3; i++) {
+          await this._page.keyboard.press("ControlOrMeta+ArrowUp");
+        }
         for (let i = 0; i < block; i++) {
           await this._page.keyboard.press("ArrowDown");
         }
