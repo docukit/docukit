@@ -39,6 +39,8 @@ export class EditorHelper extends HelperBase {
         for (let i = 0; i < offset; i++) {
           await this._page.keyboard.press("ArrowRight");
         }
+        // Allow selection to settle before typing (CI is slower than local)
+        await this._page.waitForTimeout(10);
       },
     };
   }
