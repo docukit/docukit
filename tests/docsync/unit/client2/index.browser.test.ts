@@ -123,7 +123,9 @@ describe("Client 2", () => {
       client.saveRemote({ docId });
 
       await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+      await expect
+        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .toBe("idle");
     });
   });
 
@@ -559,7 +561,9 @@ describe("Client 2", () => {
       await setupDocWithOperations(client, docId);
       client.saveRemote({ docId });
       await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+      await expect
+        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .toBe("idle");
     });
 
     test("should set status to idle before retry", async () => {
