@@ -1,8 +1,8 @@
 {
   "name": "@docukit/docnode-lexical",
+  "version": "0.2.0",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE.md",
-  "private": true,
   "homepage": "https://docukit.dev",
   "repository": {
     "type": "git",
