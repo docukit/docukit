@@ -30,7 +30,8 @@
     "bench:vitest": "vitest bench",
     "bench:bun": "MITATA=1 bun run tests/core/benchmarks/iterators.bench.ts",
     "dev:docnode": "pnpm --filter @docukit/docnode dev",
-    "publish-npm": "pnpm build && pnpm check && pnpm test:ci && pnpm publish --filter '@docukit/docnode*' --access public"
+    "publish-docnode": "pnpm build && pnpm check && pnpm test:ci && pnpm publish --filter '@docukit/docnode*' --access public",
+    "publish-docsync": "pnpm build && pnpm check && pnpm test:ci && pnpm publish --filter '@docukit/docsync*' --access public --tag alpha"
   },
   "packageManager": "pnpm@9.10.0",
   "lint-staged": {
