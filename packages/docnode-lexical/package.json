@@ -51,5 +51,21 @@
   },
   "devDependencies": {
     "@types/react": "^19.0.0"
-  }
+  },
+  "keywords": [
+    "lexical",
+    "editor",
+    "rte",
+    "rich text",
+    "real-time",
+    "collaborative",
+    "collaboration",
+    "rtc",
+    "conflict-resolution",
+    "CRDT",
+    "OT",
+    "Operational Transformation",
+    "local-first",
+    "offline-first"
+  ]
 }

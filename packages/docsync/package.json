@@ -49,5 +49,20 @@
     "postgres": "^3.4.5",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1"
-  }
+  },
+  "keywords": [
+    "sync",
+    "sync engine",
+    "real-time",
+    "collaborative",
+    "collaboration",
+    "rtc",
+    "conflict-resolution",
+    "CRDT",
+    "OT",
+    "Operational Transformation",
+    "document",
+    "local-first",
+    "offline-first"
+  ]
 }

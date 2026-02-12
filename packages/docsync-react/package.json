@@ -38,5 +38,21 @@
       "types": "./dist/src/exports/*.d.ts",
       "default": "./dist/src/exports/*.js"
     }
-  }
+  },
+  "keywords": [
+    "sync",
+    "sync engine",
+    "react",
+    "real-time",
+    "collaborative",
+    "collaboration",
+    "rtc",
+    "conflict-resolution",
+    "CRDT",
+    "OT",
+    "Operational Transformation",
+    "document",
+    "local-first",
+    "offline-first"
+  ]
 }
