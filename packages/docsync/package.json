@@ -1,7 +1,7 @@
 {
   "name": "@docukit/docsync",
+  "version": "0.0.1-alpha.1",
   "license": "SEE LICENSE IN LICENSE.md",
-  "private": true,
   "type": "module",
   "homepage": "https://docukit.dev/docsync",
   "repository": {
@@ -49,5 +49,20 @@
     "postgres": "^3.4.5",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1"
-  }
+  },
+  "keywords": [
+    "sync",
+    "sync engine",
+    "real-time",
+    "collaborative",
+    "collaboration",
+    "rtc",
+    "conflict-resolution",
+    "CRDT",
+    "OT",
+    "Operational Transformation",
+    "document",
+    "local-first",
+    "offline-first"
+  ]
 }

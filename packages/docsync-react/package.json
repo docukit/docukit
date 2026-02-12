@@ -1,7 +1,7 @@
 {
   "name": "@docukit/docsync-react",
+  "version": "0.0.1-alpha.1",
   "license": "SEE LICENSE IN LICENSE.md",
-  "private": true,
   "type": "module",
   "homepage": "https://docukit.dev/docsync",
   "repository": {
@@ -38,5 +38,21 @@
       "types": "./dist/src/exports/*.d.ts",
       "default": "./dist/src/exports/*.js"
     }
-  }
+  },
+  "keywords": [
+    "sync",
+    "sync engine",
+    "react",
+    "real-time",
+    "collaborative",
+    "collaboration",
+    "rtc",
+    "conflict-resolution",
+    "CRDT",
+    "OT",
+    "Operational Transformation",
+    "document",
+    "local-first",
+    "offline-first"
+  ]
 }

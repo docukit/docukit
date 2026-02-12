@@ -1,8 +1,8 @@
 {
   "name": "@docukit/docnode",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "license": "SEE LICENSE IN LICENSE.md",
-  "description": "A type-safe, fast, ID-based Operational Transformation (OT) framework.",
+  "description": "Type-safe documents with conflict resolution. Faster than any CRDT.",
   "type": "module",
   "homepage": "https://docukit.dev",
   "repository": {
@@ -30,5 +30,20 @@
   },
   "dependencies": {
     "ulid": "^3.0.1"
-  }
+  },
+  "keywords": [
+    "real-time",
+    "collaborative",
+    "collaboration",
+    "rtc",
+    "conflict-resolution",
+    "CRDT",
+    "OT",
+    "Operational Transformation",
+    "undo",
+    "tree",
+    "document",
+    "local-first",
+    "offline-first"
+  ]
 }
