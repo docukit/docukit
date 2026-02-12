@@ -1,7 +1,7 @@
 {
   "name": "@docukit/docsync",
+  "version": "0.0.1-alpha.1",
   "license": "SEE LICENSE IN LICENSE.md",
-  "private": true,
   "type": "module",
   "homepage": "https://docukit.dev/docsync",
   "repository": {
