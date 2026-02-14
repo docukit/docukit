@@ -53,14 +53,25 @@ export class EditorHelper extends HelperBase {
     const referenceContent = await this._reference
       .locator("[data-lexical-editor] p")
       .allTextContents();
+    expect(referenceContent).toStrictEqual(blocks);
+
+    // Wait for sync to other panels (allow time for real-time sync)
+    const expectedFirstBlock = blocks[0];
+    if (!expectedFirstBlock)
+      throw new Error("Expected first block to be defined");
+    await expect(
+      this._otherTab.locator("[data-lexical-editor] p").first(),
+    ).toHaveText(expectedFirstBlock, { timeout: 1_000 });
+    await expect(
+      this._otherDevice.locator("[data-lexical-editor] p").first(),
+    ).toHaveText(expectedFirstBlock, { timeout: 1_000 });
+
     const otherTabContent = await this._otherTab
       .locator("[data-lexical-editor] p")
       .allTextContents();
     const otherDeviceContent = await this._otherDevice
       .locator("[data-lexical-editor] p")
       .allTextContents();
-
-    expect(referenceContent).toStrictEqual(blocks);
     expect(otherTabContent).toStrictEqual(blocks);
     expect(otherDeviceContent).toStrictEqual(blocks);
   }
