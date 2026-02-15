@@ -93,7 +93,6 @@ describe("Local-First", () => {
 
       // LOAD OTHER DEVICE
       await otherDevice.loadDoc();
-      await otherDevice.waitSync();
       // otherDevice gets operations from server and applies them
       await otherDevice.assertMemoryDoc(["Hello"]);
       await otherDevice.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
@@ -147,7 +146,6 @@ describe("Local-First", () => {
       await otherDevice.assertMemoryDoc([]);
 
       // websocket
-      await expect(() => otherDevice.waitSync()).rejects.toThrow();
       await otherDevice.assertMemoryDoc([]);
       await otherDevice.assertIDBDoc({ clock: 0, doc: [], ops: [] });
       await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });

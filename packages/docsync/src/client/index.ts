@@ -16,11 +16,13 @@ import type {
   DocLoadHandler,
   DocUnloadHandler,
   ClientSocket,
-  DocSyncEventName,
-  DocSyncEvents,
   Presence,
   DeferredState,
 } from "../shared/types.js";
+import { handleDeleteDoc } from "./handlers/delete-doc.js";
+import { handlePresence } from "./handlers/presence.js";
+import { handleSyncAndDoPush } from "./handlers/sync.js";
+import { handleUnsubscribe } from "./handlers/unsubscribe.js";
 
 // TODO: review this type!
 type LocalResolved<S, O> = {
@@ -512,18 +514,11 @@ export class DocSyncClient<
         presence: patch,
       });
       // Other devices: send via WebSocket only when connected
-      if (this._socket.connected) {
-        void (async () => {
-          if (!this._socket.connected) return;
-          const { error } = await this._request("presence", {
-            docId,
-            presence: state.data,
-          });
-          if (error) {
-            console.error(`Error setting presence for doc ${docId}:`, error);
-          }
-        })();
-      }
+      void handlePresence({
+        socket: this._socket,
+        docId,
+        presence: state.data,
+      });
     }, this._presenceDebounce);
 
     this._presenceDebounceState.set(docId, { timeout, data: presence });
@@ -702,14 +697,7 @@ export class DocSyncClient<
    * Should be called when a document is unloaded (refCount 1 → 0).
    */
   async unsubscribeDoc(docId: string): Promise<void> {
-    // Skip if socket is not connected (e.g., in local-only mode or during tests)
-    if (!this._socket.connected) return;
-    try {
-      await this._request("unsubscribe-doc", { docId });
-    } catch {
-      // Silently ignore errors during cleanup (e.g., socket
-      // disconnected during request, timeout, or server error)
-    }
+    await handleUnsubscribe(this._socket, { docId });
   }
 
   protected async _doPush({ docId }: { docId: string }) {
@@ -729,189 +717,46 @@ export class DocSyncClient<
     const operations = operationsBatches.flat();
     const clientClock = stored?.clock ?? 0;
 
-    let response;
-    try {
-      const presenceState = this._presenceDebounceState.get(docId);
-      if (presenceState) {
-        clearTimeout(presenceState.timeout);
-        this._presenceDebounceState.delete(docId);
-        this._sendMessage({
-          type: "PRESENCE",
-          docId,
-          presence: { [this._clientId]: presenceState.data },
-        });
-      }
-
-      response = await this._request("sync-operations", {
-        clock: clientClock,
+    const presenceState = this._presenceDebounceState.get(docId);
+    if (presenceState) {
+      clearTimeout(presenceState.timeout);
+      this._presenceDebounceState.delete(docId);
+      this._sendMessage({
+        type: "PRESENCE",
         docId,
-        operations,
-        ...(presenceState ? { presence: presenceState.data } : {}),
+        presence: { [this._clientId]: presenceState.data },
       });
-    } catch (error) {
-      // Emit sync event (network error)
-      this._emit(this._syncHandlers, {
-        req: {
-          docId,
-          operations,
-          clock: clientClock,
-        },
-        error: {
-          type: "NetworkError",
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-
-      // Retry on failure
-      this._pushStatusByDocId.set(docId, "idle");
-      void this._doPush({ docId });
-      return;
     }
 
-    // Check if server returned an error
-    if ("error" in response && response.error) {
-      // Emit sync event with server error
-      this._emit(this._syncHandlers, {
-        req: {
-          docId,
-          operations,
-          clock: clientClock,
-        },
-        error: response.error,
-      });
-
-      // Retry on error
-      this._pushStatusByDocId.set(docId, "idle");
-      void this._doPush({ docId });
-      return;
-    }
-
-    // At this point, response must have data
-    const { data } = response;
-
-    // Emit sync event (success)
-    this._emit(this._syncHandlers, {
-      req: {
-        docId,
-        operations,
-        clock: clientClock,
+    await handleSyncAndDoPush<D, S, O>({
+      socket: this._socket,
+      provider,
+      docBinding: this._docBinding,
+      operationsBatches,
+      operations,
+      docId,
+      clientClock,
+      ...(presenceState ? { presence: presenceState.data } : {}),
+      pushStatusByDocId: this._pushStatusByDocId,
+      emitSync: (event) => {
+        this._emit(this._syncHandlers, event);
       },
-      data: {
-        ...(data.operations ? { operations: data.operations } : {}),
-        ...(data.serializedDoc ? { serializedDoc: data.serializedDoc } : {}),
-        clock: data.clock,
+      applyServerOperations: ({ docId: targetDocId, operations: targetOps }) =>
+        this._applyServerOperations({
+          docId: targetDocId,
+          operations: targetOps,
+        }),
+      sendMessage: (message) => this._sendMessage(message),
+      getOwnPresencePatch: (targetDocId) =>
+        this._getOwnPresencePatch(targetDocId),
+      retryPush: (targetDocId) => {
+        void this._doPush({ docId: targetDocId });
       },
     });
-
-    // Atomically: delete synced operations + consolidate into serialized doc
-    let didConsolidate = false; // Track if we actually saved new operations to IDB
-    await provider.transaction("readwrite", async (ctx) => {
-      // Delete client operations that were synced (delete batches, not individual ops)
-      if (operationsBatches.length > 0) {
-        await ctx.deleteOperations({
-          docId,
-          count: operationsBatches.length,
-        });
-      }
-
-      // Consolidate operations into serialized doc
-      const stored = await ctx.getSerializedDoc(docId);
-      if (!stored) return;
-
-      // Skip consolidation if another client (same IDB) already updated to this clock
-      // This handles the case where another tab/client already wrote this update
-      if (stored.clock >= data.clock) {
-        didConsolidate = false;
-        return;
-      }
-
-      // Collect all operations to apply: server ops first, then client ops
-      const serverOps = data.operations ?? [];
-      const allOps = [...serverOps, ...operations];
-
-      // Only proceed if there are operations to apply
-      if (allOps.length > 0) {
-        const doc = this._docBinding.deserialize(stored.serializedDoc);
-
-        // Apply all operations in order (server ops first, then client ops)
-        for (const op of allOps) {
-          this._docBinding.applyOperations(doc, op);
-        }
-        const serializedDoc = this._docBinding.serialize(doc);
-
-        // Before saving, verify clock hasn't changed (another concurrent write)
-        // This prevents race conditions when multiple tabs/clients share the same IDB
-        const recheckStored = await ctx.getSerializedDoc(docId);
-        if (!recheckStored || recheckStored?.clock !== stored.clock) {
-          // Clock changed during our transaction - another client beat us
-          // Silently skip to avoid duplicate operations
-          return;
-        }
-
-        await ctx.saveSerializedDoc({
-          serializedDoc,
-          docId,
-          clock: data.clock, // Use clock from server
-        });
-        didConsolidate = true; // Mark that we successfully saved
-      }
-    });
-
-    // CRITICAL: Only apply serverOps to memory if we actually saved to IDB
-    // If we skipped (clock already up-to-date), operations are already in memory via BC
-    if (didConsolidate && data.operations && data.operations.length > 0) {
-      // Apply to our own memory
-      void this._applyServerOperations({
-        docId,
-        operations: data.operations,
-      });
-
-      // Broadcast server operations to other tabs so they can apply them too
-      const presencePatch = this._getOwnPresencePatch(docId);
-      for (const op of data.operations) {
-        this._sendMessage({
-          type: "OPERATIONS",
-          operations: op,
-          docId,
-          ...(presencePatch && { presence: presencePatch }),
-        });
-      }
-    }
-
-    // Status may have changed to "pushing-with-pending" during async ops
-    const currentStatus = this._pushStatusByDocId.get(docId);
-    const shouldRetry = currentStatus === "pushing-with-pending";
-    if (shouldRetry) {
-      // Keep status as "pushing" and retry immediately to avoid race window
-      // where a dirty event could trigger another concurrent _doPush
-      void this._doPush({ docId });
-    } else {
-      this._pushStatusByDocId.set(docId, "idle");
-    }
   }
 
-  protected async _request<E extends DocSyncEventName>(
-    event: E,
-    payload: DocSyncEvents<S, O>[E]["request"],
-  ): Promise<DocSyncEvents<S, O>[E]["response"]> {
-    type Emit = <K extends DocSyncEventName>(
-      event: K,
-      payload: DocSyncEvents<S, O>[K]["request"],
-      cb: (res: DocSyncEvents<S, O>[K]["response"]) => void,
-    ) => void;
-
-    // TO-DO: should I reject on disconnect?
-    return new Promise((resolve, reject) => {
-      // Add a timeout to prevent hanging forever if socket disconnects during request
-      const timeout = setTimeout(() => {
-        reject(new Error(`Request timeout: ${event}`));
-      }, 5000); // 5 second timeout
-
-      (this._socket.emit as Emit)(event, payload, (response) => {
-        clearTimeout(timeout);
-        resolve(response);
-      });
-    });
+  protected async _deleteDoc(docId: string): Promise<boolean> {
+    return handleDeleteDoc(this._socket, { docId });
   }
 
   // ============================================================================

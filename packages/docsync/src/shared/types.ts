@@ -1,6 +1,10 @@
 // TODO: review this line! Importing socket.io and socket.io-client
 // as dynamic imports produces environment pollution errors.
 /* eslint-disable @typescript-eslint/consistent-type-imports */
+import type { DeleteDocHandler } from "../server/handlers/delete-doc.js";
+import type { PresenceHandler } from "../server/handlers/presence.js";
+import type { SyncOperationsHandler } from "../server/handlers/sync.js";
+import type { UnsubscribeDocHandler } from "../server/handlers/unsubscribe.js";
 
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 /**
@@ -62,55 +66,11 @@ export type QueryResult<D, E = Error> =
 // #region DocSync Events (Request/Response)
 // ============================================================================
 
-export type DocSyncEvents<S, O> = {
-  "sync-operations": {
-    request: {
-      docId: string;
-      operations?: O[];
-      clock: number;
-      presence?: unknown;
-    };
-    response: Result<
-      {
-        docId: string;
-        operations?: O[];
-        serializedDoc?: S;
-        clock: number;
-      },
-      {
-        type: "AuthorizationError" | "DatabaseError" | "ValidationError";
-        message: string;
-      }
-    >;
-  };
-  presence: {
-    // Client sends raw presence data; server wraps with socket.id
-    request: { docId: string; presence: unknown };
-    response: Result<void>;
-  };
-  "delete-doc": {
-    request: { docId: string };
-    // TODO: use Result type
-    response: { success: boolean };
-  };
-  // Client unsubscribes from document updates
-  "unsubscribe-doc": {
-    request: { docId: string };
-    // TODO: use Result type
-    response: { success: boolean };
-  };
-};
-
-export type DocSyncEventName = keyof DocSyncEvents<unknown, unknown>;
-
-export type AuthorizeEvent<TContext = {}, S = unknown, O = unknown> = {
-  [K in DocSyncEventName]: {
-    type: K;
-    payload: DocSyncEvents<S, O>[K]["request"];
-    userId: string;
-    context: TContext;
-  };
-}[DocSyncEventName];
+export type DocSyncEventName =
+  | "sync-operations"
+  | "presence"
+  | "delete-doc"
+  | "unsubscribe-doc";
 
 // #endregion
 
@@ -426,7 +386,12 @@ export type ServerConfig<TContext, D extends {}, S extends {}, O extends {}> = {
    *
    * @returns true to allow, false to deny.
    */
-  authorize?(ev: AuthorizeEvent<TContext, S, O>): Promise<boolean>;
+  authorize?(ev: {
+    type: DocSyncEventName;
+    payload: unknown;
+    userId: string;
+    context: TContext;
+  }): Promise<boolean>;
 };
 
 // #endregion
@@ -481,10 +446,10 @@ export type Provider<S, O, P extends "server" | "client"> = {
  */
 
 type ClientToServerEvents<S, O> = {
-  [K in DocSyncEventName]: (
-    payload: DocSyncEvents<S, O>[K]["request"],
-    cb: (res: DocSyncEvents<S, O>[K]["response"]) => void,
-  ) => void;
+  "sync-operations": SyncOperationsHandler<S, O>;
+  presence: PresenceHandler;
+  "delete-doc": DeleteDocHandler;
+  "unsubscribe-doc": UnsubscribeDocHandler;
 };
 
 type ServerToClientEvents = {
@@ -503,15 +468,5 @@ export type ClientSocket<S, O> = import("socket.io-client").Socket<
   ServerToClientEvents,
   ClientToServerEvents<S, O>
 >;
-
-/**
- * Server socket event handlers type - TypeScript errors if any event is missing.
- */
-export type SocketHandlers<S, O> = {
-  [K in DocSyncEventName]: (
-    payload: DocSyncEvents<S, O>[K]["request"],
-    cb: (res: DocSyncEvents<S, O>[K]["response"]) => void,
-  ) => void | Promise<void>;
-};
 
 // #endregion
