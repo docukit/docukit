@@ -1,4 +1,5 @@
-import type { Presence, Result } from "../../shared/types.js";
+/* eslint-disable @typescript-eslint/no-empty-object-type */
+import type { Result, ServerConnectionSocket } from "../../shared/types.js";
 import type { DocSyncServer } from "../index.js";
 
 const OPERATION_THRESHOLD = 100;
@@ -28,24 +29,14 @@ export type SyncOperationsHandler<S = unknown, O = unknown> = (
   cb: (res: SyncOperationsResponse<S, O>) => void,
 ) => void | Promise<void>;
 
-type SyncSocket<S extends object, O extends object> = {
-  id: string;
-  on: (event: "sync-operations", handler: SyncOperationsHandler<S, O>) => void;
-  join: (room: string) => void | Promise<void>;
-  emit: (
-    event: "presence",
-    payload: { docId: string; presence: Presence },
-  ) => void;
-};
-
 type SyncDeps<
-  TContext,
-  D extends object,
-  S extends object,
-  O extends object,
+  TContext = {},
+  D extends {} = {},
+  S extends {} = {},
+  O extends {} = {},
 > = {
   server: DocSyncServer<TContext, D, S, O>;
-  socket: SyncSocket<S, O>;
+  socket: ServerConnectionSocket<S, O>;
   userId: string;
   deviceId: string;
   context: TContext;
@@ -53,10 +44,10 @@ type SyncDeps<
 };
 
 export function handleSyncOperations<
-  TContext,
-  D extends object,
-  S extends object,
-  O extends object,
+  TContext = {},
+  D extends {} = {},
+  S extends {} = {},
+  O extends {} = {},
 >({
   server,
   socket,

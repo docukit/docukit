@@ -15,7 +15,7 @@ import { handlePresence } from "./handlers/presence.js";
 import { handleSyncOperations } from "./handlers/sync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
 
-type AuthenticatedContext<TContext> = {
+type AuthenticatedContext<TContext = {}> = {
   userId: string;
   deviceId: string;
   /** Client-generated id for presence (set from auth or socket.id in connection handler) */
@@ -42,9 +42,10 @@ export class DocSyncServer<
   private _socketToDocsMap = new Map<string, Set<string>>();
 
   // Event handlers
-  private _clientConnectHandlers = new Set<ClientConnectHandler<TContext>>();
+  // ClientConnectHandler and SyncRequestHandler use default (unknown) to allow covariance
+  private _clientConnectHandlers = new Set<ClientConnectHandler>();
   private _clientDisconnectHandlers = new Set<ClientDisconnectHandler>();
-  private _syncRequestHandlers = new Set<SyncRequestHandler<O, S>>();
+  private _syncRequestHandlers = new Set<SyncRequestHandler>();
 
   constructor(config: ServerConfig<TContext, D, S, O>) {
     this._io = new Server(config.port ?? 8080, {
@@ -121,7 +122,7 @@ export class DocSyncServer<
 
     this._io.on("connection", (socket) => {
       const { userId, deviceId, clientId, context } =
-        socket.data as AuthenticatedContext<TContext>;
+        socket.data as AuthenticatedContext;
 
       // Emit client connect event
       this._emit(this._clientConnectHandlers, {
@@ -199,23 +200,24 @@ export class DocSyncServer<
         });
       };
 
-      handleSyncOperations<TContext, D, S, O>({
-        server: this,
+      const server = this as DocSyncServer;
+      handleSyncOperations({
+        server,
         socket,
         userId,
         deviceId,
         context,
         applyPresenceUpdate,
       });
-      handleUnsubscribeDoc({ server: this, socket, clientId });
-      handlePresence<TContext>({
-        server: this,
+      handleUnsubscribeDoc({ server, socket, clientId });
+      handlePresence({
+        server,
         socket,
         userId,
         context,
         applyPresenceUpdate,
       });
-      handleDeleteDoc<TContext>({ server: this, socket, userId, context });
+      handleDeleteDoc({ server, socket, userId, context });
     });
   }
 
@@ -235,9 +237,9 @@ export class DocSyncServer<
    * @returns Unsubscribe function
    */
   onClientConnect(handler: ClientConnectHandler<TContext>): () => void {
-    this._clientConnectHandlers.add(handler);
+    this._clientConnectHandlers.add(handler as ClientConnectHandler);
     return () => {
-      this._clientConnectHandlers.delete(handler);
+      this._clientConnectHandlers.delete(handler as ClientConnectHandler);
     };
   }
 
@@ -257,9 +259,9 @@ export class DocSyncServer<
    * @returns Unsubscribe function
    */
   onSyncRequest(handler: SyncRequestHandler<O, S>): () => void {
-    this._syncRequestHandlers.add(handler);
+    this._syncRequestHandlers.add(handler as SyncRequestHandler);
     return () => {
-      this._syncRequestHandlers.delete(handler);
+      this._syncRequestHandlers.delete(handler as SyncRequestHandler);
     };
   }
 

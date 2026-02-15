@@ -464,6 +464,12 @@ export type ServerSocket<S, O> = import("socket.io").Server<
   ServerToClientEvents
 >;
 
+/** Per-connection socket on the server (has .id, .join, .emit, .on, etc.). */
+export type ServerConnectionSocket<S, O> = import("socket.io").Socket<
+  ClientToServerEvents<S, O>,
+  ServerToClientEvents
+>;
+
 export type ClientSocket<S, O> = import("socket.io-client").Socket<
   ServerToClientEvents,
   ClientToServerEvents<S, O>
