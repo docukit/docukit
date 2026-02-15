@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DocSyncClient,
   type ClientConfig,
@@ -57,11 +57,16 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
     const id = "id" in args ? args.id : undefined;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
     const type = args.type;
+    const getDocArgs = useMemo<GetDocArgs | undefined>(() => {
+      if (id !== undefined) return { type, id, createIfMissing };
+      if (createIfMissing) return { type, createIfMissing: true };
+      return undefined;
+    }, [id, type, createIfMissing]);
 
     useEffect(() => {
-      if (!client) return;
-      return client.getDoc(args, setResult);
-    }, [client, id, type, createIfMissing]);
+      if (!client || !getDocArgs) return;
+      return client.getDoc(getDocArgs, setResult);
+    }, [getDocArgs]);
 
     return result;
   }
@@ -69,7 +74,7 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
   function usePresence(args: { docId: string | undefined }) {
     const [presence, INTERNAL_setPresence] = useState<Presence>({});
     const { docId } = args;
-
+    const getPresenceArgs = useMemo(() => ({ docId }), [docId]);
     // Wrap in useCallback to maintain stable reference across renders
     const setPresence = useCallback(
       (newPresence: unknown) => {
@@ -81,8 +86,8 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
 
     useEffect(() => {
       if (!client) return;
-      return client.getPresence(args, INTERNAL_setPresence);
-    }, [client, docId]);
+      return client.getPresence(getPresenceArgs, INTERNAL_setPresence);
+    }, [getPresenceArgs]);
 
     return [presence, setPresence] as const;
   }
