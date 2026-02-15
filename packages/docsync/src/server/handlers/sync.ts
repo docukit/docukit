@@ -1,4 +1,5 @@
 import type {
+  DocSyncEventName,
   DocBinding,
   Presence,
   Provider,
@@ -34,15 +35,9 @@ export type SyncOperationsHandler<S = unknown, O = unknown> = (
   cb: (res: SyncOperationsResponse<S, O>) => void,
 ) => void | Promise<void>;
 
-export type SyncOperationsAuthorizeEvent<TContext = unknown, O = unknown> = {
-  type: "sync-operations";
-  payload: SyncOperationsRequest<O>;
-  userId: string;
-  context: TContext;
-};
-
-type SyncSocket = {
+type SyncSocket<S extends object, O extends object> = {
   id: string;
+  on: (event: "sync-operations", handler: SyncOperationsHandler<S, O>) => void;
   join: (room: string) => void | Promise<void>;
   emit: (
     event: "presence",
@@ -57,22 +52,27 @@ type SyncDeps<
   O extends object,
 > = {
   io: ServerSocket<S, O>;
-  socket: SyncSocket;
+  socket: SyncSocket<S, O>;
   userId: string;
   deviceId: string;
   context: TContext;
+  authorize?:
+    | ((ev: {
+        type: DocSyncEventName;
+        payload: unknown;
+        userId: string;
+        context: TContext;
+      }) => Promise<boolean>)
+    | undefined;
   provider: Provider<S, O, "server">;
   docBinding: DocBinding<D, S, O>;
   socketToDocsMap: Map<string, Set<string>>;
   presenceByDoc: Map<string, Presence>;
-  checkAuth: (
-    event: SyncOperationsAuthorizeEvent<TContext, O>,
-  ) => Promise<boolean>;
   applyPresenceUpdate: (args: { docId: string; presence: unknown }) => void;
   emitSyncRequest: (event: SyncRequestEvent<O, S>) => void;
 };
 
-export const createSyncOperationsHandler = <
+export function handleSyncOperations<
   TContext,
   D extends object,
   S extends object,
@@ -83,27 +83,34 @@ export const createSyncOperationsHandler = <
   userId,
   deviceId,
   context,
+  authorize,
   provider,
   docBinding,
   socketToDocsMap,
   presenceByDoc,
-  checkAuth,
   applyPresenceUpdate,
   emitSyncRequest,
-}: SyncDeps<TContext, D, S, O>) => {
-  return async (
+}: SyncDeps<TContext, D, S, O>): void {
+  const authorizeSyncOperations = async (
+    payload: SyncOperationsRequest<O>,
+  ): Promise<boolean> => {
+    if (!authorize) return true;
+    return authorize({
+      type: "sync-operations",
+      payload,
+      userId,
+      context,
+    });
+  };
+
+  const handler: SyncOperationsHandler<S, O> = async (
     payload: SyncOperationsRequest<O>,
     cb: (res: SyncOperationsResponse<S, O>) => void,
   ): Promise<void> => {
     const { docId, operations = [], clock } = payload;
     const startTime = Date.now();
 
-    const authorized = await checkAuth({
-      type: "sync-operations",
-      payload,
-      userId,
-      context,
-    });
+    const authorized = await authorizeSyncOperations(payload);
     if (!authorized) {
       const errorEvent = {
         type: "AuthorizationError" as const,
@@ -281,4 +288,6 @@ export const createSyncOperationsHandler = <
       });
     }
   };
-};
+
+  socket.on("sync-operations", handler);
+}

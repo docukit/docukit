@@ -10,17 +10,10 @@ import {
   type Presence,
   type DocBinding,
 } from "../shared/types.js";
-import {
-  createDeleteDocHandler,
-  type DeleteDocRequest,
-  type DeleteDocHandler,
-} from "./handlers/delete-doc.js";
-import { createPresenceHandler } from "./handlers/presence.js";
-import {
-  createSyncOperationsHandler,
-  type SyncOperationsRequest,
-} from "./handlers/sync.js";
-import { createUnsubscribeDocHandler } from "./handlers/unsubscribe.js";
+import { handleDeleteDoc } from "./handlers/delete-doc.js";
+import { handlePresence } from "./handlers/presence.js";
+import { handleSyncOperations } from "./handlers/sync.js";
+import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
 
 type AuthenticatedContext<TContext> = {
   userId: string;
@@ -175,26 +168,6 @@ export class DocSyncServer<
         });
       });
 
-      // Helper to check authorization
-      const checkAuth = async (
-        event:
-          | {
-              type: "sync-operations";
-              payload: SyncOperationsRequest<O>;
-              userId: string;
-              context: TContext;
-            }
-          | {
-              type: "delete-doc";
-              payload: DeleteDocRequest;
-              userId: string;
-              context: TContext;
-            },
-      ): Promise<boolean> => {
-        if (!this._authorize) return true;
-        return this._authorize(event);
-      };
-
       const applyPresenceUpdate = ({
         docId,
         presence,
@@ -226,46 +199,41 @@ export class DocSyncServer<
         });
       };
 
-      const syncOperationsHandler = createSyncOperationsHandler<
-        TContext,
-        D,
-        S,
-        O
-      >({
+      handleSyncOperations<TContext, D, S, O>({
         io: this._io,
         socket,
         userId,
         deviceId,
         context,
+        authorize: this._authorize,
         provider: this._provider,
         docBinding: this._docBinding,
         socketToDocsMap: this._socketToDocsMap,
         presenceByDoc: this._presenceByDoc,
-        checkAuth,
         applyPresenceUpdate,
         emitSyncRequest: (event) =>
           this._emit(this._syncRequestHandlers, event),
       });
-      const unsubscribeDocHandler = createUnsubscribeDocHandler({
+      // unsubscribe does not process authorization due to the nature of the action
+      handleUnsubscribeDoc({
         socket,
         clientId,
         socketToDocsMap: this._socketToDocsMap,
         presenceByDoc: this._presenceByDoc,
       });
-      const presenceHandler = createPresenceHandler({
+      handlePresence<TContext>({
+        socket,
+        userId,
+        context,
+        authorize: this._authorize,
         applyPresenceUpdate,
       });
-      const deleteDocHandler: DeleteDocHandler =
-        createDeleteDocHandler<TContext>({
-          userId,
-          context,
-          checkAuth,
-        });
-
-      socket.on("sync-operations", syncOperationsHandler);
-      socket.on("delete-doc", deleteDocHandler);
-      socket.on("unsubscribe-doc", unsubscribeDocHandler);
-      socket.on("presence", presenceHandler);
+      handleDeleteDoc<TContext>({
+        socket,
+        userId,
+        context,
+        authorize: this._authorize,
+      });
     });
   }
 

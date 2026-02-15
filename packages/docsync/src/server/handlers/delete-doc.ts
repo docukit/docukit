@@ -1,3 +1,5 @@
+import type { DocSyncEventName } from "../../shared/types.js";
+
 export type DeleteDocRequest = { docId: string };
 export type DeleteDocResponse = { success: boolean };
 export type DeleteDocHandler = (
@@ -5,35 +7,50 @@ export type DeleteDocHandler = (
   cb: (res: DeleteDocResponse) => void,
 ) => void | Promise<void>;
 
-export type DeleteDocAuthorizeEvent<TContext = unknown> = {
-  type: "delete-doc";
-  payload: DeleteDocRequest;
-  userId: string;
-  context: TContext;
+type DeleteDocSocket = {
+  on: (event: "delete-doc", handler: DeleteDocHandler) => void;
 };
 
 type DeleteDocDeps<TContext> = {
+  socket: DeleteDocSocket;
   userId: string;
   context: TContext;
-  checkAuth: (event: DeleteDocAuthorizeEvent<TContext>) => Promise<boolean>;
+  authorize?:
+    | ((ev: {
+        type: DocSyncEventName;
+        payload: unknown;
+        userId: string;
+        context: TContext;
+      }) => Promise<boolean>)
+    | undefined;
 };
 
-export const createDeleteDocHandler = <TContext>({
+export const handleDeleteDoc = <TContext>({
+  socket,
   userId,
   context,
-  checkAuth,
-}: DeleteDocDeps<TContext>): DeleteDocHandler => {
-  return async (payload, cb) => {
-    const authorized = await checkAuth({
+  authorize,
+}: DeleteDocDeps<TContext>): void => {
+  const authorizeDeleteDoc = async (
+    payload: DeleteDocRequest,
+  ): Promise<boolean> => {
+    if (!authorize) return true;
+    return authorize({
       type: "delete-doc",
       payload,
       userId,
       context,
     });
+  };
+
+  const handler: DeleteDocHandler = async (payload, cb) => {
+    const authorized = await authorizeDeleteDoc(payload);
     if (!authorized) {
       cb({ success: false });
       return;
     }
     cb({ success: true });
   };
+
+  socket.on("delete-doc", handler);
 };

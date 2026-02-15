@@ -9,6 +9,7 @@ export type UnsubscribeDocHandler = (
 
 type UnsubscribeSocket = {
   id: string;
+  on: (event: "unsubscribe-doc", handler: UnsubscribeDocHandler) => void;
   leave: (room: string) => void | Promise<void>;
   to: (room: string) => {
     emit: (
@@ -25,13 +26,13 @@ type UnsubscribeDeps = {
   presenceByDoc: Map<string, Presence>;
 };
 
-export const createUnsubscribeDocHandler = ({
+export function handleUnsubscribeDoc({
   socket,
   clientId,
   socketToDocsMap,
   presenceByDoc,
-}: UnsubscribeDeps) => {
-  return async (
+}: UnsubscribeDeps): void {
+  const handler: UnsubscribeDocHandler = async (
     { docId }: UnsubscribeDocRequest,
     cb: (res: UnsubscribeDocResponse) => void,
   ): Promise<void> => {
@@ -61,4 +62,6 @@ export const createUnsubscribeDocHandler = ({
 
     cb({ success: true });
   };
-};
+
+  socket.on("unsubscribe-doc", handler);
+}
