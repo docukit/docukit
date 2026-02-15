@@ -1,4 +1,5 @@
 import type { Presence } from "../../shared/types.js";
+import type { DocSyncServer } from "../index.js";
 
 export type UnsubscribeDocRequest = { docId: string };
 export type UnsubscribeDocResponse = { success: boolean };
@@ -20,18 +21,19 @@ type UnsubscribeSocket = {
 };
 
 type UnsubscribeDeps = {
+  server: DocSyncServer;
   socket: UnsubscribeSocket;
   clientId: string;
-  socketToDocsMap: Map<string, Set<string>>;
-  presenceByDoc: Map<string, Presence>;
 };
 
 export function handleUnsubscribeDoc({
+  server,
   socket,
   clientId,
-  socketToDocsMap,
-  presenceByDoc,
 }: UnsubscribeDeps): void {
+  const socketToDocsMap = server["_socketToDocsMap"];
+  const presenceByDoc = server["_presenceByDoc"];
+
   const handler: UnsubscribeDocHandler = async (
     { docId }: UnsubscribeDocRequest,
     cb: (res: UnsubscribeDocResponse) => void,

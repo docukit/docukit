@@ -1,4 +1,5 @@
-import type { DocSyncEventName, Result } from "../../shared/types.js";
+import type { Result } from "../../shared/types.js";
+import type { DocSyncServer } from "../index.js";
 
 export type PresenceRequest = { docId: string; presence: unknown };
 export type PresenceResponse = Result<
@@ -15,27 +16,21 @@ type PresenceSocket = {
 };
 
 type PresenceDeps<TContext> = {
+  server: DocSyncServer<TContext>;
   socket: PresenceSocket;
   userId: string;
   context: TContext;
-  authorize?:
-    | ((ev: {
-        type: DocSyncEventName;
-        payload: unknown;
-        userId: string;
-        context: TContext;
-      }) => Promise<boolean>)
-    | undefined;
   applyPresenceUpdate: (args: { docId: string; presence: unknown }) => void;
 };
 
 export function handlePresence<TContext>({
+  server,
   socket,
   userId,
   context,
-  authorize,
   applyPresenceUpdate,
 }: PresenceDeps<TContext>): void {
+  const authorize = server["_authorize"];
   const authorizePresence = async (
     payload: PresenceRequest,
   ): Promise<boolean> => {

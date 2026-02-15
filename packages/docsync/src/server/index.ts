@@ -200,40 +200,22 @@ export class DocSyncServer<
       };
 
       handleSyncOperations<TContext, D, S, O>({
-        io: this._io,
+        server: this,
         socket,
         userId,
         deviceId,
         context,
-        authorize: this._authorize,
-        provider: this._provider,
-        docBinding: this._docBinding,
-        socketToDocsMap: this._socketToDocsMap,
-        presenceByDoc: this._presenceByDoc,
         applyPresenceUpdate,
-        emitSyncRequest: (event) =>
-          this._emit(this._syncRequestHandlers, event),
       });
-      // unsubscribe does not process authorization due to the nature of the action
-      handleUnsubscribeDoc({
-        socket,
-        clientId,
-        socketToDocsMap: this._socketToDocsMap,
-        presenceByDoc: this._presenceByDoc,
-      });
+      handleUnsubscribeDoc({ server: this, socket, clientId });
       handlePresence<TContext>({
+        server: this,
         socket,
         userId,
         context,
-        authorize: this._authorize,
         applyPresenceUpdate,
       });
-      handleDeleteDoc<TContext>({
-        socket,
-        userId,
-        context,
-        authorize: this._authorize,
-      });
+      handleDeleteDoc<TContext>({ server: this, socket, userId, context });
     });
   }
 

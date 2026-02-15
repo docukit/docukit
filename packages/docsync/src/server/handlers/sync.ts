@@ -1,12 +1,5 @@
-import type {
-  DocSyncEventName,
-  DocBinding,
-  Presence,
-  Provider,
-  Result,
-  ServerSocket,
-  SyncRequestEvent,
-} from "../../shared/types.js";
+import type { Presence, Result } from "../../shared/types.js";
+import type { DocSyncServer } from "../index.js";
 
 const OPERATION_THRESHOLD = 100;
 
@@ -51,25 +44,12 @@ type SyncDeps<
   S extends object,
   O extends object,
 > = {
-  io: ServerSocket<S, O>;
+  server: DocSyncServer<TContext, D, S, O>;
   socket: SyncSocket<S, O>;
   userId: string;
   deviceId: string;
   context: TContext;
-  authorize?:
-    | ((ev: {
-        type: DocSyncEventName;
-        payload: unknown;
-        userId: string;
-        context: TContext;
-      }) => Promise<boolean>)
-    | undefined;
-  provider: Provider<S, O, "server">;
-  docBinding: DocBinding<D, S, O>;
-  socketToDocsMap: Map<string, Set<string>>;
-  presenceByDoc: Map<string, Presence>;
   applyPresenceUpdate: (args: { docId: string; presence: unknown }) => void;
-  emitSyncRequest: (event: SyncRequestEvent<O, S>) => void;
 };
 
 export function handleSyncOperations<
@@ -78,19 +58,14 @@ export function handleSyncOperations<
   S extends object,
   O extends object,
 >({
-  io,
+  server,
   socket,
   userId,
   deviceId,
   context,
-  authorize,
-  provider,
-  docBinding,
-  socketToDocsMap,
-  presenceByDoc,
   applyPresenceUpdate,
-  emitSyncRequest,
 }: SyncDeps<TContext, D, S, O>): void {
+  const authorize = server["_authorize"];
   const authorizeSyncOperations = async (
     payload: SyncOperationsRequest<O>,
   ): Promise<boolean> => {
@@ -117,7 +92,7 @@ export function handleSyncOperations<
         message: "Access denied",
       };
 
-      emitSyncRequest({
+      server["_emit"](server["_syncRequestHandlers"], {
         userId,
         deviceId,
         socketId: socket.id,
@@ -132,6 +107,12 @@ export function handleSyncOperations<
       });
       return;
     }
+
+    const io = server["_io"];
+    const provider = server["_provider"];
+    const docBinding = server["_docBinding"];
+    const socketToDocsMap = server["_socketToDocsMap"];
+    const presenceByDoc = server["_presenceByDoc"];
 
     const room = io.sockets.adapter.rooms.get(`doc:${docId}`);
     if (!room?.has(socket.id)) {
@@ -202,7 +183,7 @@ export function handleSyncOperations<
         }
       }
 
-      emitSyncRequest({
+      server["_emit"](server["_syncRequestHandlers"], {
         userId,
         deviceId,
         socketId: socket.id,
@@ -264,7 +245,7 @@ export function handleSyncOperations<
         message: errorMessage,
       };
 
-      emitSyncRequest({
+      server["_emit"](server["_syncRequestHandlers"], {
         userId,
         deviceId,
         socketId: socket.id,

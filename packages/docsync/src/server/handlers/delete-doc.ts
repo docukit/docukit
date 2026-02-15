@@ -1,4 +1,4 @@
-import type { DocSyncEventName } from "../../shared/types.js";
+import type { DocSyncServer } from "../index.js";
 
 export type DeleteDocRequest = { docId: string };
 export type DeleteDocResponse = { success: boolean };
@@ -12,25 +12,19 @@ type DeleteDocSocket = {
 };
 
 type DeleteDocDeps<TContext> = {
+  server: DocSyncServer<TContext>;
   socket: DeleteDocSocket;
   userId: string;
   context: TContext;
-  authorize?:
-    | ((ev: {
-        type: DocSyncEventName;
-        payload: unknown;
-        userId: string;
-        context: TContext;
-      }) => Promise<boolean>)
-    | undefined;
 };
 
 export const handleDeleteDoc = <TContext>({
+  server,
   socket,
   userId,
   context,
-  authorize,
 }: DeleteDocDeps<TContext>): void => {
+  const authorize = server["_authorize"];
   const authorizeDeleteDoc = async (
     payload: DeleteDocRequest,
   ): Promise<boolean> => {
