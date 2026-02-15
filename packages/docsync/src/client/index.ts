@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { io } from "socket.io-client";
-import type { DocBinding } from "../shared/docBinding.js";
 import type {
+  DocBinding,
   BroadcastMessage,
   ClientConfig,
   Provider,

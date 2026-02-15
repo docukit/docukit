@@ -1,6 +1,7 @@
-export { type DocBinding, createDocBinding } from "../shared/docBinding.js";
+export { createDocBinding } from "../bindings/index.js";
 
 export {
+  type DocBinding,
   type Provider,
   type DisconnectEvent,
   type ChangeEvent,

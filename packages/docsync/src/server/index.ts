@@ -11,8 +11,8 @@ import {
   type ClientDisconnectHandler,
   type SyncRequestHandler,
   type Presence,
+  type DocBinding,
 } from "../shared/types.js";
-import type { DocBinding } from "../shared/docBinding.js";
 
 type AuthenticatedContext<TContext> = {
   userId: string;

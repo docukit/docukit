@@ -10,7 +10,20 @@
  * It is organized into collapsible regions for better navigation.
  */
 
-import type { DocBinding } from "./docBinding.js";
+// TO-DECIDE: should params in fn's be objects?
+export interface DocBinding<
+  D extends {} = {},
+  S extends {} = {},
+  O extends {} = {},
+> {
+  // method syntax is required to avoid type errors
+  create(type: string, id?: string): { doc: D; docId: string };
+  deserialize(serializedDoc: S): D;
+  serialize(doc: D): S;
+  onChange(doc: D, cb: (ev: { operations: O }) => void): void;
+  applyOperations(doc: D, operations: O): void;
+  dispose(doc: D): void;
+}
 
 // ============================================================================
 // #region Monads

@@ -1,26 +1,5 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import { Doc, type DocConfig, type Operations } from "@docukit/docnode";
-
-// TO-DECIDE: should params in fn's be objects?
-export interface DocBinding<
-  D extends {} = {},
-  S extends {} = {},
-  O extends {} = {},
-> {
-  // method syntax is required to avoid type errors
-  create(type: string, id?: string): { doc: D; docId: string };
-  deserialize(serializedDoc: S): D;
-  serialize(doc: D): S;
-  onChange(doc: D, cb: (ev: { operations: O }) => void): void;
-  applyOperations(doc: D, operations: O): void;
-  dispose(doc: D): void;
-}
-
-export const createDocBinding = <D extends {}, S extends {}, O extends {} = {}>(
-  docBinding: DocBinding<D, S, O>,
-): DocBinding<D, S, O> => {
-  return docBinding;
-};
+import { createDocBinding } from "./index.js";
 
 export const DocNodeBinding = (docConfigs: DocConfig[]) => {
   const docConfigsMap = new Map<string, DocConfig>();
