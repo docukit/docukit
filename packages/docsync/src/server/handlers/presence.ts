@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type { Result } from "../../shared/types.js";
+import type { Result, ServerConnectionSocket } from "../../shared/types.js";
 import type { DocSyncServer } from "../index.js";
+import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
 
 export type PresenceRequest = { docId: string; presence: unknown };
 export type PresenceResponse = Result<
@@ -12,24 +13,20 @@ export type PresenceHandler = (
   cb: (res: PresenceResponse) => void,
 ) => void | Promise<void>;
 
-type PresenceSocket = {
-  on: (event: "presence", handler: PresenceHandler) => void;
-};
-
 type PresenceDeps<TContext = {}> = {
   server: DocSyncServer<TContext>;
-  socket: PresenceSocket;
+  socket: ServerConnectionSocket<{}, {}>;
   userId: string;
+  clientId: string;
   context: TContext;
-  applyPresenceUpdate: (args: { docId: string; presence: unknown }) => void;
 };
 
 export function handlePresence({
   server,
   socket,
   userId,
+  clientId,
   context,
-  applyPresenceUpdate,
 }: PresenceDeps): void {
   const authorize = server["_authorize"];
   const authorizePresence = async (
@@ -58,7 +55,10 @@ export function handlePresence({
       });
       return;
     }
-    applyPresenceUpdate({ docId, presence });
+    applyPresenceUpdate(server["_presenceByDoc"], socket, clientId, {
+      docId,
+      presence,
+    });
     cb({ data: void undefined });
   };
 

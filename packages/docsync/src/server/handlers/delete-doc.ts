@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
+import type { ServerConnectionSocket } from "../../shared/types.js";
 import type { DocSyncServer } from "../index.js";
 
 export type DeleteDocRequest = { docId: string };
@@ -8,13 +9,9 @@ export type DeleteDocHandler = (
   cb: (res: DeleteDocResponse) => void,
 ) => void | Promise<void>;
 
-type DeleteDocSocket = {
-  on: (event: "delete-doc", handler: DeleteDocHandler) => void;
-};
-
 type DeleteDocDeps<TContext = {}> = {
   server: DocSyncServer<TContext>;
-  socket: DeleteDocSocket;
+  socket: ServerConnectionSocket<{}, {}>;
   userId: string;
   context: TContext;
 };

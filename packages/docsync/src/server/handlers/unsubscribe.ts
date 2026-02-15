@@ -1,4 +1,5 @@
-import type { Presence } from "../../shared/types.js";
+/* eslint-disable @typescript-eslint/no-empty-object-type */
+import type { ServerConnectionSocket } from "../../shared/types.js";
 import type { DocSyncServer } from "../index.js";
 
 export type UnsubscribeDocRequest = { docId: string };
@@ -8,21 +9,9 @@ export type UnsubscribeDocHandler = (
   cb: (res: UnsubscribeDocResponse) => void,
 ) => void | Promise<void>;
 
-type UnsubscribeSocket = {
-  id: string;
-  on: (event: "unsubscribe-doc", handler: UnsubscribeDocHandler) => void;
-  leave: (room: string) => void | Promise<void>;
-  to: (room: string) => {
-    emit: (
-      event: "presence",
-      payload: { docId: string; presence: Presence },
-    ) => void;
-  };
-};
-
 type UnsubscribeDeps = {
   server: DocSyncServer;
-  socket: UnsubscribeSocket;
+  socket: ServerConnectionSocket<{}, {}>;
   clientId: string;
 };
 

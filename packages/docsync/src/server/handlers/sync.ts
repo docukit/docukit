@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { Result, ServerConnectionSocket } from "../../shared/types.js";
 import type { DocSyncServer } from "../index.js";
+import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
 
 const OPERATION_THRESHOLD = 100;
 
@@ -39,8 +40,8 @@ type SyncDeps<
   socket: ServerConnectionSocket<S, O>;
   userId: string;
   deviceId: string;
+  clientId: string;
   context: TContext;
-  applyPresenceUpdate: (args: { docId: string; presence: unknown }) => void;
 };
 
 export function handleSyncOperations<
@@ -53,8 +54,8 @@ export function handleSyncOperations<
   socket,
   userId,
   deviceId,
+  clientId,
   context,
-  applyPresenceUpdate,
 }: SyncDeps<TContext, D, S, O>): void {
   const authorize = server["_authorize"];
   const authorizeSyncOperations = async (
@@ -119,7 +120,10 @@ export function handleSyncOperations<
     }
 
     if ("presence" in payload) {
-      applyPresenceUpdate({ docId, presence: payload.presence });
+      applyPresenceUpdate(server["_presenceByDoc"], socket, clientId, {
+        docId,
+        presence: payload.presence,
+      });
     }
 
     try {

@@ -169,54 +169,11 @@ export class DocSyncServer<
         });
       });
 
-      const applyPresenceUpdate = ({
-        docId,
-        presence,
-      }: {
-        docId: string;
-        presence: unknown;
-      }) => {
-        // Update server's presence state for this document
-        const currentPresence = this._presenceByDoc.get(docId) ?? {};
-
-        if (presence === null || presence === undefined) {
-          // Delete the presence entry for this client
-          delete currentPresence[clientId];
-          // Only keep the map entry if there are other sockets with presence
-          if (Object.keys(currentPresence).length > 0) {
-            this._presenceByDoc.set(docId, currentPresence);
-          } else {
-            this._presenceByDoc.delete(docId);
-          }
-        } else {
-          // Set the presence for this client
-          const newPresence = { ...currentPresence, [clientId]: presence };
-          this._presenceByDoc.set(docId, newPresence);
-        }
-        // Broadcast to other clients (undefined → null for JSON)
-        socket.to(`doc:${docId}`).emit("presence", {
-          docId,
-          presence: { [clientId]: presence ?? null },
-        });
-      };
-
       const server = this as DocSyncServer;
-      handleSyncOperations({
-        server,
-        socket,
-        userId,
-        deviceId,
-        context,
-        applyPresenceUpdate,
-      });
+      // prettier-ignore
+      handleSyncOperations({ server, socket, userId, deviceId, clientId, context });
       handleUnsubscribeDoc({ server, socket, clientId });
-      handlePresence({
-        server,
-        socket,
-        userId,
-        context,
-        applyPresenceUpdate,
-      });
+      handlePresence({ server, socket, userId, clientId, context });
       handleDeleteDoc({ server, socket, userId, context });
     });
   }
