@@ -11,6 +11,7 @@ import {
   type DocBinding,
 } from "../shared/types.js";
 import { handleDeleteDoc } from "./handlers/delete-doc.js";
+import { handleDisconnect } from "./handlers/disconnect.js";
 import { handlePresence } from "./handlers/presence.js";
 import { handleSyncOperations } from "./handlers/sync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
@@ -132,44 +133,8 @@ export class DocSyncServer<
         context,
       });
 
-      // Handle disconnect
-      socket.on("disconnect", (reason) => {
-        // Get all documents this socket was subscribed to
-        const subscribedDocs = this._socketToDocsMap.get(socket.id);
-
-        if (subscribedDocs) {
-          // Clean up presence for all documents this socket was in
-          for (const docId of subscribedDocs) {
-            const presenceForDoc = this._presenceByDoc.get(docId);
-
-            // Immediately broadcast removal to OTHER clients
-            socket.to(`doc:${docId}`).emit("presence", {
-              docId,
-              presence: { [clientId]: null },
-            });
-
-            // Clean up presence map if the socket had presence
-            if (presenceForDoc?.[clientId] !== undefined) {
-              delete presenceForDoc[clientId];
-              if (Object.keys(presenceForDoc).length === 0) {
-                this._presenceByDoc.delete(docId);
-              }
-            }
-          }
-
-          // Remove socket from tracking map
-          this._socketToDocsMap.delete(socket.id);
-        }
-
-        this._emit(this._clientDisconnectHandlers, {
-          userId,
-          deviceId,
-          socketId: socket.id,
-          reason,
-        });
-      });
-
       const server = this as DocSyncServer;
+      handleDisconnect({ server, socket, userId, deviceId, clientId });
       // prettier-ignore
       handleSyncOperations({ server, socket, userId, deviceId, clientId, context });
       handleUnsubscribeDoc({ server, socket, clientId });
