@@ -158,7 +158,7 @@ describe("Client 2", () => {
 
       client.saveRemote({ docId });
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
-      expect(requestSpy).toHaveBeenCalledWith("sync-operations", {
+      expect(requestSpy).toHaveBeenCalledWith("sync", {
         clock: 0,
         docId,
         operations: testOperations,
@@ -179,7 +179,7 @@ describe("Client 2", () => {
       await expect.poll(() => statusDuringPush).toBe("pushing");
     });
 
-    test("should send operations to API via sync-operations endpoint", async () => {
+    test("should send operations to API via sync endpoint", async () => {
       const client = await createClient();
       const docId = generateDocId();
       const requestSpy = spyOnRequest(client);
@@ -188,7 +188,7 @@ describe("Client 2", () => {
       client.saveRemote({ docId });
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
-        "sync-operations",
+        "sync",
         expect.objectContaining({ docId }),
       );
     });
@@ -202,7 +202,7 @@ describe("Client 2", () => {
       client.saveRemote({ docId });
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
-        "sync-operations",
+        "sync",
         expect.objectContaining({ clock: 0, docId }),
       );
     });
@@ -231,7 +231,7 @@ describe("Client 2", () => {
       client.saveRemote({ docId });
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
-        "sync-operations",
+        "sync",
         expect.objectContaining({
           docId,
           operations: [ops({ test: "data" })],
@@ -265,7 +265,7 @@ describe("Client 2", () => {
       client.saveRemote({ docId });
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
-        "sync-operations",
+        "sync",
         expect.objectContaining({
           docId,
           operations: [ops({ client: "op" })],
@@ -301,7 +301,7 @@ describe("Client 2", () => {
       client.saveRemote({ docId });
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
-        "sync-operations",
+        "sync",
         expect.objectContaining({
           docId,
           operations: [],
@@ -357,7 +357,7 @@ describe("Client 2", () => {
       client.saveRemote({ docId });
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
-        "sync-operations",
+        "sync",
         expect.objectContaining({
           docId,
           operations: [],

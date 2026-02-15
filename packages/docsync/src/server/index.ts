@@ -13,7 +13,7 @@ import {
 import { handleDeleteDoc } from "./handlers/delete-doc.js";
 import { handleDisconnect } from "./handlers/disconnect.js";
 import { handlePresence } from "./handlers/presence.js";
-import { handleSyncOperations } from "./handlers/sync.js";
+import { handleSync } from "./handlers/sync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
 
 type AuthenticatedContext<TContext = {}> = {
@@ -35,7 +35,7 @@ export class DocSyncServer<
   private _provider: Provider<S, O, "server">;
   private _authenticate: ServerConfig<TContext, D, S, O>["authenticate"];
   private _authorize?: ServerConfig<TContext, D, S, O>["authorize"];
-  // TODO: see comment in sync-operations
+  // TODO: see comment in sync
   private _LRUCache = new Map<string, { deviceId: string; clock: number }>();
   // Track presence state per document: docId -> Record<clientId, presence data>
   private _presenceByDoc = new Map<string, Presence>();
@@ -136,7 +136,7 @@ export class DocSyncServer<
       const server = this as DocSyncServer;
       handleDisconnect({ server, socket, userId, deviceId, clientId });
       // prettier-ignore
-      handleSyncOperations({ server, socket, userId, deviceId, clientId, context });
+      handleSync({ server, socket, userId, deviceId, clientId, context });
       handleUnsubscribeDoc({ server, socket, clientId });
       handlePresence({ server, socket, userId, clientId, context });
       handleDeleteDoc({ server, socket, userId, context });

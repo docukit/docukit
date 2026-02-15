@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/consistent-type-imports */
 import type { DeleteDocHandler } from "../server/handlers/delete-doc.js";
 import type { PresenceHandler } from "../server/handlers/presence.js";
-import type { SyncOperationsHandler } from "../server/handlers/sync.js";
+import type { SyncHandler } from "../server/handlers/sync.js";
 import type { UnsubscribeDocHandler } from "../server/handlers/unsubscribe.js";
 
 /* eslint-disable @typescript-eslint/no-empty-object-type */
@@ -67,10 +67,47 @@ export type QueryResult<D, E = Error> =
 // ============================================================================
 
 export type DocSyncEventName =
-  | "sync-operations"
+  | "sync"
   | "presence"
   | "delete-doc"
   | "unsubscribe-doc";
+
+/** Shared request payload for the sync event (client sends, server receives). */
+export type SyncRequest<O = unknown> = {
+  docId: string;
+  operations?: O[];
+  clock: number;
+  presence?: unknown;
+};
+
+/** Shared response for the sync event (server sends, client receives). */
+export type SyncResponse<S = unknown, O = unknown> = Result<
+  {
+    docId: string;
+    operations?: O[];
+    serializedDoc?: S;
+    clock: number;
+  },
+  {
+    type: "AuthorizationError" | "DatabaseError" | "ValidationError";
+    message: string;
+  }
+>;
+
+/** Shared request/response for the presence event. */
+export type PresenceRequest = { docId: string; presence: unknown };
+export type PresenceResponse = Result<
+  void,
+  { type: "AuthorizationError"; message: string }
+>;
+
+/** Shared request/response for the delete-doc event. */
+export type DeleteDocRequest = { docId: string };
+export type DeleteDocResponse = { success: boolean };
+
+/** Shared request/response for the unsubscribe-doc event. */
+export type UnsubscribeDocRequest = { docId: string };
+export type UnsubscribeDocResponse = { success: boolean };
 
 // #endregion
 
@@ -110,31 +147,13 @@ export type ChangeEvent<O = unknown> = {
   operations: O[];
 };
 
-/** Emitted once after sync completes (success or error) */
+/** Emitted once after sync completes (success or error). Same req/res contract as server; client may also get NetworkError. */
 export type SyncEvent<O = unknown, S = unknown> = {
-  // Request context (always present)
-  req: {
-    docId: string;
-    operations: O[];
-    clock: number;
-  };
-} & Result<
-  {
-    operations?: O[];
-    clock: number;
-    serializedDoc?: S;
-  },
-  {
-    type:
-      | "NetworkError" // Client-side: timeout, connection lost, etc.
-      | "AuthorizationError" // Server-side: access denied
-      | "DatabaseError" // Server-side: database operation failed
-      | "ValidationError"; // Server-side: invalid request data
-    message: string;
-    // TODO: maybe in the future
-    // willRetry?: boolean;
-  }
->;
+  req: SyncRequest<O>;
+} & (
+  | SyncResponse<S, O>
+  | { error: { type: "NetworkError"; message: string }; data?: never }
+);
 
 /** Emitted when document is loaded */
 export type DocLoadEvent = {
@@ -149,18 +168,19 @@ export type DocUnloadEvent = {
   refCount: number;
 };
 
-export type ConnectHandler = () => void;
-export type DisconnectHandler = (event: DisconnectEvent) => void;
+export type ConnectEventListener = () => void;
+export type DisconnectEventListener = (event: DisconnectEvent) => void;
 // Method syntax is required for bivariance to allow DocSyncClient<Doc, S, O> to be assignable to DocSyncClient<{}, {}, {}>
 // Note: `out` cannot be used here because O is in contravariant position (function parameter).
-// The covariance is achieved by storing Set<ChangeHandler> (with default unknown) in the class,
+// The covariance is achieved by storing Set<ChangeEventListener> (with default unknown) in the class,
 // combined with method-level type parameters for type-safe public API.
 // eslint-disable-next-line @typescript-eslint/prefer-function-type
-export type ChangeHandler<O = {}> = { (event: ChangeEvent<O>): void };
+export type ChangeEventListener<O = {}> = { (event: ChangeEvent<O>): void };
+/** Client listener for when a sync completes (passed to {@link DocSyncClient.onSync}). */
 // eslint-disable-next-line @typescript-eslint/prefer-function-type
-export type SyncHandler<O = {}> = { (event: SyncEvent<O>): void };
-export type DocLoadHandler = (event: DocLoadEvent) => void;
-export type DocUnloadHandler = (event: DocUnloadEvent) => void;
+export type SyncEventListener<O = {}> = { (event: SyncEvent<O>): void };
+export type DocLoadEventListener = (event: DocLoadEvent) => void;
+export type DocUnloadEventListener = (event: DocUnloadEvent) => void;
 
 // #endregion
 
@@ -201,7 +221,7 @@ export type ClientDisconnectEvent = {
 };
 
 /**
- * Emitted once after sync-operations request completes.
+ * Emitted once after sync request completes.
  *
  * Common error.type values:
  * - "AuthorizationError" - Access denied (authorization failed)
@@ -446,7 +466,7 @@ export type Provider<S, O, P extends "server" | "client"> = {
  */
 
 type ClientToServerEvents<S, O> = {
-  "sync-operations": SyncOperationsHandler<S, O>;
+  sync: SyncHandler<S, O>;
   presence: PresenceHandler;
   "delete-doc": DeleteDocHandler;
   "unsubscribe-doc": UnsubscribeDocHandler;

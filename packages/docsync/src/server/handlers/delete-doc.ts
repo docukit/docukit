@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type { ServerConnectionSocket } from "../../shared/types.js";
+import type {
+  DeleteDocRequest,
+  DeleteDocResponse,
+  ServerConnectionSocket,
+} from "../../shared/types.js";
 import type { DocSyncServer } from "../index.js";
 
-export type DeleteDocRequest = { docId: string };
-export type DeleteDocResponse = { success: boolean };
 export type DeleteDocHandler = (
   payload: DeleteDocRequest,
   cb: (res: DeleteDocResponse) => void,

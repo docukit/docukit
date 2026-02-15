@@ -1,33 +1,19 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type { Result, ServerConnectionSocket } from "../../shared/types.js";
+import type {
+  ServerConnectionSocket,
+  SyncRequest,
+  SyncResponse,
+} from "../../shared/types.js";
 import type { DocSyncServer } from "../index.js";
 import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
 
 const OPERATION_THRESHOLD = 100;
 
-export type SyncOperationsRequest<O = unknown> = {
-  docId: string;
-  operations?: O[];
-  clock: number;
-  presence?: unknown;
-};
+export type { SyncRequest, SyncResponse } from "../../shared/types.js";
 
-export type SyncOperationsResponse<S = unknown, O = unknown> = Result<
-  {
-    docId: string;
-    operations?: O[];
-    serializedDoc?: S;
-    clock: number;
-  },
-  {
-    type: "AuthorizationError" | "DatabaseError" | "ValidationError";
-    message: string;
-  }
->;
-
-export type SyncOperationsHandler<S = unknown, O = unknown> = (
-  payload: SyncOperationsRequest<O>,
-  cb: (res: SyncOperationsResponse<S, O>) => void,
+export type SyncHandler<S = unknown, O = unknown> = (
+  payload: SyncRequest<O>,
+  cb: (res: SyncResponse<S, O>) => void,
 ) => void | Promise<void>;
 
 type SyncDeps<
@@ -44,7 +30,7 @@ type SyncDeps<
   context: TContext;
 };
 
-export function handleSyncOperations<
+export function handleSync<
   TContext = {},
   D extends {} = {},
   S extends {} = {},
@@ -58,26 +44,24 @@ export function handleSyncOperations<
   context,
 }: SyncDeps<TContext, D, S, O>): void {
   const authorize = server["_authorize"];
-  const authorizeSyncOperations = async (
-    payload: SyncOperationsRequest<O>,
-  ): Promise<boolean> => {
+  const authorizeSync = async (payload: SyncRequest<O>): Promise<boolean> => {
     if (!authorize) return true;
     return authorize({
-      type: "sync-operations",
+      type: "sync",
       payload,
       userId,
       context,
     });
   };
 
-  const handler: SyncOperationsHandler<S, O> = async (
-    payload: SyncOperationsRequest<O>,
-    cb: (res: SyncOperationsResponse<S, O>) => void,
+  const handler: SyncHandler<S, O> = async (
+    payload: SyncRequest<O>,
+    cb: (res: SyncResponse<S, O>) => void,
   ): Promise<void> => {
     const { docId, operations = [], clock } = payload;
     const startTime = Date.now();
 
-    const authorized = await authorizeSyncOperations(payload);
+    const authorized = await authorizeSync(payload);
     if (!authorized) {
       const errorEvent = {
         type: "AuthorizationError" as const,
@@ -265,5 +249,5 @@ export function handleSyncOperations<
     }
   };
 
-  socket.on("sync-operations", handler);
+  socket.on("sync", handler);
 }

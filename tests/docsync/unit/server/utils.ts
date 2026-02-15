@@ -72,7 +72,7 @@ export async function testWrapper(
     client: DocSyncClient;
     waitForConnect: () => Promise<void>;
     waitForError: () => Promise<Error>;
-    syncOperations: (payload: SyncPayload) => Promise<SyncResponse>;
+    sync: (payload: SyncPayload) => Promise<SyncResponse>;
     socket: DocSyncClient["_socket"];
   }) => Promise<void>,
 ) {
@@ -92,9 +92,9 @@ export async function testWrapper(
     new Promise<Error>((resolve) => {
       socket.on("connect_error", resolve);
     });
-  const syncOperations = (payload: SyncPayload) =>
+  const sync = (payload: SyncPayload) =>
     new Promise<SyncResponse>((resolve) => {
-      socket.emit("sync-operations", payload, resolve);
+      socket.emit("sync", payload, resolve);
     });
 
   await fn({
@@ -103,7 +103,7 @@ export async function testWrapper(
     waitForConnect,
     waitForError,
     socket,
-    syncOperations,
+    sync,
   });
   await server.close();
 }

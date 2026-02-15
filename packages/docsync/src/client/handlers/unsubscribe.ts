@@ -1,8 +1,8 @@
 import type {
+  ClientSocket,
   UnsubscribeDocRequest,
   UnsubscribeDocResponse,
-} from "../../server/handlers/unsubscribe.js";
-import type { ClientSocket } from "../../shared/types.js";
+} from "../../shared/types.js";
 
 const requestUnsubscribe = (
   socket: ClientSocket<object, object>,

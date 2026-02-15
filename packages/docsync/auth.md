@@ -116,7 +116,7 @@ export type ServerConfig<TContext = {}> = {
   >;
 
   /**
-   * Authorizes an operation (get-doc, sync-operations, delete-doc).
+   * Authorizes an operation (get-doc, sync, delete-doc).
    * Receives cached context from authenticate.
    */
   authorize?: (ev: AuthorizeEvent<TContext>) => Promise<boolean>;
@@ -164,7 +164,7 @@ type AuthorizeEvent<TContext> =
       context: TContext;
     }
   | {
-      type: "sync-operations";
+      type: "sync";
       payload: { docId: string; operations: O };
       userId: string;
       context: TContext;

@@ -5,11 +5,9 @@ import type {
   DocBinding,
   Provider,
   SyncEvent,
+  SyncRequest,
+  SyncResponse,
 } from "../../shared/types.js";
-import type {
-  SyncOperationsRequest,
-  SyncOperationsResponse,
-} from "../../server/handlers/sync.js";
 
 type SyncRequestContext<O> = {
   docId: string;
@@ -19,7 +17,7 @@ type SyncRequestContext<O> = {
 
 type HandleSyncResultArgs<S, O> = {
   socket: ClientSocket<S, O>;
-  payload: SyncOperationsRequest<O>;
+  payload: SyncRequest<O>;
   req: SyncRequestContext<O>;
   emitSync: (event: SyncEvent<O, S>) => void;
   timeoutMs?: number;
@@ -37,16 +35,16 @@ export type HandleSyncResult<S, O> =
       };
     };
 
-const requestSyncOperations = <S, O>(
+const requestSync = <S, O>(
   socket: ClientSocket<S, O>,
-  payload: SyncOperationsRequest<O>,
+  payload: SyncRequest<O>,
   timeoutMs: number,
-): Promise<SyncOperationsResponse<S, O>> => {
+): Promise<SyncResponse<S, O>> => {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
-      reject(new Error("Request timeout: sync-operations"));
+      reject(new Error("Request timeout: sync"));
     }, timeoutMs);
-    socket.emit("sync-operations", payload, (response) => {
+    socket.emit("sync", payload, (response) => {
       clearTimeout(timeout);
       resolve(response);
     });
@@ -60,9 +58,9 @@ export const handleSync = async <S, O>({
   emitSync,
   timeoutMs = 5000,
 }: HandleSyncResultArgs<S, O>): Promise<HandleSyncResult<S, O>> => {
-  let response: SyncOperationsResponse<S, O>;
+  let response: SyncResponse<S, O>;
   try {
-    response = await requestSyncOperations(socket, payload, timeoutMs);
+    response = await requestSync(socket, payload, timeoutMs);
   } catch (error) {
     emitSync({
       req,
@@ -86,6 +84,7 @@ export const handleSync = async <S, O>({
   emitSync({
     req,
     data: {
+      docId: data.docId,
       ...(data.operations ? { operations: data.operations } : {}),
       ...(data.serializedDoc ? { serializedDoc: data.serializedDoc } : {}),
       clock: data.clock,

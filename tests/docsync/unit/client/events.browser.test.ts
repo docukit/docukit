@@ -23,13 +23,13 @@ describe("Client Events", () => {
         called = true;
       });
 
-      client["_emit"](client["_connectHandlers"]);
+      client["_emit"](client["_connectEventListeners"]);
       await expect.poll(() => called).toBe(true);
 
       // Test unsubscribe
       called = false;
       unsubscribe();
-      client["_emit"](client["_connectHandlers"]);
+      client["_emit"](client["_connectEventListeners"]);
       await expect.poll(() => called).toBe(false);
     });
   });
@@ -49,7 +49,7 @@ describe("Client Events", () => {
         disconnectReason = event.reason;
       });
 
-      client["_emit"](client["_disconnectHandlers"], {
+      client["_emit"](client["_disconnectEventListeners"], {
         reason: "transport close",
       });
       await expect.poll(() => disconnectReason).toBe("transport close");
@@ -66,7 +66,7 @@ describe("Client Events", () => {
         .toBeGreaterThan(0);
 
       client["_pushStatusByDocId"].clear();
-      client["_emit"](client["_disconnectHandlers"], { reason: "test" });
+      client["_emit"](client["_disconnectEventListeners"], { reason: "test" });
       await expect.poll(() => client["_pushStatusByDocId"].size).toBe(0);
     });
   });
@@ -86,7 +86,7 @@ describe("Client Events", () => {
       });
 
       const testOperations = [ops({ test: "data" })];
-      client["_emit"](client["_changeHandlers"], {
+      client["_emit"](client["_changeEventListeners"], {
         docId,
         origin: "remote",
         operations: testOperations,

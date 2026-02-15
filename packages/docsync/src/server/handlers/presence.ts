@@ -1,13 +1,12 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type { Result, ServerConnectionSocket } from "../../shared/types.js";
+import type {
+  PresenceRequest,
+  PresenceResponse,
+  ServerConnectionSocket,
+} from "../../shared/types.js";
 import type { DocSyncServer } from "../index.js";
 import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
 
-export type PresenceRequest = { docId: string; presence: unknown };
-export type PresenceResponse = Result<
-  void,
-  { type: "AuthorizationError"; message: string }
->;
 export type PresenceHandler = (
   payload: PresenceRequest,
   cb: (res: PresenceResponse) => void,

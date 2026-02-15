@@ -9,12 +9,12 @@ import type {
   GetDocArgs,
   Identity,
   QueryResult,
-  ConnectHandler,
-  DisconnectHandler,
-  ChangeHandler,
-  SyncHandler,
-  DocLoadHandler,
-  DocUnloadHandler,
+  ConnectEventListener,
+  DisconnectEventListener,
+  ChangeEventListener,
+  SyncEventListener,
+  DocLoadEventListener,
+  DocUnloadEventListener,
   ClientSocket,
   Presence,
   DeferredState,
@@ -62,13 +62,13 @@ export class DocSyncClient<
   protected _presenceDebounce = 200;
   protected _pushStatusByDocId = new Map<string, PushStatus>();
 
-  // Event handlers - ChangeHandler and SyncHandler use default (unknown) to allow covariance
-  protected _connectHandlers = new Set<ConnectHandler>();
-  protected _disconnectHandlers = new Set<DisconnectHandler>();
-  protected _changeHandlers = new Set<ChangeHandler>();
-  protected _syncHandlers = new Set<SyncHandler>();
-  protected _docLoadHandlers = new Set<DocLoadHandler>();
-  protected _docUnloadHandlers = new Set<DocUnloadHandler>();
+  // Event listeners - ChangeEventListener and SyncEventListener use default (unknown) to allow covariance
+  protected _connectEventListeners = new Set<ConnectEventListener>();
+  protected _disconnectEventListeners = new Set<DisconnectEventListener>();
+  protected _changeEventListeners = new Set<ChangeEventListener>();
+  protected _syncEventListeners = new Set<SyncEventListener>();
+  protected _docLoadEventListeners = new Set<DocLoadEventListener>();
+  protected _docUnloadEventListeners = new Set<DocUnloadEventListener>();
 
   constructor(config: ClientConfig<D, S, O>) {
     if (typeof window === "undefined")
@@ -137,7 +137,7 @@ export class DocSyncClient<
 
     this._socket.on("connect", () => {
       // Emit connect event
-      this._emit(this._connectHandlers);
+      this._emit(this._connectEventListeners);
       // Push pending operations for all loaded docs
       for (const docId of this._docsCache.keys()) {
         this.saveRemote({ docId });
@@ -158,10 +158,10 @@ export class DocSyncClient<
           presence: { [this._clientId]: null },
         });
       }
-      this._emit(this._disconnectHandlers, { reason });
+      this._emit(this._disconnectEventListeners, { reason });
     });
     this._socket.on("connect_error", (err) => {
-      this._emit(this._disconnectHandlers, { reason: err.message });
+      this._emit(this._disconnectEventListeners, { reason: err.message });
     });
 
     // Listen for dirty notifications from server
@@ -193,7 +193,7 @@ export class DocSyncClient<
     this._shouldBroadcast = true;
 
     // Emit change event for broadcast operations
-    this._emit(this._changeHandlers, {
+    this._emit(this._changeEventListeners, {
       docId,
       origin: "broadcast",
       operations: [operations],
@@ -285,7 +285,7 @@ export class DocSyncClient<
     this._shouldBroadcast = true;
 
     // Emit change event for remote operations
-    this._emit(this._changeHandlers, {
+    this._emit(this._changeEventListeners, {
       docId,
       origin: "remote",
       operations,
@@ -355,7 +355,7 @@ export class DocSyncClient<
       emit({ status: "success", data: { doc, docId: createdDocId } });
 
       // Emit doc load event
-      this._emit(this._docLoadHandlers, {
+      this._emit(this._docLoadEventListeners, {
         docId: createdDocId,
         source: "created",
         refCount: 1,
@@ -421,7 +421,7 @@ export class DocSyncClient<
           // Emit doc load event
           if (doc) {
             const refCount = this._docsCache.get(docId)?.refCount ?? 1;
-            this._emit(this._docLoadHandlers, {
+            this._emit(this._docLoadEventListeners, {
               docId,
               source,
               refCount,
@@ -529,7 +529,7 @@ export class DocSyncClient<
       if (this._shouldBroadcast) {
         void this.onLocalOperations({ docId, operations: [operations] });
 
-        this._emit(this._changeHandlers, {
+        this._emit(this._changeEventListeners, {
           docId,
           origin: "local",
           operations: [operations],
@@ -608,7 +608,7 @@ export class DocSyncClient<
     if (!cacheEntry) return;
     if (cacheEntry.refCount > 1) {
       cacheEntry.refCount -= 1;
-      this._emit(this._docUnloadHandlers, {
+      this._emit(this._docUnloadEventListeners, {
         docId,
         refCount: cacheEntry.refCount,
       });
@@ -617,7 +617,7 @@ export class DocSyncClient<
       cacheEntry.refCount = 0;
 
       // Emit immediately
-      this._emit(this._docUnloadHandlers, {
+      this._emit(this._docUnloadEventListeners, {
         docId,
         refCount: 0,
       });
@@ -739,7 +739,7 @@ export class DocSyncClient<
       ...(presenceState ? { presence: presenceState.data } : {}),
       pushStatusByDocId: this._pushStatusByDocId,
       emitSync: (event) => {
-        this._emit(this._syncHandlers, event);
+        this._emit(this._syncEventListeners, event);
       },
       applyServerOperations: ({ docId: targetDocId, operations: targetOps }) =>
         this._applyServerOperations({
@@ -764,70 +764,70 @@ export class DocSyncClient<
   // ============================================================================
 
   /**
-   * Register a handler for connection events.
+   * Register a listener for connection events.
    * @returns Unsubscribe function
    */
-  onConnect(handler: ConnectHandler): () => void {
-    this._connectHandlers.add(handler);
+  onConnect(listener: ConnectEventListener): () => void {
+    this._connectEventListeners.add(listener);
     return () => {
-      this._connectHandlers.delete(handler);
+      this._connectEventListeners.delete(listener);
     };
   }
 
   /**
-   * Register a handler for disconnection events.
+   * Register a listener for disconnection events.
    * @returns Unsubscribe function
    */
-  onDisconnect(handler: DisconnectHandler): () => void {
-    this._disconnectHandlers.add(handler);
+  onDisconnect(listener: DisconnectEventListener): () => void {
+    this._disconnectEventListeners.add(listener);
     return () => {
-      this._disconnectHandlers.delete(handler);
+      this._disconnectEventListeners.delete(listener);
     };
   }
 
   /**
-   * Register a handler for document change events.
+   * Register a listener for document change events.
    * @returns Unsubscribe function
    */
-  onChange(handler: ChangeHandler<O>): () => void {
-    const h = handler as ChangeHandler;
-    this._changeHandlers.add(h);
+  onChange(listener: ChangeEventListener<O>): () => void {
+    const h = listener as ChangeEventListener;
+    this._changeEventListeners.add(h);
     return () => {
-      this._changeHandlers.delete(h);
+      this._changeEventListeners.delete(h);
     };
   }
 
   /**
-   * Register a handler for sync events.
+   * Register a listener for sync completion events.
    * @returns Unsubscribe function
    */
-  onSync(handler: SyncHandler<O>): () => void {
-    const h = handler as SyncHandler;
-    this._syncHandlers.add(h);
+  onSync(listener: SyncEventListener<O>): () => void {
+    const h = listener as SyncEventListener;
+    this._syncEventListeners.add(h);
     return () => {
-      this._syncHandlers.delete(h);
+      this._syncEventListeners.delete(h);
     };
   }
 
   /**
-   * Register a handler for document load events.
+   * Register a listener for document load events.
    * @returns Unsubscribe function
    */
-  onDocLoad(handler: DocLoadHandler): () => void {
-    this._docLoadHandlers.add(handler);
+  onDocLoad(listener: DocLoadEventListener): () => void {
+    this._docLoadEventListeners.add(listener);
     return () => {
-      this._docLoadHandlers.delete(handler);
+      this._docLoadEventListeners.delete(listener);
     };
   }
 
   /**
-   * Register a handler for document unload events.
+   * Register a listener for document unload events.
    * @returns Unsubscribe function
    */
-  onDocUnload(handler: DocUnloadHandler): () => void {
-    this._docUnloadHandlers.add(handler);
+  onDocUnload(listener: DocUnloadEventListener): () => void {
+    this._docUnloadEventListeners.add(listener);
     return () => {
-      this._docUnloadHandlers.delete(handler);
+      this._docUnloadEventListeners.delete(listener);
     };
   }
 
