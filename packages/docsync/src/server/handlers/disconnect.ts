@@ -1,5 +1,7 @@
+/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { ServerConnectionSocket } from "../../shared/types.js";
 import type { DocSyncServer } from "../index.js";
+import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
 
 type DisconnectDeps = {
   server: DocSyncServer;
@@ -23,19 +25,10 @@ export function handleDisconnect({
 
     if (subscribedDocs) {
       for (const docId of subscribedDocs) {
-        const presenceForDoc = presenceByDoc.get(docId);
-
-        socket.to(`doc:${docId}`).emit("presence", {
+        applyPresenceUpdate(presenceByDoc, socket, clientId, {
           docId,
-          presence: { [clientId]: null },
+          presence: null,
         });
-
-        if (presenceForDoc?.[clientId] !== undefined) {
-          delete presenceForDoc[clientId];
-          if (Object.keys(presenceForDoc).length === 0) {
-            presenceByDoc.delete(docId);
-          }
-        }
       }
 
       socketToDocsMap.delete(socket.id);

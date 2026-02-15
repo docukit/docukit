@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { ServerConnectionSocket } from "../../shared/types.js";
 import type { DocSyncServer } from "../index.js";
+import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
 
 export type UnsubscribeDocRequest = { docId: string };
 export type UnsubscribeDocResponse = { success: boolean };
@@ -37,19 +38,10 @@ export function handleUnsubscribeDoc({
       }
     }
 
-    const presenceForDoc = presenceByDoc.get(docId);
-    if (presenceForDoc) {
-      if (presenceForDoc[clientId] !== undefined) {
-        socket.to(`doc:${docId}`).emit("presence", {
-          docId,
-          presence: { [clientId]: null },
-        });
-      }
-      delete presenceForDoc[clientId];
-      if (Object.keys(presenceForDoc).length === 0) {
-        presenceByDoc.delete(docId);
-      }
-    }
+    applyPresenceUpdate(presenceByDoc, socket, clientId, {
+      docId,
+      presence: null,
+    });
 
     cb({ success: true });
   };
