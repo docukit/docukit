@@ -7,18 +7,6 @@ import type {
 import type { BroadcastMessage } from "../utils/BCHelper.js";
 import type { ClientProvider, ClientSocket, SyncEvent } from "../types.js";
 
-export type HandleSyncResult<S, O> =
-  | { kind: "retry" }
-  | {
-      kind: "success";
-      data: {
-        docId: string;
-        operations?: O[];
-        serializedDoc?: S;
-        clock: number;
-      };
-    };
-
 const requestSync = <S, O>(
   socket: ClientSocket<S, O>,
   payload: SyncRequest<O>,
@@ -35,58 +23,7 @@ const requestSync = <S, O>(
   });
 };
 
-const performSyncRequest = async <S, O>({
-  socket,
-  payload,
-  req,
-  emitSync,
-  timeoutMs = 5000,
-}: {
-  socket: ClientSocket<S, O>;
-  payload: SyncRequest<O>;
-  req: {
-    docId: string;
-    operations: O[];
-    clock: number;
-  };
-  emitSync: (event: SyncEvent<O, S>) => void;
-  timeoutMs?: number;
-}): Promise<HandleSyncResult<S, O>> => {
-  let response: SyncResponse<S, O>;
-  try {
-    response = await requestSync(socket, payload, timeoutMs);
-  } catch (error) {
-    emitSync({
-      req,
-      error: {
-        type: "NetworkError",
-        message: error instanceof Error ? error.message : String(error),
-      },
-    });
-    return { kind: "retry" };
-  }
-
-  if ("error" in response && response.error) {
-    emitSync({
-      req,
-      error: response.error,
-    });
-    return { kind: "retry" };
-  }
-
-  const { data } = response;
-  emitSync({
-    req,
-    data: {
-      docId: data.docId,
-      ...(data.operations ? { operations: data.operations } : {}),
-      ...(data.serializedDoc ? { serializedDoc: data.serializedDoc } : {}),
-      clock: data.clock,
-    },
-  });
-
-  return { kind: "success", data };
-};
+const TIMEOUT_MS = 5000;
 
 export const handleSync = async <D extends {}, S extends {}, O extends {}>({
   socket,
@@ -122,29 +59,47 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>({
   getOwnPresencePatch: (docId: string) => Record<string, unknown> | undefined;
   retryPush: (docId: string) => void;
 }): Promise<void> => {
-  const syncResult = await performSyncRequest<S, O>({
-    socket,
-    payload: {
-      clock: clientClock,
-      docId,
-      operations,
-      ...(presence !== undefined ? { presence } : {}),
-    },
-    req: {
-      docId,
-      operations,
-      clock: clientClock,
-    },
-    emitSync,
-  });
+  const payload: SyncRequest<O> = {
+    clock: clientClock,
+    docId,
+    operations,
+    ...(presence !== undefined ? { presence } : {}),
+  };
+  const req = { docId, operations, clock: clientClock };
 
-  if (syncResult.kind === "retry") {
+  let response: SyncResponse<S, O>;
+  try {
+    response = await requestSync(socket, payload, TIMEOUT_MS);
+  } catch (error) {
+    emitSync({
+      req,
+      error: {
+        type: "NetworkError",
+        message: error instanceof Error ? error.message : String(error),
+      },
+    });
     pushStatusByDocId.set(docId, "idle");
     retryPush(docId);
     return;
   }
 
-  const { data } = syncResult;
+  if ("error" in response && response.error) {
+    emitSync({ req, error: response.error });
+    pushStatusByDocId.set(docId, "idle");
+    retryPush(docId);
+    return;
+  }
+
+  const { data } = response;
+  emitSync({
+    req,
+    data: {
+      docId: data.docId,
+      ...(data.operations ? { operations: data.operations } : {}),
+      ...(data.serializedDoc ? { serializedDoc: data.serializedDoc } : {}),
+      clock: data.clock,
+    },
+  });
   let didConsolidate = false;
 
   await provider.transaction("readwrite", async (ctx) => {
