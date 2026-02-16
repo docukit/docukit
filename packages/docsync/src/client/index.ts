@@ -20,7 +20,7 @@ import type {
 } from "./types.js";
 import { handleDeleteDoc } from "./handlers/delete-doc.js";
 import { handlePresence } from "./handlers/presence.js";
-import { handleSyncAndDoPush } from "./handlers/sync.js";
+import { handleSync } from "./handlers/sync.js";
 import { handleUnsubscribe } from "./handlers/unsubscribe.js";
 import { getDeviceId } from "./utils.js";
 
@@ -728,7 +728,7 @@ export class DocSyncClient<
       });
     }
 
-    await handleSyncAndDoPush<D, S, O>({
+    await handleSync<D, S, O>({
       socket: this._socket,
       provider,
       docBinding: this._docBinding,

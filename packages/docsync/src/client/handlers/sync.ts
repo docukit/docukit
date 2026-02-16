@@ -53,7 +53,7 @@ const requestSync = <S, O>(
   });
 };
 
-export const handleSync = async <S, O>({
+const performSyncRequest = async <S, O>({
   socket,
   payload,
   req,
@@ -98,7 +98,7 @@ export const handleSync = async <S, O>({
 
 type PushStatus = "idle" | "pushing" | "pushing-with-pending";
 
-type HandleSyncAndDoPushArgs<D extends {}, S extends {}, O extends {}> = {
+type HandleSyncArgs<D extends {}, S extends {}, O extends {}> = {
   socket: ClientSocket<S, O>;
   provider: ClientProvider<S, O>;
   docBinding: DocBinding<D, S, O>;
@@ -118,11 +118,7 @@ type HandleSyncAndDoPushArgs<D extends {}, S extends {}, O extends {}> = {
   retryPush: (docId: string) => void;
 };
 
-export const handleSyncAndDoPush = async <
-  D extends {},
-  S extends {},
-  O extends {},
->({
+export const handleSync = async <D extends {}, S extends {}, O extends {}>({
   socket,
   provider,
   docBinding,
@@ -137,8 +133,8 @@ export const handleSyncAndDoPush = async <
   sendMessage,
   getOwnPresencePatch,
   retryPush,
-}: HandleSyncAndDoPushArgs<D, S, O>): Promise<void> => {
-  const syncResult = await handleSync<S, O>({
+}: HandleSyncArgs<D, S, O>): Promise<void> => {
+  const syncResult = await performSyncRequest<S, O>({
     socket,
     payload: {
       clock: clientClock,
