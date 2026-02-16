@@ -1,9 +1,6 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type {
-  PresenceRequest,
-  PresenceResponse,
-  ServerConnectionSocket,
-} from "../../shared/types.js";
+import type { PresenceRequest, PresenceResponse } from "../../shared/types.js";
+import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
 import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
 

@@ -1,15 +1,14 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { Server } from "socket.io";
-import {
-  type ServerSocket,
-  type ServerConfig,
-  type Provider,
-  type ClientConnectHandler,
-  type ClientDisconnectHandler,
-  type SyncRequestHandler,
-  type Presence,
-  type DocBinding,
-} from "../shared/types.js";
+import type { DocBinding, Presence } from "../shared/types.js";
+import type {
+  ClientConnectEventListener,
+  ClientDisconnectEventListener,
+  ServerConfig,
+  ServerProvider,
+  ServerSocket,
+  SyncRequestEventListener,
+} from "./types.js";
 import { handleDeleteDoc } from "./handlers/delete-doc.js";
 import { handleDisconnect } from "./handlers/disconnect.js";
 import { handlePresence } from "./handlers/presence.js";
@@ -32,7 +31,7 @@ export class DocSyncServer<
 > {
   private _io: ServerSocket<S, O>;
   private _docBinding: DocBinding<D, S, O>;
-  private _provider: Provider<S, O, "server">;
+  private _provider: ServerProvider<S, O>;
   private _authenticate: ServerConfig<TContext, D, S, O>["authenticate"];
   private _authorize?: ServerConfig<TContext, D, S, O>["authorize"];
   // TODO: see comment in sync
@@ -42,11 +41,12 @@ export class DocSyncServer<
   // Track which sockets are subscribed to which documents (for cleanup on disconnect)
   private _socketToDocsMap = new Map<string, Set<string>>();
 
-  // Event handlers
-  // ClientConnectHandler and SyncRequestHandler use default (unknown) to allow covariance
-  private _clientConnectHandlers = new Set<ClientConnectHandler>();
-  private _clientDisconnectHandlers = new Set<ClientDisconnectHandler>();
-  private _syncRequestHandlers = new Set<SyncRequestHandler>();
+  // Event listeners (observers); distinct from socket request/response handlers
+  // ClientConnectEventListener and SyncRequestEventListener use default (unknown) to allow covariance
+  private _clientConnectEventListeners = new Set<ClientConnectEventListener>();
+  private _clientDisconnectEventListeners =
+    new Set<ClientDisconnectEventListener>();
+  private _syncRequestEventListeners = new Set<SyncRequestEventListener>();
 
   constructor(config: ServerConfig<TContext, D, S, O>) {
     this._io = new Server(config.port ?? 8080, {
@@ -112,7 +112,7 @@ export class DocSyncServer<
       (err: { req: { _query?: { deviceId?: string } }; message: string }) => {
         // Try to extract deviceId from the failed connection request
         const deviceId = err.req._query?.deviceId ?? "unknown";
-        this._emit(this._clientDisconnectHandlers, {
+        this._emit(this._clientDisconnectEventListeners, {
           userId: "unknown",
           deviceId,
           socketId: "unknown",
@@ -126,7 +126,7 @@ export class DocSyncServer<
         socket.data as AuthenticatedContext;
 
       // Emit client connect event
-      this._emit(this._clientConnectHandlers, {
+      this._emit(this._clientConnectEventListeners, {
         userId,
         deviceId,
         socketId: socket.id,
@@ -155,35 +155,41 @@ export class DocSyncServer<
   // ============================================================================
 
   /**
-   * Register a handler for client connection events.
+   * Register a listener for client connection events.
    * @returns Unsubscribe function
    */
-  onClientConnect(handler: ClientConnectHandler<TContext>): () => void {
-    this._clientConnectHandlers.add(handler as ClientConnectHandler);
+  onClientConnect(listener: ClientConnectEventListener<TContext>): () => void {
+    this._clientConnectEventListeners.add(
+      listener as ClientConnectEventListener,
+    );
     return () => {
-      this._clientConnectHandlers.delete(handler as ClientConnectHandler);
+      this._clientConnectEventListeners.delete(
+        listener as ClientConnectEventListener,
+      );
     };
   }
 
   /**
-   * Register a handler for client disconnection events.
+   * Register a listener for client disconnection events.
    * @returns Unsubscribe function
    */
-  onClientDisconnect(handler: ClientDisconnectHandler): () => void {
-    this._clientDisconnectHandlers.add(handler);
+  onClientDisconnect(listener: ClientDisconnectEventListener): () => void {
+    this._clientDisconnectEventListeners.add(listener);
     return () => {
-      this._clientDisconnectHandlers.delete(handler);
+      this._clientDisconnectEventListeners.delete(listener);
     };
   }
 
   /**
-   * Register a handler for sync request events.
+   * Register a listener for sync request events.
    * @returns Unsubscribe function
    */
-  onSyncRequest(handler: SyncRequestHandler<O, S>): () => void {
-    this._syncRequestHandlers.add(handler as SyncRequestHandler);
+  onSyncRequest(listener: SyncRequestEventListener<O, S>): () => void {
+    this._syncRequestEventListeners.add(listener as SyncRequestEventListener);
     return () => {
-      this._syncRequestHandlers.delete(handler as SyncRequestHandler);
+      this._syncRequestEventListeners.delete(
+        listener as SyncRequestEventListener,
+      );
     };
   }
 
@@ -191,9 +197,9 @@ export class DocSyncServer<
   // Event Emitters (private methods)
   // ============================================================================
 
-  private _emit<T>(handlers: Set<(event: T) => void>, event: T) {
-    for (const handler of handlers) {
-      handler(event);
+  private _emit<T>(listeners: Set<(event: T) => void>, event: T) {
+    for (const listener of listeners) {
+      listener(event);
     }
   }
 }

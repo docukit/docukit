@@ -1,8 +1,5 @@
-import type {
-  ClientSocket,
-  PresenceRequest,
-  PresenceResponse,
-} from "../../shared/types.js";
+import type { PresenceRequest, PresenceResponse } from "../../shared/types.js";
+import type { ClientSocket } from "../types.js";
 
 type HandlePresenceArgs = {
   socket: ClientSocket<object, object>;

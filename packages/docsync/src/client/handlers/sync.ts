@@ -1,13 +1,15 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import type {
-  BroadcastMessage,
-  ClientSocket,
   DocBinding,
-  Provider,
-  SyncEvent,
   SyncRequest,
   SyncResponse,
 } from "../../shared/types.js";
+import type {
+  BroadcastMessage,
+  ClientProvider,
+  ClientSocket,
+  SyncEvent,
+} from "../types.js";
 
 type SyncRequestContext<O> = {
   docId: string;
@@ -98,7 +100,7 @@ type PushStatus = "idle" | "pushing" | "pushing-with-pending";
 
 type HandleSyncAndDoPushArgs<D extends {}, S extends {}, O extends {}> = {
   socket: ClientSocket<S, O>;
-  provider: Provider<S, O, "client">;
+  provider: ClientProvider<S, O>;
   docBinding: DocBinding<D, S, O>;
   operationsBatches: O[][];
   operations: O[];

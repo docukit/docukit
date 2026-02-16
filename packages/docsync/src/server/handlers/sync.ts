@@ -1,9 +1,6 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type {
-  ServerConnectionSocket,
-  SyncRequest,
-  SyncResponse,
-} from "../../shared/types.js";
+import type { SyncRequest, SyncResponse } from "../../shared/types.js";
+import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
 import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
 
@@ -68,7 +65,7 @@ export function handleSync<
         message: "Access denied",
       };
 
-      server["_emit"](server["_syncRequestHandlers"], {
+      server["_emit"](server["_syncRequestEventListeners"], {
         userId,
         deviceId,
         socketId: socket.id,
@@ -162,7 +159,7 @@ export function handleSync<
         }
       }
 
-      server["_emit"](server["_syncRequestHandlers"], {
+      server["_emit"](server["_syncRequestEventListeners"], {
         userId,
         deviceId,
         socketId: socket.id,
@@ -224,7 +221,7 @@ export function handleSync<
         message: errorMessage,
       };
 
-      server["_emit"](server["_syncRequestHandlers"], {
+      server["_emit"](server["_syncRequestEventListeners"], {
         userId,
         deviceId,
         socketId: socket.id,

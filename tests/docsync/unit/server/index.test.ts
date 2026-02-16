@@ -7,7 +7,7 @@ import { testWrapper, testPort } from "./utils.js";
 import { DocSyncServer, InMemoryServerProvider } from "@docukit/docsync/server";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { DocSyncClient } from "@docukit/docsync/client";
-import type { Provider } from "@docukit/docsync";
+import type { ClientProvider } from "@docukit/docsync/client";
 
 describe("authentication", () => {
   test("rejects without token", async () => {
@@ -228,7 +228,7 @@ function createMockDocSyncClient(port: number, token: string): DocSyncClient {
       provider: InMemoryServerProvider as unknown as new (
         identity: { userId: string; secret: string },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ) => Provider<any, any, "client">,
+      ) => ClientProvider<any, any>,
       getIdentity: async () => ({
         userId: token.replace("valid-", ""),
         secret: "test-secret",

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type { ServerConnectionSocket } from "../../shared/types.js";
+import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
 import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
 
@@ -34,7 +34,7 @@ export function handleDisconnect({
       socketToDocsMap.delete(socket.id);
     }
 
-    server["_emit"](server["_clientDisconnectHandlers"], {
+    server["_emit"](server["_clientDisconnectEventListeners"], {
       userId,
       deviceId,
       socketId: socket.id,

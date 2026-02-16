@@ -4,12 +4,12 @@ import {
   type IDBPTransaction,
   type DBSchema,
 } from "idb";
+import type { SerializedDocPayload } from "../../shared/types.js";
 import type {
-  Provider,
+  ClientProvider,
+  ClientProviderContext,
   Identity,
-  TransactionContext,
-  SerializedDocPayload,
-} from "../../shared/types.js";
+} from "../types.js";
 
 interface DocNodeIDB<S, O> extends DBSchema {
   docs: {
@@ -28,7 +28,7 @@ interface DocNodeIDB<S, O> extends DBSchema {
 type StoreNames = ("docs" | "operations")[];
 type IDBTx<S, O> = IDBPTransaction<DocNodeIDB<S, O>, StoreNames, "readwrite">;
 
-export class IndexedDBProvider<S, O> implements Provider<S, O, "client"> {
+export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
   private _dbPromise: Promise<IDBPDatabase<DocNodeIDB<S, O>>>;
 
   constructor(identity: Identity) {
@@ -49,7 +49,7 @@ export class IndexedDBProvider<S, O> implements Provider<S, O, "client"> {
   /**
    * Create a transaction context that wraps all operations in a single IDB transaction.
    */
-  private _createContext(tx: IDBTx<S, O>): TransactionContext<S, O, "client"> {
+  private _createContext(tx: IDBTx<S, O>): ClientProviderContext<S, O> {
     return {
       async getSerializedDoc(docId: string) {
         const store = tx.objectStore("docs");
@@ -107,7 +107,7 @@ export class IndexedDBProvider<S, O> implements Provider<S, O, "client"> {
    */
   async transaction<T>(
     mode: "readonly" | "readwrite",
-    callback: (ctx: TransactionContext<S, O, "client">) => Promise<T>,
+    callback: (ctx: ClientProviderContext<S, O>) => Promise<T>,
   ): Promise<T> {
     const db = await this._dbPromise;
 

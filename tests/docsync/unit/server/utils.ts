@@ -1,8 +1,11 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { DocSyncServer, InMemoryServerProvider } from "@docukit/docsync/server";
-import { DocSyncClient, type Identity } from "@docukit/docsync/client";
-import type { Provider } from "@docukit/docsync";
+import {
+  DocSyncClient,
+  type ClientProvider,
+  type Identity,
+} from "@docukit/docsync/client";
 import { testDocConfig } from "../../int/utils.js";
 
 // Auto-assign unique port range based on Vitest worker ID
@@ -38,7 +41,7 @@ const createMockDocSyncClient = (serverOverrides?: {
       provider: InMemoryServerProvider as unknown as new (
         identity: Identity,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ) => Provider<any, any, "client">,
+      ) => ClientProvider<any, any>,
       getIdentity: async () => ({
         userId: "test-user",
         secret: "test-secret",

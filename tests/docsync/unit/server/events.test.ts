@@ -6,7 +6,7 @@ import type {
   ClientConnectEvent,
   ClientDisconnectEvent,
   SyncRequestEvent,
-} from "@docukit/docsync";
+} from "@docukit/docsync/server";
 
 describe("Server Events", () => {
   // ──────────────────────────────────────────────────────────────────────────

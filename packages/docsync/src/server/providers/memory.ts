@@ -1,4 +1,4 @@
-import type { Provider, TransactionContext } from "../../shared/types.js";
+import type { ServerProvider, ServerProviderContext } from "../types.js";
 
 interface StoredDoc<S> {
   serializedDoc: S;
@@ -14,7 +14,7 @@ interface StoredOperation<O> {
  * In-memory server provider for testing.
  * Stores documents and operations in memory - data is lost when the process ends.
  */
-export class InMemoryServerProvider<S, O> implements Provider<S, O, "server"> {
+export class InMemoryServerProvider<S, O> implements ServerProvider<S, O> {
   private _docs = new Map<string, StoredDoc<S>>();
   private _operations = new Map<string, StoredOperation<O>[]>();
   private _clockCounterByDocId = new Map<string, number>();
@@ -28,10 +28,10 @@ export class InMemoryServerProvider<S, O> implements Provider<S, O, "server"> {
 
   async transaction<T>(
     _mode: "readonly" | "readwrite",
-    callback: (ctx: TransactionContext<S, O, "server">) => Promise<T>,
+    callback: (ctx: ServerProviderContext<S, O>) => Promise<T>,
   ): Promise<T> {
     // In-memory provider doesn't need real transactions since operations are synchronous
-    const ctx: TransactionContext<S, O, "server"> = {
+    const ctx: ServerProviderContext<S, O> = {
       getSerializedDoc: async (docId: string) => {
         return this._docs.get(docId);
       },

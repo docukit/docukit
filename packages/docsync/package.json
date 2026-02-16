@@ -32,12 +32,10 @@
   },
   "exports": {
     ".": {
-      "vitest": "./src/exports/index.ts",
-      "types": "./dist/src/exports/index.d.ts",
-      "default": "./dist/src/exports/index.js"
+      "types": "./dist/src/exports/shared.d.ts",
+      "default": "./dist/src/exports/shared.js"
     },
     "./*": {
-      "vitest": "./src/exports/*.ts",
       "types": "./dist/src/exports/*.d.ts",
       "default": "./dist/src/exports/*.js"
     }

@@ -2,17 +2,17 @@ import { queryClient } from "./schema.js";
 import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "./schema.js";
 import { eq, gt, and } from "drizzle-orm";
-import type { Provider, TransactionContext } from "../../../shared/types.js";
+import type { ServerProvider, ServerProviderContext } from "../../types.js";
 
-export class PostgresProvider<S, O> implements Provider<S, O, "server"> {
+export class PostgresProvider<S, O> implements ServerProvider<S, O> {
   private _db = drizzle(queryClient, { schema });
 
   async transaction<T>(
     _mode: "readonly" | "readwrite",
-    callback: (ctx: TransactionContext<S, O, "server">) => Promise<T>,
+    callback: (ctx: ServerProviderContext<S, O>) => Promise<T>,
   ): Promise<T> {
     return await this._db.transaction(async (tx) => {
-      const ctx: TransactionContext<S, O, "server"> = {
+      const ctx: ServerProviderContext<S, O> = {
         getSerializedDoc: async (docId: string) => {
           const doc = await tx.query.documents.findFirst({
             where: eq(schema.documents.docId, docId),

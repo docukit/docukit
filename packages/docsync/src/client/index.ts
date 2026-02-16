@@ -1,24 +1,23 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { io } from "socket.io-client";
+import type { DocBinding, Presence } from "../shared/types.js";
 import type {
-  DocBinding,
   BroadcastMessage,
   ClientConfig,
-  Provider,
+  ClientProvider,
+  ClientSocket,
+  ConnectEventListener,
+  DeferredState,
+  ChangeEventListener,
   DocData,
+  DocLoadEventListener,
+  DocUnloadEventListener,
+  DisconnectEventListener,
   GetDocArgs,
   Identity,
   QueryResult,
-  ConnectEventListener,
-  DisconnectEventListener,
-  ChangeEventListener,
   SyncEventListener,
-  DocLoadEventListener,
-  DocUnloadEventListener,
-  ClientSocket,
-  Presence,
-  DeferredState,
-} from "../shared/types.js";
+} from "./types.js";
 import { handleDeleteDoc } from "./handlers/delete-doc.js";
 import { handlePresence } from "./handlers/presence.js";
 import { handleSyncAndDoPush } from "./handlers/sync.js";
@@ -26,7 +25,7 @@ import { handleUnsubscribe } from "./handlers/unsubscribe.js";
 
 // TODO: review this type!
 type LocalResolved<S, O> = {
-  provider: Provider<S, O, "client">;
+  provider: ClientProvider<S, O>;
   identity: Identity;
 };
 
@@ -80,7 +79,7 @@ export class DocSyncClient<
     // Initialize local provider (if configured)
     this._localPromise = (async () => {
       const identity = await local.getIdentity();
-      const provider = new local.provider(identity) as Provider<S, O, "client">;
+      const provider = new local.provider(identity) as ClientProvider<S, O>;
 
       // Initialize BroadcastChannel with user-specific channel name
       // This ensures only tabs of the same user share operations

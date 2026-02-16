@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type { Presence, ServerConnectionSocket } from "../../shared/types.js";
+import type { Presence } from "../../shared/types.js";
+import type { ServerConnectionSocket } from "../types.js";
 
 /**
  * Updates server presence state for a document and broadcasts the change

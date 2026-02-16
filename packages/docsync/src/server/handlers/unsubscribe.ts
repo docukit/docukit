@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import type {
-  ServerConnectionSocket,
   UnsubscribeDocRequest,
   UnsubscribeDocResponse,
 } from "../../shared/types.js";
+import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
 import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
 

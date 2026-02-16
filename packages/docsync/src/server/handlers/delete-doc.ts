@@ -2,8 +2,8 @@
 import type {
   DeleteDocRequest,
   DeleteDocResponse,
-  ServerConnectionSocket,
 } from "../../shared/types.js";
+import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
 
 export type DeleteDocHandler = (
