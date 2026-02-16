@@ -25,9 +25,7 @@ export const buttonVariants = cva(
         lg: "gap-2 px-6 py-3 text-base",
       },
     },
-    defaultVariants: {
-      variant: "primary",
-    },
+    defaultVariants: { variant: "primary" },
   },
 );
 

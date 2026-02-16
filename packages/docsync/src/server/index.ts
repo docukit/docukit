@@ -50,9 +50,7 @@ export class DocSyncServer<
 
   constructor(config: ServerConfig<TContext, D, S, O>) {
     this._io = new Server(config.port ?? 8080, {
-      cors: {
-        origin: "*",
-      },
+      cors: { origin: "*" },
       // Performance: Only WebSocket transport, no polling
       transports: ["websocket"],
     });

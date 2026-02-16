@@ -28,17 +28,12 @@ const TextNode = defineNode({
 
 const ParagraphNode = defineNode({
   type: "paragraph",
-  state: {
-    indent: number(0),
-  },
+  state: { indent: number(0) },
 });
 
 const HeadingNode = defineNode({
   type: "heading",
-  state: {
-    indent: number(0),
-    level: number(1),
-  },
+  state: { indent: number(0), level: number(1) },
 });
 ```
 
@@ -50,19 +45,10 @@ import { date } from "./your-custom-state-definitions";
 
 const FileNode = defineNode({
   type: "file",
-  state: {
-    name: string(""),
-    extension: string(""),
-    updatedAt: date(),
-  },
+  state: { name: string(""), extension: string(""), updatedAt: date() },
 });
 
-const FolderNode = defineNode({
-  type: "folder",
-  state: {
-    name: string(""),
-  },
-});
+const FolderNode = defineNode({ type: "folder", state: { name: string("") } });
 ```
 
 ```ts tab="Todo List"
@@ -83,10 +69,7 @@ const TodoItemNode = defineNode({
 
 const TodoListNode = defineNode({
   type: "todo-list",
-  state: {
-    name: string(""),
-    color: string("#f0f0f0"),
-  },
+  state: { name: string(""), color: string("#f0f0f0") },
 });
 ```
 

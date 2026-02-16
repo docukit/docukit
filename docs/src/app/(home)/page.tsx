@@ -10,9 +10,7 @@ import { SyncedEditorsDemo } from "@/components/SyncedEditorsDemo";
 export const metadata: Metadata = {
   title: "Build local-first apps easily",
   description: "Real-time collaborative tools for modern developers.",
-  icons: {
-    icon: "/favicon.svg",
-  },
+  icons: { icon: "/favicon.svg" },
 };
 
 const AnimatedBackground = () => (
@@ -144,9 +142,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
           ? "bg-emerald-600 shadow-emerald-900/20 hover:bg-emerald-500"
           : "bg-blue-600 shadow-blue-900/20 hover:bg-blue-500"
       } `}
-      style={{
-        animationDelay: `${delay}s`,
-      }}
+      style={{ animationDelay: `${delay}s` }}
     >
       {/* Top highlight border */}
       <div className="absolute inset-x-0 top-0 z-20 h-px bg-white/20" />

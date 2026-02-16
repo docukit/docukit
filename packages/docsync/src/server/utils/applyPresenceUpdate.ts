@@ -27,8 +27,7 @@ export function applyPresenceUpdate(
     presenceByDoc.set(docId, newPresence);
   }
 
-  socket.to(`doc:${docId}`).emit("presence", {
-    docId,
-    presence: { [clientId]: presence ?? null },
-  });
+  socket
+    .to(`doc:${docId}`)
+    .emit("presence", { docId, presence: { [clientId]: presence ?? null } });
 }

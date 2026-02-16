@@ -27,10 +27,7 @@ const createClientForUser = (
     },
     local: {
       provider: IndexedDBProvider,
-      getIdentity: async () => ({
-        userId,
-        secret: "asdasdasd",
-      }),
+      getIdentity: async () => ({ userId, secret: "asdasdasd" }),
     },
     docBinding: DocNodeBinding(docConfigs),
   });

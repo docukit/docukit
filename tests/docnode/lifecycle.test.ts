@@ -212,10 +212,7 @@ describe("doc.onNormalize", () => {
   });
 
   test("onNormalize can mutate the document", () => {
-    const Container = defineNode({
-      type: "container",
-      state: {},
-    });
+    const Container = defineNode({ type: "container", state: {} });
 
     const TestExtension: Extension = {
       nodes: [Text, Container],

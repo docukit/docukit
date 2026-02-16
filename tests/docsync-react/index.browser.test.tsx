@@ -13,16 +13,11 @@ test("createDocSyncClient", async () => {
   const { useDoc } = createDocSyncClient({
     server: {
       url: "ws://localhost:8081",
-      auth: {
-        getToken: async () => "1234567890" as string,
-      },
+      auth: { getToken: async () => "1234567890" as string },
     },
     local: {
       provider: IndexedDBProvider,
-      getIdentity: async () => ({
-        userId: "John",
-        secret: "asdasdasd",
-      }),
+      getIdentity: async () => ({ userId: "John", secret: "asdasdasd" }),
     },
     docBinding: DocNodeBinding([docConfig]),
   });
@@ -89,20 +84,8 @@ test("createDocSyncClient", async () => {
 
   // Type check: QueryResult<DocData<Doc>> has the expected structure
   expectTypeOf<DocResult>().toEqualTypeOf<
-    | {
-        status: "loading";
-        data?: never;
-        error?: never;
-      }
-    | {
-        status: "success";
-        data: DocData<Doc>;
-        error?: never;
-      }
-    | {
-        status: "error";
-        data?: never;
-        error: Error;
-      }
+    | { status: "loading"; data?: never; error?: never }
+    | { status: "success"; data: DocData<Doc>; error?: never }
+    | { status: "error"; data?: never; error: Error }
   >();
 });

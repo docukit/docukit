@@ -129,10 +129,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   }
 
   if ("error" in response && response.error) {
-    client["_events"].emit("sync", {
-      req,
-      error: response.error,
-    });
+    client["_events"].emit("sync", { req, error: response.error });
     pushStatusByDocId.set(docId, "idle");
     void handleSync(client, docId);
     return;
@@ -152,10 +149,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
 
   await provider.transaction("readwrite", async (ctx) => {
     if (operationsBatches.length > 0) {
-      await ctx.deleteOperations({
-        docId,
-        count: operationsBatches.length,
-      });
+      await ctx.deleteOperations({ docId, count: operationsBatches.length });
     }
 
     const stored = await ctx.getSerializedDoc(docId);
@@ -181,11 +175,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
       return;
     }
 
-    await ctx.saveSerializedDoc({
-      serializedDoc,
-      docId,
-      clock: data.clock,
-    });
+    await ctx.saveSerializedDoc({ serializedDoc, docId, clock: data.clock });
     didConsolidate = true;
   });
 

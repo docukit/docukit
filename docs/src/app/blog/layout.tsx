@@ -8,16 +8,8 @@ const options: BaseLayoutProps = {
   ...baseOptions,
   links: [
     ...(baseOptions.links ?? []),
-    {
-      type: "main",
-      text: "Blog",
-      url: "/blog",
-    },
-    {
-      type: "main",
-      text: "Documentation",
-      url: "/docs",
-    },
+    { type: "main", text: "Blog", url: "/blog" },
+    { type: "main", text: "Documentation", url: "/docs" },
   ],
 };
 

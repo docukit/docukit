@@ -30,9 +30,7 @@ export const { useDoc, usePresence, client } = createDocSyncClient({
   docBinding: DocNodeBinding([...yourDocConfigs]),
   server: {
     url: "http://localhost:8080",
-    auth: {
-      getToken: async () => await fetchAuthToken(),
-    },
+    auth: { getToken: async () => await fetchAuthToken() },
   },
   local: {
     provider: IndexedDBProvider,
@@ -55,9 +53,7 @@ export const client = new DocSyncClient({
   docBinding: DocNodeBinding([...yourDocConfigs]),
   server: {
     url: "http://localhost:8080",
-    auth: {
-      getToken: async () => await fetchAuthToken(),
-    },
+    auth: { getToken: async () => await fetchAuthToken() },
   },
   local: {
     provider: IndexedDBProvider,

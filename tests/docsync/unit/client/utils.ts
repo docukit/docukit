@@ -48,9 +48,7 @@ const createValidConfig = (userId?: string) =>
   createClientConfig({
     server: {
       url: "ws://localhost:8081",
-      auth: {
-        getToken: async () => "test-token",
-      },
+      auth: { getToken: async () => "test-token" },
     },
     docBinding: createMockDocBinding(),
     local: {
@@ -80,9 +78,7 @@ export const createClientWithDisposeSpy = (userId?: string) => {
   const config = createClientConfig({
     server: {
       url: "ws://localhost:8081",
-      auth: {
-        getToken: async () => "test-token",
-      },
+      auth: { getToken: async () => "test-token" },
     },
     docBinding,
     local: {
@@ -152,17 +148,12 @@ export const createClientWithProvider = (
   const config = createClientConfig({
     server: {
       url: "ws://localhost:8081",
-      auth: {
-        getToken: async () => "test-token",
-      },
+      auth: { getToken: async () => "test-token" },
     },
     docBinding: createMockDocBinding(),
     local: {
       provider: ProviderClass,
-      getIdentity: async () => ({
-        userId: "test-user",
-        secret: "test-secret",
-      }),
+      getIdentity: async () => ({ userId: "test-user", secret: "test-secret" }),
     },
   });
   return new DocSyncClient(config);

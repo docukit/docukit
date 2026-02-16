@@ -48,12 +48,7 @@ const getTestServerUrl = (): string => {
 // Node Definitions
 // ============================================================================
 
-const ChildNode = defineNode({
-  type: "child",
-  state: {
-    value: string(""),
-  },
-});
+const ChildNode = defineNode({ type: "child", state: { value: string("") } });
 
 export const testDocConfig = {
   type: "test",

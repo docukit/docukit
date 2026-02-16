@@ -130,24 +130,9 @@ describe("accessors & getters", () => {
 });
 
 describe("is", () => {
-  const TestNode2 = defineNode({
-    type: "test",
-    state: {
-      foo: string(""),
-    },
-  });
-  const TestNode3 = defineNode({
-    type: "test",
-    state: {
-      bar: string(""),
-    },
-  });
-  const X = defineNode({
-    type: "X",
-    state: {
-      bar: string(""),
-    },
-  });
+  const TestNode2 = defineNode({ type: "test", state: { foo: string("") } });
+  const TestNode3 = defineNode({ type: "test", state: { bar: string("") } });
+  const X = defineNode({ type: "X", state: { bar: string("") } });
   const doc = new Doc({
     type: "root",
     extensions: [{ nodes: [TestNode, TestNode2, TestNode3, X] }],

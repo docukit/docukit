@@ -31,10 +31,7 @@ export const blog = loader({
 export function getPageImage(page: InferPageType<typeof source>) {
   const segments = [...page.slugs, "image.png"];
 
-  return {
-    segments,
-    url: `/og/${segments.join("/")}`,
-  };
+  return { segments, url: `/og/${segments.join("/")}` };
 }
 
 export async function getLLMText(page: InferPageType<typeof source>) {

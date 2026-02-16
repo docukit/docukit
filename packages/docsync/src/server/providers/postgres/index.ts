@@ -18,10 +18,7 @@ export class PostgresProvider<S, O> implements ServerProvider<S, O> {
             where: eq(schema.documents.docId, docId),
           });
           return doc
-            ? {
-                serializedDoc: doc.doc as S,
-                clock: doc.clock.getTime(),
-              }
+            ? { serializedDoc: doc.doc as S, clock: doc.clock.getTime() }
             : undefined;
         },
 
@@ -81,10 +78,7 @@ export class PostgresProvider<S, O> implements ServerProvider<S, O> {
           // Insert operations and return the DB-generated timestamp
           const inserted = await tx
             .insert(schema.operations)
-            .values({
-              docId,
-              operations: operations as unknown[],
-            })
+            .values({ docId, operations: operations as unknown[] })
             .returning({ clock: schema.operations.clock });
 
           return inserted[0]!.clock.getTime();

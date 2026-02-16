@@ -254,11 +254,7 @@ describe("Server Events", () => {
           deviceId: expect.any(String) as string,
           socketId: expect.any(String) as string,
           status: "success",
-          req: {
-            docId: "doc-1",
-            operations: [{ type: "insert" }],
-            clock: 0,
-          },
+          req: { docId: "doc-1", operations: [{ type: "insert" }], clock: 0 },
           // res is optional - only present if operations/serializedDoc returned
           durationMs: expect.any(Number) as number,
           clientsCount: expect.any(Number) as number,
@@ -435,10 +431,7 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.sync({
-          docId: "doc-6",
-          clock: 0,
-        });
+        await T.sync({ docId: "doc-6", clock: 0 });
 
         expect(capturedEvent).toBeDefined();
         // When no operations are sent, the server receives an empty array

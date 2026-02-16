@@ -32,14 +32,8 @@ export interface DocBinding<
 // ============================================================================
 
 export type Result<D, E = Error> =
-  | {
-      data: D;
-      error?: never;
-    }
-  | {
-      data?: never;
-      error: E;
-    };
+  | { data: D; error?: never }
+  | { data?: never; error: E };
 
 // ============================================================================
 // DocSync Events (Request/Response)
@@ -55,12 +49,7 @@ export type SyncRequest<O = unknown> = {
 
 /** Shared response for the sync event (server sends, client receives). */
 export type SyncResponse<S = unknown, O = unknown> = Result<
-  {
-    docId: string;
-    operations?: O[];
-    serializedDoc?: S;
-    clock: number;
-  },
+  { docId: string; operations?: O[]; serializedDoc?: S; clock: number },
   {
     type: "AuthorizationError" | "DatabaseError" | "ValidationError";
     message: string;

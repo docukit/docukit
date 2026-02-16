@@ -58,26 +58,16 @@ export const rootEslintConfig = tseslint.config(
       "@typescript-eslint/consistent-indexed-object-style": "off",
       "@typescript-eslint/consistent-type-imports": [
         "warn",
-        {
-          prefer: "type-imports",
-          fixStyle: "inline-type-imports",
-        },
+        { prefer: "type-imports", fixStyle: "inline-type-imports" },
       ],
       "@typescript-eslint/no-unused-vars": [
         "warn",
-        {
-          argsIgnorePattern: "^_",
-          varsIgnorePattern: "^_",
-        },
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
       "@typescript-eslint/require-await": "off",
       "@typescript-eslint/no-misused-promises": [
         "error",
-        {
-          checksVoidReturn: {
-            attributes: false,
-          },
-        },
+        { checksVoidReturn: { attributes: false } },
       ],
       // TODO: enable
       // "@typescript-eslint/no-shadow": "error",
@@ -87,9 +77,7 @@ export const rootEslintConfig = tseslint.config(
         { scope: "parameters" },
       ],
     },
-    plugins: {
-      "prefer-inline-types": preferInlineTypes,
-    },
+    plugins: { "prefer-inline-types": preferInlineTypes },
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -98,22 +86,12 @@ export const rootEslintConfig = tseslint.config(
     },
   },
   {
-    plugins: {
-      vitest,
-    },
-    rules: {
-      "vitest/prefer-strict-equal": "error",
-    },
-    settings: {
-      vitest: {
-        typecheck: true,
-      },
-    },
+    plugins: { vitest },
+    rules: { "vitest/prefer-strict-equal": "error" },
+    settings: { vitest: { typecheck: true } },
   },
   {
-    plugins: {
-      import: eslintPluginImport,
-    },
+    plugins: { import: eslintPluginImport },
     rules: {
       // Prevent imports that escape package boundaries
       "import/no-relative-packages": "error",
@@ -157,9 +135,7 @@ export const rootEslintConfig = tseslint.config(
     },
   },
   {
-    plugins: {
-      playwright,
-    },
+    plugins: { playwright },
     rules: {
       // I probably need to tune the additional options
       "playwright/no-get-by-title": "error",
@@ -187,9 +163,7 @@ export const rootEslintConfig = tseslint.config(
     files: ["**/*.ui.test.ts"],
   },
   {
-    plugins: {
-      regexp: regexpPlugin,
-    },
+    plugins: { regexp: regexpPlugin },
     rules: regexpPlugin.configs["flat/recommended"].rules,
   },
   // Barrel files (re-exports) allowed only in **/exports/**; override below turns rule off there
@@ -205,9 +179,7 @@ export const rootEslintConfig = tseslint.config(
   },
   {
     files: ["packages/**/exports/**"],
-    rules: {
-      "barrel-files/avoid-barrel-files": "off",
-    },
+    rules: { "barrel-files/avoid-barrel-files": "off" },
   },
 
   {
@@ -227,20 +199,11 @@ export const rootEslintConfig = tseslint.config(
     },
     ignores: ["**/*.test.ts"],
   },
-  ...nextVitals.map((config) => ({
-    ...config,
-    files: ["**/*.{jsx,tsx}"],
-  })),
+  ...nextVitals.map((config) => ({ ...config, files: ["**/*.{jsx,tsx}"] })),
   {
     files: ["**/*.{jsx,tsx}"],
-    settings: {
-      next: {
-        rootDir: ["docs/", "examples/"],
-      },
-    },
-    rules: {
-      "react/no-unescaped-entities": "off",
-    },
+    settings: { next: { rootDir: ["docs/", "examples/"] } },
+    rules: { "react/no-unescaped-entities": "off" },
   },
   {
     ignores: [

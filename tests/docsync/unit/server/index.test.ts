@@ -220,9 +220,7 @@ function createMockDocSyncClient(port: number, token: string): DocSyncClient {
   return new DocSyncClient({
     server: {
       url: `ws://localhost:${port}`,
-      auth: {
-        getToken: async () => token,
-      },
+      auth: { getToken: async () => token },
     },
     local: {
       provider: InMemoryServerProvider as unknown as new (
@@ -280,11 +278,7 @@ describe("sync", () => {
       }
 
       // First sync from clock 0: should receive all 100 operations
-      const res1 = await T.sync({
-        docId,
-        operations: [],
-        clock: 0,
-      });
+      const res1 = await T.sync({ docId, operations: [], clock: 0 });
 
       expect("error" in res1).toBe(false);
       if ("data" in res1) {
@@ -299,11 +293,7 @@ describe("sync", () => {
 
       // Second sync from clock 100: should receive serializedDoc (squashed)
       // because previous fetch triggered squashing (>= 100 operations)
-      const res2 = await T.sync({
-        docId,
-        operations: [],
-        clock: 100,
-      });
+      const res2 = await T.sync({ docId, operations: [], clock: 100 });
 
       expect("error" in res2).toBe(false);
       if ("data" in res2) {
@@ -368,10 +358,7 @@ describe("authenticate/authorize: different function syntaxes", () => {
       // Traditional function expression
       authenticate: async function ({ token }) {
         if (token === "valid-token") {
-          return {
-            userId: "user2",
-            context: { isAdmin: true, level: 5 },
-          };
+          return { userId: "user2", context: { isAdmin: true, level: 5 } };
         }
         return undefined;
       },
@@ -604,10 +591,7 @@ describe("DocSyncServer assignability", () => {
               },
               user: {
                 roles: ["admin", "developer"] as const,
-                flags: {
-                  beta: true,
-                  experimental: false,
-                },
+                flags: { beta: true, experimental: false },
               },
             },
           };

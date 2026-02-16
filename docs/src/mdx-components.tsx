@@ -7,9 +7,7 @@ import type React from "react";
 import { CollapsibleTable } from "./components/CollapsibleTable";
 
 // Create a filtered generator wrapper with correct basePath for monorepo
-const baseGenerator = createGenerator({
-  basePath: "../",
-});
+const baseGenerator = createGenerator({ basePath: "../" });
 const generator = {
   ...baseGenerator,
   generateTypeTable: async (

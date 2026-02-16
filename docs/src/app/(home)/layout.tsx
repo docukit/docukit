@@ -3,12 +3,7 @@ import { baseOptions } from "@/lib/layout.shared";
 import { RootProvider } from "fumadocs-ui/provider/next";
 import Footer from "@/components/Footer";
 
-const options = {
-  ...baseOptions,
-  themeSwitch: {
-    enabled: false,
-  },
-};
+const options = { ...baseOptions, themeSwitch: { enabled: false } };
 
 export default function Layout({ children }: LayoutProps<"/">) {
   return (

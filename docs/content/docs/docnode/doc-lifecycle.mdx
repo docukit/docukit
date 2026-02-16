@@ -62,9 +62,7 @@ How many times do you think the following code will log "changed"?
 ```ts
 const ExampleNode = defineNode({
   type: "example",
-  state: {
-    value: string(""),
-  },
+  state: { value: string("") },
 });
 const doc = new Doc({ extensions: [{ nodes: [ExampleNode] }] });
 

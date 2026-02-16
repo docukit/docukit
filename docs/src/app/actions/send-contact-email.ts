@@ -13,11 +13,7 @@ const contactFormSchema = z.object({
 export type ContactFormState = {
   success?: boolean;
   error?: string;
-  errors?: {
-    name?: string[];
-    email?: string[];
-    message?: string[];
-  };
+  errors?: { name?: string[]; email?: string[]; message?: string[] };
 };
 
 export async function sendContactEmail(
@@ -75,9 +71,7 @@ export async function sendContactEmail(
       `,
     });
 
-    return {
-      success: true,
-    };
+    return { success: true };
   } catch (error) {
     console.error("Failed to send email:", error);
     return {

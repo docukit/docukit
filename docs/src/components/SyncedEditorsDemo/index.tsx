@@ -60,10 +60,7 @@ function EditorSlot({
       isPrimary={isPrimary}
       presence={presence as Presence}
       setPresence={setPresence}
-      user={{
-        name: userId,
-        color: USER_COLORS[userId] ?? "#888",
-      }}
+      user={{ name: userId, color: USER_COLORS[userId] ?? "#888" }}
     />
   );
 }

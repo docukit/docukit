@@ -13,13 +13,9 @@ export const docs = defineDocs({
   dir: "content/docs",
   docs: {
     schema: frontmatterSchema,
-    postprocess: {
-      includeProcessedMarkdown: true,
-    },
+    postprocess: { includeProcessedMarkdown: true },
   },
-  meta: {
-    schema: metaSchema,
-  },
+  meta: { schema: metaSchema },
 });
 
 // Blog posts collection

@@ -27,11 +27,7 @@ import {
 
 // Mock socket.io-client to avoid real connections
 vi.mock("socket.io-client", () => ({
-  io: vi.fn(() => ({
-    on: vi.fn(),
-    emit: vi.fn(),
-    disconnect: vi.fn(),
-  })),
+  io: vi.fn(() => ({ on: vi.fn(), emit: vi.fn(), disconnect: vi.fn() })),
 }));
 
 // ============================================================================
@@ -161,21 +157,9 @@ describe("DocSyncClient", () => {
 
     test("QueryResult has expected structure", () => {
       expectTypeOf<DocResult>().toEqualTypeOf<
-        | {
-            status: "loading";
-            data?: never;
-            error?: never;
-          }
-        | {
-            status: "success";
-            data: DocData<Doc>;
-            error?: never;
-          }
-        | {
-            status: "error";
-            data?: never;
-            error: Error;
-          }
+        | { status: "loading"; data?: never; error?: never }
+        | { status: "success"; data: DocData<Doc>; error?: never }
+        | { status: "error"; data?: never; error: Error }
       >();
     });
   });
@@ -206,11 +190,7 @@ describe("DocSyncClient", () => {
         client.getDoc({ type: "test", id: "non-existent-id" }, callback);
         await expect
           .poll(() => callback.mock.calls.at(-1)?.[0])
-          .toEqual({
-            status: "success",
-            data: undefined,
-            error: undefined,
-          });
+          .toEqual({ status: "success", data: undefined, error: undefined });
       });
 
       test("should return cached document when requested multiple times", async () => {

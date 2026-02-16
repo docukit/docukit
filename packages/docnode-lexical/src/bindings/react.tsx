@@ -8,10 +8,7 @@ import { updatePresence } from "../presence/index.js";
 import type { PresenceSelection } from "../types.js";
 import type { Presence } from "../presence/types.js";
 
-export type PresenceUser = {
-  name: string;
-  color: string;
-};
+export type PresenceUser = { name: string; color: string };
 
 export type DocNodePluginProps = {
   doc: Doc;

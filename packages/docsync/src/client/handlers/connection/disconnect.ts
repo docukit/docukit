@@ -22,8 +22,6 @@ export function handleDisconnect<
     client["_events"].emit("disconnect", { reason });
   });
   client["_socket"].on("connect_error", (err) => {
-    client["_events"].emit("disconnect", {
-      reason: err.message,
-    });
+    client["_events"].emit("disconnect", { reason: err.message });
   });
 }

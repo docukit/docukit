@@ -19,11 +19,7 @@ import { Doc, defineNode, string, number, boolean } from "@docukit/docnode";
 // Paragragh with Uppercase is the NodeDefinition (recommended convention)
 const Paragraph = defineNode({
   type: "paragraph",
-  state: {
-    text: string(""),
-    rating: number(0),
-    visible: boolean(true),
-  },
+  state: { text: string(""), rating: number(0), visible: boolean(true) },
 });
 
 const doc = new Doc({ extensions: [{ nodes: [Paragraph] }] });
@@ -148,10 +144,7 @@ More precisely, DocNode will combine all `NodeDefinitions` with the same type in
 ```ts
 import { defineNode, string, Doc, type Extension } from "@docukit/docnode";
 
-const TextNode = defineNode({
-  type: "text",
-  state: { text: string("") },
-});
+const TextNode = defineNode({ type: "text", state: { text: string("") } });
 const BaseExtension: Extension = { nodes: [TextNode] };
 
 // A third party could publish this extension independently on npm, for example.
@@ -161,9 +154,7 @@ const ColoredTextNode = defineNode({
 });
 const ColoredExtension: Extension = { nodes: [ColoredTextNode] };
 
-const doc = new Doc({
-  extensions: [BaseExtension, ColoredExtension],
-});
+const doc = new Doc({ extensions: [BaseExtension, ColoredExtension] });
 
 // If you are going to access the `text` and `color` states in a unknown node,
 // you will probably want to pass both NodeDefinitions to the `is` method.

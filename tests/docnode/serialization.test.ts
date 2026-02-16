@@ -53,12 +53,7 @@ describe("json serialization", () => {
   });
 
   test("DocNode.toJSON() - default state should not be included", () => {
-    const X = defineNode({
-      type: "X",
-      state: {
-        foo: string("default"),
-      },
-    });
+    const X = defineNode({ type: "X", state: { foo: string("default") } });
     const doc = new Doc({ type: "root", extensions: [{ nodes: [X] }] });
     const node1 = doc.createNode(X);
     doc.root.append(node1);
@@ -67,10 +62,7 @@ describe("json serialization", () => {
   });
 
   test("DocNode.toJSON() - default state should not be included - non primitive value", () => {
-    const myObject = v.object({
-      foo: v.string(),
-      bar: v.string(),
-    });
+    const myObject = v.object({ foo: v.string(), bar: v.string() });
 
     const X = defineNode({
       type: "X",

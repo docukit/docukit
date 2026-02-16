@@ -56,9 +56,7 @@ describe("Client Events", () => {
         disconnectReason = event.reason;
       });
 
-      client["_events"].emit("disconnect", {
-        reason: "transport close",
-      });
+      client["_events"].emit("disconnect", { reason: "transport close" });
       await expect.poll(() => disconnectReason).toBe("transport close");
     });
 
@@ -114,9 +112,7 @@ describe("Client Events", () => {
       const testOps = [emptyOps()];
       await saveOperations(client, docId, testOps);
 
-      spyOnRequest(client).mockResolvedValue({
-        data: { docId, clock: 1 },
-      });
+      spyOnRequest(client).mockResolvedValue({ data: { docId, clock: 1 } });
 
       let syncSuccess = false;
       client.on("sync", (event) => {

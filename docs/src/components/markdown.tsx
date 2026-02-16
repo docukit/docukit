@@ -36,9 +36,7 @@ function rehypeWrapWords() {
         return {
           type: "element",
           tagName: "span",
-          properties: {
-            class: "animate-fd-fade-in",
-          },
+          properties: { class: "animate-fd-fade-in" },
           children: [{ type: "text", value: word }],
         };
       });
@@ -101,10 +99,7 @@ function Pre(props: ComponentProps<"pre">) {
       code={content.trimEnd()}
       options={{
         // Used in other places!
-        themes: {
-          light: "light-plus",
-          dark: "dark-plus",
-        },
+        themes: { light: "light-plus", dark: "dark-plus" },
       }}
     />
   );

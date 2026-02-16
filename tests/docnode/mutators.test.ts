@@ -249,10 +249,7 @@ describe("mixed operations", () => {
     // test what happens with the unmodified property in patchState.
     const Text2 = defineNode({
       type: "text",
-      state: {
-        value: string(""),
-        value2: string(""),
-      },
+      state: { value: string(""), value2: string("") },
     });
     const doc = new Doc({ type: "root", extensions: [{ nodes: [Text2] }] });
     let node1: DocNode<typeof Text2>;
@@ -1367,10 +1364,7 @@ describe("to", () => {
 });
 
 test("A root node cannot be inserted (there cannot be two root nodes)", () => {
-  const RootNode = defineNode({
-    type: "docType",
-    state: {},
-  });
+  const RootNode = defineNode({ type: "docType", state: {} });
   const doc = new Doc({ type: "docType", extensions: [TextExtension] });
   checkUndoManager(0, doc, () => {
     assertError(

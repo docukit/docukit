@@ -237,10 +237,7 @@ class NextSiblingsIterator2 extends Iterator<DocNode> {
 
   constructor(node: DocNode) {
     super();
-    this._nextResult = {
-      done: false,
-      value: node.next,
-    };
+    this._nextResult = { done: false, value: node.next };
   }
 
   override next(): IteratorResult<DocNode> {

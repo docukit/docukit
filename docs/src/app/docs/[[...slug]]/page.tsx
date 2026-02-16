@@ -23,13 +23,7 @@ export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
   const toc =
     page.data.toc.length > 0
       ? page.data.toc
-      : [
-          {
-            depth: 1,
-            url: "#",
-            title: page.data.title,
-          },
-        ];
+      : [{ depth: 1, url: "#", title: page.data.title }];
 
   return (
     <DocsPage
@@ -50,15 +44,10 @@ export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
           </>
         ),
       }}
-      tableOfContentPopover={{
-        header: null,
-        enabled: false,
-      }}
+      tableOfContentPopover={{ header: null, enabled: false }}
       toc={toc}
       full={page.data.full}
-      footer={{
-        children: <Footer variant="docs" />,
-      }}
+      footer={{ children: <Footer variant="docs" /> }}
     >
       <DocsTitle>{page.data.title}</DocsTitle>
       <DocsDescription>{page.data.description}</DocsDescription>
@@ -95,11 +84,7 @@ export async function generateMetadata(
   return {
     title: `${page.data.title}`,
     description: page.data.description,
-    icons: {
-      icon,
-    },
-    openGraph: {
-      images: getPageImage(page).url,
-    },
+    icons: { icon },
+    openGraph: { images: getPageImage(page).url },
   };
 }

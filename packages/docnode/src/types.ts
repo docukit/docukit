@@ -73,10 +73,7 @@ export type StateRecord = Record<string, StateDefinition>;
 export type NodeDefinition<
   T extends string = string,
   S extends StateRecord = Record<never, never>,
-> = {
-  type: T;
-  state: S;
-};
+> = { type: T; state: S };
 
 /** @internal */
 // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -167,9 +164,7 @@ export type IntersectionOf<T extends any[]> = T extends [
     First & IntersectionOf<Rest extends any[] ? Rest : []>
   : unknown;
 
-export type IterableOptions = {
-  includeSelf?: boolean;
-};
+export type IterableOptions = { includeSelf?: boolean };
 
 // prettier-ignore
 export type Find = {

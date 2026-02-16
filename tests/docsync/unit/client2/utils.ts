@@ -103,10 +103,7 @@ export const tick = (ms = 3) =>
 export const setupDocWithOperations = async (
   client: DocSyncClient<Doc, JsonDoc, Operations>,
   docId: string,
-  options: {
-    clock?: number;
-    operations?: Operations[];
-  } = {},
+  options: { clock?: number; operations?: Operations[] } = {},
 ) => {
   const { clock = 0, operations = [emptyOps()] } = options;
   const docBinding = client["_docBinding"];

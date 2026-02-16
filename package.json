@@ -38,6 +38,7 @@
     "*": "prettier --write --ignore-unknown"
   },
   "prettier": {
+    "objectWrap": "collapse",
     "plugins": [
       "prettier-plugin-tailwindcss"
     ]

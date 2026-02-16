@@ -3,9 +3,7 @@ import { defineNode, string, type DocConfig, type Doc } from "@docukit/docnode";
 // Shared node definition for both client and server
 export const IndexNode = defineNode({
   type: "editor-index",
-  state: {
-    value: string(""),
-  },
+  state: { value: string("") },
 });
 
 // Helper function to create IndexNode

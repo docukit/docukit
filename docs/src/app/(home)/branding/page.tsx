@@ -6,9 +6,7 @@ import { GREEN, BLUE } from "@/lib/brand-colors";
 export const metadata = {
   title: "Branding | DocuKit",
   description: "DocuKit responsive logo design system",
-  icons: {
-    icon: "/favicon.svg",
-  },
+  icons: { icon: "/favicon.svg" },
 };
 
 function LogoSection({

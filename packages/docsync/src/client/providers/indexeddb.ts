@@ -19,9 +19,7 @@ interface DocNodeIDB<S, O> extends DBSchema {
   operations: {
     key: number;
     value: { operations: O[]; docId: string };
-    indexes: {
-      docId_idx: string;
-    };
+    indexes: { docId_idx: string };
   };
 }
 
