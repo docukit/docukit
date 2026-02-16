@@ -4,8 +4,6 @@ import type {
   DocBinding,
   ServerToClientEvents,
   SerializedDocPayload,
-  SyncRequest,
-  SyncResponse,
 } from "../shared/types.js";
 
 // ============================================================================
@@ -37,49 +35,6 @@ export type GetDocArgs =
   | { type: string; createIfMissing: true };
 
 export type DocData<D> = { doc: D; docId: string };
-
-// ============================================================================
-// Client Events
-// ============================================================================
-
-export type DisconnectEvent = {
-  reason: string;
-};
-
-export type ChangeEvent<O = unknown> = {
-  docId: string;
-  origin: "local" | "broadcast" | "remote";
-  operations: O[];
-};
-
-/** Emitted once after sync completes (success or error). Same req/res contract as server; client may also get NetworkError. */
-export type SyncEvent<O = unknown, S = unknown> = {
-  req: SyncRequest<O>;
-} & (
-  | SyncResponse<S, O>
-  | { error: { type: "NetworkError"; message: string }; data?: never }
-);
-
-export type DocLoadEvent = {
-  docId: string;
-  source: "cache" | "local" | "created";
-  refCount: number;
-};
-
-export type DocUnloadEvent = {
-  docId: string;
-  refCount: number;
-};
-
-export type ConnectEventListener = () => void;
-export type DisconnectEventListener = (event: DisconnectEvent) => void;
-// eslint-disable-next-line @typescript-eslint/prefer-function-type
-export type ChangeEventListener<O = {}> = { (event: ChangeEvent<O>): void };
-/** Client listener for when a sync completes (passed to {@link DocSyncClient.onSync}). */
-// eslint-disable-next-line @typescript-eslint/prefer-function-type
-export type SyncEventListener<O = {}> = { (event: SyncEvent<O>): void };
-export type DocLoadEventListener = (event: DocLoadEvent) => void;
-export type DocUnloadEventListener = (event: DocUnloadEvent) => void;
 
 // ============================================================================
 // Client State & Config

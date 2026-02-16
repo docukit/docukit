@@ -24,7 +24,7 @@ export async function applyServerOperations<
   }
   client["_shouldBroadcast"] = true;
 
-  client["_emit"](client["_changeEventListeners"], {
+  client["_events"].emit("change", {
     docId: args.docId,
     origin: "remote",
     operations: args.operations,
@@ -104,7 +104,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   try {
     response = await request(socket, "sync", payload);
   } catch (error) {
-    client["_emit"](client["_syncEventListeners"], {
+    client["_events"].emit("sync", {
       req,
       error: {
         type: "NetworkError",
@@ -117,7 +117,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   }
 
   if ("error" in response && response.error) {
-    client["_emit"](client["_syncEventListeners"], {
+    client["_events"].emit("sync", {
       req,
       error: response.error,
     });
@@ -127,7 +127,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   }
 
   const { data } = response;
-  client["_emit"](client["_syncEventListeners"], {
+  client["_events"].emit("sync", {
     req,
     data: {
       docId: data.docId,

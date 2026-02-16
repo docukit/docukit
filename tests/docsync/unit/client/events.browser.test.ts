@@ -1,4 +1,12 @@
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, expectTypeOf } from "vitest";
+import type {
+  DisconnectEvent,
+  ChangeEvent,
+  SyncEvent,
+  DocLoadEvent,
+  DocUnloadEvent,
+} from "@docukit/docsync/client";
+import type { JsonDoc, Operations } from "@docukit/docnode";
 import {
   createClient,
   generateDocId,
@@ -14,22 +22,21 @@ describe("Client Events", () => {
   // onConnect
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("onConnect", () => {
+  describe('on("connect")', () => {
     test("should allow registering and unregistering handlers", async () => {
       const client = await createClient();
 
       let called = false;
-      const unsubscribe = client.onConnect(() => {
+      const off = client.on("connect", () => {
         called = true;
       });
 
-      client["_emit"](client["_connectEventListeners"]);
+      client["_events"].emit("connect");
       await expect.poll(() => called).toBe(true);
 
-      // Test unsubscribe
       called = false;
-      unsubscribe();
-      client["_emit"](client["_connectEventListeners"]);
+      off();
+      client["_events"].emit("connect");
       await expect.poll(() => called).toBe(false);
     });
   });
@@ -38,18 +45,17 @@ describe("Client Events", () => {
   // onDisconnect
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("onDisconnect", () => {
+  describe('on("disconnect")', () => {
     test("should emit when WebSocket connection is lost", async () => {
       const client = await createClient();
-      // Disconnect immediately to prevent real socket events from interfering
       client.disconnect();
 
       let disconnectReason: string | undefined;
-      client.onDisconnect((event) => {
+      client.on("disconnect", (event) => {
         disconnectReason = event.reason;
       });
 
-      client["_emit"](client["_disconnectEventListeners"], {
+      client["_events"].emit("disconnect", {
         reason: "transport close",
       });
       await expect.poll(() => disconnectReason).toBe("transport close");
@@ -66,7 +72,7 @@ describe("Client Events", () => {
         .toBeGreaterThan(0);
 
       client["_pushStatusByDocId"].clear();
-      client["_emit"](client["_disconnectEventListeners"], { reason: "test" });
+      client["_events"].emit("disconnect", { reason: "test" });
       await expect.poll(() => client["_pushStatusByDocId"].size).toBe(0);
     });
   });
@@ -75,18 +81,18 @@ describe("Client Events", () => {
   // onChange
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("onChange", () => {
+  describe('on("change")', () => {
     test("should emit for remote changes", async () => {
       const client = await createClient();
       const docId = generateDocId();
 
       let changeOrigin: string | undefined;
-      client.onChange((event) => {
+      client.on("change", (event) => {
         changeOrigin = event.origin;
       });
 
       const testOperations = [ops({ test: "data" })];
-      client["_emit"](client["_changeEventListeners"], {
+      client["_events"].emit("change", {
         docId,
         origin: "remote",
         operations: testOperations,
@@ -99,7 +105,7 @@ describe("Client Events", () => {
   // onSync
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("onSync", () => {
+  describe('on("sync")', () => {
     test("should emit on successful sync", async () => {
       const client = await createClient();
       const docId = generateDocId();
@@ -112,7 +118,7 @@ describe("Client Events", () => {
       });
 
       let syncSuccess = false;
-      client.onSync((event) => {
+      client.on("sync", (event) => {
         if ("data" in event) {
           syncSuccess = true;
         }
@@ -131,7 +137,7 @@ describe("Client Events", () => {
       spyOnRequest(client).mockRejectedValue(new Error("Network timeout"));
 
       let hasError = false;
-      client.onSync((event) => {
+      client.on("sync", (event) => {
         if ("error" in event) {
           hasError = true;
         }
@@ -146,25 +152,24 @@ describe("Client Events", () => {
   // onDocLoad
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("onDocLoad", () => {
+  describe('on("docLoad")', () => {
     test("should emit when document is created", async () => {
       const client = await createClient();
       const docId = generateDocId();
 
       let loadSource: string | undefined;
-      client.onDocLoad((event) => {
+      client.on("docLoad", (event) => {
         loadSource = event.source;
       });
 
       const cleanup = client.getDoc(
         { type: "test", id: docId, createIfMissing: true },
         () => {
-          // Callback for doc updates
+          /* doc updates callback */
         },
       );
       await expect.poll(() => loadSource).toBe("created");
 
-      // Cleanup
       cleanup();
     });
   });
@@ -173,7 +178,7 @@ describe("Client Events", () => {
   // onDocUnload
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("onDocUnload", () => {
+  describe('on("docUnload")', () => {
     test("should emit when document is unloaded", async () => {
       const client = await createClient();
       const docId = generateDocId();
@@ -181,16 +186,59 @@ describe("Client Events", () => {
       await setupDocWithOperations(client, docId);
 
       let unloadRefCount: number | undefined;
-      client.onDocUnload((event) => {
+      client.on("docUnload", (event) => {
         unloadRefCount = event.refCount;
       });
 
-      // Load and then unload
       const cleanup = client.getDoc({ type: "test", id: docId }, () => {
-        // Callback for doc updates
+        /* doc updates callback */
       });
       cleanup();
       await expect.poll(() => unloadRefCount).toBe(0);
+    });
+  });
+
+  describe("types", () => {
+    test('on("connect") listener payload is undefined', async () => {
+      const client = await createClient();
+      client.on("connect", (ev) => {
+        expectTypeOf(ev).toEqualTypeOf<undefined>();
+      });
+    });
+
+    test('on("disconnect") listener payload is DisconnectEvent', async () => {
+      const client = await createClient();
+      client.on("disconnect", (ev) => {
+        expectTypeOf(ev).toEqualTypeOf<DisconnectEvent>();
+      });
+    });
+
+    test('on("change") listener payload is ChangeEvent<Operations>', async () => {
+      const client = await createClient();
+      client.on("change", (ev) => {
+        expectTypeOf(ev).toEqualTypeOf<ChangeEvent<Operations>>();
+      });
+    });
+
+    test('on("sync") listener payload is SyncEvent<Operations, JsonDoc>', async () => {
+      const client = await createClient();
+      client.on("sync", (ev) => {
+        expectTypeOf(ev).toEqualTypeOf<SyncEvent<Operations, JsonDoc>>();
+      });
+    });
+
+    test('on("docLoad") listener payload is DocLoadEvent', async () => {
+      const client = await createClient();
+      client.on("docLoad", (ev) => {
+        expectTypeOf(ev).toEqualTypeOf<DocLoadEvent>();
+      });
+    });
+
+    test('on("docUnload") listener payload is DocUnloadEvent', async () => {
+      const client = await createClient();
+      client.on("docUnload", (ev) => {
+        expectTypeOf(ev).toEqualTypeOf<DocUnloadEvent>();
+      });
     });
   });
 });

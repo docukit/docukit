@@ -55,7 +55,7 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
     client["_shouldBroadcast"] = false;
     client["_docBinding"].applyOperations(doc, operations);
     client["_shouldBroadcast"] = true;
-    client["_emit"](client["_changeEventListeners"], {
+    client["_events"].emit("change", {
       docId,
       origin: "broadcast",
       operations: [operations],

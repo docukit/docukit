@@ -5,18 +5,14 @@ import type {
   ClientConfig,
   ClientProvider,
   ClientSocket,
-  ConnectEventListener,
   DeferredState,
-  ChangeEventListener,
   DocData,
-  DocLoadEventListener,
-  DocUnloadEventListener,
-  DisconnectEventListener,
   GetDocArgs,
   Identity,
   QueryResult,
-  SyncEventListener,
 } from "./types.js";
+import type { ClientEventMap, ClientEventName } from "./utils/events.js";
+import { createClientEventEmitter } from "./utils/events.js";
 import { handleConnect } from "./handlers/connection/connect.js";
 import { handleDeleteDoc } from "./handlers/clientInitiated/deleteDoc.js";
 import { handleDisconnect } from "./handlers/connection/disconnect.js";
@@ -67,13 +63,8 @@ export class DocSyncClient<
   protected _presenceDebounce = 200;
   protected _pushStatusByDocId = new Map<string, PushStatus>();
 
-  // Event listeners - ChangeEventListener and SyncEventListener use default (unknown) to allow covariance
-  protected _connectEventListeners = new Set<ConnectEventListener>();
-  protected _disconnectEventListeners = new Set<DisconnectEventListener>();
-  protected _changeEventListeners = new Set<ChangeEventListener>();
-  protected _syncEventListeners = new Set<SyncEventListener>();
-  protected _docLoadEventListeners = new Set<DocLoadEventListener>();
-  protected _docUnloadEventListeners = new Set<DocUnloadEventListener>();
+  /** Typed as unknown so DocSyncClient remains covariant in O, S (assignable to DocSyncClient base). */
+  protected _events = createClientEventEmitter();
 
   constructor(config: ClientConfig<D, S, O>) {
     if (typeof window === "undefined")
@@ -191,8 +182,7 @@ export class DocSyncClient<
       this._setupChangeListener(doc, createdDocId);
       emit({ status: "success", data: { doc, docId: createdDocId } });
 
-      // Emit doc load event
-      this._emit(this._docLoadEventListeners, {
+      this._events.emit("docLoad", {
         docId: createdDocId,
         source: "created",
         refCount: 1,
@@ -255,10 +245,9 @@ export class DocSyncClient<
             }
           }
 
-          // Emit doc load event
           if (doc) {
             const refCount = this._docsCache.get(docId)?.refCount ?? 1;
-            this._emit(this._docLoadEventListeners, {
+            this._events.emit("docLoad", {
               docId,
               source,
               refCount,
@@ -366,7 +355,7 @@ export class DocSyncClient<
       if (this._shouldBroadcast) {
         void this.onLocalOperations({ docId, operations: [operations] });
 
-        this._emit(this._changeEventListeners, {
+        this._events.emit("change", {
           docId,
           origin: "local",
           operations: [operations],
@@ -445,16 +434,13 @@ export class DocSyncClient<
     if (!cacheEntry) return;
     if (cacheEntry.refCount > 1) {
       cacheEntry.refCount -= 1;
-      this._emit(this._docUnloadEventListeners, {
+      this._events.emit("docUnload", {
         docId,
         refCount: cacheEntry.refCount,
       });
     } else {
-      // Mark refCount as 0 but keep in cache until promise resolves
       cacheEntry.refCount = 0;
-
-      // Emit immediately
-      this._emit(this._docUnloadEventListeners, {
+      this._events.emit("docUnload", {
         docId,
         refCount: 0,
       });
@@ -542,91 +528,21 @@ export class DocSyncClient<
     return handleDeleteDoc(this._socket, { docId });
   }
 
-  // ============================================================================
-  // Event Registration Methods
-  // ============================================================================
-
   /**
-   * Register a listener for connection events.
-   * @returns Unsubscribe function
+   * Register a listener for an event. Returns an unsubscribe function.
+   * Event payload type is inferred from the event name (first argument).
+   * @example
+   * const off = client.on("connect", () => { ... });
+   * client.on("docUnload", (ev) => { ... }); // ev is DocUnloadEvent
+   * off(); // unsubscribe
    */
-  onConnect(listener: ConnectEventListener): () => void {
-    this._connectEventListeners.add(listener);
-    return () => {
-      this._connectEventListeners.delete(listener);
-    };
-  }
-
-  /**
-   * Register a listener for disconnection events.
-   * @returns Unsubscribe function
-   */
-  onDisconnect(listener: DisconnectEventListener): () => void {
-    this._disconnectEventListeners.add(listener);
-    return () => {
-      this._disconnectEventListeners.delete(listener);
-    };
-  }
-
-  /**
-   * Register a listener for document change events.
-   * @returns Unsubscribe function
-   */
-  onChange(listener: ChangeEventListener<O>): () => void {
-    const h = listener as ChangeEventListener;
-    this._changeEventListeners.add(h);
-    return () => {
-      this._changeEventListeners.delete(h);
-    };
-  }
-
-  /**
-   * Register a listener for sync completion events.
-   * @returns Unsubscribe function
-   */
-  onSync(listener: SyncEventListener<O>): () => void {
-    const h = listener as SyncEventListener;
-    this._syncEventListeners.add(h);
-    return () => {
-      this._syncEventListeners.delete(h);
-    };
-  }
-
-  /**
-   * Register a listener for document load events.
-   * @returns Unsubscribe function
-   */
-  onDocLoad(listener: DocLoadEventListener): () => void {
-    this._docLoadEventListeners.add(listener);
-    return () => {
-      this._docLoadEventListeners.delete(listener);
-    };
-  }
-
-  /**
-   * Register a listener for document unload events.
-   * @returns Unsubscribe function
-   */
-  onDocUnload(listener: DocUnloadEventListener): () => void {
-    this._docUnloadEventListeners.add(listener);
-    return () => {
-      this._docUnloadEventListeners.delete(listener);
-    };
-  }
-
-  // ============================================================================
-  // Event Emitters (protected methods)
-  // ============================================================================
-
-  protected _emit(listeners: Set<() => void>): void;
-  protected _emit<T>(listeners: Set<(event: T) => void>, event: T): void;
-  protected _emit<T>(listeners: Set<(event?: T) => void>, event?: T) {
-    for (const listener of listeners) {
-      if (event !== undefined) {
-        listener(event);
-      } else {
-        listener();
-      }
-    }
+  on<K extends ClientEventName>(
+    event: K,
+    listener: (payload: ClientEventMap<O, S>[K]) => void,
+  ): () => void {
+    return this._events.on(
+      event,
+      listener as (payload: ClientEventMap<unknown, unknown>[K]) => void,
+    );
   }
 }

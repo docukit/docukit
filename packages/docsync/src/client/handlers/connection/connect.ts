@@ -7,7 +7,7 @@ export function handleConnect<
   O extends {} = {},
 >({ client }: { client: DocSyncClient<D, S, O> }): void {
   client["_socket"].on("connect", () => {
-    client["_emit"](client["_connectEventListeners"]);
+    client["_events"].emit("connect");
     for (const docId of client["_docsCache"].keys()) {
       client.saveRemote({ docId });
     }

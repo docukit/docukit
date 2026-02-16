@@ -19,10 +19,10 @@ export function handleDisconnect<
         presence: { [client["_clientId"]]: null },
       });
     }
-    client["_emit"](client["_disconnectEventListeners"], { reason });
+    client["_events"].emit("disconnect", { reason });
   });
   client["_socket"].on("connect_error", (err) => {
-    client["_emit"](client["_disconnectEventListeners"], {
+    client["_events"].emit("disconnect", {
       reason: err.message,
     });
   });
