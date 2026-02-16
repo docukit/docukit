@@ -82,6 +82,12 @@ export type DeleteDocResponse = { success: boolean };
 export type UnsubscribeDocRequest = { docId: string };
 export type UnsubscribeDocResponse = { success: boolean };
 
+export type DocSyncEventName =
+  | "sync"
+  | "presence"
+  | "delete-doc"
+  | "unsubscribe-doc";
+
 // ============================================================================
 // Presence (shared)
 // ============================================================================

@@ -25,7 +25,7 @@ import { handlePresence, sendPresence } from "./handlers/presence.js";
 import { handleSync } from "./handlers/sync.js";
 import { handleUnsubscribe } from "./handlers/unsubscribe.js";
 import { BCHelper } from "./utils/BCHelper.js";
-import { getDeviceId } from "./utils.js";
+import { getDeviceId } from "./utils/getDeviceId.js";
 
 // TODO: review this type!
 type LocalResolved<S, O> = {

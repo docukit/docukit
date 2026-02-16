@@ -2,6 +2,7 @@
 import type {
   ClientToServerEvents,
   DocBinding,
+  DocSyncEventName,
   ServerToClientEvents,
   SerializedDocPayload,
 } from "../shared/types.js";
@@ -9,12 +10,6 @@ import type {
 // ============================================================================
 // Server Events
 // ============================================================================
-
-export type DocSyncEventName =
-  | "sync"
-  | "presence"
-  | "delete-doc"
-  | "unsubscribe-doc";
 
 /** Emitted when client successfully authenticates and connects */
 export type ClientConnectEvent<TContext = unknown> = {

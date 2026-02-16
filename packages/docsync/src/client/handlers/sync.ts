@@ -6,24 +6,7 @@ import type {
 } from "../../shared/types.js";
 import type { BroadcastMessage } from "../utils/BCHelper.js";
 import type { ClientProvider, ClientSocket, SyncEvent } from "../types.js";
-
-const requestSync = <S, O>(
-  socket: ClientSocket<S, O>,
-  payload: SyncRequest<O>,
-  timeoutMs: number,
-): Promise<SyncResponse<S, O>> => {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error("Request timeout: sync"));
-    }, timeoutMs);
-    socket.emit("sync", payload, (response) => {
-      clearTimeout(timeout);
-      resolve(response);
-    });
-  });
-};
-
-const TIMEOUT_MS = 5000;
+import { request } from "../utils/request.js";
 
 export const handleSync = async <D extends {}, S extends {}, O extends {}>({
   socket,
@@ -69,7 +52,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>({
 
   let response: SyncResponse<S, O>;
   try {
-    response = await requestSync(socket, payload, TIMEOUT_MS);
+    response = await request<S, O, "sync">(socket, "sync", payload);
   } catch (error) {
     emitSync({
       req,

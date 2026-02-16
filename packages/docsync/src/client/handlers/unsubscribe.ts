@@ -1,24 +1,6 @@
-import type {
-  UnsubscribeDocRequest,
-  UnsubscribeDocResponse,
-} from "../../shared/types.js";
+import type { UnsubscribeDocRequest } from "../../shared/types.js";
 import type { ClientSocket } from "../types.js";
-
-const requestUnsubscribe = (
-  socket: ClientSocket<object, object>,
-  payload: UnsubscribeDocRequest,
-  timeoutMs: number,
-): Promise<UnsubscribeDocResponse> => {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error("Request timeout: unsubscribe-doc"));
-    }, timeoutMs);
-    socket.emit("unsubscribe-doc", payload, (response) => {
-      clearTimeout(timeout);
-      resolve(response);
-    });
-  });
-};
+import { request } from "../utils/request.js";
 
 export const handleUnsubscribe = async (
   socket: ClientSocket<object, object>,
@@ -27,7 +9,7 @@ export const handleUnsubscribe = async (
 ): Promise<void> => {
   if (!socket.connected) return;
   try {
-    await requestUnsubscribe(socket, payload, timeoutMs);
+    await request(socket, "unsubscribe-doc", payload, timeoutMs);
   } catch {
     // Ignore cleanup failures (disconnects, timeouts, transient server issues).
   }
