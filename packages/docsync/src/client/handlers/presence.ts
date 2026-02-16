@@ -3,13 +3,6 @@ import type { PresenceRequest, PresenceResponse } from "../../shared/types.js";
 import type { ClientSocket } from "../types.js";
 import type { DocSyncClient } from "../index.js";
 
-type HandlePresenceArgs = {
-  socket: ClientSocket<object, object>;
-  docId: string;
-  presence: unknown;
-  timeoutMs?: number;
-};
-
 const requestPresence = (
   socket: ClientSocket<object, object>,
   payload: PresenceRequest,
@@ -45,7 +38,12 @@ export const sendPresence = async ({
   docId,
   presence,
   timeoutMs = 5000,
-}: HandlePresenceArgs): Promise<void> => {
+}: {
+  socket: ClientSocket<object, object>;
+  docId: string;
+  presence: unknown;
+  timeoutMs?: number;
+}): Promise<void> => {
   if (!socket.connected) return;
   try {
     const payload: PresenceRequest = { docId, presence };

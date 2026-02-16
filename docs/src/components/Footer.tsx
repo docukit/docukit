@@ -1,11 +1,7 @@
 import React from "react";
 import Link from "next/link";
 
-type FooterProps = {
-  variant?: "home" | "docs";
-};
-
-const Footer = ({ variant = "home" }: FooterProps) => {
+const Footer = ({ variant = "home" }: { variant?: "home" | "docs" }) => {
   const isDocs = variant === "docs";
 
   return (

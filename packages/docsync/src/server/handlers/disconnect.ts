@@ -3,21 +3,19 @@ import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
 import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
 
-type DisconnectDeps = {
-  server: DocSyncServer;
-  socket: ServerConnectionSocket<{}, {}>;
-  userId: string;
-  deviceId: string;
-  clientId: string;
-};
-
 export function handleDisconnect({
   server,
   socket,
   userId,
   deviceId,
   clientId,
-}: DisconnectDeps): void {
+}: {
+  server: DocSyncServer;
+  socket: ServerConnectionSocket<{}, {}>;
+  userId: string;
+  deviceId: string;
+  clientId: string;
+}): void {
   socket.on("disconnect", (reason) => {
     const socketToDocsMap = server["_socketToDocsMap"];
     const presenceByDoc = server["_presenceByDoc"];

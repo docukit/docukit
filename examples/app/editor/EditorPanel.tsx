@@ -18,21 +18,19 @@ import {
 import type { Doc } from "@docukit/docnode";
 import { useEffect } from "react";
 
-type EditorPanelProps = {
-  doc: Doc;
-  clientId: string;
-  presence?: Presence;
-  setPresence?: (selection: PresenceSelection | undefined) => void;
-  user?: PresenceUser;
-};
-
 export function EditorPanel({
   doc,
   clientId,
   presence,
   setPresence,
   user,
-}: EditorPanelProps) {
+}: {
+  doc: Doc;
+  clientId: string;
+  presence?: Presence;
+  setPresence?: (selection: PresenceSelection | undefined) => void;
+  user?: PresenceUser;
+}) {
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-700/50 bg-zinc-900/50 shadow-2xl shadow-black/50 backdrop-blur-sm">
       <LexicalComposer

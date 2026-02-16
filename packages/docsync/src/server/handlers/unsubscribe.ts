@@ -12,17 +12,15 @@ export type UnsubscribeDocHandler = (
   cb: (res: UnsubscribeDocResponse) => void,
 ) => void | Promise<void>;
 
-type UnsubscribeDeps = {
-  server: DocSyncServer;
-  socket: ServerConnectionSocket<{}, {}>;
-  clientId: string;
-};
-
 export function handleUnsubscribeDoc({
   server,
   socket,
   clientId,
-}: UnsubscribeDeps): void {
+}: {
+  server: DocSyncServer;
+  socket: ServerConnectionSocket<{}, {}>;
+  clientId: string;
+}): void {
   const socketToDocsMap = server["_socketToDocsMap"];
   const presenceByDoc = server["_presenceByDoc"];
 
