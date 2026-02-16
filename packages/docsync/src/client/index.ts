@@ -85,7 +85,7 @@ export class DocSyncClient<
       const identity = await local.getIdentity();
       const provider = new local.provider(identity) as ClientProvider<S, O>;
 
-      this._bcHelper = new BCHelper(this);
+      this._bcHelper = new BCHelper(this, identity.userId);
 
       return { provider, identity };
     })();

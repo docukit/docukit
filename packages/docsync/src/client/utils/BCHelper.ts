@@ -14,8 +14,8 @@ type BroadcastMessage<O> =
 export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
   private _channel: BroadcastChannel;
 
-  constructor(client: DocSyncClient<D, S, O>) {
-    const channelName = `docsync:${client["_clientId"]}`;
+  constructor(client: DocSyncClient<D, S, O>, userId: string) {
+    const channelName = `docsync:${userId}`;
     this._channel = new BroadcastChannel(channelName);
     this._channel.onmessage = (ev: MessageEvent<BroadcastMessage<O>>) => {
       const msg = ev.data;
