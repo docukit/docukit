@@ -22,6 +22,7 @@ import { handleDeleteDoc } from "./handlers/delete-doc.js";
 import { handlePresence } from "./handlers/presence.js";
 import { handleSyncAndDoPush } from "./handlers/sync.js";
 import { handleUnsubscribe } from "./handlers/unsubscribe.js";
+import { getDeviceId } from "./utils.js";
 
 // TODO: review this type!
 type LocalResolved<S, O> = {
@@ -845,19 +846,4 @@ export class DocSyncClient<
       }
     }
   }
-}
-
-/**
- * Get or create a unique device ID stored in localStorage.
- * This ID is shared across all tabs/windows on the same device.
- */
-function getDeviceId(): string {
-  const key = "docsync:deviceId";
-  let deviceId = localStorage.getItem(key);
-  if (!deviceId) {
-    // Generate a new device ID using crypto.randomUUID()
-    deviceId = crypto.randomUUID();
-    localStorage.setItem(key, deviceId);
-  }
-  return deviceId;
 }
