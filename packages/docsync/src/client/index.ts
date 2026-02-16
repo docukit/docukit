@@ -451,7 +451,7 @@ export class DocSyncClient<
       if (currentEntry?.refCount === 0) {
         this._docsCache.delete(docId);
         if (doc) {
-          await this.unsubscribeDoc(docId);
+          await handleUnsubscribe(this._socket, { docId });
           this._docBinding.dispose(doc);
         }
       }
@@ -509,14 +509,6 @@ export class DocSyncClient<
       return;
     }
     void this._doPush({ docId });
-  }
-
-  /**
-   * Unsubscribe from real-time updates for a document.
-   * Should be called when a document is unloaded (refCount 1 → 0).
-   */
-  async unsubscribeDoc(docId: string): Promise<void> {
-    await handleUnsubscribe(this._socket, { docId });
   }
 
   protected async _doPush({ docId }: { docId: string }) {
