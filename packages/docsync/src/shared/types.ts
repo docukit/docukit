@@ -10,7 +10,6 @@ import type { UnsubscribeDocHandler } from "../server/handlers/unsubscribe.js";
  * DocSync Type Definitions
  *
  * This file contains all type definitions for the DocSync library.
- * It is organized into collapsible regions for better navigation.
  */
 
 // TO-DECIDE: should params in fn's be objects?
@@ -29,7 +28,7 @@ export interface DocBinding<
 }
 
 // ============================================================================
-// #region Monads
+// Monads
 // ============================================================================
 
 export type Result<D, E = Error> =
@@ -42,10 +41,8 @@ export type Result<D, E = Error> =
       error: E;
     };
 
-// #endregion
-
 // ============================================================================
-// #region DocSync Events (Request/Response)
+// DocSync Events (Request/Response)
 // ============================================================================
 
 /** Shared request payload for the sync event (client sends, server receives). */
@@ -85,10 +82,8 @@ export type DeleteDocResponse = { success: boolean };
 export type UnsubscribeDocRequest = { docId: string };
 export type UnsubscribeDocResponse = { success: boolean };
 
-// #endregion
-
 // ============================================================================
-// #region Presence (shared)
+// Presence (shared)
 // ============================================================================
 
 /**
@@ -97,10 +92,8 @@ export type UnsubscribeDocResponse = { success: boolean };
  */
 export type Presence<T = unknown> = Record<string, T>;
 
-// #endregion
-
 // ============================================================================
-// #region Provider Types (shared payload only; Provider/Context are in client/types and server/types)
+// Provider Types (shared payload only; Provider/Context are in client/types and server/types)
 // ============================================================================
 
 export type SerializedDocPayload<S> = {
@@ -109,10 +102,8 @@ export type SerializedDocPayload<S> = {
   clock: number;
 };
 
-// #endregion
-
 // ============================================================================
-// #region Socket.IO Types
+// Socket.IO Types
 // ============================================================================
 
 /**
@@ -132,5 +123,3 @@ export type ServerToClientEvents = {
   // Server notifies clients about presence updates
   presence: (payload: { docId: string; presence: Presence }) => void;
 };
-
-// #endregion

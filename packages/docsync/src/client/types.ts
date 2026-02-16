@@ -9,7 +9,7 @@ import type {
 } from "../shared/types.js";
 
 // ============================================================================
-// #region Query / Doc
+// Query / Doc
 // ============================================================================
 
 export type QueryResult<D, E = Error> =
@@ -38,10 +38,8 @@ export type GetDocArgs =
 
 export type DocData<D> = { doc: D; docId: string };
 
-// #endregion
-
 // ============================================================================
-// #region Client Events
+// Client Events
 // ============================================================================
 
 export type DisconnectEvent = {
@@ -83,10 +81,8 @@ export type SyncEventListener<O = {}> = { (event: SyncEvent<O>): void };
 export type DocLoadEventListener = (event: DocLoadEvent) => void;
 export type DocUnloadEventListener = (event: DocUnloadEvent) => void;
 
-// #endregion
-
 // ============================================================================
-// #region Client State & Config
+// Client State & Config
 // ============================================================================
 
 export type DeferredState<T> = {
@@ -127,10 +123,8 @@ export type ClientConfig<
   };
 };
 
-// #endregion
-
 // ============================================================================
-// #region Client Provider
+// Client Provider
 // ============================================================================
 
 /**
@@ -158,10 +152,8 @@ export type ClientProvider<S, O> = {
   ): Promise<T>;
 };
 
-// #endregion
-
 // ============================================================================
-// #region Socket (client)
+// Socket (client)
 // ============================================================================
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- type-only reference to socket.io-client
@@ -169,5 +161,3 @@ export type ClientSocket<S, O> = import("socket.io-client").Socket<
   ServerToClientEvents,
   ClientToServerEvents<S, O>
 >;
-
-// #endregion

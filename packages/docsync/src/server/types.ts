@@ -7,7 +7,7 @@ import type {
 } from "../shared/types.js";
 
 // ============================================================================
-// #region Server Events
+// Server Events
 // ============================================================================
 
 export type DocSyncEventName =
@@ -78,10 +78,8 @@ export type SyncRequestEventListener<O = unknown, S = unknown> = (
   event: SyncRequestEvent<O, S>,
 ) => void;
 
-// #endregion
-
 // ============================================================================
-// #region Server Config
+// Server Config
 // ============================================================================
 
 /**
@@ -111,10 +109,8 @@ export type ServerConfig<TContext, D extends {}, S extends {}, O extends {}> = {
   }): Promise<boolean>;
 };
 
-// #endregion
-
 // ============================================================================
-// #region Server Provider
+// Server Provider
 // ============================================================================
 
 /**
@@ -141,10 +137,8 @@ export type ServerProvider<S, O> = {
   ): Promise<T>;
 };
 
-// #endregion
-
 // ============================================================================
-// #region Socket (server)
+// Socket (server)
 // ============================================================================
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- type-only reference to socket.io
@@ -159,5 +153,3 @@ export type ServerConnectionSocket<S, O> = import("socket.io").Socket<
   ClientToServerEvents<S, O>,
   ServerToClientEvents
 >;
-
-// #endregion
