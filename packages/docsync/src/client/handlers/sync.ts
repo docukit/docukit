@@ -1,47 +1,28 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type {
-  DocBinding,
-  SyncRequest,
-  SyncResponse,
-} from "../../shared/types.js";
-import type { BroadcastMessage } from "../utils/BCHelper.js";
-import type { ClientProvider, ClientSocket, SyncEvent } from "../types.js";
+import type { SyncRequest, SyncResponse } from "../../shared/types.js";
+import type { DocSyncClient } from "../index.js";
 import { request } from "../utils/request.js";
 
 export const handleSync = async <D extends {}, S extends {}, O extends {}>({
-  socket,
-  provider,
-  docBinding,
+  client,
   operationsBatches,
   operations,
   docId,
   clientClock,
   presence,
-  pushStatusByDocId,
-  emitSync,
-  applyServerOperations,
-  sendMessage,
-  getOwnPresencePatch,
-  retryPush,
 }: {
-  socket: ClientSocket<S, O>;
-  provider: ClientProvider<S, O>;
-  docBinding: DocBinding<D, S, O>;
+  client: DocSyncClient<D, S, O>;
   operationsBatches: O[][];
   operations: O[];
   docId: string;
   clientClock: number;
   presence?: unknown;
-  pushStatusByDocId: Map<string, "idle" | "pushing" | "pushing-with-pending">;
-  emitSync: (event: SyncEvent<O, S>) => void;
-  applyServerOperations: (args: {
-    docId: string;
-    operations: O[];
-  }) => Promise<void>;
-  sendMessage: (message: BroadcastMessage<O>) => void;
-  getOwnPresencePatch: (docId: string) => Record<string, unknown> | undefined;
-  retryPush: (docId: string) => void;
 }): Promise<void> => {
+  const { provider } = await client["_localPromise"];
+  const socket = client["_socket"];
+  const docBinding = client["_docBinding"];
+  const pushStatusByDocId = client["_pushStatusByDocId"];
+
   const payload: SyncRequest<O> = {
     clock: clientClock,
     docId,
@@ -52,9 +33,9 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>({
 
   let response: SyncResponse<S, O>;
   try {
-    response = await request<S, O, "sync">(socket, "sync", payload);
+    response = await request(socket, "sync", payload);
   } catch (error) {
-    emitSync({
+    client["_emit"](client["_syncEventListeners"], {
       req,
       error: {
         type: "NetworkError",
@@ -62,19 +43,22 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>({
       },
     });
     pushStatusByDocId.set(docId, "idle");
-    retryPush(docId);
+    void client["_doPush"]({ docId });
     return;
   }
 
   if ("error" in response && response.error) {
-    emitSync({ req, error: response.error });
+    client["_emit"](client["_syncEventListeners"], {
+      req,
+      error: response.error,
+    });
     pushStatusByDocId.set(docId, "idle");
-    retryPush(docId);
+    void client["_doPush"]({ docId });
     return;
   }
 
   const { data } = response;
-  emitSync({
+  client["_emit"](client["_syncEventListeners"], {
     req,
     data: {
       docId: data.docId,
@@ -126,14 +110,15 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>({
 
   const persistedServerOperations = data.operations ?? [];
   if (didConsolidate && persistedServerOperations.length > 0) {
-    await applyServerOperations({
+    // eslint-disable-next-line @typescript-eslint/dot-notation -- bracket notation for protected access from handler
+    await client["_applyServerOperations"]({
       docId,
       operations: persistedServerOperations,
     });
 
-    const presencePatch = getOwnPresencePatch(docId);
+    const presencePatch = client["_getOwnPresencePatch"](docId);
     for (const op of persistedServerOperations) {
-      sendMessage({
+      client["_bcHelper"]?.broadcast({
         type: "OPERATIONS",
         operations: op,
         docId,
@@ -145,7 +130,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>({
   const currentStatus = pushStatusByDocId.get(docId);
   const shouldRetry = currentStatus === "pushing-with-pending";
   if (shouldRetry) {
-    retryPush(docId);
+    void client["_doPush"]({ docId });
   } else {
     pushStatusByDocId.set(docId, "idle");
   }

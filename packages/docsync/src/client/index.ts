@@ -663,30 +663,13 @@ export class DocSyncClient<
       });
     }
 
-    await handleSync<D, S, O>({
-      socket: this._socket,
-      provider,
-      docBinding: this._docBinding,
+    await handleSync({
+      client: this,
       operationsBatches,
       operations,
       docId,
       clientClock,
       ...(presenceState ? { presence: presenceState.data } : {}),
-      pushStatusByDocId: this._pushStatusByDocId,
-      emitSync: (event) => {
-        this._emit(this._syncEventListeners, event);
-      },
-      applyServerOperations: ({ docId: targetDocId, operations: targetOps }) =>
-        this._applyServerOperations({
-          docId: targetDocId,
-          operations: targetOps,
-        }),
-      sendMessage: (message) => this._bcHelper?.broadcast(message),
-      getOwnPresencePatch: (targetDocId) =>
-        this._getOwnPresencePatch(targetDocId),
-      retryPush: (targetDocId) => {
-        void this._doPush({ docId: targetDocId });
-      },
     });
   }
 
