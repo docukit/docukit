@@ -1,6 +1,6 @@
-import type { DeleteDocRequest } from "../../shared/types.js";
-import type { ClientSocket } from "../types.js";
-import { request } from "../utils/request.js";
+import type { DeleteDocRequest } from "../../../shared/types.js";
+import type { ClientSocket } from "../../types.js";
+import { request } from "../../utils/request.js";
 
 export const handleDeleteDoc = async (
   socket: ClientSocket<object, object>,

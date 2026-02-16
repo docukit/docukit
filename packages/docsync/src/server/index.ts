@@ -9,7 +9,7 @@ import type {
   ServerSocket,
   SyncRequestEventListener,
 } from "./types.js";
-import { handleDeleteDoc } from "./handlers/delete-doc.js";
+import { handleDeleteDoc } from "./handlers/deleteDoc.js";
 import { handleDisconnect } from "./handlers/disconnect.js";
 import { handlePresence } from "./handlers/presence.js";
 import { handleSync } from "./handlers/sync.js";
@@ -18,7 +18,7 @@ import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
 type AuthenticatedContext<TContext = {}> = {
   userId: string;
   deviceId: string;
-  /** Client-generated id for presence (set from auth or socket.id in connection handler) */
+  /** Client-generated id for presence (set from auth or socket.id in connection flow) */
   clientId: string;
   context: TContext;
 };

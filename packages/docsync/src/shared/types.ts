@@ -1,6 +1,6 @@
 // TODO: review this line! Importing socket.io and socket.io-client
 // as dynamic imports produces environment pollution errors.
-import type { DeleteDocHandler } from "../server/handlers/delete-doc.js";
+import type { DeleteDocHandler } from "../server/handlers/deleteDoc.js";
 import type { PresenceHandler } from "../server/handlers/presence.js";
 import type { SyncHandler } from "../server/handlers/sync.js";
 import type { UnsubscribeDocHandler } from "../server/handlers/unsubscribe.js";

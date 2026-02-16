@@ -22,27 +22,19 @@ export const handleDeleteDoc = <TContext = {}>({
   userId: string;
   context: TContext;
 }): void => {
-  const authorize = server["_authorize"];
-  const authorizeDeleteDoc = async (
-    payload: DeleteDocRequest,
-  ): Promise<boolean> => {
-    if (!authorize) return true;
-    return authorize({
-      type: "delete-doc",
-      payload,
-      userId,
-      context,
-    });
-  };
-
-  const handler: DeleteDocHandler = async (payload, cb) => {
-    const authorized = await authorizeDeleteDoc(payload);
+  socket.on("delete-doc", async (payload, cb) => {
+    const authorized = server["_authorize"]
+      ? await server["_authorize"]({
+          type: "delete-doc",
+          payload,
+          userId,
+          context,
+        })
+      : true;
     if (!authorized) {
       cb({ success: false });
       return;
     }
     cb({ success: true });
-  };
-
-  socket.on("delete-doc", handler);
+  });
 };

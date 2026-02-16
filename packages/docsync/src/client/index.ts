@@ -17,13 +17,14 @@ import type {
   QueryResult,
   SyncEventListener,
 } from "./types.js";
-import { handleConnect } from "./handlers/connect.js";
-import { handleDeleteDoc } from "./handlers/delete-doc.js";
-import { handleDisconnect } from "./handlers/disconnect.js";
-import { handleDirty } from "./handlers/dirty.js";
-import { handlePresence, sendPresence } from "./handlers/presence.js";
-import { handleSync } from "./handlers/sync.js";
-import { handleUnsubscribe } from "./handlers/unsubscribe.js";
+import { handleConnect } from "./handlers/connection/connect.js";
+import { handleDeleteDoc } from "./handlers/clientInitiated/deleteDoc.js";
+import { handleDisconnect } from "./handlers/connection/disconnect.js";
+import { handleDirty } from "./handlers/serverInitiated/dirty.js";
+import { handlePresence as sendPresence } from "./handlers/clientInitiated/presence.js";
+import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
+import { handleSync } from "./handlers/clientInitiated/sync.js";
+import { handleUnsubscribe } from "./handlers/clientInitiated/unsubscribe.js";
 import { BCHelper } from "./utils/BCHelper.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
 
@@ -47,7 +48,7 @@ export class DocSyncClient<
       promisedDoc: Promise<D | undefined>;
       refCount: number;
       presence: Presence;
-      presenceHandlers: Set<(presence: Presence) => void>;
+      presenceListeners: Set<(presence: Presence) => void>;
     }
   >();
   protected _localPromise: Promise<LocalResolved<S, O>>;
@@ -104,7 +105,7 @@ export class DocSyncClient<
     handleConnect({ client: this });
     handleDisconnect({ client: this });
     handleDirty({ client: this });
-    handlePresence({ client: this });
+    handleServerPresence({ client: this });
   }
 
   connect() {
@@ -118,7 +119,7 @@ export class DocSyncClient<
   protected _applyPresencePatch(
     cacheEntry: {
       presence: Presence;
-      presenceHandlers: Set<(p: Presence) => void>;
+      presenceListeners: Set<(p: Presence) => void>;
     },
     patch: Record<string, unknown>,
   ): void {
@@ -132,8 +133,8 @@ export class DocSyncClient<
       }
     }
     cacheEntry.presence = newPresence;
-    cacheEntry.presenceHandlers.forEach((handler) =>
-      handler(cacheEntry.presence),
+    cacheEntry.presenceListeners.forEach((listener) =>
+      listener(cacheEntry.presence),
     );
   }
 
@@ -175,7 +176,7 @@ export class DocSyncClient<
       promisedDoc: Promise.resolve(newDoc),
       refCount: cacheEntry.refCount,
       presence: cacheEntry.presence,
-      presenceHandlers: cacheEntry.presenceHandlers,
+      presenceListeners: cacheEntry.presenceListeners,
     });
   }
 
@@ -264,7 +265,7 @@ export class DocSyncClient<
         promisedDoc: Promise.resolve(doc),
         refCount: 1,
         presence: {},
-        presenceHandlers: new Set(),
+        presenceListeners: new Set(),
       });
       this._setupChangeListener(doc, createdDocId);
       emit({ status: "success", data: { doc, docId: createdDocId } });
@@ -312,7 +313,7 @@ export class DocSyncClient<
           promisedDoc,
           refCount: 1,
           presence: {},
-          presenceHandlers: new Set(),
+          presenceListeners: new Set(),
         });
       }
 
@@ -365,7 +366,7 @@ export class DocSyncClient<
 
   /**
    * Subscribe to presence updates for a document.
-   * Multiple handlers can be registered for the same document.
+   * Multiple listeners can be registered for the same document.
    * @param args - The arguments for the getPresence request.
    * @param onChange - The callback to invoke when the presence changes.
    * @returns A function to unsubscribe from presence updates.
@@ -384,19 +385,19 @@ export class DocSyncClient<
       );
     }
 
-    // Add handler to the set
-    cacheEntry.presenceHandlers.add(onChange);
+    // Add listener to the set
+    cacheEntry.presenceListeners.add(onChange);
 
     // Immediately call with current presence if available
     if (Object.keys(cacheEntry.presence).length > 0) {
       onChange(cacheEntry.presence);
     }
 
-    // Return unsubscribe function that removes only this handler
+    // Return unsubscribe function that removes only this listener
     return () => {
       const entry = this._docsCache.get(docId);
       if (entry) {
-        entry.presenceHandlers.delete(onChange);
+        entry.presenceListeners.delete(onChange);
       }
     };
   }
@@ -419,7 +420,7 @@ export class DocSyncClient<
 
       const patch = { [this._clientId]: state.data };
 
-      // Update local cache and notify handlers (so own cursor shows and UI stays in sync)
+      // Update local cache and notify listeners (so own cursor shows and UI stays in sync)
       this._applyPresencePatch(cacheEntry, patch);
 
       // Same device: broadcast to other tabs (works offline)
@@ -729,14 +730,14 @@ export class DocSyncClient<
   // Event Emitters (protected methods)
   // ============================================================================
 
-  protected _emit(handlers: Set<() => void>): void;
-  protected _emit<T>(handlers: Set<(event: T) => void>, event: T): void;
-  protected _emit<T>(handlers: Set<(event?: T) => void>, event?: T) {
-    for (const handler of handlers) {
+  protected _emit(listeners: Set<() => void>): void;
+  protected _emit<T>(listeners: Set<(event: T) => void>, event: T): void;
+  protected _emit<T>(listeners: Set<(event?: T) => void>, event?: T) {
+    for (const listener of listeners) {
       if (event !== undefined) {
-        handler(event);
+        listener(event);
       } else {
-        handler();
+        listener();
       }
     }
   }

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type { SyncRequest, SyncResponse } from "../../shared/types.js";
-import type { DocSyncClient } from "../index.js";
-import { request } from "../utils/request.js";
+import type { SyncRequest, SyncResponse } from "../../../shared/types.js";
+import type { DocSyncClient } from "../../index.js";
+import { request } from "../../utils/request.js";
 
 export const handleSync = async <D extends {}, S extends {}, O extends {}>({
   client,
@@ -110,7 +110,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>({
 
   const persistedServerOperations = data.operations ?? [];
   if (didConsolidate && persistedServerOperations.length > 0) {
-    // eslint-disable-next-line @typescript-eslint/dot-notation -- bracket notation for protected access from handler
+    // eslint-disable-next-line @typescript-eslint/dot-notation -- bracket notation for protected access from flow
     await client["_applyServerOperations"]({
       docId,
       operations: persistedServerOperations,

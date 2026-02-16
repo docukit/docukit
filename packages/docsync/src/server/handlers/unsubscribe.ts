@@ -24,27 +24,28 @@ export function handleUnsubscribeDoc({
   const socketToDocsMap = server["_socketToDocsMap"];
   const presenceByDoc = server["_presenceByDoc"];
 
-  const handler: UnsubscribeDocHandler = async (
-    { docId }: UnsubscribeDocRequest,
-    cb: (res: UnsubscribeDocResponse) => void,
-  ): Promise<void> => {
-    await socket.leave(`doc:${docId}`);
+  socket.on(
+    "unsubscribe-doc",
+    async (
+      { docId }: UnsubscribeDocRequest,
+      cb: (res: UnsubscribeDocResponse) => void,
+    ): Promise<void> => {
+      await socket.leave(`doc:${docId}`);
 
-    const subscribedDocs = socketToDocsMap.get(socket.id);
-    if (subscribedDocs) {
-      subscribedDocs.delete(docId);
-      if (subscribedDocs.size === 0) {
-        socketToDocsMap.delete(socket.id);
+      const subscribedDocs = socketToDocsMap.get(socket.id);
+      if (subscribedDocs) {
+        subscribedDocs.delete(docId);
+        if (subscribedDocs.size === 0) {
+          socketToDocsMap.delete(socket.id);
+        }
       }
-    }
 
-    applyPresenceUpdate(presenceByDoc, socket, clientId, {
-      docId,
-      presence: null,
-    });
+      applyPresenceUpdate(presenceByDoc, socket, clientId, {
+        docId,
+        presence: null,
+      });
 
-    cb({ success: true });
-  };
-
-  socket.on("unsubscribe-doc", handler);
+      cb({ success: true });
+    },
+  );
 }

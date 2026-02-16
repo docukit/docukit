@@ -22,39 +22,35 @@ export function handlePresence<TContext = unknown>({
   clientId: string;
   context: TContext;
 }): void {
-  const authorize = server["_authorize"];
-  const authorizePresence = async (
-    payload: PresenceRequest,
-  ): Promise<boolean> => {
-    if (!authorize) return true;
-    return authorize({
-      type: "presence",
-      payload,
-      userId,
-      context,
-    });
-  };
-
-  const handler: PresenceHandler = async (
-    { docId, presence }: PresenceRequest,
-    cb: (res: PresenceResponse) => void,
-  ): Promise<void> => {
-    const authorized = await authorizePresence({ docId, presence });
-    if (!authorized) {
-      cb({
-        error: {
-          type: "AuthorizationError",
-          message: "Access denied",
-        },
+  socket.on(
+    "presence",
+    async (
+      { docId, presence }: PresenceRequest,
+      cb: (res: PresenceResponse) => void,
+    ): Promise<void> => {
+      const payload: PresenceRequest = { docId, presence };
+      const authorized = server["_authorize"]
+        ? await server["_authorize"]({
+            type: "presence",
+            payload,
+            userId,
+            context,
+          })
+        : true;
+      if (!authorized) {
+        cb({
+          error: {
+            type: "AuthorizationError",
+            message: "Access denied",
+          },
+        });
+        return;
+      }
+      applyPresenceUpdate(server["_presenceByDoc"], socket, clientId, {
+        docId,
+        presence,
       });
-      return;
-    }
-    applyPresenceUpdate(server["_presenceByDoc"], socket, clientId, {
-      docId,
-      presence,
-    });
-    cb({ data: void undefined });
-  };
-
-  socket.on("presence", handler);
+      cb({ data: void undefined });
+    },
+  );
 }
