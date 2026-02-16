@@ -6,8 +6,6 @@ import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
 
 const OPERATION_THRESHOLD = 100;
 
-export type { SyncRequest, SyncResponse } from "../../shared/types.js";
-
 export type SyncHandler<S = unknown, O = unknown> = (
   payload: SyncRequest<O>,
   cb: (res: SyncResponse<S, O>) => void,

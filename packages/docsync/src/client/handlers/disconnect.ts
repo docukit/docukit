@@ -13,8 +13,6 @@ export function handleDisconnect<
     }
     client["_presenceDebounceState"].clear();
     for (const docId of client["_docsCache"].keys()) {
-      // Bracket notation required to access protected method from handler
-      // eslint-disable-next-line @typescript-eslint/dot-notation
       client["_bcHelper"]?.broadcast({
         type: "PRESENCE",
         docId,

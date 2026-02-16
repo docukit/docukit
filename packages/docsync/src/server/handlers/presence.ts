@@ -9,7 +9,7 @@ export type PresenceHandler = (
   cb: (res: PresenceResponse) => void,
 ) => void | Promise<void>;
 
-export function handlePresence({
+export function handlePresence<TContext = unknown>({
   server,
   socket,
   userId,
