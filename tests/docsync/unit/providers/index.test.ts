@@ -1,7 +1,7 @@
 import type { ClientProvider } from "@docukit/docsync/client";
 import type { ServerProvider } from "@docukit/docsync/server";
 import { IndexedDBProvider } from "@docukit/docsync/client";
-import { InMemoryServerProvider } from "@docukit/docsync/testing";
+import { InMemoryServerProvider } from "@docukit/docsync/server";
 import { test } from "vitest";
 
 function testProviderServer<S, O>(_provider: ServerProvider<S, O>) {
