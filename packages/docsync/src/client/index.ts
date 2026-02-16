@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { io } from "socket.io-client";
-import { mergePresencePatch } from "../shared/presencePatch.js";
 import type { DocBinding, Presence } from "../shared/types.js";
 import type {
   ClientConfig,
@@ -114,6 +113,28 @@ export class DocSyncClient<
 
   disconnect() {
     this._socket.disconnect();
+  }
+
+  protected _applyPresencePatch(
+    cacheEntry: {
+      presence: Presence;
+      presenceHandlers: Set<(p: Presence) => void>;
+    },
+    patch: Record<string, unknown>,
+  ): void {
+    const newPresence = { ...cacheEntry.presence };
+    for (const [key, value] of Object.entries(patch)) {
+      if (key === this._clientId) continue; // never store own presence in cache; local tab must not render self as remote
+      if (value === undefined || value === null) {
+        delete newPresence[key];
+      } else {
+        newPresence[key] = value;
+      }
+    }
+    cacheEntry.presence = newPresence;
+    cacheEntry.presenceHandlers.forEach((handler) =>
+      handler(cacheEntry.presence),
+    );
   }
 
   /** Current presence for this client (debounce state or cache); does not clear the timer */
@@ -399,12 +420,7 @@ export class DocSyncClient<
       const patch = { [this._clientId]: state.data };
 
       // Update local cache and notify handlers (so own cursor shows and UI stays in sync)
-      cacheEntry.presence = mergePresencePatch(cacheEntry.presence, patch, {
-        skipKey: this._clientId, // never store own presence in cache; local tab must not render self as remote
-      });
-      cacheEntry.presenceHandlers.forEach((handler) =>
-        handler(cacheEntry.presence),
-      );
+      this._applyPresencePatch(cacheEntry, patch);
 
       // Same device: broadcast to other tabs (works offline)
       this._bcHelper?.broadcast({
