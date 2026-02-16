@@ -17,11 +17,10 @@ import { handleConnect } from "./handlers/connection/connect.js";
 import { handleDeleteDoc } from "./handlers/clientInitiated/deleteDoc.js";
 import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { handleDirty } from "./handlers/serverInitiated/dirty.js";
-import { handlePresence as sendPresence } from "./handlers/clientInitiated/presence.js";
+import { handlePresence } from "./handlers/clientInitiated/presence.js";
 import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
 import { handleSync } from "./handlers/clientInitiated/sync.js";
 import { handleUnsubscribe } from "./handlers/clientInitiated/unsubscribe.js";
-import { applyPresencePatch } from "./utils/applyPresencePatch.js";
 import { BCHelper } from "./utils/BCHelper.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
 
@@ -260,7 +259,7 @@ export class DocSyncClient<
           });
           // Fetch from server to check if document exists there
           if (doc) {
-            void this.saveRemote({ docId });
+            void handleSync(this, docId);
           }
         } catch (e) {
           const error = e instanceof Error ? e : new Error(String(e));
@@ -313,41 +312,7 @@ export class DocSyncClient<
   }
 
   async setPresence({ docId, presence }: { docId: string; presence: unknown }) {
-    const cacheEntry = this._docsCache.get(docId);
-    if (!cacheEntry)
-      throw new Error(`Doc ${docId} is not loaded, cannot set presence`);
-
-    // Clear existing timeout if any
-    const existingState = this._presenceDebounceState.get(docId);
-    clearTimeout(existingState?.timeout);
-
-    // Debounce the presence update
-    const timeout = setTimeout(() => {
-      const state = this._presenceDebounceState.get(docId);
-      if (!state) return;
-
-      this._presenceDebounceState.delete(docId);
-
-      const patch = { [this._clientId]: state.data };
-
-      // Update local cache and notify listeners (so own cursor shows and UI stays in sync)
-      applyPresencePatch(this._clientId, cacheEntry, patch);
-
-      // Same device: broadcast to other tabs (works offline)
-      this._bcHelper?.broadcast({
-        type: "PRESENCE",
-        docId,
-        presence: patch,
-      });
-      // Other devices: send via WebSocket only when connected
-      void sendPresence({
-        socket: this._socket,
-        docId,
-        presence: state.data,
-      });
-    }, this._presenceDebounce);
-
-    this._presenceDebounceState.set(docId, { timeout, data: presence });
+    void handlePresence(this, { docId, presence });
   }
 
   private _setupChangeListener(doc: D, docId: string) {
@@ -492,7 +457,7 @@ export class DocSyncClient<
           await local?.provider.transaction("readwrite", (ctx) =>
             ctx.saveOperations({ docId, operations: opsToSave }),
           );
-          this.saveRemote({ docId });
+          void handleSync(this, docId);
         }
       })();
     }, this._batchDelay);
@@ -503,17 +468,7 @@ export class DocSyncClient<
    * Uses a per-docId queue to prevent concurrent pushes for the same doc.
    */
   saveRemote({ docId }: { docId: string }) {
-    const status = this._pushStatusByDocId.get(docId) ?? "idle";
-    if (status !== "idle") {
-      this._pushStatusByDocId.set(docId, "pushing-with-pending");
-      return;
-    }
-    void this._doPush({ docId });
-  }
-
-  protected async _doPush({ docId }: { docId: string }) {
-    this._pushStatusByDocId.set(docId, "pushing");
-    await handleSync(this, docId);
+    void handleSync(this, docId);
   }
 
   protected async _deleteDoc(docId: string): Promise<boolean> {

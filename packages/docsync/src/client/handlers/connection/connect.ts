@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { DocSyncClient } from "../../index.js";
+import { handleSync } from "../clientInitiated/sync.js";
 
 export function handleConnect<
   D extends {} = {},
@@ -9,7 +10,7 @@ export function handleConnect<
   client["_socket"].on("connect", () => {
     client["_events"].emit("connect");
     for (const docId of client["_docsCache"].keys()) {
-      client.saveRemote({ docId });
+      void handleSync(client, docId);
     }
   });
 }

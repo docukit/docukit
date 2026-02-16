@@ -58,14 +58,25 @@ export async function replaceDocInCache<
   });
 }
 
+/**
+ * Sync (push) a document to the server. Queues if already pushing (sets
+ * pushing-with-pending), otherwise sets pushing and runs the sync.
+ */
 export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   client: DocSyncClient<D, S, O>,
   docId: string,
 ): Promise<void> => {
+  const pushStatusByDocId = client["_pushStatusByDocId"];
+  const status = pushStatusByDocId.get(docId) ?? "idle";
+  if (status !== "idle") {
+    pushStatusByDocId.set(docId, "pushing-with-pending");
+    return;
+  }
+  pushStatusByDocId.set(docId, "pushing");
+
   const { provider } = await client["_localPromise"];
   const socket = client["_socket"];
   const docBinding = client["_docBinding"];
-  const pushStatusByDocId = client["_pushStatusByDocId"];
 
   // Prepare payload: read operations and clock from provider, flush presence debounce
   const [operationsBatches, stored] = await provider.transaction(
@@ -112,7 +123,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
       },
     });
     pushStatusByDocId.set(docId, "idle");
-    void client["_doPush"]({ docId });
+    void handleSync(client, docId);
     return;
   }
 
@@ -122,7 +133,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
       error: response.error,
     });
     pushStatusByDocId.set(docId, "idle");
-    void client["_doPush"]({ docId });
+    void handleSync(client, docId);
     return;
   }
 
@@ -197,9 +208,8 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
 
   const currentStatus = pushStatusByDocId.get(docId);
   const shouldRetry = currentStatus === "pushing-with-pending";
+  pushStatusByDocId.set(docId, "idle");
   if (shouldRetry) {
-    void client["_doPush"]({ docId });
-  } else {
-    pushStatusByDocId.set(docId, "idle");
+    void handleSync(client, docId);
   }
 };

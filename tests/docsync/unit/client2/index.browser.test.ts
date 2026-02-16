@@ -20,15 +20,19 @@ describe("Client 2", () => {
   // ──────────────────────────────────────────────────────────────────────────
 
   describe("saveRemote", () => {
-    test("should call _doPush when status is idle", async () => {
+    test("should trigger sync when status is idle", async () => {
       const client = await createClient();
-      const doPushSpy = vi.spyOn(client, "_doPush" as keyof typeof client);
+      const requestSpy = spyOnRequest(client);
       const docId = generateDocId();
 
       await saveOperations(client, docId);
       client.saveRemote({ docId });
 
-      expect(doPushSpy).toHaveBeenCalledWith({ docId });
+      await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
+      expect(requestSpy).toHaveBeenCalledWith(
+        "sync",
+        expect.objectContaining({ docId }),
+      );
     });
 
     test("should set status to pushing-with-pending when called during a push", async () => {
@@ -83,19 +87,19 @@ describe("Client 2", () => {
     test("should be idempotent for same docId during push", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      spyOnRequest(client).mockImplementation(
+      const requestSpy = spyOnRequest(client);
+      requestSpy.mockImplementation(
         () =>
           new Promise((r) =>
             setTimeout(() => r({ data: { docId, clock: 1 } }), 50),
           ),
       );
-      const doPushSpy = vi.spyOn(client, "_doPush" as keyof typeof client);
 
       await saveOperations(client, docId);
       client.saveRemote({ docId });
       client.saveRemote({ docId });
       client.saveRemote({ docId });
-      await expect.poll(() => doPushSpy.mock.calls.length).toBe(1);
+      await expect.poll(() => requestSpy.mock.calls.length).toBe(1);
       expect(client["_pushStatusByDocId"].get(docId)).toBe(
         "pushing-with-pending",
       );
@@ -130,10 +134,10 @@ describe("Client 2", () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // _doPush - Basic Flow
+  // handleSync - Basic Flow
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("_doPush - Basic Flow", () => {
+  describe("handleSync - Basic Flow", () => {
     test("should get operations from provider", async () => {
       const client = await createClient();
       const docId = generateDocId();
@@ -209,10 +213,10 @@ describe("Client 2", () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // _doPush - Client/Server Operation Combinations (2x2 matrix)
+  // handleSync - Client/Server Operation Combinations (2x2 matrix)
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("_doPush - Client/Server Operation Combinations", () => {
+  describe("handleSync - Client/Server Operation Combinations", () => {
     test("should handle client sends operations + server returns no operations", async () => {
       const client = await createClient();
       const requestSpy = spyOnRequest(client);
@@ -381,10 +385,10 @@ describe("Client 2", () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // _doPush - Success Path
+  // handleSync - Success Path
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("_doPush - Success Path", () => {
+  describe("handleSync - Success Path", () => {
     test("should delete operations after successful push", async () => {
       const client = await createClient();
       const docId = generateDocId();
@@ -509,10 +513,10 @@ describe("Client 2", () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // _doPush - Retry Logic
+  // handleSync - Retry Logic
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("_doPush - Retry Logic", () => {
+  describe("handleSync - Retry Logic", () => {
     test("should retry if more operations were queued during push (pushing-with-pending)", async () => {
       const client = await createClient();
       const docId = generateDocId();
@@ -622,10 +626,10 @@ describe("Client 2", () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // _doPush - Concurrency
+  // handleSync - Concurrency
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("_doPush - Concurrency", () => {
+  describe("handleSync - Concurrency", () => {
     test("should not push same doc twice simultaneously", async () => {
       const client = await createClient();
       const docId = generateDocId();

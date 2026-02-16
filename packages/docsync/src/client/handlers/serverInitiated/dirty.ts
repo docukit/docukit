@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { DocSyncClient } from "../../index.js";
+import { handleSync } from "../clientInitiated/sync.js";
 
 export function handleDirty<
   D extends {} = {},
@@ -7,6 +8,6 @@ export function handleDirty<
   O extends {} = {},
 >({ client }: { client: DocSyncClient<D, S, O> }): void {
   client["_socket"].on("dirty", (payload) => {
-    client.saveRemote({ docId: payload.docId });
+    void handleSync(client, payload.docId);
   });
 }
