@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
+import { mergePresencePatch } from "../../shared/presencePatch.js";
 import type { Presence } from "../../shared/types.js";
 import type { ServerConnectionSocket } from "../types.js";
 
@@ -14,17 +15,14 @@ export function applyPresenceUpdate(
 ): void {
   const { docId, presence } = args;
   const currentPresence = presenceByDoc.get(docId) ?? {};
+  const newPresence = mergePresencePatch(currentPresence, {
+    [clientId]: presence ?? null,
+  });
 
-  if (presence === null || presence === undefined) {
-    delete currentPresence[clientId];
-    if (Object.keys(currentPresence).length > 0) {
-      presenceByDoc.set(docId, currentPresence);
-    } else {
-      presenceByDoc.delete(docId);
-    }
-  } else {
-    const newPresence = { ...currentPresence, [clientId]: presence };
+  if (Object.keys(newPresence).length > 0) {
     presenceByDoc.set(docId, newPresence);
+  } else {
+    presenceByDoc.delete(docId);
   }
 
   socket.to(`doc:${docId}`).emit("presence", {
