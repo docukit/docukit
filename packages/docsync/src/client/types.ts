@@ -11,21 +11,9 @@ import type {
 // ============================================================================
 
 export type QueryResult<D, E = Error> =
-  | {
-      status: "loading";
-      data?: never;
-      error?: never;
-    }
-  | {
-      status: "success";
-      data: D;
-      error?: never;
-    }
-  | {
-      status: "error";
-      data?: never;
-      error: E;
-    };
+  | { status: "loading"; data?: never; error?: never }
+  | { status: "success"; data: D; error?: never }
+  | { status: "error"; data?: never; error: E };
 
 /**
  * Arguments for {@link DocSyncClient["getDoc"]}.
@@ -45,10 +33,7 @@ export type DeferredState<T> = {
   data: T;
 };
 
-export type Identity = {
-  userId: string;
-  secret: string;
-};
+export type Identity = { userId: string; secret: string };
 
 export type ClientConfig<
   D extends {} = {},
@@ -56,12 +41,7 @@ export type ClientConfig<
   O extends {} = {},
 > = {
   docBinding: DocBinding<D, S, O>;
-  server: {
-    url: string;
-    auth: {
-      getToken: () => Promise<string>;
-    };
-  };
+  server: { url: string; auth: { getToken: () => Promise<string> } };
   local: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     provider: new (identity: Identity) => ClientProvider<any, any>;

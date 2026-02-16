@@ -3,11 +3,7 @@ import { $isLineBreakNode, type NodeKey, type NodeMap } from "lexical";
 import type { Cursor, CursorSelection, PresenceBinding } from "./types.js";
 
 export function createCursor(name: string, color: string): Cursor {
-  return {
-    color,
-    name,
-    selection: undefined,
-  };
+  return { color, name, selection: undefined };
 }
 
 function destroySelection(

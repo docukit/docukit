@@ -1,9 +1,7 @@
 import type { KnipConfig } from "knip";
 
 const config: KnipConfig = {
-  compilers: {
-    mdx: true,
-  },
+  compilers: { mdx: true },
   ignore: [
     "packages/docsync/src/server/providers/postgres/drizzle.config.ts",
     "packages/docsync/src/server/cli.ts",

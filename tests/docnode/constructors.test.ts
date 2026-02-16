@@ -42,12 +42,7 @@ describe("types", () => {
       [
         string,
         "test",
-        {
-          string?: string;
-          number?: string;
-          boolean?: string;
-          date?: string;
-        },
+        { string?: string; number?: string; boolean?: string; date?: string },
       ]
     >();
   });
@@ -162,9 +157,7 @@ describe("types", () => {
       });
     });
     test("if toJSON is not defined should be inferred from fromJSON", () => {
-      const state = defineState({
-        fromJSON: () => "" as string,
-      });
+      const state = defineState({ fromJSON: () => "" as string });
       expectTypeOf(state).toEqualTypeOf<
         StateDefinition<string, string, DefaultStateMethods<string>>
       >();
@@ -204,12 +197,7 @@ describe("types", () => {
           DefaultStateMethods<string | undefined>
         >
       >();
-      const MyNode = defineNode({
-        type: "myNode",
-        state: {
-          value: state,
-        },
-      });
+      const MyNode = defineNode({ type: "myNode", state: { value: state } });
       expect(
         () => new Doc({ type: "root", extensions: [{ nodes: [MyNode] }] }),
       ).toThrowError(
@@ -323,9 +311,7 @@ describe("new Doc", () => {
   test("nodes with same type and colliding states - should throw", () => {
     const TextColliding = defineNode({
       type: "text",
-      state: {
-        value: string(""),
-      },
+      state: { value: string("") },
     });
     expect(
       () =>

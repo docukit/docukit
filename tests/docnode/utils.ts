@@ -19,16 +19,9 @@ import { expect } from "vitest";
 export const DOCNODE_ID = (sessionId = "[\\w-]", clockId = "[\\w-]") =>
   new RegExp(`^${sessionId}[\\w-]{3}\\.${clockId}$`);
 
-export const Text = defineNode({
-  type: "text",
-  state: {
-    value: string(""),
-  },
-});
+export const Text = defineNode({ type: "text", state: { value: string("") } });
 
-export const TextExtension: Extension = {
-  nodes: [Text],
-};
+export const TextExtension: Extension = { nodes: [Text] };
 
 export const TestNode = defineNode({
   type: "test",
@@ -42,9 +35,7 @@ export const TestNode = defineNode({
   },
 });
 
-export const TestExtension: Extension = {
-  nodes: [TestNode],
-};
+export const TestExtension: Extension = { nodes: [TestNode] };
 
 export const text = (doc: Doc, ...values: string[]) =>
   values.map((value) => {

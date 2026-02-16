@@ -99,10 +99,7 @@ const counter = defineState({
   }),
 });
 
-const Counter = defineNode({
-  type: "counter",
-  state: { value: counter },
-});
+const Counter = defineNode({ type: "counter", state: { value: counter } });
 
 const counter = doc.createNode(Counter);
 counter.state.value.increment(3);

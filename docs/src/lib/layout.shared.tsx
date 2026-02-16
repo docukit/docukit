@@ -11,9 +11,7 @@ import DocuKitFavicon from "@/icons/DocuKitFavicon";
  * Docs Layout: app/docs/layout.tsx
  */
 export const baseOptions: BaseLayoutProps = {
-  themeSwitch: {
-    mode: "light-dark",
-  },
+  themeSwitch: { mode: "light-dark" },
   githubUrl: "https://github.com/docukit/docukit",
   links: [
     // {

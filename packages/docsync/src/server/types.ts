@@ -39,18 +39,9 @@ export type SyncRequestEvent<O = unknown, S = unknown> = {
   socketId: string;
   status: "success" | "error";
 
-  req: {
-    docId: string;
-    operations?: O[];
-    clock: number;
-    presence?: unknown;
-  };
+  req: { docId: string; operations?: O[]; clock: number; presence?: unknown };
 
-  res?: {
-    operations?: O[];
-    clock?: number;
-    serializedDoc?: S;
-  };
+  res?: { operations?: O[]; clock?: number; serializedDoc?: S };
 
   durationMs?: number;
   devicesCount?: number;
@@ -88,13 +79,9 @@ export type ServerConfig<TContext, D extends {}, S extends {}, O extends {}> = {
   port?: number;
   provider: new () => ServerProvider<NoInfer<S>, NoInfer<O>>;
 
-  authenticate(ev: { token: string }): Promise<
-    | {
-        userId: string;
-        context?: TContext;
-      }
-    | undefined
-  >;
+  authenticate(ev: {
+    token: string;
+  }): Promise<{ userId: string; context?: TContext } | undefined>;
 
   authorize?(ev: {
     type: DocSyncEventName;

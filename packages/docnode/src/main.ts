@@ -574,10 +574,7 @@ export class Doc {
   constructor(config: DocConfig) {
     this._nodeDefs = new Set();
     this._resolvedNodeDefs = new Map();
-    const RootNode = defineNode({
-      type: config.type,
-      state: {},
-    });
+    const RootNode = defineNode({ type: config.type, state: {} });
     const nodeDefs: UnsafeDefinition[] = [
       RootNode,
       ...config.extensions.flatMap((extension) => extension.nodes ?? []),
@@ -717,11 +714,7 @@ export class Doc {
           // eslint-disable-next-line @typescript-eslint/unbound-method
           const methods = resolvedNodeDef.state[key]?.methods;
 
-          stateObj[key] = methods?.({
-            get,
-            set,
-            getPrev,
-          }) ?? {
+          stateObj[key] = methods?.({ get, set, getPrev }) ?? {
             get,
             set,
             getPrev,

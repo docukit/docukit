@@ -1,3 +1,1 @@
-{
-  "extends": "ultimate-tooling/tsc/build/dom/library-monorepo"
-}
+{ "extends": "ultimate-tooling/tsc/build/dom/library-monorepo" }

@@ -25,9 +25,7 @@ export default async function BlogPostPage(props: {
 }
 
 export function generateStaticParams(): { slug: string }[] {
-  return blog.getPages().map((page) => ({
-    slug: page.slugs[0],
-  }));
+  return blog.getPages().map((page) => ({ slug: page.slugs[0] }));
 }
 
 export async function generateMetadata(props: {
@@ -38,8 +36,5 @@ export async function generateMetadata(props: {
 
   if (!page) notFound();
 
-  return {
-    title: page.data.title,
-    description: page.data.description,
-  };
+  return { title: page.data.title, description: page.data.description };
 }

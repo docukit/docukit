@@ -1,9 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { HelperBase } from "../utils.js";
 
-type ClientUtils = {
-  select: (block: number, offset: number) => Promise<void>;
-};
+type ClientUtils = { select: (block: number, offset: number) => Promise<void> };
 
 export class EditorHelper extends HelperBase {
   reference: ClientUtils;

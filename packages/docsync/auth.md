@@ -69,10 +69,7 @@ export type ClientConfig = {
      *
      * This is NOT authentication and is not authoritative.
      */
-    getIdentity: () => Promise<{
-      userId: string;
-      secret: string;
-    }>;
+    getIdentity: () => Promise<{ userId: string; secret: string }>;
 
     provider: new () => Provider;
   };
@@ -107,13 +104,9 @@ export type ServerConfig<TContext = {}> = {
    * - Must resolve the canonical userId.
    * - May optionally return a context object passed to authorize.
    */
-  authenticate: (ev: { token: string }) => Promise<
-    | {
-        userId: string;
-        context?: TContext;
-      }
-    | undefined
-  >;
+  authenticate: (ev: {
+    token: string;
+  }) => Promise<{ userId: string; context?: TContext } | undefined>;
 
   /**
    * Authorizes an operation (get-doc, sync, delete-doc).

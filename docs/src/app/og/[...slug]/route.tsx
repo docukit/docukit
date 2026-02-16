@@ -19,16 +19,12 @@ export async function GET(
       description={page.data.description}
       site="DocNode"
     />,
-    {
-      width: 1200,
-      height: 630,
-    },
+    { width: 1200, height: 630 },
   );
 }
 
 export function generateStaticParams() {
-  return source.getPages().map((page) => ({
-    lang: page.locale,
-    slug: getPageImage(page).segments,
-  }));
+  return source
+    .getPages()
+    .map((page) => ({ lang: page.locale, slug: getPageImage(page).segments }));
 }

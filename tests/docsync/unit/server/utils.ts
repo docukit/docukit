@@ -26,26 +26,19 @@ const createMockDocSyncClient = (serverOverrides?: {
   // mock window
   globalThis.window = {} as Window & typeof globalThis;
   // mock localStorage
-  globalThis.localStorage = {
-    getItem: () => "asd",
-  } as unknown as Storage;
+  globalThis.localStorage = { getItem: () => "asd" } as unknown as Storage;
 
   return new DocSyncClient({
     server: {
       url: serverOverrides?.url ?? `ws://localhost:${BASE_PORT}`,
-      auth: serverOverrides?.auth ?? {
-        getToken: async () => "test-token",
-      },
+      auth: serverOverrides?.auth ?? { getToken: async () => "test-token" },
     },
     local: {
       provider: InMemoryServerProvider as unknown as new (
         identity: Identity,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ) => ClientProvider<any, any>,
-      getIdentity: async () => ({
-        userId: "test-user",
-        secret: "test-secret",
-      }),
+      getIdentity: async () => ({ userId: "test-user", secret: "test-secret" }),
     },
     docBinding: DocNodeBinding([]),
   }) as unknown as DocSyncClient;
@@ -100,22 +93,11 @@ export async function testWrapper(
       socket.emit("sync", payload, resolve);
     });
 
-  await fn({
-    server,
-    client,
-    waitForConnect,
-    waitForError,
-    socket,
-    sync,
-  });
+  await fn({ server, client, waitForConnect, waitForError, socket, sync });
   await server.close();
 }
 
-type SyncPayload = {
-  docId: string;
-  operations?: {}[];
-  clock: number;
-};
+type SyncPayload = { docId: string; operations?: {}[]; clock: number };
 type SyncResponse =
   | {
       data: {

@@ -35,16 +35,10 @@ import { Doc, defineNode, string } from "@docukit/docnode";
 
 const PageNode = defineNode({
   type: "page",
-  state: {
-    title: string(""),
-    body: string(""),
-  },
+  state: { title: string(""), body: string("") },
 });
 
-const doc = new Doc({
-  type: "page",
-  extensions: [{ nodes: [PageNode] }],
-});
+const doc = new Doc({ type: "page", extensions: [{ nodes: [PageNode] }] });
 
 doc.root.state.title.set("Hello, local-first.");
 ```

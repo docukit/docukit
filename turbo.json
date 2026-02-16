@@ -6,13 +6,8 @@
       "outputs": [".next/**", "!.next/cache/**", "dist/**"],
       "env": ["GROQ_API_KEY", "SMTP_URL", "CONTACT_EMAIL_TO"]
     },
-    "dev": {
-      "cache": false,
-      "persistent": true
-    },
-    "clean": {
-      "cache": false
-    },
+    "dev": { "cache": false, "persistent": true },
+    "clean": { "cache": false },
     "typecheck": {}
   }
 }

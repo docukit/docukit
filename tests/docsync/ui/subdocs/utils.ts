@@ -170,10 +170,7 @@ export class DocNodeHelper extends HelperBase {
     const hiddenClients = [
       { name: "reference-hidden (page)", locator: this._referenceHidden },
       { name: "otherTab-hidden (page)", locator: this._otherTabHidden },
-      {
-        name: "otherDevice-hidden (page)",
-        locator: this._otherDeviceHidden,
-      },
+      { name: "otherDevice-hidden (page)", locator: this._otherDeviceHidden },
     ];
 
     for (const client of hiddenClients) {

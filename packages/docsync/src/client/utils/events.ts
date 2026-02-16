@@ -13,9 +13,7 @@ export type ChangeEvent<O = unknown> = {
 };
 
 /** Emitted once after sync completes (success or error). */
-export type SyncEvent<O = unknown, S = unknown> = {
-  req: SyncRequest<O>;
-} & (
+export type SyncEvent<O = unknown, S = unknown> = { req: SyncRequest<O> } & (
   | SyncResponse<S, O>
   | { error: { type: "NetworkError"; message: string }; data?: never }
 );
@@ -26,10 +24,7 @@ export type DocLoadEvent = {
   refCount: number;
 };
 
-export type DocUnloadEvent = {
-  docId: string;
-  refCount: number;
-};
+export type DocUnloadEvent = { docId: string; refCount: number };
 
 // ============================================================================
 // Event map and emitter

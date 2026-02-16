@@ -18,12 +18,7 @@ import { assert, bench, describe, wrapper } from "./utils.js";
 import { TextExtension } from "../utils.js";
 
 void (await wrapper(async () => {
-  const Text = defineNode({
-    type: "text",
-    state: {
-      value: string(""),
-    },
-  });
+  const Text = defineNode({ type: "text", state: { value: string("") } });
 
   // Helper function to create text nodes
   const text = (doc: Doc, ...values: string[]) =>

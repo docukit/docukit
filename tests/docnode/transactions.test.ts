@@ -223,9 +223,7 @@ describe("undoManager", () => {
             'UPDATE: {"1 CHANGED":{"value":"1"}}',
           ],
           diff: {
-            deleted: {
-              "1 CHANGED": ["text", { value: '"1 CHANGED"' }],
-            },
+            deleted: { "1 CHANGED": ["text", { value: '"1 CHANGED"' }] },
             inserted: new Set(),
             moved: new Set(),
             updated: new Set(),

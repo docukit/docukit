@@ -15,11 +15,7 @@ import {
 import { Markdown } from "./markdown";
 
 const keyVariants = cva("text-fd-primary", {
-  variants: {
-    deprecated: {
-      true: "line-through text-fd-primary/50",
-    },
-  },
+  variants: { deprecated: { true: "line-through text-fd-primary/50" } },
 });
 
 const fieldVariants = cva("text-fd-muted-foreground not-prose pe-2");

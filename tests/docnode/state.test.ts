@@ -177,12 +177,7 @@ describe("getState", () => {
     const _testState = root.state.test;
   });
   test("getState extending root", () => {
-    const Root2 = defineNode({
-      type: "root",
-      state: {
-        string: string(""),
-      },
-    });
+    const Root2 = defineNode({ type: "root", state: { string: string("") } });
     const doc = new Doc({
       type: "root",
       extensions: [{ nodes: [Text, Root2] }],
@@ -749,9 +744,7 @@ describe("custom methods", () => {
 
   const CounterNode = defineNode({
     type: "counter",
-    state: {
-      count: countState,
-    },
+    state: { count: countState },
   });
 
   test("counter - types", () => {
@@ -770,12 +763,7 @@ describe("custom methods", () => {
     >();
 
     expectTypeOf(CounterNode).toEqualTypeOf<
-      NodeDefinition<
-        "counter",
-        {
-          count: typeof countState;
-        }
-      >
+      NodeDefinition<"counter", { count: typeof countState }>
     >();
 
     const doc = new Doc({

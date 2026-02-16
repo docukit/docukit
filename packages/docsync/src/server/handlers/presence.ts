@@ -38,12 +38,7 @@ export function handlePresence<TContext = unknown>({
           })
         : true;
       if (!authorized) {
-        cb({
-          error: {
-            type: "AuthorizationError",
-            message: "Access denied",
-          },
-        });
+        cb({ error: { type: "AuthorizationError", message: "Access denied" } });
         return;
       }
       applyPresenceUpdate(server["_presenceByDoc"], socket, clientId, {

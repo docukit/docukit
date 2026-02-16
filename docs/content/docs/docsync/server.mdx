@@ -173,18 +173,9 @@ server.onClientConnect((event) => {
 
 <TypeTable
   type={{
-    userId: {
-      description: "Authenticated user ID.",
-      type: "string",
-    },
-    deviceId: {
-      description: "Unique device identifier.",
-      type: "string",
-    },
-    socketId: {
-      description: "Socket.IO socket ID.",
-      type: "string",
-    },
+    userId: { description: "Authenticated user ID.", type: "string" },
+    deviceId: { description: "Unique device identifier.", type: "string" },
+    socketId: { description: "Socket.IO socket ID.", type: "string" },
     context: {
       description: "Context object from authenticate().",
       type: "TContext",
@@ -238,22 +229,10 @@ server.onSyncRequest((event) => {
 
 <TypeTable
   type={{
-    userId: {
-      description: "User who made the request.",
-      type: "string",
-    },
-    deviceId: {
-      description: "Device that made the request.",
-      type: "string",
-    },
-    socketId: {
-      description: "Socket ID.",
-      type: "string",
-    },
-    status: {
-      description: "Request outcome.",
-      type: '"success" | "error"',
-    },
+    userId: { description: "User who made the request.", type: "string" },
+    deviceId: { description: "Device that made the request.", type: "string" },
+    socketId: { description: "Socket ID.", type: "string" },
+    status: { description: "Request outcome.", type: '"success" | "error"' },
     durationMs: {
       description: "Processing time in milliseconds.",
       type: "number",
@@ -266,18 +245,12 @@ server.onSyncRequest((event) => {
       description: "Number of unique devices viewing this document.",
       type: "number",
     },
-    "req.docId": {
-      description: "Document ID.",
-      type: "string",
-    },
+    "req.docId": { description: "Document ID.", type: "string" },
     "req.operations": {
       description: "Operations sent by client (if any).",
       type: "O[]",
     },
-    "req.clock": {
-      description: "Client's clock value.",
-      type: "number",
-    },
+    "req.clock": { description: "Client's clock value.", type: "number" },
     "res.operations": {
       description:
         "Operations returned to client (if any). Present on success.",

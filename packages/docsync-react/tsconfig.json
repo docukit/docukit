@@ -1,6 +1,4 @@
 {
   "extends": "ultimate-tooling/tsc/typechecking/dom",
-  "compilerOptions": {
-    "exactOptionalPropertyTypes": true
-  }
+  "compilerOptions": { "exactOptionalPropertyTypes": true }
 }

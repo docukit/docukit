@@ -235,17 +235,10 @@ export class DocSyncClient<
 
           if (doc) {
             const refCount = this._docsCache.get(docId)?.refCount ?? 1;
-            this._events.emit("docLoad", {
-              docId,
-              source,
-              refCount,
-            });
+            this._events.emit("docLoad", { docId, source, refCount });
           }
 
-          emit({
-            status: "success",
-            data: doc ? { doc, docId } : undefined,
-          });
+          emit({ status: "success", data: doc ? { doc, docId } : undefined });
           // Fetch from server to check if document exists there
           if (doc) {
             void handleSync(this, docId);
@@ -388,16 +381,10 @@ export class DocSyncClient<
     if (!cacheEntry) return;
     if (cacheEntry.refCount > 1) {
       cacheEntry.refCount -= 1;
-      this._events.emit("docUnload", {
-        docId,
-        refCount: cacheEntry.refCount,
-      });
+      this._events.emit("docUnload", { docId, refCount: cacheEntry.refCount });
     } else {
       cacheEntry.refCount = 0;
-      this._events.emit("docUnload", {
-        docId,
-        refCount: 0,
-      });
+      this._events.emit("docUnload", { docId, refCount: 0 });
 
       // Dispose when promise resolves
       const doc = await cacheEntry.promisedDoc;

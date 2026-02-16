@@ -115,14 +115,8 @@ describe("docnode to lexical", () => {
     expect(jsonEditorState).toStrictEqual({
       root: {
         children: [
-          {
-            ...paragraphJson,
-            children: [textJson],
-          },
-          {
-            ...paragraphJson,
-            children: [textJson],
-          },
+          { ...paragraphJson, children: [textJson] },
+          { ...paragraphJson, children: [textJson] },
         ],
         direction: null,
         format: "",

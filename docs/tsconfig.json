@@ -15,15 +15,8 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "paths": {
-      "@/.source": ["./.source/index.ts"],
-      "@/*": ["./src/*"]
-    },
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ]
+    "paths": { "@/.source": ["./.source/index.ts"], "@/*": ["./src/*"] },
+    "plugins": [{ "name": "next" }]
   },
   "include": [
     "next-env.d.ts",

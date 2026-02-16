@@ -18,9 +18,7 @@ const project = (name: string, browser: boolean): TestProjectConfiguration => ({
     testTimeout: 2000, // (includes Playwright launch time?)
     hookTimeout: 2000,
     ...(browser
-      ? {
-          include: ["**/*.browser.test.ts", "**/*.browser.test.tsx"],
-        }
+      ? { include: ["**/*.browser.test.ts", "**/*.browser.test.tsx"] }
       : {
           exclude: [
             "**/*.browser.test.ts",
@@ -31,9 +29,7 @@ const project = (name: string, browser: boolean): TestProjectConfiguration => ({
           ],
         }),
     globalSetup: ["./tests/docsync/int/globalSetup.ts"],
-    benchmark: {
-      include: ["**/*browser.bench.ts"],
-    },
+    benchmark: { include: ["**/*browser.bench.ts"] },
     name,
     browser: {
       screenshotFailures: false,
@@ -48,21 +44,14 @@ const project = (name: string, browser: boolean): TestProjectConfiguration => ({
 export default defineConfig({
   resolve: resolveConfig,
   // SSR mode is used by Vitest for Node environment tests
-  ssr: {
-    resolve: resolveConfig,
-  },
+  ssr: { resolve: resolveConfig },
   test: {
     // Global timeouts - prevent tests from hanging indefinitely
     // Node tests should be fast (2s max)
     testTimeout: 2000, // 2 seconds max per test
     hookTimeout: 2000, // 2 seconds max per hook (beforeAll, afterEach, etc)
     // Defaults for expect.poll() – interval ms between attempts, timeout ms total
-    expect: {
-      poll: {
-        interval: 5,
-        timeout: 1000,
-      },
-    },
+    expect: { poll: { interval: 5, timeout: 1000 } },
     coverage: {
       reportsDirectory: ".test-results/vitest",
       reporter: ["text", "html"],

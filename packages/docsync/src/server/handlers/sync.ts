@@ -41,12 +41,7 @@ export function handleSync<
       const startTime = Date.now();
 
       const authorized = server["_authorize"]
-        ? await server["_authorize"]({
-            type: "sync",
-            payload,
-            userId,
-            context,
-          })
+        ? await server["_authorize"]({ type: "sync", payload, userId, context })
         : true;
       if (!authorized) {
         const errorEvent = {
@@ -64,9 +59,7 @@ export function handleSync<
           durationMs: Date.now() - startTime,
         });
 
-        cb({
-          error: errorEvent,
-        });
+        cb({ error: errorEvent });
         return;
       }
 
@@ -100,10 +93,7 @@ export function handleSync<
         const result = await provider.transaction("readwrite", async (ctx) => {
           const serverOps = await ctx.getOperations({ docId, clock });
           const serverDoc = await ctx.getSerializedDoc(docId);
-          const newClock = await ctx.saveOperations({
-            docId,
-            operations,
-          });
+          const newClock = await ctx.saveOperations({ docId, operations });
 
           return {
             docId,
@@ -156,11 +146,7 @@ export function handleSync<
           deviceId,
           socketId: socket.id,
           status: "success",
-          req: {
-            docId: payload.docId,
-            operations,
-            clock: payload.clock,
-          },
+          req: { docId: payload.docId, operations, clock: payload.clock },
           ...(result.operations || result.serializedDoc
             ? {
                 res: {
@@ -220,11 +206,7 @@ export function handleSync<
           deviceId,
           socketId: socket.id,
           status: "error",
-          req: {
-            docId: payload.docId,
-            operations,
-            clock: payload.clock,
-          },
+          req: { docId: payload.docId, operations, clock: payload.clock },
           error: {
             ...errorEvent,
             ...(error instanceof Error && error.stack
@@ -234,9 +216,7 @@ export function handleSync<
           durationMs: Date.now() - startTime,
         });
 
-        cb({
-          error: errorEvent,
-        });
+        cb({ error: errorEvent });
       }
     },
   );
