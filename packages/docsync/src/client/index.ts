@@ -55,7 +55,7 @@ export class DocSyncClient<
   /** Client-generated id for presence (works offline; sent in auth so server uses same key) */
   protected _clientId: string;
   private _shouldBroadcast = true;
-  protected _bcHelper?: BCHelper<O>;
+  protected _bcHelper?: BCHelper<D, S, O>;
   protected _socket: ClientSocket<S, O>;
 
   // Flow control state (batching, debouncing, push queueing)
@@ -85,14 +85,7 @@ export class DocSyncClient<
       const identity = await local.getIdentity();
       const provider = new local.provider(identity) as ClientProvider<S, O>;
 
-      this._bcHelper = new BCHelper<O>(`docsync:${identity.userId}`, {
-        pushStatusByDocId: this._pushStatusByDocId,
-        getCacheEntry: (docId) => this._docsCache.get(docId),
-        applyOperations: (operations, docId) =>
-          this._applyOperations(operations, docId),
-        applyPresencePatch: (cacheEntry, patch) =>
-          this._applyPresencePatch(cacheEntry, patch),
-      });
+      this._bcHelper = new BCHelper(this);
 
       return { provider, identity };
     })();
@@ -120,23 +113,6 @@ export class DocSyncClient<
 
   disconnect() {
     this._socket.disconnect();
-  }
-
-  async _applyOperations(operations: O, docId: string) {
-    const docFromCache = this._docsCache.get(docId);
-    if (!docFromCache) return;
-    const doc = await docFromCache.promisedDoc;
-    if (!doc) return;
-    this._shouldBroadcast = false;
-    this._docBinding.applyOperations(doc, operations);
-    this._shouldBroadcast = true;
-
-    // Emit change event for broadcast operations
-    this._emit(this._changeEventListeners, {
-      docId,
-      origin: "broadcast",
-      operations: [operations],
-    });
   }
 
   protected _applyPresencePatch(

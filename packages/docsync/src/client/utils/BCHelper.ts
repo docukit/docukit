@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 
-/** Wire format for cross-tab BroadcastChannel messages. Only used in BCHelper. */
-export type BroadcastMessage<O> =
+import type { DocSyncClient } from "../index.js";
+
+type BroadcastMessage<O> =
   | {
       type: "OPERATIONS";
       operations: O;
@@ -10,55 +11,53 @@ export type BroadcastMessage<O> =
     }
   | { type: "PRESENCE"; docId: string; presence: Record<string, unknown> };
 
-export type PushStatus = "idle" | "pushing" | "pushing-with-pending";
-
-/** Cache entry shape required for presence patches. */
-export type PresenceCacheEntry = {
-  presence: Record<string, unknown>;
-  presenceHandlers: Set<(p: Record<string, unknown>) => void>;
-};
-
-export type BCHelperDeps<O> = {
-  pushStatusByDocId: Map<string, PushStatus>;
-  getCacheEntry: (docId: string) => PresenceCacheEntry | undefined;
-  applyOperations: (operations: O, docId: string) => void | Promise<void>;
-  applyPresencePatch: (
-    cacheEntry: PresenceCacheEntry,
-    patch: Record<string, unknown>,
-  ) => void;
-};
-
-/**
- * Thin wrapper around BroadcastChannel for DocSync cross-tab messaging.
- * Only public method: broadcast(message). All message handling runs inside the constructor.
- */
-export class BCHelper<O extends {} = {}> {
+export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
   private _channel: BroadcastChannel;
 
-  constructor(channelName: string, deps: BCHelperDeps<O>) {
+  constructor(client: DocSyncClient<D, S, O>) {
+    const channelName = `docsync:${client["_clientId"]}`;
     this._channel = new BroadcastChannel(channelName);
     this._channel.onmessage = (ev: MessageEvent<BroadcastMessage<O>>) => {
       const msg = ev.data;
       if (msg.type === "OPERATIONS") {
         const { docId, operations, presence } = msg;
-        const currentStatus = deps.pushStatusByDocId.get(docId) ?? "idle";
+        const currentStatus = client["_pushStatusByDocId"].get(docId) ?? "idle";
         if (currentStatus === "pushing") {
-          deps.pushStatusByDocId.set(docId, "pushing-with-pending");
+          client["_pushStatusByDocId"].set(docId, "pushing-with-pending");
         }
-        void Promise.resolve(deps.applyOperations(operations, docId));
+        void this._applyOperations(client, operations, docId);
         if (presence) {
-          const cacheEntry = deps.getCacheEntry(docId);
-          if (cacheEntry) deps.applyPresencePatch(cacheEntry, presence);
+          const cacheEntry = client["_docsCache"].get(docId);
+          if (cacheEntry) client["_applyPresencePatch"](cacheEntry, presence);
         }
         return;
       }
       if (msg.type === "PRESENCE") {
         const { docId, presence } = msg;
-        const cacheEntry = deps.getCacheEntry(docId);
+        const cacheEntry = client["_docsCache"].get(docId);
         if (!cacheEntry) return;
-        deps.applyPresencePatch(cacheEntry, presence);
+        client["_applyPresencePatch"](cacheEntry, presence);
       }
     };
+  }
+
+  private async _applyOperations(
+    client: DocSyncClient<D, S, O>,
+    operations: O,
+    docId: string,
+  ): Promise<void> {
+    const cacheEntry = client["_docsCache"].get(docId);
+    if (!cacheEntry) return;
+    const doc = await cacheEntry.promisedDoc;
+    if (!doc) return;
+    client["_shouldBroadcast"] = false;
+    client["_docBinding"].applyOperations(doc, operations);
+    client["_shouldBroadcast"] = true;
+    client["_emit"](client["_changeEventListeners"], {
+      docId,
+      origin: "broadcast",
+      operations: [operations],
+    });
   }
 
   broadcast(message: BroadcastMessage<O>): void {
