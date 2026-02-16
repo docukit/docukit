@@ -535,40 +535,7 @@ export class DocSyncClient<
 
   protected async _doPush({ docId }: { docId: string }) {
     this._pushStatusByDocId.set(docId, "pushing");
-    const provider = (await this._localPromise).provider;
-
-    // Get the current clock value and operations from provider
-    const [operationsBatches, stored] = await provider.transaction(
-      "readonly",
-      async (ctx) => {
-        return Promise.all([
-          ctx.getOperations({ docId }),
-          ctx.getSerializedDoc(docId),
-        ]);
-      },
-    );
-    const operations = operationsBatches.flat();
-    const clientClock = stored?.clock ?? 0;
-
-    const presenceState = this._presenceDebounceState.get(docId);
-    if (presenceState) {
-      clearTimeout(presenceState.timeout);
-      this._presenceDebounceState.delete(docId);
-      this._bcHelper?.broadcast({
-        type: "PRESENCE",
-        docId,
-        presence: { [this._clientId]: presenceState.data },
-      });
-    }
-
-    await handleSync({
-      client: this,
-      operationsBatches,
-      operations,
-      docId,
-      clientClock,
-      ...(presenceState ? { presence: presenceState.data } : {}),
-    });
+    await handleSync(this, docId);
   }
 
   protected async _deleteDoc(docId: string): Promise<boolean> {

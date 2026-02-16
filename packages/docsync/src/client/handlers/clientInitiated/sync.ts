@@ -58,26 +58,40 @@ export async function replaceDocInCache<
   });
 }
 
-export const handleSync = async <D extends {}, S extends {}, O extends {}>({
-  client,
-  operationsBatches,
-  operations,
-  docId,
-  clientClock,
-  presence,
-}: {
-  client: DocSyncClient<D, S, O>;
-  operationsBatches: O[][];
-  operations: O[];
-  docId: string;
-  clientClock: number;
-  presence?: unknown;
-}): Promise<void> => {
+export const handleSync = async <D extends {}, S extends {}, O extends {}>(
+  client: DocSyncClient<D, S, O>,
+  docId: string,
+): Promise<void> => {
   const { provider } = await client["_localPromise"];
   const socket = client["_socket"];
   const docBinding = client["_docBinding"];
   const pushStatusByDocId = client["_pushStatusByDocId"];
 
+  // Prepare payload: read operations and clock from provider, flush presence debounce
+  const [operationsBatches, stored] = await provider.transaction(
+    "readonly",
+    async (ctx) => {
+      return Promise.all([
+        ctx.getOperations({ docId }),
+        ctx.getSerializedDoc(docId),
+      ]);
+    },
+  );
+  const operations = operationsBatches.flat();
+  const clientClock = stored?.clock ?? 0;
+
+  const presenceState = client["_presenceDebounceState"].get(docId);
+  if (presenceState) {
+    clearTimeout(presenceState.timeout);
+    client["_presenceDebounceState"].delete(docId);
+    client["_bcHelper"]?.broadcast({
+      type: "PRESENCE",
+      docId,
+      presence: { [client["_clientId"]]: presenceState.data },
+    });
+  }
+
+  const presence = presenceState?.data;
   const payload: SyncRequest<O> = {
     clock: clientClock,
     docId,
