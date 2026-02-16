@@ -25,9 +25,6 @@ interface DocNodeIDB<S, O> extends DBSchema {
   };
 }
 
-type StoreNames = ("docs" | "operations")[];
-type IDBTx<S, O> = IDBPTransaction<DocNodeIDB<S, O>, StoreNames, "readwrite">;
-
 export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
   private _dbPromise: Promise<IDBPDatabase<DocNodeIDB<S, O>>>;
 
@@ -49,7 +46,13 @@ export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
   /**
    * Create a transaction context that wraps all operations in a single IDB transaction.
    */
-  private _createContext(tx: IDBTx<S, O>): ClientProviderContext<S, O> {
+  private _createContext(
+    tx: IDBPTransaction<
+      DocNodeIDB<S, O>,
+      ("docs" | "operations")[],
+      "readwrite"
+    >,
+  ): ClientProviderContext<S, O> {
     return {
       async getSerializedDoc(docId: string) {
         const store = tx.objectStore("docs");

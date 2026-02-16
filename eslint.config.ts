@@ -6,9 +6,7 @@ import * as regexpPlugin from "eslint-plugin-regexp";
 // eslint-plugin-barrel-files has no type declarations
 // @ts-expect-error -- untyped package
 import barrelFiles from "eslint-plugin-barrel-files";
-// eslint-plugin-ts-inline-parameter-types: prefer inline types when used once in params
-// @ts-expect-error -- untyped package
-import tsInlineParameterTypes from "eslint-plugin-ts-inline-parameter-types";
+import preferInlineTypes from "eslint-plugin-prefer-inline-types";
 import eslintPluginImport from "eslint-plugin-import";
 import nextVitals from "eslint-config-next/core-web-vitals";
 
@@ -84,11 +82,10 @@ export const rootEslintConfig = tseslint.config(
       // TODO: enable
       // "@typescript-eslint/no-shadow": "error",
       // "@typescript-eslint/no-redeclare": "error",
-      "ts-inline-parameter-types/prefer-inline-type-parameters": "error",
+      "prefer-inline-types/prefer-inline-type-parameters": "warn",
     },
     plugins: {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- untyped plugin
-      "ts-inline-parameter-types": tsInlineParameterTypes,
+      "prefer-inline-types": preferInlineTypes,
     },
     languageOptions: {
       parserOptions: {

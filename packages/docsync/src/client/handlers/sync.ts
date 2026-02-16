@@ -11,20 +11,6 @@ import type {
   SyncEvent,
 } from "../types.js";
 
-type SyncRequestContext<O> = {
-  docId: string;
-  operations: O[];
-  clock: number;
-};
-
-type HandleSyncResultArgs<S, O> = {
-  socket: ClientSocket<S, O>;
-  payload: SyncRequest<O>;
-  req: SyncRequestContext<O>;
-  emitSync: (event: SyncEvent<O, S>) => void;
-  timeoutMs?: number;
-};
-
 export type HandleSyncResult<S, O> =
   | { kind: "retry" }
   | {
@@ -59,7 +45,17 @@ const performSyncRequest = async <S, O>({
   req,
   emitSync,
   timeoutMs = 5000,
-}: HandleSyncResultArgs<S, O>): Promise<HandleSyncResult<S, O>> => {
+}: {
+  socket: ClientSocket<S, O>;
+  payload: SyncRequest<O>;
+  req: {
+    docId: string;
+    operations: O[];
+    clock: number;
+  };
+  emitSync: (event: SyncEvent<O, S>) => void;
+  timeoutMs?: number;
+}): Promise<HandleSyncResult<S, O>> => {
   let response: SyncResponse<S, O>;
   try {
     response = await requestSync(socket, payload, timeoutMs);
@@ -96,28 +92,6 @@ const performSyncRequest = async <S, O>({
   return { kind: "success", data };
 };
 
-type PushStatus = "idle" | "pushing" | "pushing-with-pending";
-
-type HandleSyncArgs<D extends {}, S extends {}, O extends {}> = {
-  socket: ClientSocket<S, O>;
-  provider: ClientProvider<S, O>;
-  docBinding: DocBinding<D, S, O>;
-  operationsBatches: O[][];
-  operations: O[];
-  docId: string;
-  clientClock: number;
-  presence?: unknown;
-  pushStatusByDocId: Map<string, PushStatus>;
-  emitSync: (event: SyncEvent<O, S>) => void;
-  applyServerOperations: (args: {
-    docId: string;
-    operations: O[];
-  }) => Promise<void>;
-  sendMessage: (message: BroadcastMessage<O>) => void;
-  getOwnPresencePatch: (docId: string) => Record<string, unknown> | undefined;
-  retryPush: (docId: string) => void;
-};
-
 export const handleSync = async <D extends {}, S extends {}, O extends {}>({
   socket,
   provider,
@@ -133,7 +107,25 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>({
   sendMessage,
   getOwnPresencePatch,
   retryPush,
-}: HandleSyncArgs<D, S, O>): Promise<void> => {
+}: {
+  socket: ClientSocket<S, O>;
+  provider: ClientProvider<S, O>;
+  docBinding: DocBinding<D, S, O>;
+  operationsBatches: O[][];
+  operations: O[];
+  docId: string;
+  clientClock: number;
+  presence?: unknown;
+  pushStatusByDocId: Map<string, "idle" | "pushing" | "pushing-with-pending">;
+  emitSync: (event: SyncEvent<O, S>) => void;
+  applyServerOperations: (args: {
+    docId: string;
+    operations: O[];
+  }) => Promise<void>;
+  sendMessage: (message: BroadcastMessage<O>) => void;
+  getOwnPresencePatch: (docId: string) => Record<string, unknown> | undefined;
+  retryPush: (docId: string) => void;
+}): Promise<void> => {
   const syncResult = await performSyncRequest<S, O>({
     socket,
     payload: {

@@ -9,21 +9,19 @@ export type PresenceHandler = (
   cb: (res: PresenceResponse) => void,
 ) => void | Promise<void>;
 
-type PresenceDeps<TContext = {}> = {
-  server: DocSyncServer<TContext>;
-  socket: ServerConnectionSocket<{}, {}>;
-  userId: string;
-  clientId: string;
-  context: TContext;
-};
-
 export function handlePresence({
   server,
   socket,
   userId,
   clientId,
   context,
-}: PresenceDeps): void {
+}: {
+  server: DocSyncServer<TContext>;
+  socket: ServerConnectionSocket<{}, {}>;
+  userId: string;
+  clientId: string;
+  context: TContext;
+}): void {
   const authorize = server["_authorize"];
   const authorizePresence = async (
     payload: PresenceRequest,

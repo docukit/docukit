@@ -13,20 +13,6 @@ export type SyncHandler<S = unknown, O = unknown> = (
   cb: (res: SyncResponse<S, O>) => void,
 ) => void | Promise<void>;
 
-type SyncDeps<
-  TContext = {},
-  D extends {} = {},
-  S extends {} = {},
-  O extends {} = {},
-> = {
-  server: DocSyncServer<TContext, D, S, O>;
-  socket: ServerConnectionSocket<S, O>;
-  userId: string;
-  deviceId: string;
-  clientId: string;
-  context: TContext;
-};
-
 export function handleSync<
   TContext = {},
   D extends {} = {},
@@ -39,7 +25,14 @@ export function handleSync<
   deviceId,
   clientId,
   context,
-}: SyncDeps<TContext, D, S, O>): void {
+}: {
+  server: DocSyncServer<TContext, D, S, O>;
+  socket: ServerConnectionSocket<S, O>;
+  userId: string;
+  deviceId: string;
+  clientId: string;
+  context: TContext;
+}): void {
   const authorize = server["_authorize"];
   const authorizeSync = async (payload: SyncRequest<O>): Promise<boolean> => {
     if (!authorize) return true;
