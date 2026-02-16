@@ -1,30 +1,33 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { io } from "socket.io-client";
-import type { DocBinding } from "../shared/docBinding.js";
+import type { DocBinding, Presence } from "../shared/types.js";
 import type {
-  BroadcastMessage,
   ClientConfig,
-  Provider,
+  ClientProvider,
+  ClientSocket,
+  DeferredState,
   DocData,
   GetDocArgs,
   Identity,
   QueryResult,
-  ConnectHandler,
-  DisconnectHandler,
-  ChangeHandler,
-  SyncHandler,
-  DocLoadHandler,
-  DocUnloadHandler,
-  ClientSocket,
-  DocSyncEventName,
-  DocSyncEvents,
-  Presence,
-  DeferredState,
-} from "../shared/types.js";
+} from "./types.js";
+import type { ClientEventMap, ClientEventName } from "./utils/events.js";
+import { createClientEventEmitter } from "./utils/events.js";
+import { handleConnect } from "./handlers/connection/connect.js";
+import { handleDeleteDoc } from "./handlers/clientInitiated/deleteDoc.js";
+import { handleDisconnect } from "./handlers/connection/disconnect.js";
+import { handleDirty } from "./handlers/serverInitiated/dirty.js";
+import { handlePresence } from "./handlers/clientInitiated/presence.js";
+import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
+import { handleSync } from "./handlers/clientInitiated/sync.js";
+import { handleUnsubscribe } from "./handlers/clientInitiated/unsubscribe.js";
+import { BCHelper } from "./utils/BCHelper.js";
+import { getDeviceId } from "./utils/getDeviceId.js";
+import { getOwnPresencePatch } from "./utils/getOwnPresencePatch.js";
 
 // TODO: review this type!
 type LocalResolved<S, O> = {
-  provider: Provider<S, O, "client">;
+  provider: ClientProvider<S, O>;
   identity: Identity;
 };
 
@@ -42,7 +45,7 @@ export class DocSyncClient<
       promisedDoc: Promise<D | undefined>;
       refCount: number;
       presence: Presence;
-      presenceHandlers: Set<(presence: Presence) => void>;
+      presenceListeners: Set<(presence: Presence) => void>;
     }
   >();
   protected _localPromise: Promise<LocalResolved<S, O>>;
@@ -50,7 +53,7 @@ export class DocSyncClient<
   /** Client-generated id for presence (works offline; sent in auth so server uses same key) */
   protected _clientId: string;
   private _shouldBroadcast = true;
-  protected _broadcastChannel?: BroadcastChannel;
+  protected _bcHelper?: BCHelper<D, S, O>;
   protected _socket: ClientSocket<S, O>;
 
   // Flow control state (batching, debouncing, push queueing)
@@ -60,13 +63,8 @@ export class DocSyncClient<
   protected _presenceDebounce = 200;
   protected _pushStatusByDocId = new Map<string, PushStatus>();
 
-  // Event handlers - ChangeHandler and SyncHandler use default (unknown) to allow covariance
-  protected _connectHandlers = new Set<ConnectHandler>();
-  protected _disconnectHandlers = new Set<DisconnectHandler>();
-  protected _changeHandlers = new Set<ChangeHandler>();
-  protected _syncHandlers = new Set<SyncHandler>();
-  protected _docLoadHandlers = new Set<DocLoadHandler>();
-  protected _docUnloadHandlers = new Set<DocUnloadHandler>();
+  /** Typed as unknown so DocSyncClient remains covariant in O, S (assignable to DocSyncClient base). */
+  protected _events = createClientEventEmitter();
 
   constructor(config: ClientConfig<D, S, O>) {
     if (typeof window === "undefined")
@@ -78,46 +76,9 @@ export class DocSyncClient<
     // Initialize local provider (if configured)
     this._localPromise = (async () => {
       const identity = await local.getIdentity();
-      const provider = new local.provider(identity) as Provider<S, O, "client">;
+      const provider = new local.provider(identity) as ClientProvider<S, O>;
 
-      // Initialize BroadcastChannel with user-specific channel name
-      // This ensures only tabs of the same user share operations
-      this._broadcastChannel = new BroadcastChannel(
-        `docsync:${identity.userId}`,
-      );
-      this._broadcastChannel.onmessage = async (
-        ev: MessageEvent<BroadcastMessage<O>>,
-      ) => {
-        // RECEIVED MESSAGES
-        if (ev.data.type === "OPERATIONS") {
-          // Another tab is pushing operations - they are responsible for pushing to server
-          // We just need to coordinate push status to avoid conflicts
-          const currentStatus =
-            this._pushStatusByDocId.get(ev.data.docId) ?? "idle";
-
-          if (currentStatus === "pushing") {
-            // Mark as busy to avoid concurrent pushes
-            this._pushStatusByDocId.set(ev.data.docId, "pushing-with-pending");
-          }
-          // Note: We don't call saveRemote here - the sender is responsible for pushing
-          // If the sender is offline, the push will happen when they reconnect
-
-          void this._applyOperations(ev.data.operations, ev.data.docId);
-          // Apply presence after ops so the doc is updated first (avoids cursor lag)
-          if (ev.data.presence) {
-            const cacheEntry = this._docsCache.get(ev.data.docId);
-            if (cacheEntry)
-              this._applyPresencePatch(cacheEntry, ev.data.presence);
-          }
-          return;
-        }
-        if (ev.data.type === "PRESENCE") {
-          const { docId, presence } = ev.data;
-          const cacheEntry = this._docsCache.get(docId);
-          if (!cacheEntry) return;
-          this._applyPresencePatch(cacheEntry, presence);
-        }
-      };
+      this._bcHelper = new BCHelper(this, identity.userId);
 
       return { provider, identity };
     })();
@@ -133,44 +94,10 @@ export class DocSyncClient<
       transports: ["websocket"], // Skip polling, go straight to WebSocket
     });
 
-    this._socket.on("connect", () => {
-      // Emit connect event
-      this._emit(this._connectHandlers);
-      // Push pending operations for all loaded docs
-      for (const docId of this._docsCache.keys()) {
-        this.saveRemote({ docId });
-      }
-    });
-    this._socket.on("disconnect", (reason) => {
-      this._pushStatusByDocId.clear();
-      // Clear pending presence debounce timers so their callbacks never run after disconnect
-      for (const state of this._presenceDebounceState.values()) {
-        clearTimeout(state.timeout);
-      }
-      this._presenceDebounceState.clear();
-      // Tell other tabs to remove this client's presence (clientId works offline)
-      for (const docId of this._docsCache.keys()) {
-        this._sendMessage({
-          type: "PRESENCE",
-          docId,
-          presence: { [this._clientId]: null },
-        });
-      }
-      this._emit(this._disconnectHandlers, { reason });
-    });
-    this._socket.on("connect_error", (err) => {
-      this._emit(this._disconnectHandlers, { reason: err.message });
-    });
-
-    // Listen for dirty notifications from server
-    this._socket.on("dirty", (payload) => {
-      this.saveRemote({ docId: payload.docId });
-    });
-    this._socket.on("presence", (payload) => {
-      const cacheEntry = this._docsCache.get(payload.docId);
-      if (!cacheEntry) return;
-      this._applyPresencePatch(cacheEntry, payload.presence);
-    });
+    handleConnect({ client: this });
+    handleDisconnect({ client: this });
+    handleDirty({ client: this });
+    handleServerPresence({ client: this });
   }
 
   connect() {
@@ -179,115 +106,6 @@ export class DocSyncClient<
 
   disconnect() {
     this._socket.disconnect();
-  }
-
-  async _applyOperations(operations: O, docId: string) {
-    const docFromCache = this._docsCache.get(docId);
-    if (!docFromCache) return;
-    const doc = await docFromCache.promisedDoc;
-    if (!doc) return;
-    this._shouldBroadcast = false;
-    this._docBinding.applyOperations(doc, operations);
-    this._shouldBroadcast = true;
-
-    // Emit change event for broadcast operations
-    this._emit(this._changeHandlers, {
-      docId,
-      origin: "broadcast",
-      operations: [operations],
-    });
-  }
-
-  private _applyPresencePatch(
-    cacheEntry: {
-      presence: Presence;
-      presenceHandlers: Set<(p: Presence) => void>;
-    },
-    patch: Record<string, unknown>,
-  ): void {
-    const newPresence = { ...cacheEntry.presence };
-    for (const [key, value] of Object.entries(patch)) {
-      if (key === this._clientId) continue; // never store own presence in cache; local tab must not render self as remote
-      if (value === undefined || value === null) {
-        delete newPresence[key];
-      } else {
-        newPresence[key] = value;
-      }
-    }
-    cacheEntry.presence = newPresence;
-    cacheEntry.presenceHandlers.forEach((handler) =>
-      handler(cacheEntry.presence),
-    );
-  }
-
-  /** Current presence for this client (debounce state or cache); does not clear the timer */
-  private _getOwnPresencePatch(
-    docId: string,
-  ): Record<string, unknown> | undefined {
-    const debounced = this._presenceDebounceState.get(docId);
-    if (debounced) return { [this._clientId]: debounced.data };
-    const cacheEntry = this._docsCache.get(docId);
-    if (cacheEntry?.presence[this._clientId] !== undefined)
-      return { [this._clientId]: cacheEntry.presence[this._clientId] };
-    return undefined;
-  }
-
-  // TODO: used when server responds with a new doc (squashing)
-  async _replaceDocInCache({
-    docId,
-    doc,
-    serializedDoc,
-  }: {
-    docId: string;
-    doc?: D;
-    serializedDoc?: S;
-  }) {
-    const cacheEntry = this._docsCache.get(docId);
-    if (!cacheEntry) return;
-
-    // Deserialize if needed
-    const newDoc = doc ?? this._docBinding.deserialize(serializedDoc!);
-
-    // Replace the cached document with the new one
-    // Keep the same refCount
-    // Note: We don't setup a new change listener here because:
-    // 1. The doc already has all operations applied from the sync
-    // 2. A listener will be setup when the doc is loaded via getDoc
-    // 3. Multiple listeners would cause operations to be applied multiple times
-    this._docsCache.set(docId, {
-      promisedDoc: Promise.resolve(newDoc),
-      refCount: cacheEntry.refCount,
-      presence: cacheEntry.presence,
-      presenceHandlers: cacheEntry.presenceHandlers,
-    });
-  }
-
-  async _applyServerOperations({
-    docId,
-    operations,
-  }: {
-    docId: string;
-    operations: O[];
-  }) {
-    const cacheEntry = this._docsCache.get(docId);
-    if (!cacheEntry) return;
-
-    // Get the cached document and apply server operations to it
-    const doc = await cacheEntry.promisedDoc;
-    if (!doc) return;
-
-    this._shouldBroadcast = false;
-    for (const op of operations) {
-      this._docBinding.applyOperations(doc, op);
-    }
-    this._shouldBroadcast = true;
-
-    // Emit change event for remote operations
-    this._emit(this._changeHandlers, {
-      docId,
-      origin: "remote",
-      operations,
-    });
   }
 
   /**
@@ -347,13 +165,12 @@ export class DocSyncClient<
         promisedDoc: Promise.resolve(doc),
         refCount: 1,
         presence: {},
-        presenceHandlers: new Set(),
+        presenceListeners: new Set(),
       });
       this._setupChangeListener(doc, createdDocId);
       emit({ status: "success", data: { doc, docId: createdDocId } });
 
-      // Emit doc load event
-      this._emit(this._docLoadHandlers, {
+      this._events.emit("docLoad", {
         docId: createdDocId,
         source: "created",
         refCount: 1,
@@ -370,7 +187,7 @@ export class DocSyncClient<
           }),
         );
       })();
-      // We don't trigger a initial saveRemote here because argId is undefined,
+      // We don't trigger an initial sync here because argId is undefined;
       // so this is truly a new doc. Initial operations will be pushed to server
       return () => void this._unloadDoc(createdDocId);
     }
@@ -395,7 +212,7 @@ export class DocSyncClient<
           promisedDoc,
           refCount: 1,
           presence: {},
-          presenceHandlers: new Set(),
+          presenceListeners: new Set(),
         });
       }
 
@@ -416,10 +233,9 @@ export class DocSyncClient<
             }
           }
 
-          // Emit doc load event
           if (doc) {
             const refCount = this._docsCache.get(docId)?.refCount ?? 1;
-            this._emit(this._docLoadHandlers, {
+            this._events.emit("docLoad", {
               docId,
               source,
               refCount,
@@ -432,7 +248,7 @@ export class DocSyncClient<
           });
           // Fetch from server to check if document exists there
           if (doc) {
-            void this.saveRemote({ docId });
+            void handleSync(this, docId);
           }
         } catch (e) {
           const error = e instanceof Error ? e : new Error(String(e));
@@ -448,7 +264,7 @@ export class DocSyncClient<
 
   /**
    * Subscribe to presence updates for a document.
-   * Multiple handlers can be registered for the same document.
+   * Multiple listeners can be registered for the same document.
    * @param args - The arguments for the getPresence request.
    * @param onChange - The callback to invoke when the presence changes.
    * @returns A function to unsubscribe from presence updates.
@@ -467,66 +283,25 @@ export class DocSyncClient<
       );
     }
 
-    // Add handler to the set
-    cacheEntry.presenceHandlers.add(onChange);
+    // Add listener to the set
+    cacheEntry.presenceListeners.add(onChange);
 
     // Immediately call with current presence if available
     if (Object.keys(cacheEntry.presence).length > 0) {
       onChange(cacheEntry.presence);
     }
 
-    // Return unsubscribe function that removes only this handler
+    // Return unsubscribe function that removes only this listener
     return () => {
       const entry = this._docsCache.get(docId);
       if (entry) {
-        entry.presenceHandlers.delete(onChange);
+        entry.presenceListeners.delete(onChange);
       }
     };
   }
 
   async setPresence({ docId, presence }: { docId: string; presence: unknown }) {
-    const cacheEntry = this._docsCache.get(docId);
-    if (!cacheEntry)
-      throw new Error(`Doc ${docId} is not loaded, cannot set presence`);
-
-    // Clear existing timeout if any
-    const existingState = this._presenceDebounceState.get(docId);
-    clearTimeout(existingState?.timeout);
-
-    // Debounce the presence update
-    const timeout = setTimeout(() => {
-      const state = this._presenceDebounceState.get(docId);
-      if (!state) return;
-
-      this._presenceDebounceState.delete(docId);
-
-      const patch = { [this._clientId]: state.data };
-
-      // Update local cache and notify handlers (so own cursor shows and UI stays in sync)
-      this._applyPresencePatch(cacheEntry, patch);
-
-      // Same device: broadcast to other tabs (works offline)
-      this._sendMessage({
-        type: "PRESENCE",
-        docId,
-        presence: patch,
-      });
-      // Other devices: send via WebSocket only when connected
-      if (this._socket.connected) {
-        void (async () => {
-          if (!this._socket.connected) return;
-          const { error } = await this._request("presence", {
-            docId,
-            presence: state.data,
-          });
-          if (error) {
-            console.error(`Error setting presence for doc ${docId}:`, error);
-          }
-        })();
-      }
-    }, this._presenceDebounce);
-
-    this._presenceDebounceState.set(docId, { timeout, data: presence });
+    void handlePresence(this, { docId, presence });
   }
 
   private _setupChangeListener(doc: D, docId: string) {
@@ -534,7 +309,7 @@ export class DocSyncClient<
       if (this._shouldBroadcast) {
         void this.onLocalOperations({ docId, operations: [operations] });
 
-        this._emit(this._changeHandlers, {
+        this._events.emit("change", {
           docId,
           origin: "local",
           operations: [operations],
@@ -544,8 +319,8 @@ export class DocSyncClient<
         // include is the new cursor. Two frames so setPresence (from selection change) has run.
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            const presencePatch = this._getOwnPresencePatch(docId);
-            this._sendMessage({
+            const presencePatch = getOwnPresencePatch(this, docId);
+            this._bcHelper?.broadcast({
               type: "OPERATIONS",
               operations,
               docId,
@@ -613,16 +388,13 @@ export class DocSyncClient<
     if (!cacheEntry) return;
     if (cacheEntry.refCount > 1) {
       cacheEntry.refCount -= 1;
-      this._emit(this._docUnloadHandlers, {
+      this._events.emit("docUnload", {
         docId,
         refCount: cacheEntry.refCount,
       });
     } else {
-      // Mark refCount as 0 but keep in cache until promise resolves
       cacheEntry.refCount = 0;
-
-      // Emit immediately
-      this._emit(this._docUnloadHandlers, {
+      this._events.emit("docUnload", {
         docId,
         refCount: 0,
       });
@@ -633,15 +405,11 @@ export class DocSyncClient<
       if (currentEntry?.refCount === 0) {
         this._docsCache.delete(docId);
         if (doc) {
-          await this.unsubscribeDoc(docId);
+          await handleUnsubscribe(this._socket, { docId });
           this._docBinding.dispose(doc);
         }
       }
     }
-  }
-
-  _sendMessage(message: BroadcastMessage<O>) {
-    this._broadcastChannel?.postMessage(message);
   }
 
   onLocalOperations({ docId, operations }: { docId: string; operations: O[] }) {
@@ -678,342 +446,31 @@ export class DocSyncClient<
           await local?.provider.transaction("readwrite", (ctx) =>
             ctx.saveOperations({ docId, operations: opsToSave }),
           );
-          this.saveRemote({ docId });
+          void handleSync(this, docId);
         }
       })();
     }, this._batchDelay);
   }
 
-  /**
-   * Push local operations to the server for a specific document.
-   * Uses a per-docId queue to prevent concurrent pushes for the same doc.
-   */
-  saveRemote({ docId }: { docId: string }) {
-    const status = this._pushStatusByDocId.get(docId) ?? "idle";
-    if (status !== "idle") {
-      this._pushStatusByDocId.set(docId, "pushing-with-pending");
-      return;
-    }
-    void this._doPush({ docId });
+  protected async _deleteDoc(docId: string): Promise<boolean> {
+    return handleDeleteDoc(this._socket, { docId });
   }
 
   /**
-   * Unsubscribe from real-time updates for a document.
-   * Should be called when a document is unloaded (refCount 1 → 0).
+   * Register a listener for an event. Returns an unsubscribe function.
+   * Event payload type is inferred from the event name (first argument).
+   * @example
+   * const off = client.on("connect", () => { ... });
+   * client.on("docUnload", (ev) => { ... }); // ev is DocUnloadEvent
+   * off(); // unsubscribe
    */
-  async unsubscribeDoc(docId: string): Promise<void> {
-    // Skip if socket is not connected (e.g., in local-only mode or during tests)
-    if (!this._socket.connected) return;
-    try {
-      await this._request("unsubscribe-doc", { docId });
-    } catch {
-      // Silently ignore errors during cleanup (e.g., socket
-      // disconnected during request, timeout, or server error)
-    }
-  }
-
-  protected async _doPush({ docId }: { docId: string }) {
-    this._pushStatusByDocId.set(docId, "pushing");
-    const provider = (await this._localPromise).provider;
-
-    // Get the current clock value and operations from provider
-    const [operationsBatches, stored] = await provider.transaction(
-      "readonly",
-      async (ctx) => {
-        return Promise.all([
-          ctx.getOperations({ docId }),
-          ctx.getSerializedDoc(docId),
-        ]);
-      },
+  on<K extends ClientEventName>(
+    event: K,
+    listener: (payload: ClientEventMap<O, S>[K]) => void,
+  ): () => void {
+    return this._events.on(
+      event,
+      listener as (payload: ClientEventMap<unknown, unknown>[K]) => void,
     );
-    const operations = operationsBatches.flat();
-    const clientClock = stored?.clock ?? 0;
-
-    let response;
-    try {
-      const presenceState = this._presenceDebounceState.get(docId);
-      if (presenceState) {
-        clearTimeout(presenceState.timeout);
-        this._presenceDebounceState.delete(docId);
-        this._sendMessage({
-          type: "PRESENCE",
-          docId,
-          presence: { [this._clientId]: presenceState.data },
-        });
-      }
-
-      response = await this._request("sync-operations", {
-        clock: clientClock,
-        docId,
-        operations,
-        ...(presenceState ? { presence: presenceState.data } : {}),
-      });
-    } catch (error) {
-      // Emit sync event (network error)
-      this._emit(this._syncHandlers, {
-        req: {
-          docId,
-          operations,
-          clock: clientClock,
-        },
-        error: {
-          type: "NetworkError",
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-
-      // Retry on failure
-      this._pushStatusByDocId.set(docId, "idle");
-      void this._doPush({ docId });
-      return;
-    }
-
-    // Check if server returned an error
-    if ("error" in response && response.error) {
-      // Emit sync event with server error
-      this._emit(this._syncHandlers, {
-        req: {
-          docId,
-          operations,
-          clock: clientClock,
-        },
-        error: response.error,
-      });
-
-      // Retry on error
-      this._pushStatusByDocId.set(docId, "idle");
-      void this._doPush({ docId });
-      return;
-    }
-
-    // At this point, response must have data
-    const { data } = response;
-
-    // Emit sync event (success)
-    this._emit(this._syncHandlers, {
-      req: {
-        docId,
-        operations,
-        clock: clientClock,
-      },
-      data: {
-        ...(data.operations ? { operations: data.operations } : {}),
-        ...(data.serializedDoc ? { serializedDoc: data.serializedDoc } : {}),
-        clock: data.clock,
-      },
-    });
-
-    // Atomically: delete synced operations + consolidate into serialized doc
-    let didConsolidate = false; // Track if we actually saved new operations to IDB
-    await provider.transaction("readwrite", async (ctx) => {
-      // Delete client operations that were synced (delete batches, not individual ops)
-      if (operationsBatches.length > 0) {
-        await ctx.deleteOperations({
-          docId,
-          count: operationsBatches.length,
-        });
-      }
-
-      // Consolidate operations into serialized doc
-      const stored = await ctx.getSerializedDoc(docId);
-      if (!stored) return;
-
-      // Skip consolidation if another client (same IDB) already updated to this clock
-      // This handles the case where another tab/client already wrote this update
-      if (stored.clock >= data.clock) {
-        didConsolidate = false;
-        return;
-      }
-
-      // Collect all operations to apply: server ops first, then client ops
-      const serverOps = data.operations ?? [];
-      const allOps = [...serverOps, ...operations];
-
-      // Only proceed if there are operations to apply
-      if (allOps.length > 0) {
-        const doc = this._docBinding.deserialize(stored.serializedDoc);
-
-        // Apply all operations in order (server ops first, then client ops)
-        for (const op of allOps) {
-          this._docBinding.applyOperations(doc, op);
-        }
-        const serializedDoc = this._docBinding.serialize(doc);
-
-        // Before saving, verify clock hasn't changed (another concurrent write)
-        // This prevents race conditions when multiple tabs/clients share the same IDB
-        const recheckStored = await ctx.getSerializedDoc(docId);
-        if (!recheckStored || recheckStored?.clock !== stored.clock) {
-          // Clock changed during our transaction - another client beat us
-          // Silently skip to avoid duplicate operations
-          return;
-        }
-
-        await ctx.saveSerializedDoc({
-          serializedDoc,
-          docId,
-          clock: data.clock, // Use clock from server
-        });
-        didConsolidate = true; // Mark that we successfully saved
-      }
-    });
-
-    // CRITICAL: Only apply serverOps to memory if we actually saved to IDB
-    // If we skipped (clock already up-to-date), operations are already in memory via BC
-    if (didConsolidate && data.operations && data.operations.length > 0) {
-      // Apply to our own memory
-      void this._applyServerOperations({
-        docId,
-        operations: data.operations,
-      });
-
-      // Broadcast server operations to other tabs so they can apply them too
-      const presencePatch = this._getOwnPresencePatch(docId);
-      for (const op of data.operations) {
-        this._sendMessage({
-          type: "OPERATIONS",
-          operations: op,
-          docId,
-          ...(presencePatch && { presence: presencePatch }),
-        });
-      }
-    }
-
-    // Status may have changed to "pushing-with-pending" during async ops
-    const currentStatus = this._pushStatusByDocId.get(docId);
-    const shouldRetry = currentStatus === "pushing-with-pending";
-    if (shouldRetry) {
-      // Keep status as "pushing" and retry immediately to avoid race window
-      // where a dirty event could trigger another concurrent _doPush
-      void this._doPush({ docId });
-    } else {
-      this._pushStatusByDocId.set(docId, "idle");
-    }
   }
-
-  protected async _request<E extends DocSyncEventName>(
-    event: E,
-    payload: DocSyncEvents<S, O>[E]["request"],
-  ): Promise<DocSyncEvents<S, O>[E]["response"]> {
-    type Emit = <K extends DocSyncEventName>(
-      event: K,
-      payload: DocSyncEvents<S, O>[K]["request"],
-      cb: (res: DocSyncEvents<S, O>[K]["response"]) => void,
-    ) => void;
-
-    // TO-DO: should I reject on disconnect?
-    return new Promise((resolve, reject) => {
-      // Add a timeout to prevent hanging forever if socket disconnects during request
-      const timeout = setTimeout(() => {
-        reject(new Error(`Request timeout: ${event}`));
-      }, 5000); // 5 second timeout
-
-      (this._socket.emit as Emit)(event, payload, (response) => {
-        clearTimeout(timeout);
-        resolve(response);
-      });
-    });
-  }
-
-  // ============================================================================
-  // Event Registration Methods
-  // ============================================================================
-
-  /**
-   * Register a handler for connection events.
-   * @returns Unsubscribe function
-   */
-  onConnect(handler: ConnectHandler): () => void {
-    this._connectHandlers.add(handler);
-    return () => {
-      this._connectHandlers.delete(handler);
-    };
-  }
-
-  /**
-   * Register a handler for disconnection events.
-   * @returns Unsubscribe function
-   */
-  onDisconnect(handler: DisconnectHandler): () => void {
-    this._disconnectHandlers.add(handler);
-    return () => {
-      this._disconnectHandlers.delete(handler);
-    };
-  }
-
-  /**
-   * Register a handler for document change events.
-   * @returns Unsubscribe function
-   */
-  onChange(handler: ChangeHandler<O>): () => void {
-    const h = handler as ChangeHandler;
-    this._changeHandlers.add(h);
-    return () => {
-      this._changeHandlers.delete(h);
-    };
-  }
-
-  /**
-   * Register a handler for sync events.
-   * @returns Unsubscribe function
-   */
-  onSync(handler: SyncHandler<O>): () => void {
-    const h = handler as SyncHandler;
-    this._syncHandlers.add(h);
-    return () => {
-      this._syncHandlers.delete(h);
-    };
-  }
-
-  /**
-   * Register a handler for document load events.
-   * @returns Unsubscribe function
-   */
-  onDocLoad(handler: DocLoadHandler): () => void {
-    this._docLoadHandlers.add(handler);
-    return () => {
-      this._docLoadHandlers.delete(handler);
-    };
-  }
-
-  /**
-   * Register a handler for document unload events.
-   * @returns Unsubscribe function
-   */
-  onDocUnload(handler: DocUnloadHandler): () => void {
-    this._docUnloadHandlers.add(handler);
-    return () => {
-      this._docUnloadHandlers.delete(handler);
-    };
-  }
-
-  // ============================================================================
-  // Event Emitters (protected methods)
-  // ============================================================================
-
-  protected _emit(handlers: Set<() => void>): void;
-  protected _emit<T>(handlers: Set<(event: T) => void>, event: T): void;
-  protected _emit<T>(handlers: Set<(event?: T) => void>, event?: T) {
-    for (const handler of handlers) {
-      if (event !== undefined) {
-        handler(event);
-      } else {
-        handler();
-      }
-    }
-  }
-}
-
-/**
- * Get or create a unique device ID stored in localStorage.
- * This ID is shared across all tabs/windows on the same device.
- */
-function getDeviceId(): string {
-  const key = "docsync:deviceId";
-  let deviceId = localStorage.getItem(key);
-  if (!deviceId) {
-    // Generate a new device ID using crypto.randomUUID()
-    deviceId = crypto.randomUUID();
-    localStorage.setItem(key, deviceId);
-  }
-  return deviceId;
 }

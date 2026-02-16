@@ -169,17 +169,76 @@ export const getStoredClock = async (
 };
 
 // ============================================================================
+// Sync Trigger (for tests)
+// ============================================================================
+
+/**
+ * Triggers a sync for the given doc by invoking the same "dirty" handler
+ * the client registers when the server says the doc has pending ops.
+ * Calls the handler directly so sync runs without going through socket.emit.
+ */
+export const triggerSync = (
+  client: DocSyncClient<Doc, JsonDoc, Operations>,
+  docId: string,
+): void => {
+  const socket = client["_socket"] as unknown as {
+    listeners: (e: string) => ((payload: { docId: string }) => void)[];
+  };
+  const fns = socket.listeners("dirty");
+  if (fns.length > 0 && typeof fns[0] === "function") {
+    fns[0]({ docId });
+  }
+};
+
+// ============================================================================
 // Test Spies
 // ============================================================================
 
 /**
- * Creates a properly typed spy for the _request method.
- * This is needed because vi.spyOn infers a union of all client methods.
+ * Creates a request spy by intercepting socket emit calls.
+ * Keeps the old testing API shape: (event, payload) => Promise<response>.
  */
 export const spyOnRequest = (
   client: DocSyncClient<Doc, JsonDoc, Operations>,
 ) => {
-  return vi.spyOn(client, "_request" as keyof typeof client) as unknown as Mock<
-    DocSyncClient["_request"]
-  >;
+  type RequestFn = (
+    event: string,
+    payload: { docId: string; [key: string]: unknown },
+  ) => Promise<unknown>;
+  const requestSpy = vi.fn<RequestFn>();
+  type SocketEmitLike = {
+    emit: (
+      event: string,
+      payload: unknown,
+      cb?: (res: unknown) => void,
+    ) => unknown;
+  };
+  const socket = client["_socket"] as unknown as SocketEmitLike;
+  const originalEmit = socket.emit.bind(socket);
+  vi.spyOn(socket, "emit").mockImplementation(
+    (event: string, payload: unknown, cb?: (res: unknown) => void) => {
+      const maybeResult = requestSpy(
+        event,
+        payload as { docId: string; [key: string]: unknown },
+      );
+      if (maybeResult === undefined) {
+        return originalEmit(event, payload, cb);
+      }
+      const pending = Promise.resolve(maybeResult);
+      void pending
+        .then((result) => {
+          cb?.(result);
+        })
+        .catch((error) => {
+          cb?.({
+            error: {
+              type: "DatabaseError",
+              message: error instanceof Error ? error.message : String(error),
+            },
+          });
+        });
+      return socket;
+    },
+  );
+  return requestSpy as unknown as Mock<RequestFn>;
 };

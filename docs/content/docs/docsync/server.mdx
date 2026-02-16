@@ -118,7 +118,7 @@ Called for each operation after authentication. Use this to implement fine-grain
 
 ```ts
 async authorize({ type, payload, userId, context }) {
-  if (type === "sync-operations") {
+  if (type === "sync") {
     const { docId } = payload;
     return await canUserAccessDoc(userId, docId, context.orgId);
   }
@@ -132,7 +132,7 @@ async authorize({ type, payload, userId, context }) {
   type={{
     type: {
       description: "The operation type being authorized.",
-      type: '"sync-operations" | "delete-doc" | "presence" | "unsubscribe-doc"',
+      type: '"sync" | "delete-doc" | "presence" | "unsubscribe-doc"',
       required: true,
     },
     payload: {
@@ -226,7 +226,7 @@ server.onClientDisconnect((event) => {
 
 ### onSyncRequest
 
-Called after each sync-operations request completes. Follows "wide events" philosophy: one event per operation with all context.
+Called after each sync request completes. Follows "wide events" philosophy: one event per operation with all context.
 
 ```ts
 server.onSyncRequest((event) => {

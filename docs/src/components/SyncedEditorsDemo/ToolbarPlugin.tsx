@@ -31,21 +31,19 @@ function Divider() {
   return <div className="mx-1 h-6 w-px bg-slate-600" />;
 }
 
-interface ToolbarButtonProps {
-  onClick: () => void;
-  disabled?: boolean;
-  isActive?: boolean;
-  ariaLabel: string;
-  children: React.ReactNode;
-}
-
 function ToolbarButton({
   onClick,
   disabled,
   isActive,
   ariaLabel,
   children,
-}: ToolbarButtonProps) {
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  isActive?: boolean;
+  ariaLabel: string;
+  children: React.ReactNode;
+}) {
   return (
     <button
       onClick={onClick}

@@ -1,4 +1,4 @@
-import { describe, test, expect, vi } from "vitest";
+import { describe, test, expect } from "vitest";
 import {
   createClient,
   generateDocId,
@@ -11,24 +11,29 @@ import {
   emptyOps,
   ChildNode,
   spyOnRequest,
+  triggerSync,
 } from "./utils.js";
 import type { Operations } from "@docukit/docnode";
 
 describe("Client 2", () => {
   // ──────────────────────────────────────────────────────────────────────────
-  // saveRemote
+  // sync (triggered by dirty)
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("saveRemote", () => {
-    test("should call _doPush when status is idle", async () => {
+  describe("sync (triggered by dirty)", () => {
+    test("should trigger sync when status is idle", async () => {
       const client = await createClient();
-      const doPushSpy = vi.spyOn(client, "_doPush" as keyof typeof client);
+      const requestSpy = spyOnRequest(client);
       const docId = generateDocId();
 
       await saveOperations(client, docId);
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
 
-      expect(doPushSpy).toHaveBeenCalledWith({ docId });
+      await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
+      expect(requestSpy).toHaveBeenCalledWith(
+        "sync",
+        expect.objectContaining({ docId }),
+      );
     });
 
     test("should set status to pushing-with-pending when called during a push", async () => {
@@ -42,8 +47,8 @@ describe("Client 2", () => {
       );
 
       await saveOperations(client, docId);
-      client.saveRemote({ docId });
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
+      triggerSync(client, docId);
 
       await expect
         .poll(() => client["_pushStatusByDocId"].get(docId))
@@ -70,8 +75,8 @@ describe("Client 2", () => {
         await ctx.saveOperations({ docId: docId2, operations: [emptyOps()] });
       });
 
-      client.saveRemote({ docId: docId1 });
-      client.saveRemote({ docId: docId2 });
+      triggerSync(client, docId1);
+      triggerSync(client, docId2);
       await expect
         .poll(() => client["_pushStatusByDocId"].get(docId1))
         .toBe("pushing");
@@ -83,19 +88,19 @@ describe("Client 2", () => {
     test("should be idempotent for same docId during push", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      spyOnRequest(client).mockImplementation(
+      const requestSpy = spyOnRequest(client);
+      requestSpy.mockImplementation(
         () =>
           new Promise((r) =>
             setTimeout(() => r({ data: { docId, clock: 1 } }), 50),
           ),
       );
-      const doPushSpy = vi.spyOn(client, "_doPush" as keyof typeof client);
 
       await saveOperations(client, docId);
-      client.saveRemote({ docId });
-      client.saveRemote({ docId });
-      client.saveRemote({ docId });
-      await expect.poll(() => doPushSpy.mock.calls.length).toBe(1);
+      triggerSync(client, docId);
+      triggerSync(client, docId);
+      triggerSync(client, docId);
+      await expect.poll(() => requestSpy.mock.calls.length).toBe(1);
       expect(client["_pushStatusByDocId"].get(docId)).toBe(
         "pushing-with-pending",
       );
@@ -117,10 +122,10 @@ describe("Client 2", () => {
       });
 
       await setupDocWithOperations(client, docId);
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
 
       await saveOperations(client, docId);
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
 
       await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
       await expect
@@ -130,10 +135,10 @@ describe("Client 2", () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // _doPush - Basic Flow
+  // handleSync - Basic Flow
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("_doPush - Basic Flow", () => {
+  describe("handleSync - Basic Flow", () => {
     test("should get operations from provider", async () => {
       const client = await createClient();
       const docId = generateDocId();
@@ -156,9 +161,9 @@ describe("Client 2", () => {
         });
       });
 
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
-      expect(requestSpy).toHaveBeenCalledWith("sync-operations", {
+      expect(requestSpy).toHaveBeenCalledWith("sync", {
         clock: 0,
         docId,
         operations: testOperations,
@@ -175,20 +180,20 @@ describe("Client 2", () => {
       });
 
       await setupDocWithOperations(client, docId);
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect.poll(() => statusDuringPush).toBe("pushing");
     });
 
-    test("should send operations to API via sync-operations endpoint", async () => {
+    test("should send operations to API via sync endpoint", async () => {
       const client = await createClient();
       const docId = generateDocId();
       const requestSpy = spyOnRequest(client);
 
       await setupDocWithOperations(client, docId);
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
-        "sync-operations",
+        "sync",
         expect.objectContaining({ docId }),
       );
     });
@@ -199,20 +204,20 @@ describe("Client 2", () => {
       const requestSpy = spyOnRequest(client);
 
       await setupDocWithOperations(client, docId);
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
-        "sync-operations",
+        "sync",
         expect.objectContaining({ clock: 0, docId }),
       );
     });
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // _doPush - Client/Server Operation Combinations (2x2 matrix)
+  // handleSync - Client/Server Operation Combinations (2x2 matrix)
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("_doPush - Client/Server Operation Combinations", () => {
+  describe("handleSync - Client/Server Operation Combinations", () => {
     test("should handle client sends operations + server returns no operations", async () => {
       const client = await createClient();
       const requestSpy = spyOnRequest(client);
@@ -228,10 +233,10 @@ describe("Client 2", () => {
         operations: [ops({ test: "data" })],
       });
 
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
-        "sync-operations",
+        "sync",
         expect.objectContaining({
           docId,
           operations: [ops({ test: "data" })],
@@ -262,10 +267,10 @@ describe("Client 2", () => {
         operations: [ops({ client: "op" })],
       });
 
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
-        "sync-operations",
+        "sync",
         expect.objectContaining({
           docId,
           operations: [ops({ client: "op" })],
@@ -298,10 +303,10 @@ describe("Client 2", () => {
         });
       });
 
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
-        "sync-operations",
+        "sync",
         expect.objectContaining({
           docId,
           operations: [],
@@ -354,10 +359,10 @@ describe("Client 2", () => {
       });
 
       // Trigger pull - client has no operations but wants server's updates
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
-        "sync-operations",
+        "sync",
         expect.objectContaining({
           docId,
           operations: [],
@@ -381,10 +386,10 @@ describe("Client 2", () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // _doPush - Success Path
+  // handleSync - Success Path
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("_doPush - Success Path", () => {
+  describe("handleSync - Success Path", () => {
     test("should delete operations after successful push", async () => {
       const client = await createClient();
       const docId = generateDocId();
@@ -401,7 +406,7 @@ describe("Client 2", () => {
 
       expect(await getOperationsCount(client, docId)).toBe(2);
 
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect
         .poll(async () => await getOperationsCount(client, docId))
         .toBe(0);
@@ -431,9 +436,9 @@ describe("Client 2", () => {
         operations: [ops({ batch: "1" }), ops({ batch: "1" })],
       });
 
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await saveOperations(client, docId, [ops({ batch: "2" })]);
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
 
       await expect
         .poll(async () => await getOperationsCount(client, docId))
@@ -467,7 +472,7 @@ describe("Client 2", () => {
         await ctx.saveOperations({ docId, operations: [emptyOps()] });
       });
 
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect
         .poll(async () => await getStoredClock(client, docId))
         .toBe(1);
@@ -484,7 +489,7 @@ describe("Client 2", () => {
       });
 
       await setupDocWithOperations(client, docId, { clock: 5 });
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect
         .poll(async () => await getStoredClock(client, docId))
         .toBe(6);
@@ -501,7 +506,7 @@ describe("Client 2", () => {
       });
 
       await setupDocWithOperations(client, docId);
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect
         .poll(() => client["_pushStatusByDocId"].get(docId))
         .toBe("idle");
@@ -509,10 +514,10 @@ describe("Client 2", () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // _doPush - Retry Logic
+  // handleSync - Retry Logic
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("_doPush - Retry Logic", () => {
+  describe("handleSync - Retry Logic", () => {
     test("should retry if more operations were queued during push (pushing-with-pending)", async () => {
       const client = await createClient();
       const docId = generateDocId();
@@ -534,9 +539,9 @@ describe("Client 2", () => {
       );
 
       await setupDocWithOperations(client, docId);
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await saveOperations(client, docId);
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
 
       await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
     });
@@ -559,7 +564,7 @@ describe("Client 2", () => {
       });
 
       await setupDocWithOperations(client, docId);
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
       await expect
         .poll(() => client["_pushStatusByDocId"].get(docId))
@@ -585,7 +590,7 @@ describe("Client 2", () => {
       });
 
       await setupDocWithOperations(client, docId);
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect
         .poll(() => statusHistory)
         .toStrictEqual(["pushing", "pushing"]);
@@ -611,9 +616,9 @@ describe("Client 2", () => {
       await setupDocWithOperations(client, docId, {
         operations: [ops({ op: "1" })],
       });
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await saveOperations(client, docId, [ops({ op: "2" })]);
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
 
       await expect.poll(() => receivedOperations.length).toBe(2);
       expect(receivedOperations[0]).toStrictEqual([ops({ op: "1" })]);
@@ -622,10 +627,10 @@ describe("Client 2", () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // _doPush - Concurrency
+  // handleSync - Concurrency
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("_doPush - Concurrency", () => {
+  describe("handleSync - Concurrency", () => {
     test("should not push same doc twice simultaneously", async () => {
       const client = await createClient();
       const docId = generateDocId();
@@ -640,9 +645,9 @@ describe("Client 2", () => {
       });
 
       await setupDocWithOperations(client, docId);
-      client.saveRemote({ docId });
-      client.saveRemote({ docId });
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
+      triggerSync(client, docId);
+      triggerSync(client, docId);
 
       await expect.poll(() => maxConcurrent).toBe(1);
     });
@@ -671,11 +676,11 @@ describe("Client 2", () => {
         operations: [ops({ first: "true" })],
       });
 
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await saveOperations(client, docId, [ops({ second: "true" })]);
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await saveOperations(client, docId, [ops({ third: "true" })]);
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
 
       await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
       const secondCall = requestSpy.mock.calls[1] as
@@ -705,8 +710,8 @@ describe("Client 2", () => {
         await setupDocWithOperations(client, docId);
       }
 
-      client.saveRemote({ docId: docId1 });
-      client.saveRemote({ docId: docId2 });
+      triggerSync(client, docId1);
+      triggerSync(client, docId2);
 
       await expect.poll(() => callOrder.length).toBe(2);
       expect(callOrder).toContain(docId1);
@@ -735,12 +740,12 @@ describe("Client 2", () => {
 
       await setupDocWithOperations(client, docId);
 
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect
         .poll(() => client["_pushStatusByDocId"].get(docId))
         .toBe("pushing");
 
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       expect(client["_pushStatusByDocId"].get(docId)).toBe(
         "pushing-with-pending",
       );

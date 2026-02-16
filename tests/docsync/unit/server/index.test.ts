@@ -7,7 +7,7 @@ import { testWrapper, testPort } from "./utils.js";
 import { DocSyncServer, InMemoryServerProvider } from "@docukit/docsync/server";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { DocSyncClient } from "@docukit/docsync/client";
-import type { Provider } from "@docukit/docsync";
+import type { ClientProvider } from "@docukit/docsync/client";
 
 describe("authentication", () => {
   test("rejects without token", async () => {
@@ -73,18 +73,10 @@ describe("presence", () => {
     // Both clients sync to join the document room
     await Promise.all([
       new Promise((resolve) =>
-        socket1.emit(
-          "sync-operations",
-          { docId, operations: [], clock: 0 },
-          resolve,
-        ),
+        socket1.emit("sync", { docId, operations: [], clock: 0 }, resolve),
       ),
       new Promise((resolve) =>
-        socket2.emit(
-          "sync-operations",
-          { docId, operations: [], clock: 0 },
-          resolve,
-        ),
+        socket2.emit("sync", { docId, operations: [], clock: 0 }, resolve),
       ),
     ]);
 
@@ -189,11 +181,7 @@ describe("presence", () => {
 
     // Only client 1 joins the room
     await new Promise((resolve) => {
-      socket1.emit(
-        "sync-operations",
-        { docId, operations: [], clock: 0 },
-        resolve,
-      );
+      socket1.emit("sync", { docId, operations: [], clock: 0 }, resolve);
     });
 
     // Listen for presence updates on client 2
@@ -240,7 +228,7 @@ function createMockDocSyncClient(port: number, token: string): DocSyncClient {
       provider: InMemoryServerProvider as unknown as new (
         identity: { userId: string; secret: string },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ) => Provider<any, any, "client">,
+      ) => ClientProvider<any, any>,
       getIdentity: async () => ({
         userId: token.replace("valid-", ""),
         secret: "test-secret",
@@ -250,13 +238,13 @@ function createMockDocSyncClient(port: number, token: string): DocSyncClient {
   }) as unknown as DocSyncClient;
 }
 
-describe("sync-operations", () => {
+describe("sync", () => {
   test("returns incremented clock", async () => {
     const auth = { getToken: async () => "valid-user1" };
     await testWrapper({ auth }, async (T) => {
       await T.waitForConnect();
       expect(T.socket.connected).toBe(true);
-      const res = await T.syncOperations({
+      const res = await T.sync({
         docId: "doc-1",
         operations: [{ type: "insert" }],
         clock: 0,
@@ -279,7 +267,7 @@ describe("sync-operations", () => {
 
       // Send 100 operations individually
       for (let i = 0; i < 100; i++) {
-        const res = await T.syncOperations({
+        const res = await T.sync({
           docId,
           operations: [{ type: "insert", data: `op-${i}` }],
           clock: i,
@@ -292,7 +280,7 @@ describe("sync-operations", () => {
       }
 
       // First sync from clock 0: should receive all 100 operations
-      const res1 = await T.syncOperations({
+      const res1 = await T.sync({
         docId,
         operations: [],
         clock: 0,
@@ -311,7 +299,7 @@ describe("sync-operations", () => {
 
       // Second sync from clock 100: should receive serializedDoc (squashed)
       // because previous fetch triggered squashing (>= 100 operations)
-      const res2 = await T.syncOperations({
+      const res2 = await T.sync({
         docId,
         operations: [],
         clock: 100,

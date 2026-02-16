@@ -6,7 +6,7 @@ import type {
   ClientConnectEvent,
   ClientDisconnectEvent,
   SyncRequestEvent,
-} from "@docukit/docsync";
+} from "@docukit/docsync/server";
 
 describe("Server Events", () => {
   // ──────────────────────────────────────────────────────────────────────────
@@ -242,7 +242,7 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.syncOperations({
+        await T.sync({
           docId: "doc-1",
           operations: [{ type: "insert" }],
           clock: 0,
@@ -291,7 +291,7 @@ describe("Server Events", () => {
         { auth, url: `ws://localhost:${testPort(4)}` },
         async (T) => {
           await T.waitForConnect();
-          await T.syncOperations({
+          await T.sync({
             docId: "doc-1",
             operations: [{ type: "insert" }],
             clock: 0,
@@ -313,7 +313,7 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.syncOperations({
+        await T.sync({
           docId: "test-doc",
           operations: [{ type: "test" }],
           clock: 5,
@@ -337,7 +337,7 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.syncOperations({
+        await T.sync({
           docId: "doc-2",
           operations: [{ type: "insert" }],
           clock: 0,
@@ -373,7 +373,7 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.syncOperations({
+        await T.sync({
           docId: "doc-3",
           operations: [{ type: "insert" }],
           clock: 0,
@@ -394,7 +394,7 @@ describe("Server Events", () => {
         unsubscribe();
 
         await T.waitForConnect();
-        await T.syncOperations({
+        await T.sync({
           docId: "doc-4",
           operations: [{ type: "insert" }],
           clock: 0,
@@ -413,7 +413,7 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.syncOperations({
+        await T.sync({
           docId: "doc-5",
           operations: [{ type: "insert" }],
           clock: 0,
@@ -435,7 +435,7 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.syncOperations({
+        await T.sync({
           docId: "doc-6",
           clock: 0,
         });
@@ -470,7 +470,7 @@ describe("Server Events", () => {
         await T.waitForConnect();
 
         // Do a sync
-        await T.syncOperations({
+        await T.sync({
           docId: "doc-7",
           operations: [{ type: "insert" }],
           clock: 0,
@@ -501,17 +501,17 @@ describe("Server Events", () => {
 
         await T.waitForConnect();
 
-        await T.syncOperations({
+        await T.sync({
           docId: "doc-a",
           operations: [{ type: "insert" }],
           clock: 0,
         });
-        await T.syncOperations({
+        await T.sync({
           docId: "doc-b",
           operations: [{ type: "insert" }],
           clock: 0,
         });
-        await T.syncOperations({
+        await T.sync({
           docId: "doc-c",
           operations: [{ type: "insert" }],
           clock: 0,
@@ -551,7 +551,7 @@ describe("Server Events", () => {
         { auth, url: `ws://localhost:${testPort(5)}` },
         async (T) => {
           await T.waitForConnect();
-          await T.syncOperations({
+          await T.sync({
             docId: "doc-8",
             operations: [{ type: "insert" }],
             clock: 0,
@@ -580,7 +580,7 @@ describe("Server Events", () => {
 
         await T.waitForConnect();
 
-        await T.syncOperations({
+        await T.sync({
           docId: "doc-9",
           operations: [{ type: "insert" }],
           clock: 0,

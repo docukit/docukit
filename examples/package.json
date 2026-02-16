@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently --kill-others-on-fail \"next dev -p 4000\" \"pnpm:docsync-server\"",
+    "dev": "concurrently --restart-tries 50 \"next dev -p 4000\" \"pnpm:docsync-server\"",
     "docsync-server": "node --env-file=.env --watch --watch-preserve-output ./docsync-server.ts",
     "build": "next build",
     "start": "next start -p 4000",

@@ -104,8 +104,12 @@ type ClientUtils = {
     ops: string[];
   }) => Promise<void>;
   assertMemoryDoc: (children?: string[]) => Promise<void>;
-  reqSpy: Mock<DocSyncClient["_request"]>;
-  waitSync: () => Promise<void>;
+  reqSpy: Mock<
+    (
+      event: string,
+      payload: { docId: string; [key: string]: unknown },
+    ) => Promise<unknown>
+  >;
   disconnect: () => void;
   connect: () => void;
 };
@@ -157,10 +161,7 @@ export const testWrapper = async (
     await tick(15);
 
     for (const client of allClients) {
-      const bc = client["_broadcastChannel"];
-      if (bc) {
-        bc.close();
-      }
+      client["_bcHelper"]?.close();
     }
 
     await tick(15);
@@ -260,10 +261,13 @@ const createClientUtils = async (
 
   const api = client;
 
-  const reqSpy = vi.spyOn(
-    api,
-    "_request" as keyof typeof api,
-  ) as unknown as Mock<DocSyncClient["_request"]>;
+  const socket = api["_socket"];
+  const reqSpy = vi.spyOn(socket, "emit") as unknown as Mock<
+    (
+      event: string,
+      payload: { docId: string; [key: string]: unknown },
+    ) => Promise<unknown>
+  >;
   const local = await client["_localPromise"];
 
   return {
@@ -304,39 +308,6 @@ const createClientUtils = async (
       const child = cachedDoc.createNode(ChildNode);
       child.state.value.set(text);
       cachedDoc.root.append(child);
-    },
-    waitSync: async () => {
-      const socket = api["_socket"];
-
-      // If socket is not connected, this should fail fast
-      if (!socket.connected) {
-        throw new Error("Cannot wait for sync: socket not connected");
-      }
-      // Get current number of completed sync calls
-      const initialCount = reqSpy.mock.results.filter(
-        (_, i) => reqSpy.mock.calls[i]?.[0] === "sync-operations",
-      ).length;
-
-      // Wait for at least one more sync-operations to complete
-      await vi.waitFor(
-        async () => {
-          const currentResults = reqSpy.mock.results.filter(
-            (_, i) => reqSpy.mock.calls[i]?.[0] === "sync-operations",
-          );
-
-          expect(
-            currentResults.length,
-            "There should be at least one more sync-operations call",
-          ).toBeGreaterThan(initialCount);
-
-          // Ensure the last one has resolved
-          await currentResults[currentResults.length - 1]?.value;
-        },
-        { timeout: 200, interval: 2 },
-      );
-
-      // Small delay for IDB consolidation
-      await new Promise((resolve) => setTimeout(resolve, 10));
     },
     assertIDBDoc: async (expected?: {
       clock: number;

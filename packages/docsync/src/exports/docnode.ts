@@ -1,1 +1,1 @@
-export { DocNodeBinding } from "../shared/docBinding.js";
+export { DocNodeBinding } from "../bindings/docnode.js";

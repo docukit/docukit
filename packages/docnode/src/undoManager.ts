@@ -1,21 +1,6 @@
 import { type Doc } from "./main.js";
 import type { Operations } from "./operations.js";
 
-type UndoManagerOptions = {
-  /**
-   * The maximum number of undo steps to keep in the undo stack.
-   * If the number of undo steps exceeds this limit, the oldest undo step will be removed.
-   * @default 100
-   */
-  maxUndoSteps?: number;
-  // TODO:
-  // /**
-  //  * The interval in milliseconds to merge transactions into a single undo step.
-  //  * @default 1000
-  //  */
-  // mergeInterval?: number;
-};
-
 export class UndoManager {
   private readonly _doc: Doc;
   private readonly _maxUndoSteps: number;
@@ -26,7 +11,23 @@ export class UndoManager {
   private _txType: "undo" | "redo" | "update" = "update";
   private _lastUpdate?: number; // TODO: threeshold to combine transactions of 500ms
 
-  constructor(doc: Doc, options?: UndoManagerOptions) {
+  constructor(
+    doc: Doc,
+    options?: {
+      /**
+       * The maximum number of undo steps to keep in the undo stack.
+       * If the number of undo steps exceeds this limit, the oldest undo step will be removed.
+       * @default 100
+       */
+      maxUndoSteps?: number;
+      // TODO:
+      // /**
+      //  * The interval in milliseconds to merge transactions into a single undo step.
+      //  * @default 1000
+      //  */
+      // mergeInterval?: number;
+    },
+  ) {
     this._doc = doc;
     this._maxUndoSteps = options?.maxUndoSteps ?? 100;
     this._doc.onChange(({ inverseOperations }) => {

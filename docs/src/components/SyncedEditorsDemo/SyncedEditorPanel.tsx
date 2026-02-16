@@ -17,15 +17,6 @@ import type { Doc } from "@docukit/docnode";
 import { useEffect } from "react";
 import { ToolbarPlugin } from "./ToolbarPlugin";
 
-type SyncedEditorPanelProps = {
-  doc: Doc;
-  presence?: Presence;
-  setPresence?: (selection: unknown) => void;
-  user?: PresenceUser;
-  isPrimary?: boolean;
-  label?: string;
-};
-
 export function SyncedEditorPanel({
   doc,
   presence,
@@ -33,7 +24,14 @@ export function SyncedEditorPanel({
   user,
   isPrimary,
   label,
-}: SyncedEditorPanelProps) {
+}: {
+  doc: Doc;
+  presence?: Presence;
+  setPresence?: (selection: unknown) => void;
+  user?: PresenceUser;
+  isPrimary?: boolean;
+  label?: string;
+}) {
   return (
     <div className="flex flex-col gap-3">
       {label ? (

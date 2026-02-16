@@ -16,11 +16,11 @@
 
 Docukit is a set of libraries for building **local-first** applications: type-safe document models, real-time collaboration, and optional sync backends. Use DocNode for your document layer (with optional [Lexical](https://lexical.dev) bindings) and DocSync when you need multi-client sync over WebSockets.
 
-| Package | Description |
-|---------|-------------|
-| [`@docukit/docnode`](https://docukit.dev/docnode) | Type-safe document manager (OT/CRDT), undo manager, and schema normalization |
-| [`@docukit/docsync`](https://docukit.dev/docsync) | CRDT-agnostic sync protocol; works with DocNode, Yjs, Loro, and others |
-| [`@docukit/docnode-lexical`](https://docukit.dev/docnode/lexical) | Bind DocNode to Lexical for rich-text editors and presence |
+| Package                                                           | Description                                                                  |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| [`@docukit/docnode`](https://docukit.dev/docnode)                 | Type-safe document manager (OT/CRDT), undo manager, and schema normalization |
+| [`@docukit/docsync`](https://docukit.dev/docsync)                 | CRDT-agnostic sync protocol; works with DocNode, Yjs, Loro, and others       |
+| [`@docukit/docnode-lexical`](https://docukit.dev/docnode/lexical) | Bind DocNode to Lexical for rich-text editors and presence                   |
 
 Full docs, comparison tables (DocNode vs Yjs, DocSync vs Hocuspocus), and examples: **[docukit.dev](https://docukit.dev)**.
 
@@ -66,4 +66,3 @@ See the [DocNode getting started](https://docukit.dev/docnode/getting-started) a
 ---
 
 **Contributing / local dev:** `pnpm i` then `pnpm dev`.
-

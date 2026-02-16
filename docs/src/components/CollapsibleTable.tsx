@@ -34,11 +34,7 @@ interface RowData {
   keyValues?: Array<{ key: string; value: ReactNode }>;
 }
 
-interface CollapsibleTableProps {
-  rows: Record<string, RowData>;
-}
-
-export function CollapsibleTable({ rows }: CollapsibleTableProps) {
+export function CollapsibleTable({ rows }: { rows: Record<string, RowData> }) {
   return (
     <div className="bg-fd-card text-fd-card-foreground @container my-6 flex flex-col overflow-hidden rounded-2xl border p-1 text-sm">
       <div className="not-prose text-fd-muted-foreground flex items-center px-3 py-1 font-medium">

@@ -3,19 +3,17 @@
 import { type ReactNode, useState } from "react";
 import type { DocSyncClient } from "@docukit/docsync-react/client";
 
-interface MultiClientLayoutProps {
-  children: (clientId: string, userId: string) => ReactNode;
-  referenceClient: DocSyncClient;
-  otherTabClient: DocSyncClient;
-  otherDeviceClient: DocSyncClient;
-}
-
 export function MultiClientLayout({
   children,
   referenceClient,
   otherTabClient,
   otherDeviceClient,
-}: MultiClientLayoutProps) {
+}: {
+  children: (clientId: string, userId: string) => ReactNode;
+  referenceClient: DocSyncClient;
+  otherTabClient: DocSyncClient;
+  otherDeviceClient: DocSyncClient;
+}) {
   const [referenceConnected, setReferenceConnected] = useState(true);
   const [otherTabConnected, setOtherTabConnected] = useState(true);
   const [otherDeviceConnected, setOtherDeviceConnected] = useState(true);

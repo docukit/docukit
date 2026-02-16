@@ -1,8 +1,11 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { DocSyncServer, InMemoryServerProvider } from "@docukit/docsync/server";
-import { DocSyncClient, type Identity } from "@docukit/docsync/client";
-import type { Provider } from "@docukit/docsync";
+import {
+  DocSyncClient,
+  type ClientProvider,
+  type Identity,
+} from "@docukit/docsync/client";
 import { testDocConfig } from "../../int/utils.js";
 
 // Auto-assign unique port range based on Vitest worker ID
@@ -38,7 +41,7 @@ const createMockDocSyncClient = (serverOverrides?: {
       provider: InMemoryServerProvider as unknown as new (
         identity: Identity,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ) => Provider<any, any, "client">,
+      ) => ClientProvider<any, any>,
       getIdentity: async () => ({
         userId: "test-user",
         secret: "test-secret",
@@ -72,7 +75,7 @@ export async function testWrapper(
     client: DocSyncClient;
     waitForConnect: () => Promise<void>;
     waitForError: () => Promise<Error>;
-    syncOperations: (payload: SyncPayload) => Promise<SyncResponse>;
+    sync: (payload: SyncPayload) => Promise<SyncResponse>;
     socket: DocSyncClient["_socket"];
   }) => Promise<void>,
 ) {
@@ -92,9 +95,9 @@ export async function testWrapper(
     new Promise<Error>((resolve) => {
       socket.on("connect_error", resolve);
     });
-  const syncOperations = (payload: SyncPayload) =>
+  const sync = (payload: SyncPayload) =>
     new Promise<SyncResponse>((resolve) => {
-      socket.emit("sync-operations", payload, resolve);
+      socket.emit("sync", payload, resolve);
     });
 
   await fn({
@@ -103,7 +106,7 @@ export async function testWrapper(
     waitForConnect,
     waitForError,
     socket,
-    syncOperations,
+    sync,
   });
   await server.close();
 }

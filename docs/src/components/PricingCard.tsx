@@ -1,24 +1,5 @@
 import type { ReactNode } from "react";
 
-interface Feature {
-  text: string;
-  bold?: boolean;
-}
-
-interface PricingCardProps {
-  title: string;
-  price: string;
-  priceSubtext: string;
-  description: string;
-  features: Feature[];
-  ctaText: string;
-  ctaHref: string;
-  footer: string;
-  highlighted?: boolean;
-  badge?: string;
-  variant?: "emerald" | "blue";
-}
-
 function CheckIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -49,7 +30,19 @@ export function PricingCard({
   highlighted = false,
   badge,
   variant = "emerald",
-}: PricingCardProps) {
+}: {
+  title: string;
+  price: string;
+  priceSubtext: string;
+  description: string;
+  features: { text: string; bold?: boolean }[];
+  ctaText: string;
+  ctaHref: string;
+  footer: string;
+  highlighted?: boolean;
+  badge?: string;
+  variant?: "emerald" | "blue";
+}) {
   const styles = {
     emerald: {
       border: "border-emerald-500/50",
