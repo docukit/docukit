@@ -15,6 +15,7 @@ import {
   ops,
   emptyOps,
   spyOnRequest,
+  triggerSync,
 } from "../client2/utils.js";
 
 describe("Client Events", () => {
@@ -66,7 +67,7 @@ describe("Client Events", () => {
       const docId = generateDocId();
 
       await saveOperations(client, docId);
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect
         .poll(() => client["_pushStatusByDocId"].size)
         .toBeGreaterThan(0);
@@ -124,7 +125,7 @@ describe("Client Events", () => {
         }
       });
 
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect.poll(() => syncSuccess).toBe(true);
     });
 
@@ -143,7 +144,7 @@ describe("Client Events", () => {
         }
       });
 
-      client.saveRemote({ docId });
+      triggerSync(client, docId);
       await expect.poll(() => hasError).toBe(true);
     });
   });

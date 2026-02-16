@@ -169,6 +169,28 @@ export const getStoredClock = async (
 };
 
 // ============================================================================
+// Sync Trigger (for tests)
+// ============================================================================
+
+/**
+ * Triggers a sync for the given doc by invoking the same "dirty" handler
+ * the client registers when the server says the doc has pending ops.
+ * Calls the handler directly so sync runs without going through socket.emit.
+ */
+export const triggerSync = (
+  client: DocSyncClient<Doc, JsonDoc, Operations>,
+  docId: string,
+): void => {
+  const socket = client["_socket"] as unknown as {
+    listeners: (e: string) => ((payload: { docId: string }) => void)[];
+  };
+  const fns = socket.listeners("dirty");
+  if (fns.length > 0 && typeof fns[0] === "function") {
+    fns[0]({ docId });
+  }
+};
+
+// ============================================================================
 // Test Spies
 // ============================================================================
 

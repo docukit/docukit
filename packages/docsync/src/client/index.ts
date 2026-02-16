@@ -198,7 +198,7 @@ export class DocSyncClient<
           }),
         );
       })();
-      // We don't trigger a initial saveRemote here because argId is undefined,
+      // We don't trigger an initial sync here because argId is undefined;
       // so this is truly a new doc. Initial operations will be pushed to server
       return () => void this._unloadDoc(createdDocId);
     }
@@ -461,14 +461,6 @@ export class DocSyncClient<
         }
       })();
     }, this._batchDelay);
-  }
-
-  /**
-   * Push local operations to the server for a specific document.
-   * Uses a per-docId queue to prevent concurrent pushes for the same doc.
-   */
-  saveRemote({ docId }: { docId: string }) {
-    void handleSync(this, docId);
   }
 
   protected async _deleteDoc(docId: string): Promise<boolean> {
