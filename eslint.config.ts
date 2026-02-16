@@ -82,7 +82,10 @@ export const rootEslintConfig = tseslint.config(
       // TODO: enable
       // "@typescript-eslint/no-shadow": "error",
       // "@typescript-eslint/no-redeclare": "error",
-      "prefer-inline-types/prefer-inline-type-parameters": "warn",
+      "prefer-inline-types/prefer-inline-type-parameters": [
+        "warn",
+        { scope: "parameters" },
+      ],
     },
     plugins: {
       "prefer-inline-types": preferInlineTypes,
