@@ -23,6 +23,7 @@ import { handleSync } from "./handlers/clientInitiated/sync.js";
 import { handleUnsubscribe } from "./handlers/clientInitiated/unsubscribe.js";
 import { BCHelper } from "./utils/BCHelper.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
+import { getOwnPresencePatch } from "./utils/getOwnPresencePatch.js";
 
 // TODO: review this type!
 type LocalResolved<S, O> = {
@@ -105,18 +106,6 @@ export class DocSyncClient<
 
   disconnect() {
     this._socket.disconnect();
-  }
-
-  /** Current presence for this client (debounce state or cache); does not clear the timer */
-  private _getOwnPresencePatch(
-    docId: string,
-  ): Record<string, unknown> | undefined {
-    const debounced = this._presenceDebounceState.get(docId);
-    if (debounced) return { [this._clientId]: debounced.data };
-    const cacheEntry = this._docsCache.get(docId);
-    if (cacheEntry?.presence[this._clientId] !== undefined)
-      return { [this._clientId]: cacheEntry.presence[this._clientId] };
-    return undefined;
   }
 
   /**
@@ -330,7 +319,7 @@ export class DocSyncClient<
         // include is the new cursor. Two frames so setPresence (from selection change) has run.
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            const presencePatch = this._getOwnPresencePatch(docId);
+            const presencePatch = getOwnPresencePatch(this, docId);
             this._bcHelper?.broadcast({
               type: "OPERATIONS",
               operations,

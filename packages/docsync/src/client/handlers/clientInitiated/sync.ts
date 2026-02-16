@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { SyncRequest, SyncResponse } from "../../../shared/types.js";
 import type { DocSyncClient } from "../../index.js";
+import { getOwnPresencePatch } from "../../utils/getOwnPresencePatch.js";
 import { request } from "../../utils/request.js";
 
 /** Applies server operations to the cached doc and emits change event (remote). */
@@ -195,7 +196,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
       operations: persistedServerOperations,
     });
 
-    const presencePatch = client["_getOwnPresencePatch"](docId);
+    const presencePatch = getOwnPresencePatch(client, docId);
     for (const op of persistedServerOperations) {
       client["_bcHelper"]?.broadcast({
         type: "OPERATIONS",
