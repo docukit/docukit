@@ -3,6 +3,61 @@ import type { SyncRequest, SyncResponse } from "../../../shared/types.js";
 import type { DocSyncClient } from "../../index.js";
 import { request } from "../../utils/request.js";
 
+/** Applies server operations to the cached doc and emits change event (remote). */
+export async function applyServerOperations<
+  D extends {},
+  S extends {},
+  O extends {},
+>(
+  client: DocSyncClient<D, S, O>,
+  args: { docId: string; operations: O[] },
+): Promise<void> {
+  const cacheEntry = client["_docsCache"].get(args.docId);
+  if (!cacheEntry) return;
+
+  const doc = await cacheEntry.promisedDoc;
+  if (!doc) return;
+
+  client["_shouldBroadcast"] = false;
+  for (const op of args.operations) {
+    client["_docBinding"].applyOperations(doc, op);
+  }
+  client["_shouldBroadcast"] = true;
+
+  client["_emit"](client["_changeEventListeners"], {
+    docId: args.docId,
+    origin: "remote",
+    operations: args.operations,
+  });
+}
+
+/**
+ * Replaces the cached document (e.g. when server responds with a squashed doc).
+ * Keeps refCount, presence, and presenceListeners unchanged.
+ */
+export async function replaceDocInCache<
+  D extends {},
+  S extends {},
+  O extends {},
+>(
+  client: DocSyncClient<D, S, O>,
+  args: { docId: string; doc?: D; serializedDoc?: S },
+): Promise<void> {
+  const cacheEntry = client["_docsCache"].get(args.docId);
+  if (!cacheEntry) return;
+  if (args.doc === undefined && args.serializedDoc === undefined) return;
+
+  const newDoc =
+    args.doc ?? client["_docBinding"].deserialize(args.serializedDoc!);
+
+  client["_docsCache"].set(args.docId, {
+    promisedDoc: Promise.resolve(newDoc),
+    refCount: cacheEntry.refCount,
+    presence: cacheEntry.presence,
+    presenceListeners: cacheEntry.presenceListeners,
+  });
+}
+
 export const handleSync = async <D extends {}, S extends {}, O extends {}>({
   client,
   operationsBatches,
@@ -110,8 +165,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>({
 
   const persistedServerOperations = data.operations ?? [];
   if (didConsolidate && persistedServerOperations.length > 0) {
-    // eslint-disable-next-line @typescript-eslint/dot-notation -- bracket notation for protected access from flow
-    await client["_applyServerOperations"]({
+    await applyServerOperations(client, {
       docId,
       operations: persistedServerOperations,
     });

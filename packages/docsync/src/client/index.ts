@@ -25,6 +25,7 @@ import { handlePresence as sendPresence } from "./handlers/clientInitiated/prese
 import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
 import { handleSync } from "./handlers/clientInitiated/sync.js";
 import { handleUnsubscribe } from "./handlers/clientInitiated/unsubscribe.js";
+import { applyPresencePatch } from "./utils/applyPresencePatch.js";
 import { BCHelper } from "./utils/BCHelper.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
 
@@ -116,28 +117,6 @@ export class DocSyncClient<
     this._socket.disconnect();
   }
 
-  protected _applyPresencePatch(
-    cacheEntry: {
-      presence: Presence;
-      presenceListeners: Set<(p: Presence) => void>;
-    },
-    patch: Record<string, unknown>,
-  ): void {
-    const newPresence = { ...cacheEntry.presence };
-    for (const [key, value] of Object.entries(patch)) {
-      if (key === this._clientId) continue; // never store own presence in cache; local tab must not render self as remote
-      if (value === undefined || value === null) {
-        delete newPresence[key];
-      } else {
-        newPresence[key] = value;
-      }
-    }
-    cacheEntry.presence = newPresence;
-    cacheEntry.presenceListeners.forEach((listener) =>
-      listener(cacheEntry.presence),
-    );
-  }
-
   /** Current presence for this client (debounce state or cache); does not clear the timer */
   private _getOwnPresencePatch(
     docId: string,
@@ -148,64 +127,6 @@ export class DocSyncClient<
     if (cacheEntry?.presence[this._clientId] !== undefined)
       return { [this._clientId]: cacheEntry.presence[this._clientId] };
     return undefined;
-  }
-
-  // TODO: used when server responds with a new doc (squashing)
-  async _replaceDocInCache({
-    docId,
-    doc,
-    serializedDoc,
-  }: {
-    docId: string;
-    doc?: D;
-    serializedDoc?: S;
-  }) {
-    const cacheEntry = this._docsCache.get(docId);
-    if (!cacheEntry) return;
-
-    // Deserialize if needed
-    const newDoc = doc ?? this._docBinding.deserialize(serializedDoc!);
-
-    // Replace the cached document with the new one
-    // Keep the same refCount
-    // Note: We don't setup a new change listener here because:
-    // 1. The doc already has all operations applied from the sync
-    // 2. A listener will be setup when the doc is loaded via getDoc
-    // 3. Multiple listeners would cause operations to be applied multiple times
-    this._docsCache.set(docId, {
-      promisedDoc: Promise.resolve(newDoc),
-      refCount: cacheEntry.refCount,
-      presence: cacheEntry.presence,
-      presenceListeners: cacheEntry.presenceListeners,
-    });
-  }
-
-  async _applyServerOperations({
-    docId,
-    operations,
-  }: {
-    docId: string;
-    operations: O[];
-  }) {
-    const cacheEntry = this._docsCache.get(docId);
-    if (!cacheEntry) return;
-
-    // Get the cached document and apply server operations to it
-    const doc = await cacheEntry.promisedDoc;
-    if (!doc) return;
-
-    this._shouldBroadcast = false;
-    for (const op of operations) {
-      this._docBinding.applyOperations(doc, op);
-    }
-    this._shouldBroadcast = true;
-
-    // Emit change event for remote operations
-    this._emit(this._changeEventListeners, {
-      docId,
-      origin: "remote",
-      operations,
-    });
   }
 
   /**
@@ -421,7 +342,7 @@ export class DocSyncClient<
       const patch = { [this._clientId]: state.data };
 
       // Update local cache and notify listeners (so own cursor shows and UI stays in sync)
-      this._applyPresencePatch(cacheEntry, patch);
+      applyPresencePatch(this._clientId, cacheEntry, patch);
 
       // Same device: broadcast to other tabs (works offline)
       this._bcHelper?.broadcast({

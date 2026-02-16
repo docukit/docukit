@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 
 import type { DocSyncClient } from "../index.js";
+import { applyPresencePatch } from "./applyPresencePatch.js";
 
 type BroadcastMessage<O> =
   | {
@@ -28,7 +29,8 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
         void this._applyOperations(client, operations, docId);
         if (presence) {
           const cacheEntry = client["_docsCache"].get(docId);
-          if (cacheEntry) client["_applyPresencePatch"](cacheEntry, presence);
+          if (cacheEntry)
+            applyPresencePatch(client["_clientId"], cacheEntry, presence);
         }
         return;
       }
@@ -36,7 +38,7 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
         const { docId, presence } = msg;
         const cacheEntry = client["_docsCache"].get(docId);
         if (!cacheEntry) return;
-        client["_applyPresencePatch"](cacheEntry, presence);
+        applyPresencePatch(client["_clientId"], cacheEntry, presence);
       }
     };
   }
