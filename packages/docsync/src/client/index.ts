@@ -18,8 +18,11 @@ import type {
   QueryResult,
   SyncEventListener,
 } from "./types.js";
+import { handleConnect } from "./handlers/connect.js";
 import { handleDeleteDoc } from "./handlers/delete-doc.js";
-import { handlePresence } from "./handlers/presence.js";
+import { handleDisconnect } from "./handlers/disconnect.js";
+import { handleDirty } from "./handlers/dirty.js";
+import { handlePresence, sendPresence } from "./handlers/presence.js";
 import { handleSync } from "./handlers/sync.js";
 import { handleUnsubscribe } from "./handlers/unsubscribe.js";
 import { getDeviceId } from "./utils.js";
@@ -135,44 +138,10 @@ export class DocSyncClient<
       transports: ["websocket"], // Skip polling, go straight to WebSocket
     });
 
-    this._socket.on("connect", () => {
-      // Emit connect event
-      this._emit(this._connectEventListeners);
-      // Push pending operations for all loaded docs
-      for (const docId of this._docsCache.keys()) {
-        this.saveRemote({ docId });
-      }
-    });
-    this._socket.on("disconnect", (reason) => {
-      this._pushStatusByDocId.clear();
-      // Clear pending presence debounce timers so their callbacks never run after disconnect
-      for (const state of this._presenceDebounceState.values()) {
-        clearTimeout(state.timeout);
-      }
-      this._presenceDebounceState.clear();
-      // Tell other tabs to remove this client's presence (clientId works offline)
-      for (const docId of this._docsCache.keys()) {
-        this._sendMessage({
-          type: "PRESENCE",
-          docId,
-          presence: { [this._clientId]: null },
-        });
-      }
-      this._emit(this._disconnectEventListeners, { reason });
-    });
-    this._socket.on("connect_error", (err) => {
-      this._emit(this._disconnectEventListeners, { reason: err.message });
-    });
-
-    // Listen for dirty notifications from server
-    this._socket.on("dirty", (payload) => {
-      this.saveRemote({ docId: payload.docId });
-    });
-    this._socket.on("presence", (payload) => {
-      const cacheEntry = this._docsCache.get(payload.docId);
-      if (!cacheEntry) return;
-      this._applyPresencePatch(cacheEntry, payload.presence);
-    });
+    handleConnect({ client: this });
+    handleDisconnect({ client: this });
+    handleDirty({ client: this });
+    handlePresence({ client: this });
   }
 
   connect() {
@@ -200,7 +169,7 @@ export class DocSyncClient<
     });
   }
 
-  private _applyPresencePatch(
+  protected _applyPresencePatch(
     cacheEntry: {
       presence: Presence;
       presenceHandlers: Set<(p: Presence) => void>;
@@ -514,7 +483,7 @@ export class DocSyncClient<
         presence: patch,
       });
       // Other devices: send via WebSocket only when connected
-      void handlePresence({
+      void sendPresence({
         socket: this._socket,
         docId,
         presence: state.data,

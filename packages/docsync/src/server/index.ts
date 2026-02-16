@@ -197,7 +197,7 @@ export class DocSyncServer<
   // Event Emitters (private methods)
   // ============================================================================
 
-  private _emit<T>(listeners: Set<(event: T) => void>, event: T) {
+  protected _emit<T>(listeners: Set<(event: T) => void>, event: T) {
     for (const listener of listeners) {
       listener(event);
     }

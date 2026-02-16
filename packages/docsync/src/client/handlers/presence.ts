@@ -1,5 +1,7 @@
+/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { PresenceRequest, PresenceResponse } from "../../shared/types.js";
 import type { ClientSocket } from "../types.js";
+import type { DocSyncClient } from "../index.js";
 
 type HandlePresenceArgs = {
   socket: ClientSocket<object, object>;
@@ -24,7 +26,21 @@ const requestPresence = (
   });
 };
 
-export const handlePresence = async ({
+/** Registers the socket listener for incoming presence updates from the server. */
+export function handlePresence<
+  D extends {} = {},
+  S extends {} = {},
+  O extends {} = {},
+>({ client }: { client: DocSyncClient<D, S, O> }): void {
+  client["_socket"].on("presence", (payload) => {
+    const cacheEntry = client["_docsCache"].get(payload.docId);
+    if (!cacheEntry) return;
+    client["_applyPresencePatch"](cacheEntry, payload.presence);
+  });
+}
+
+/** Sends presence to the server (request/response). */
+export const sendPresence = async ({
   socket,
   docId,
   presence,
