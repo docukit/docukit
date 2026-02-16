@@ -15,7 +15,7 @@ export function handleDisconnect<
     for (const docId of client["_docsCache"].keys()) {
       // Bracket notation required to access protected method from handler
       // eslint-disable-next-line @typescript-eslint/dot-notation
-      client["_sendMessage"]({
+      client["_bcHelper"]?.broadcast({
         type: "PRESENCE",
         docId,
         presence: { [client["_clientId"]]: null },

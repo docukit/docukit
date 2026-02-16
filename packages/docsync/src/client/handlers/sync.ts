@@ -4,12 +4,8 @@ import type {
   SyncRequest,
   SyncResponse,
 } from "../../shared/types.js";
-import type {
-  BroadcastMessage,
-  ClientProvider,
-  ClientSocket,
-  SyncEvent,
-} from "../types.js";
+import type { BroadcastMessage } from "../utils/BCHelper.js";
+import type { ClientProvider, ClientSocket, SyncEvent } from "../types.js";
 
 export type HandleSyncResult<S, O> =
   | { kind: "retry" }

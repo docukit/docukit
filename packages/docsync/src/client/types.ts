@@ -95,15 +95,6 @@ export type Identity = {
   secret: string;
 };
 
-export type BroadcastMessage<O> =
-  | {
-      type: "OPERATIONS";
-      operations: O;
-      docId: string;
-      presence?: Record<string, unknown>;
-    }
-  | { type: "PRESENCE"; docId: string; presence: Record<string, unknown> };
-
 export type ClientConfig<
   D extends {} = {},
   S extends {} = {},

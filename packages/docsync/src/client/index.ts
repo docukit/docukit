@@ -2,7 +2,6 @@
 import { io } from "socket.io-client";
 import type { DocBinding, Presence } from "../shared/types.js";
 import type {
-  BroadcastMessage,
   ClientConfig,
   ClientProvider,
   ClientSocket,
@@ -25,6 +24,7 @@ import { handleDirty } from "./handlers/dirty.js";
 import { handlePresence, sendPresence } from "./handlers/presence.js";
 import { handleSync } from "./handlers/sync.js";
 import { handleUnsubscribe } from "./handlers/unsubscribe.js";
+import { BCHelper } from "./utils/BCHelper.js";
 import { getDeviceId } from "./utils.js";
 
 // TODO: review this type!
@@ -55,7 +55,7 @@ export class DocSyncClient<
   /** Client-generated id for presence (works offline; sent in auth so server uses same key) */
   protected _clientId: string;
   private _shouldBroadcast = true;
-  protected _broadcastChannel?: BroadcastChannel;
+  protected _bcHelper?: BCHelper<O>;
   protected _socket: ClientSocket<S, O>;
 
   // Flow control state (batching, debouncing, push queueing)
@@ -85,44 +85,14 @@ export class DocSyncClient<
       const identity = await local.getIdentity();
       const provider = new local.provider(identity) as ClientProvider<S, O>;
 
-      // Initialize BroadcastChannel with user-specific channel name
-      // This ensures only tabs of the same user share operations
-      this._broadcastChannel = new BroadcastChannel(
-        `docsync:${identity.userId}`,
-      );
-      this._broadcastChannel.onmessage = async (
-        ev: MessageEvent<BroadcastMessage<O>>,
-      ) => {
-        // RECEIVED MESSAGES
-        if (ev.data.type === "OPERATIONS") {
-          // Another tab is pushing operations - they are responsible for pushing to server
-          // We just need to coordinate push status to avoid conflicts
-          const currentStatus =
-            this._pushStatusByDocId.get(ev.data.docId) ?? "idle";
-
-          if (currentStatus === "pushing") {
-            // Mark as busy to avoid concurrent pushes
-            this._pushStatusByDocId.set(ev.data.docId, "pushing-with-pending");
-          }
-          // Note: We don't call saveRemote here - the sender is responsible for pushing
-          // If the sender is offline, the push will happen when they reconnect
-
-          void this._applyOperations(ev.data.operations, ev.data.docId);
-          // Apply presence after ops so the doc is updated first (avoids cursor lag)
-          if (ev.data.presence) {
-            const cacheEntry = this._docsCache.get(ev.data.docId);
-            if (cacheEntry)
-              this._applyPresencePatch(cacheEntry, ev.data.presence);
-          }
-          return;
-        }
-        if (ev.data.type === "PRESENCE") {
-          const { docId, presence } = ev.data;
-          const cacheEntry = this._docsCache.get(docId);
-          if (!cacheEntry) return;
-          this._applyPresencePatch(cacheEntry, presence);
-        }
-      };
+      this._bcHelper = new BCHelper<O>(`docsync:${identity.userId}`, {
+        pushStatusByDocId: this._pushStatusByDocId,
+        getCacheEntry: (docId) => this._docsCache.get(docId),
+        applyOperations: (operations, docId) =>
+          this._applyOperations(operations, docId),
+        applyPresencePatch: (cacheEntry, patch) =>
+          this._applyPresencePatch(cacheEntry, patch),
+      });
 
       return { provider, identity };
     })();
@@ -477,7 +447,7 @@ export class DocSyncClient<
       this._applyPresencePatch(cacheEntry, patch);
 
       // Same device: broadcast to other tabs (works offline)
-      this._sendMessage({
+      this._bcHelper?.broadcast({
         type: "PRESENCE",
         docId,
         presence: patch,
@@ -509,7 +479,7 @@ export class DocSyncClient<
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             const presencePatch = this._getOwnPresencePatch(docId);
-            this._sendMessage({
+            this._bcHelper?.broadcast({
               type: "OPERATIONS",
               operations,
               docId,
@@ -604,10 +574,6 @@ export class DocSyncClient<
     }
   }
 
-  _sendMessage(message: BroadcastMessage<O>) {
-    this._broadcastChannel?.postMessage(message);
-  }
-
   onLocalOperations({ docId, operations }: { docId: string; operations: O[] }) {
     // Get or create the batch state for this document
     let state = this._localOpsBatchState.get(docId);
@@ -690,7 +656,7 @@ export class DocSyncClient<
     if (presenceState) {
       clearTimeout(presenceState.timeout);
       this._presenceDebounceState.delete(docId);
-      this._sendMessage({
+      this._bcHelper?.broadcast({
         type: "PRESENCE",
         docId,
         presence: { [this._clientId]: presenceState.data },
@@ -715,7 +681,7 @@ export class DocSyncClient<
           docId: targetDocId,
           operations: targetOps,
         }),
-      sendMessage: (message) => this._sendMessage(message),
+      sendMessage: (message) => this._bcHelper?.broadcast(message),
       getOwnPresencePatch: (targetDocId) =>
         this._getOwnPresencePatch(targetDocId),
       retryPush: (targetDocId) => {

@@ -161,10 +161,7 @@ export const testWrapper = async (
     await tick(15);
 
     for (const client of allClients) {
-      const bc = client["_broadcastChannel"];
-      if (bc) {
-        bc.close();
-      }
+      client["_bcHelper"]?.close();
     }
 
     await tick(15);
