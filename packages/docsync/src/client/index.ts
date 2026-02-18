@@ -47,6 +47,8 @@ export class DocSyncClient<
       presence: Presence;
       presenceListeners: Set<(presence: Presence) => void>;
       pushStatus: PushStatus;
+      localOpsBatchState?: DeferredState<O[]>;
+      presenceDebounceState?: DeferredState<unknown>;
     }
   >();
   protected _localPromise: Promise<LocalResolved<S, O>>;
@@ -57,10 +59,8 @@ export class DocSyncClient<
   protected _bcHelper?: BCHelper<D, S, O>;
   protected _socket: ClientSocket<S, O>;
 
-  // Flow control state (batching, debouncing, push queueing)
-  protected _localOpsBatchState = new Map<string, DeferredState<O[]>>();
+  // Flow control (batching, debouncing)
   protected _batchDelay = 50;
-  protected _presenceDebounceState = new Map<string, DeferredState<unknown>>();
   protected _presenceDebounce = 200;
 
   /** Typed as unknown so DocSyncClient remains covariant in O, S (assignable to DocSyncClient base). */
@@ -392,6 +392,8 @@ export class DocSyncClient<
       const doc = await cacheEntry.promisedDoc;
       const currentEntry = this._docsCache.get(docId);
       if (currentEntry?.refCount === 0) {
+        clearTimeout(currentEntry.localOpsBatchState?.timeout);
+        clearTimeout(currentEntry.presenceDebounceState?.timeout);
         this._docsCache.delete(docId);
         if (doc) {
           await handleUnsubscribe(this._socket, { docId });
@@ -402,13 +404,13 @@ export class DocSyncClient<
   }
 
   onLocalOperations({ docId, operations }: { docId: string; operations: O[] }) {
-    // Get or create the batch state for this document
-    let state = this._localOpsBatchState.get(docId);
+    const cacheEntry = this._docsCache.get(docId);
+    if (!cacheEntry) return;
 
+    let state = cacheEntry.localOpsBatchState;
     if (!state) {
-      // Create new state with empty queue
       state = { data: [] };
-      this._localOpsBatchState.set(docId, state);
+      cacheEntry.localOpsBatchState = state;
     }
 
     // Add operations to queue
@@ -424,11 +426,12 @@ export class DocSyncClient<
     // Otherwise, schedule the batch save
     state.timeout = setTimeout(() => {
       void (async () => {
-        const currentState = this._localOpsBatchState.get(docId);
-        if (!currentState) return;
+        const currentEntry = this._docsCache.get(docId);
+        const currentState = currentEntry?.localOpsBatchState;
+        if (!currentEntry || !currentState) return;
 
         const opsToSave = currentState.data;
-        this._localOpsBatchState.delete(docId);
+        delete currentEntry.localOpsBatchState;
 
         if (opsToSave && opsToSave.length > 0) {
           const local = await this._localPromise;

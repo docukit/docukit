@@ -57,6 +57,12 @@ export async function replaceDocInCache<
     presence: cacheEntry.presence,
     presenceListeners: cacheEntry.presenceListeners,
     pushStatus: cacheEntry.pushStatus,
+    ...(cacheEntry.localOpsBatchState !== undefined && {
+      localOpsBatchState: cacheEntry.localOpsBatchState,
+    }),
+    ...(cacheEntry.presenceDebounceState !== undefined && {
+      presenceDebounceState: cacheEntry.presenceDebounceState,
+    }),
   });
 }
 
@@ -95,10 +101,10 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   const operations = operationsBatches.flat();
   const clientClock = stored?.clock ?? 0;
 
-  const presenceState = client["_presenceDebounceState"].get(docId);
+  const presenceState = cacheEntry.presenceDebounceState;
   if (presenceState) {
     clearTimeout(presenceState.timeout);
-    client["_presenceDebounceState"].delete(docId);
+    delete cacheEntry.presenceDebounceState;
     client["_bcHelper"]?.broadcast({
       type: "PRESENCE",
       docId,

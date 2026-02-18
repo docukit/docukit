@@ -18,18 +18,19 @@ export function handlePresence<D extends {}, S extends {}, O extends {}>(
     throw new Error(`Doc ${docId} is not loaded, cannot set presence`);
   }
 
-  const existingState = client["_presenceDebounceState"].get(docId);
+  const existingState = cacheEntry.presenceDebounceState;
   clearTimeout(existingState?.timeout);
 
   const timeout = setTimeout(() => {
-    const state = client["_presenceDebounceState"].get(docId);
-    if (!state) return;
+    const entry = client["_docsCache"].get(docId);
+    const state = entry?.presenceDebounceState;
+    if (!entry || !state) return;
 
-    client["_presenceDebounceState"].delete(docId);
+    delete entry.presenceDebounceState;
 
     const patch = { [client["_clientId"]]: state.data };
 
-    applyPresencePatch(client["_clientId"], cacheEntry, patch);
+    applyPresencePatch(client["_clientId"], entry, patch);
 
     client["_bcHelper"]?.broadcast({
       type: "PRESENCE",
@@ -53,5 +54,5 @@ export function handlePresence<D extends {}, S extends {}, O extends {}>(
     }
   }, client["_presenceDebounce"]);
 
-  client["_presenceDebounceState"].set(docId, { timeout, data: presence });
+  cacheEntry.presenceDebounceState = { timeout, data: presence };
 }
