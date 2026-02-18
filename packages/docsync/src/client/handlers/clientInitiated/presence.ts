@@ -18,17 +18,18 @@ export function handlePresence<D extends {}, S extends {}, O extends {}>(
     throw new Error(`Doc ${docId} is not loaded, cannot set presence`);
   }
 
-  const existingState = cacheEntry.presenceDebounceState;
-  clearTimeout(existingState?.timeout);
+  if (cacheEntry.presenceDebounceState)
+    clearTimeout(cacheEntry.presenceDebounceState.timeout);
 
   const timeout = setTimeout(() => {
     const entry = client["_docsCache"].get(docId);
     const state = entry?.presenceDebounceState;
     if (!entry || !state) return;
 
-    delete entry.presenceDebounceState;
+    const data = state.data;
+    entry.presenceDebounceState = undefined;
 
-    const patch = { [client["_clientId"]]: state.data };
+    const patch = { [client["_clientId"]]: data };
 
     applyPresencePatch(client["_clientId"], entry, patch);
 
@@ -42,7 +43,7 @@ export function handlePresence<D extends {}, S extends {}, O extends {}>(
     if (socket.connected) {
       void (async () => {
         try {
-          const payload: PresenceRequest = { docId, presence: state.data };
+          const payload: PresenceRequest = { docId, presence: data };
           const { error } = await request(socket, "presence", payload, 5000);
           if (error) {
             console.error(`Error setting presence for doc ${docId}:`, error);

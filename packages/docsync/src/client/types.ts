@@ -28,10 +28,9 @@ export type DocData<D> = { doc: D; docId: string };
 // Client State & Config
 // ============================================================================
 
-export type DeferredState<T> = {
-  timeout?: ReturnType<typeof setTimeout>;
-  data: T;
-};
+export type DeferredState<T> =
+  | { timeout: ReturnType<typeof setTimeout>; data: T }
+  | undefined;
 
 export type Identity = { userId: string; secret: string };
 

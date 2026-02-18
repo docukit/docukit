@@ -47,8 +47,8 @@ export class DocSyncClient<
       presence: Presence;
       presenceListeners: Set<(presence: Presence) => void>;
       pushStatus: PushStatus;
-      localOpsBatchState?: DeferredState<O[]>;
-      presenceDebounceState?: DeferredState<unknown>;
+      localOpsBatchState: DeferredState<O[]>;
+      presenceDebounceState: DeferredState<unknown>;
     }
   >();
   protected _localPromise: Promise<LocalResolved<S, O>>;
@@ -167,6 +167,8 @@ export class DocSyncClient<
         presence: {},
         presenceListeners: new Set(),
         pushStatus: "idle",
+        localOpsBatchState: undefined,
+        presenceDebounceState: undefined,
       });
       this._setupChangeListener(doc, createdDocId);
       emit({ status: "success", data: { doc, docId: createdDocId } });
@@ -215,6 +217,8 @@ export class DocSyncClient<
           presence: {},
           presenceListeners: new Set(),
           pushStatus: "idle",
+          localOpsBatchState: undefined,
+          presenceDebounceState: undefined,
         });
       }
 
@@ -392,8 +396,10 @@ export class DocSyncClient<
       const doc = await cacheEntry.promisedDoc;
       const currentEntry = this._docsCache.get(docId);
       if (currentEntry?.refCount === 0) {
-        clearTimeout(currentEntry.localOpsBatchState?.timeout);
-        clearTimeout(currentEntry.presenceDebounceState?.timeout);
+        if (currentEntry.localOpsBatchState)
+          clearTimeout(currentEntry.localOpsBatchState.timeout);
+        if (currentEntry.presenceDebounceState)
+          clearTimeout(currentEntry.presenceDebounceState.timeout);
         this._docsCache.delete(docId);
         if (doc) {
           await handleUnsubscribe(this._socket, { docId });
@@ -407,33 +413,16 @@ export class DocSyncClient<
     const cacheEntry = this._docsCache.get(docId);
     if (!cacheEntry) return;
 
-    let state = cacheEntry.localOpsBatchState;
-    if (!state) {
-      state = { data: [] };
-      cacheEntry.localOpsBatchState = state;
-    }
-
-    // Add operations to queue
-    if (operations.length > 0) {
-      state.data.push(...operations);
-    }
-
-    // If there is already a pending timeout, we just wait
-    if (state.timeout !== undefined) {
-      return;
-    }
-
-    // Otherwise, schedule the batch save
-    state.timeout = setTimeout(() => {
+    const runBatch = () => {
       void (async () => {
         const currentEntry = this._docsCache.get(docId);
         const currentState = currentEntry?.localOpsBatchState;
         if (!currentEntry || !currentState) return;
 
         const opsToSave = currentState.data;
-        delete currentEntry.localOpsBatchState;
+        currentEntry.localOpsBatchState = undefined;
 
-        if (opsToSave && opsToSave.length > 0) {
+        if (opsToSave.length > 0) {
           const local = await this._localPromise;
           await local?.provider.transaction("readwrite", (ctx) =>
             ctx.saveOperations({ docId, operations: opsToSave }),
@@ -441,7 +430,19 @@ export class DocSyncClient<
           void handleSync(this, docId);
         }
       })();
-    }, this._batchDelay);
+    };
+
+    const state = cacheEntry.localOpsBatchState;
+    if (!state) {
+      cacheEntry.localOpsBatchState = {
+        data: operations.length > 0 ? [...operations] : [],
+        timeout: setTimeout(runBatch, this._batchDelay),
+      };
+      return;
+    }
+    if (operations.length > 0) state.data.push(...operations);
+    if (state.timeout !== undefined) return;
+    state.timeout = setTimeout(runBatch, this._batchDelay);
   }
 
   protected async _deleteDoc(docId: string): Promise<boolean> {

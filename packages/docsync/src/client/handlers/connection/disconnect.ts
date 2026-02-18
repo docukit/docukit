@@ -8,8 +8,9 @@ export function handleDisconnect<
 >({ client }: { client: DocSyncClient<D, S, O> }): void {
   client["_socket"].on("disconnect", (reason) => {
     for (const [docId, entry] of client["_docsCache"].entries()) {
-      clearTimeout(entry.presenceDebounceState?.timeout);
-      delete entry.presenceDebounceState;
+      if (entry.presenceDebounceState)
+        clearTimeout(entry.presenceDebounceState.timeout);
+      entry.presenceDebounceState = undefined;
       entry.pushStatus = "idle";
       client["_bcHelper"]?.broadcast({
         type: "PRESENCE",
