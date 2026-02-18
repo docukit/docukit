@@ -2,7 +2,7 @@
 // as dynamic imports produces environment pollution errors.
 import type { DeleteDocHandler } from "../server/handlers/deleteDoc.js";
 import type { PresenceHandler } from "../server/handlers/presence.js";
-import type { SyncHandler } from "../server/handlers/sync.js";
+import type { SyncHandler } from "../server/handlers/sync/handleSync.js";
 import type { UnsubscribeDocHandler } from "../server/handlers/unsubscribe.js";
 
 /* eslint-disable @typescript-eslint/no-empty-object-type */
@@ -42,14 +42,19 @@ export type Result<D, E = Error> =
 /** Shared request payload for the sync event (client sends, server receives). */
 export type SyncRequest<O = unknown> = {
   docId: string;
-  operations?: O[];
+  operations?: O[] | "deleted";
   clock: number;
   presence?: unknown;
 };
 
 /** Shared response for the sync event (server sends, client receives). */
 export type SyncResponse<S = unknown, O = unknown> = Result<
-  { docId: string; operations?: O[]; serializedDoc?: S; clock: number },
+  {
+    docId: string;
+    operations?: O[];
+    serializedDoc?: S | "deleted";
+    clock: number;
+  },
   {
     type: "AuthorizationError" | "DatabaseError" | "ValidationError";
     message: string;
@@ -62,10 +67,6 @@ export type PresenceResponse = Result<
   void,
   { type: "AuthorizationError"; message: string }
 >;
-
-/** Shared request/response for the delete-doc event. */
-export type DeleteDocRequest = { docId: string };
-export type DeleteDocResponse = { success: boolean };
 
 /** Shared request/response for the unsubscribe-doc event. */
 export type UnsubscribeDocRequest = { docId: string };

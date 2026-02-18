@@ -17,7 +17,7 @@ export async function applyServerOperations<
   if (!cacheEntry) return;
 
   const doc = await cacheEntry.promisedDoc;
-  if (!doc) return;
+  if (!doc || doc === "deleted") return;
 
   client["_shouldBroadcast"] = false;
   for (const op of args.operations) {
@@ -71,14 +71,12 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   docId: string,
 ): Promise<void> => {
   const cacheEntry = client["_docsCache"].get(docId);
-  if (!cacheEntry) return;
-
-  const status = cacheEntry.pushStatus;
+  const status = cacheEntry?.pushStatus ?? "idle";
   if (status !== "idle") {
-    cacheEntry.pushStatus = "pushing-with-pending";
+    if (cacheEntry) cacheEntry.pushStatus = "pushing-with-pending";
     return;
   }
-  cacheEntry.pushStatus = "pushing";
+  if (cacheEntry) cacheEntry.pushStatus = "pushing";
 
   const { provider } = await client["_localPromise"];
   const socket = client["_socket"];
@@ -94,15 +92,67 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
       ]);
     },
   );
+
+  const isDeleteMarker =
+    operationsBatches === "deleted" || stored?.serializedDoc === "deleted";
+  if (isDeleteMarker) {
+    const clientClock = stored?.clock ?? 0;
+    const req = { docId, operations: [] as O[], clock: clientClock };
+    const success = false;
+    try {
+      // success = await handleDeleteDoc(client["_socket"], { docId });
+    } catch (error) {
+      client["_events"].emit("sync", {
+        req,
+        error: {
+          type: "NetworkError",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      if (cacheEntry) cacheEntry.pushStatus = "idle";
+      void handleSync(client, docId);
+      return;
+    }
+    if (!success) {
+      client["_events"].emit("sync", {
+        req,
+        error: { type: "DatabaseError", message: "Delete doc failed" },
+      });
+      if (cacheEntry) cacheEntry.pushStatus = "idle";
+      void handleSync(client, docId);
+      return;
+    }
+    await provider.transaction("readwrite", async (ctx) => {
+      const ops = await ctx.getOperations({ docId });
+      const count = ops === "deleted" ? 1 : ops.length;
+      if (count > 0) await ctx.deleteOperations({ docId, count });
+      await ctx.saveSerializedDoc({
+        serializedDoc: "deleted",
+        docId,
+        clock: clientClock,
+      });
+    });
+    const currentEntry = client["_docsCache"].get(docId);
+    if (currentEntry) {
+      currentEntry.promisedDoc = Promise.resolve("deleted" as D | "deleted");
+      const currentStatus = currentEntry.pushStatus;
+      currentEntry.pushStatus = "idle";
+      if (currentStatus === "pushing-with-pending") {
+        void handleSync(client, docId);
+      }
+    }
+    return;
+  }
+
   const operations = operationsBatches.flat();
   const clientClock = stored?.clock ?? 0;
 
-  const presenceState = cacheEntry.presenceDebounceState;
+  const presenceState = cacheEntry?.presenceDebounceState;
   let presence: unknown;
   if (presenceState !== undefined) {
     clearTimeout(presenceState.timeout);
     presence = presenceState.data;
-    cacheEntry.presenceDebounceState = undefined;
+    if (cacheEntry) cacheEntry.presenceDebounceState = undefined;
     client["_bcHelper"]?.broadcast({
       type: "PRESENCE",
       docId,
@@ -128,14 +178,14 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
         message: error instanceof Error ? error.message : String(error),
       },
     });
-    cacheEntry.pushStatus = "idle";
+    if (cacheEntry) cacheEntry.pushStatus = "idle";
     void handleSync(client, docId);
     return;
   }
 
   if ("error" in response && response.error) {
     client["_events"].emit("sync", { req, error: response.error });
-    cacheEntry.pushStatus = "idle";
+    if (cacheEntry) cacheEntry.pushStatus = "idle";
     void handleSync(client, docId);
     return;
   }
@@ -159,6 +209,8 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
 
     const stored = await ctx.getSerializedDoc(docId);
     if (!stored) return;
+
+    if (stored.serializedDoc === "deleted") return;
 
     if (stored.clock >= data.clock) {
       didConsolidate = false;
@@ -202,7 +254,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     }
   }
 
-  const currentEntry = client["_docsCache"].get(docId);
+  const currentEntry = cacheEntry ?? client["_docsCache"].get(docId);
   if (currentEntry) {
     const currentStatus = currentEntry.pushStatus;
     const shouldRetry = currentStatus === "pushing-with-pending";
