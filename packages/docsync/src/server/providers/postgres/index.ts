@@ -18,7 +18,10 @@ export class PostgresProvider<S, O> implements ServerProvider<S, O> {
             where: eq(schema.documents.docId, docId),
           });
           return doc
-            ? { serializedDoc: doc.doc as S, clock: doc.clock.getTime() }
+            ? {
+                serializedDoc: doc.doc as S | "deleted",
+                clock: doc.clock.getTime(),
+              }
             : undefined;
         },
 

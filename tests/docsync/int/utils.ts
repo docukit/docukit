@@ -306,8 +306,8 @@ const createClientUtils = async (
     },
     assertIDBDoc: async (expected?: {
       clock: number;
-      doc: string[];
-      ops: string[];
+      doc: string[] | "deleted";
+      ops: string[] | "deleted";
     }) => {
       await expect
         .poll(async () => {
@@ -326,7 +326,9 @@ const createClientUtils = async (
 
           if (!expected) {
             expect(result.docResult).toBeUndefined();
-            expect(result.operations).toStrictEqual([]);
+            expect(
+              result.operations === "deleted" ? [] : result.operations,
+            ).toStrictEqual([]);
             return true;
           }
 
@@ -334,6 +336,15 @@ const createClientUtils = async (
             throw new Error(
               `Document ${docId} not found in IndexedDB for user ${userId}`,
             );
+          }
+
+          if (result.docResult.serializedDoc === "deleted") {
+            expect({
+              clock: result.docResult.clock,
+              doc: "deleted",
+              ops: [],
+            }).toStrictEqual(expected);
+            return true;
           }
 
           const deserializedDoc = client["_docBinding"].deserialize(
@@ -347,8 +358,10 @@ const createClientUtils = async (
           });
 
           const opsChildren: string[] = [];
+          const operationsBatches =
+            result.operations === "deleted" ? [] : result.operations;
 
-          for (const batch of result.operations) {
+          for (const batch of operationsBatches) {
             if (batch.length === 0) continue;
             for (const item of batch) {
               if (!Array.isArray(item) || item.length < 2) continue;

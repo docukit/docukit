@@ -101,11 +101,11 @@ export type ServerConfig<TContext, D extends {}, S extends {}, O extends {}> = {
  */
 // prettier-ignore
 export type ServerProviderContext<S, O> = {
-  getSerializedDoc(docId: string): Promise<{ serializedDoc: S; clock: number } | undefined>;
+  getSerializedDoc(docId: string): Promise<{ serializedDoc: S | "deleted"; clock: number } | undefined>;
+  saveSerializedDoc(arg: SerializedDocPayload<S | "deleted">): Promise<void>;
   getOperations(arg: { docId: string; clock: number }): Promise<O[][]>;
-  deleteOperations(arg: { docId: string; count: number }): Promise<void>;
   saveOperations(arg: { docId: string; operations: O[] }): Promise<number>;
-  saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
+  deleteOperations(arg: { docId: string; count: number }): Promise<void>;
 };
 
 /**

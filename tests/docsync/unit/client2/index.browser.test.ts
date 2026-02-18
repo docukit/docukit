@@ -51,7 +51,7 @@ describe("Client 2", () => {
       triggerSync(client, docId);
 
       await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .poll(() => client["_docsCache"].get(docId)?.pushStatus)
         .toBe("pushing-with-pending");
     });
 
@@ -78,10 +78,10 @@ describe("Client 2", () => {
       triggerSync(client, docId1);
       triggerSync(client, docId2);
       await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId1))
+        .poll(() => client["_docsCache"].get(docId1)?.pushStatus)
         .toBe("pushing");
       await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId2))
+        .poll(() => client["_docsCache"].get(docId2)?.pushStatus)
         .toBe("pushing");
     });
 
@@ -101,7 +101,7 @@ describe("Client 2", () => {
       triggerSync(client, docId);
       triggerSync(client, docId);
       await expect.poll(() => requestSpy.mock.calls.length).toBe(1);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe(
+      expect(client["_docsCache"].get(docId)?.pushStatus).toBe(
         "pushing-with-pending",
       );
     });
@@ -124,7 +124,7 @@ describe("Client 2", () => {
 
       await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
       await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .poll(() => client["_docsCache"].get(docId)?.pushStatus)
         .toBe("idle");
     });
   });
@@ -167,7 +167,7 @@ describe("Client 2", () => {
       const docId = generateDocId();
       let statusDuringPush: string | undefined;
       spyOnRequest(client).mockImplementation(async () => {
-        statusDuringPush = client["_pushStatusByDocId"].get(docId);
+        statusDuringPush = client["_docsCache"].get(docId)?.pushStatus;
         return { data: { docId, clock: 1 } };
       });
 
@@ -227,7 +227,7 @@ describe("Client 2", () => {
         expect.objectContaining({ docId, operations: [ops({ test: "data" })] }),
       );
       expect(await getOperationsCount(client, docId)).toBe(0);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+      expect(client["_docsCache"].get(docId)?.pushStatus).toBe("idle");
     });
 
     test("should handle client sends operations + server returns operations", async () => {
@@ -254,7 +254,7 @@ describe("Client 2", () => {
         expect.objectContaining({ docId, operations: [ops({ client: "op" })] }),
       );
       expect(await getOperationsCount(client, docId)).toBe(0);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+      expect(client["_docsCache"].get(docId)?.pushStatus).toBe("idle");
     });
 
     test("should handle client sends no operations + server returns no operations (pull with no updates)", async () => {
@@ -281,7 +281,7 @@ describe("Client 2", () => {
         "sync",
         expect.objectContaining({ docId, operations: [] }),
       );
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+      expect(client["_docsCache"].get(docId)?.pushStatus).toBe("idle");
     });
 
     test("should handle client sends no operations + server returns operations (pull with updates)", async () => {
@@ -334,7 +334,7 @@ describe("Client 2", () => {
       // Verify server operations were applied to stored document
       const storedDoc = await provider.transaction("readonly", async (ctx) => {
         const stored = await ctx.getSerializedDoc(docId);
-        if (!stored) return null;
+        if (!stored || stored.serializedDoc === "deleted") return null;
         return docBinding.deserialize(stored.serializedDoc);
       });
 
@@ -343,7 +343,7 @@ describe("Client 2", () => {
       storedDoc.root.children().forEach(() => storedChildren++);
       // Should have the 2 server children
       expect(storedChildren).toBe(2);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+      expect(client["_docsCache"].get(docId)?.pushStatus).toBe("idle");
     });
   });
 
@@ -441,7 +441,7 @@ describe("Client 2", () => {
       await setupDocWithOperations(client, docId);
       triggerSync(client, docId);
       await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .poll(() => client["_docsCache"].get(docId)?.pushStatus)
         .toBe("idle");
     });
   });
@@ -485,7 +485,7 @@ describe("Client 2", () => {
       triggerSync(client, docId);
       await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
       await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .poll(() => client["_docsCache"].get(docId)?.pushStatus)
         .toBe("idle");
     });
 
@@ -495,7 +495,7 @@ describe("Client 2", () => {
       const statusHistory: (string | undefined)[] = [];
       const requestSpy = spyOnRequest(client);
       requestSpy.mockImplementation(() => {
-        statusHistory.push(client["_pushStatusByDocId"].get(docId));
+        statusHistory.push(client["_docsCache"].get(docId)?.pushStatus);
         if (statusHistory.length === 1)
           return Promise.reject(new Error("Network error"));
         return Promise.resolve({ data: { docId, operations: [], clock: 1 } });
@@ -628,16 +628,16 @@ describe("Client 2", () => {
 
       triggerSync(client, docId);
       await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .poll(() => client["_docsCache"].get(docId)?.pushStatus)
         .toBe("pushing");
 
       triggerSync(client, docId);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe(
+      expect(client["_docsCache"].get(docId)?.pushStatus).toBe(
         "pushing-with-pending",
       );
 
       await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .poll(() => client["_docsCache"].get(docId)?.pushStatus)
         .toBe("idle");
     });
   });

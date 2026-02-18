@@ -67,12 +67,21 @@ describe("Client Events", () => {
       await saveOperations(client, docId);
       triggerSync(client, docId);
       await expect
-        .poll(() => client["_pushStatusByDocId"].size)
-        .toBeGreaterThan(0);
+        .poll(() =>
+          [...client["_docsCache"].values()].some(
+            (e) => e.pushStatus !== "idle",
+          ),
+        )
+        .toBe(true);
 
-      client["_pushStatusByDocId"].clear();
       client["_events"].emit("disconnect", { reason: "test" });
-      await expect.poll(() => client["_pushStatusByDocId"].size).toBe(0);
+      await expect
+        .poll(() =>
+          [...client["_docsCache"].values()].every(
+            (e) => e.pushStatus === "idle",
+          ),
+        )
+        .toBe(true);
     });
   });
 

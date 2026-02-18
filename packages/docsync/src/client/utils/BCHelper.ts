@@ -51,7 +51,7 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
     const cacheEntry = client["_docsCache"].get(docId);
     if (!cacheEntry) return;
     const doc = await cacheEntry.promisedDoc;
-    if (!doc) return;
+    if (!doc || doc === "deleted") return;
     client["_shouldBroadcast"] = false;
     client["_docBinding"].applyOperations(doc, operations);
     client["_shouldBroadcast"] = true;

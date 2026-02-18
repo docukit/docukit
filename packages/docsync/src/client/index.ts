@@ -14,7 +14,10 @@ import type {
 import type { ClientEventMap, ClientEventName } from "./utils/events.js";
 import { createClientEventEmitter } from "./utils/events.js";
 import { handleConnect } from "./handlers/connection/connect.js";
-import { handleDeleteDoc } from "./handlers/clientInitiated/deleteDoc.js";
+import {
+  handleDelete,
+  handleDeleteDoc,
+} from "./handlers/clientInitiated/deleteDoc.js";
 import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { handleDirty } from "./handlers/serverInitiated/dirty.js";
 import { handlePresence } from "./handlers/clientInitiated/presence.js";
@@ -42,7 +45,7 @@ export class DocSyncClient<
   protected _docsCache = new Map<
     string,
     {
-      promisedDoc: Promise<D | undefined>;
+      promisedDoc: Promise<D | "deleted" | undefined>;
       refCount: number;
       presence: Presence;
       presenceListeners: Set<(presence: Presence) => void>;
@@ -151,9 +154,9 @@ export class DocSyncClient<
     const type = args.type;
     const argId = "id" in args ? args.id : undefined;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
-    // Internal emit uses wider type; runtime logic ensures correct data per overload
+    // Internal emit uses wider type (doc may be "deleted"); runtime logic ensures correct data per overload
     const emit = onChange as (
-      result: QueryResult<DocData<D> | undefined>,
+      result: QueryResult<DocData<D | "deleted"> | undefined>,
     ) => void;
     let docId: string | undefined;
 
@@ -224,7 +227,7 @@ export class DocSyncClient<
 
       void (async () => {
         try {
-          let doc: D | undefined;
+          let doc: D | "deleted" | undefined;
           let source: "cache" | "local" | "created" = "local";
           const cacheEntry = this._docsCache.get(docId)!;
           if (existingCacheEntry) {
@@ -232,7 +235,7 @@ export class DocSyncClient<
             source = "cache";
           } else {
             doc = await cacheEntry.promisedDoc;
-            if (doc) {
+            if (doc && doc !== "deleted") {
               // Register listener only for new docs (not cache hits)
               this._setupChangeListener(doc, docId);
               source = createIfMissing ? "created" : "local";
@@ -336,7 +339,7 @@ export class DocSyncClient<
   private async _loadOrCreateDoc(
     docId: string,
     type?: string,
-  ): Promise<D | undefined> {
+  ): Promise<D | "deleted" | undefined> {
     const local = await this._localPromise;
     if (!local) return undefined;
 
@@ -344,6 +347,9 @@ export class DocSyncClient<
       // Try to load existing doc
       const stored = await ctx.getSerializedDoc(docId);
       const localOperations = await ctx.getOperations({ docId });
+
+      if (localOperations === "deleted") return "deleted";
+      if (stored?.serializedDoc === "deleted") return "deleted";
 
       if (stored) {
         const doc = this._docBinding.deserialize(stored.serializedDoc);
@@ -361,7 +367,7 @@ export class DocSyncClient<
       if (type) {
         const { doc } = this._docBinding.create(type, docId);
         this._shouldBroadcast = false;
-        if (localOperations.length)
+        if (localOperations.length > 0)
           throw new Error(
             `Doc ${docId} has operations stored locally but no serialized doc found`,
           );
@@ -401,7 +407,7 @@ export class DocSyncClient<
         if (currentEntry.presenceDebounceState)
           clearTimeout(currentEntry.presenceDebounceState.timeout);
         this._docsCache.delete(docId);
-        if (doc) {
+        if (doc && doc !== "deleted") {
           await handleUnsubscribe(this._socket, { docId });
           this._docBinding.dispose(doc);
         }
@@ -447,6 +453,14 @@ export class DocSyncClient<
 
   protected async _deleteDoc(docId: string): Promise<boolean> {
     return handleDeleteDoc(this._socket, { docId });
+  }
+
+  /**
+   * Delete a document: persist a local "deleted" marker (so it survives offline),
+   * update cache, then either queue sync (offline) or send delete to server and clear ops on success.
+   */
+  async deleteDoc({ docId }: { docId: string }): Promise<void> {
+    await handleDelete(this, docId);
   }
 
   /**

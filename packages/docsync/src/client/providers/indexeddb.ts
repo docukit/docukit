@@ -14,11 +14,11 @@ import type {
 interface DocNodeIDB<S, O> extends DBSchema {
   docs: {
     key: string; // docId
-    value: SerializedDocPayload<S>;
+    value: SerializedDocPayload<S | "deleted">;
   };
   operations: {
     key: number;
-    value: { operations: O[]; docId: string };
+    value: { operations: O[] | "deleted"; docId: string };
     indexes: { docId_idx: string };
   };
 }
@@ -57,17 +57,17 @@ export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
         return await store.get(docId);
       },
 
-      async saveSerializedDoc(payload: SerializedDocPayload<S>) {
+      async saveSerializedDoc(payload: SerializedDocPayload<S | "deleted">) {
         const store = tx.objectStore("docs");
         await store.put(payload);
       },
 
       async getOperations({ docId }: { docId: string }) {
-        // TODO: maybe I should add a docbinding.mergeOperations call here?
         const store = tx.objectStore("operations");
         const index = store.index("docId_idx");
         const result = await index.getAll(docId);
-        return result.map((r) => r.operations);
+        if (result.at(-1)?.operations === "deleted") return "deleted";
+        return result.map((r) => r.operations as O[]);
       },
 
       async saveOperations({
@@ -75,9 +75,10 @@ export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
         operations,
       }: {
         docId: string;
-        operations: O[];
+        operations: O[] | "deleted";
       }) {
         const store = tx.objectStore("operations");
+        if (operations === "deleted") await this.deleteOperations({ docId });
         await store.add({ operations, docId });
       },
 
@@ -86,14 +87,14 @@ export class IndexedDBProvider<S, O> implements ClientProvider<S, O> {
         count,
       }: {
         docId: string;
-        count: number;
+        count?: number;
       }) {
-        if (count <= 0) return;
+        if (count && count <= 0) return;
         const store = tx.objectStore("operations");
         const index = store.index("docId_idx");
         let cursor = await index.openCursor(IDBKeyRange.only(docId));
         let deletedCount = 0;
-        while (cursor && deletedCount < count) {
+        while (cursor && deletedCount < (count ?? Infinity)) {
           await cursor.delete();
           deletedCount++;
           cursor = await cursor.continue();

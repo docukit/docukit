@@ -1,7 +1,7 @@
 import type { ServerProvider, ServerProviderContext } from "../types.js";
 
 interface StoredDoc<S> {
-  serializedDoc: S;
+  serializedDoc: S | "deleted";
   clock: number;
 }
 

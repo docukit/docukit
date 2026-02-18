@@ -59,11 +59,14 @@ export type ClientConfig<
 export type ClientProviderContext<S, O> = {
   getSerializedDoc(
     docId: string,
-  ): Promise<{ serializedDoc: S; clock: number } | undefined>;
-  getOperations(arg: { docId: string }): Promise<O[][]>;
-  deleteOperations(arg: { docId: string; count: number }): Promise<void>;
-  saveOperations(arg: { docId: string; operations: O[] }): Promise<void>;
-  saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
+  ): Promise<{ serializedDoc: S | "deleted"; clock: number } | undefined>;
+  saveSerializedDoc(arg: SerializedDocPayload<S | "deleted">): Promise<void>;
+  getOperations(arg: { docId: string }): Promise<O[][] | "deleted">;
+  saveOperations(arg: {
+    docId: string;
+    operations: O[] | "deleted";
+  }): Promise<void>;
+  deleteOperations(arg: { docId: string; count?: number }): Promise<void>;
 };
 
 /**
