@@ -1,8 +1,10 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type { SyncRequest, SyncResponse } from "../../../../shared/types.js";
+import type { SyncResponse } from "../../../../shared/types.js";
 import type { DocSyncClient } from "../../../index.js";
-import { getOwnPresencePatch } from "../../../utils/getOwnPresencePatch.js";
 import { request } from "../../../utils/request.js";
+import { applyAndBroadcastServerOps } from "./applyAndBroadcastServerOps.js";
+import { buildSyncPayload } from "./buildSyncPayload.js";
+import { persistSyncResult } from "./persistSyncResult.js";
 
 /**
  * Sync (push) a document to the server. Queues if already pushing (sets
@@ -22,42 +24,12 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   }
   cacheEntry.pushStatus = "pushing";
 
-  const { provider } = await client["_localPromise"];
   const socket = client["_socket"];
-  const docBinding = client["_docBinding"];
-
-  // Prepare payload: read operations and clock from provider, flush presence debounce
-  const [operationsBatches, stored] = await provider.transaction(
-    "readonly",
-    async (ctx) => {
-      return Promise.all([
-        ctx.getOperations({ docId }),
-        ctx.getSerializedDoc(docId),
-      ]);
-    },
-  );
-  const operations = operationsBatches.flat();
-  const clientClock = stored?.clock ?? 0;
-
-  const presenceState = cacheEntry.presenceDebounceState;
-  let presence: unknown;
-  if (presenceState !== undefined) {
-    clearTimeout(presenceState.timeout);
-    presence = presenceState.data;
-    cacheEntry.presenceDebounceState = undefined;
-    client["_bcHelper"]?.broadcast({
-      type: "PRESENCE",
-      docId,
-      presence: { [client["_clientId"]]: presence },
-    });
-  }
-  const payload: SyncRequest<O> = {
-    clock: clientClock,
+  const { payload, req, operationsBatches } = await buildSyncPayload(
+    client,
     docId,
-    operations,
-    ...(presence !== undefined ? { presence } : {}),
-  };
-  const req = { docId, operations, clock: clientClock };
+    cacheEntry,
+  );
 
   let response: SyncResponse<S, O>;
   try {
@@ -92,62 +64,25 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
       clock: data.clock,
     },
   });
-  let didConsolidate = false;
 
-  await provider.transaction("readwrite", async (ctx) => {
-    if (operationsBatches.length > 0) {
-      await ctx.deleteOperations({ docId, count: operationsBatches.length });
-    }
-
-    const stored = await ctx.getSerializedDoc(docId);
-    if (!stored) return;
-
-    if (stored.clock >= data.clock) {
-      didConsolidate = false;
-      return;
-    }
-
-    const serverOps = data.operations ?? [];
-    const allOps = [...serverOps, ...operations];
-    if (allOps.length === 0) return;
-
-    const doc = docBinding.deserialize(stored.serializedDoc);
-    for (const op of allOps) {
-      docBinding.applyOperations(doc, op);
-    }
-    const serializedDoc = docBinding.serialize(doc);
-
-    const recheckStored = await ctx.getSerializedDoc(docId);
-    if (recheckStored?.clock !== stored.clock) {
-      return;
-    }
-
-    await ctx.saveSerializedDoc({ serializedDoc, docId, clock: data.clock });
-    didConsolidate = true;
-  });
+  const operations =
+    typeof payload.operations === "string" ? [] : (payload.operations ?? []);
+  const didConsolidate = await persistSyncResult(
+    client,
+    docId,
+    data,
+    operationsBatches,
+    operations,
+  );
 
   const persistedServerOperations = data.operations ?? [];
   if (didConsolidate && persistedServerOperations.length > 0) {
-    await applyServerOperations(client, {
-      docId,
-      operations: persistedServerOperations,
-    });
-
-    const presencePatch = getOwnPresencePatch(client, docId);
-    for (const op of persistedServerOperations) {
-      client["_bcHelper"]?.broadcast({
-        type: "OPERATIONS",
-        operations: op,
-        docId,
-        ...(presencePatch && { presence: presencePatch }),
-      });
-    }
+    await applyAndBroadcastServerOps(client, docId, persistedServerOperations);
   }
 
   const currentEntry = client["_docsCache"].get(docId);
   if (currentEntry) {
-    const currentStatus = currentEntry.pushStatus;
-    const shouldRetry = currentStatus === "pushing-with-pending";
+    const shouldRetry = currentEntry.pushStatus === "pushing-with-pending";
     currentEntry.pushStatus = "idle";
     if (shouldRetry) {
       void handleSync(client, docId);
