@@ -14,7 +14,7 @@ export async function applyServerOperations<
   if (!cacheEntry) return;
 
   const doc = await cacheEntry.promisedDoc;
-  if (!doc) return;
+  if (!doc || doc === "deleted") return;
 
   client["_shouldBroadcast"] = false;
   for (const op of args.operations) {

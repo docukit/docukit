@@ -9,8 +9,6 @@ export type BuildSyncPayloadResult<O> = {
   operationsBatches: O[][];
 };
 
-type CacheEntryWithPresence = { presenceDebounceState: DeferredState<unknown> };
-
 /**
  * Reads operations and clock from provider, flushes presence debounce, and
  * builds the sync request payload and req object for events.
@@ -22,7 +20,7 @@ export async function buildSyncPayload<
 >(
   client: DocSyncClient<D, S, O>,
   docId: string,
-  cacheEntry: CacheEntryWithPresence,
+  cacheEntry: { presenceDebounceState: DeferredState<unknown> },
 ): Promise<BuildSyncPayloadResult<O>> {
   const { provider } = await client["_localPromise"];
 
