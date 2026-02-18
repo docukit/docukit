@@ -46,6 +46,7 @@ export class DocSyncClient<
       refCount: number;
       presence: Presence;
       presenceListeners: Set<(presence: Presence) => void>;
+      pushStatus: PushStatus;
     }
   >();
   protected _localPromise: Promise<LocalResolved<S, O>>;
@@ -61,7 +62,6 @@ export class DocSyncClient<
   protected _batchDelay = 50;
   protected _presenceDebounceState = new Map<string, DeferredState<unknown>>();
   protected _presenceDebounce = 200;
-  protected _pushStatusByDocId = new Map<string, PushStatus>();
 
   /** Typed as unknown so DocSyncClient remains covariant in O, S (assignable to DocSyncClient base). */
   protected _events = createClientEventEmitter();
@@ -166,6 +166,7 @@ export class DocSyncClient<
         refCount: 1,
         presence: {},
         presenceListeners: new Set(),
+        pushStatus: "idle",
       });
       this._setupChangeListener(doc, createdDocId);
       emit({ status: "success", data: { doc, docId: createdDocId } });
@@ -213,6 +214,7 @@ export class DocSyncClient<
           refCount: 1,
           presence: {},
           presenceListeners: new Set(),
+          pushStatus: "idle",
         });
       }
 

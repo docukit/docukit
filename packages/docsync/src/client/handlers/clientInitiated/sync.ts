@@ -56,6 +56,7 @@ export async function replaceDocInCache<
     refCount: cacheEntry.refCount,
     presence: cacheEntry.presence,
     presenceListeners: cacheEntry.presenceListeners,
+    pushStatus: cacheEntry.pushStatus,
   });
 }
 
@@ -67,13 +68,15 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   client: DocSyncClient<D, S, O>,
   docId: string,
 ): Promise<void> => {
-  const pushStatusByDocId = client["_pushStatusByDocId"];
-  const status = pushStatusByDocId.get(docId) ?? "idle";
+  const cacheEntry = client["_docsCache"].get(docId);
+  if (!cacheEntry) return;
+
+  const status = cacheEntry.pushStatus;
   if (status !== "idle") {
-    pushStatusByDocId.set(docId, "pushing-with-pending");
+    cacheEntry.pushStatus = "pushing-with-pending";
     return;
   }
-  pushStatusByDocId.set(docId, "pushing");
+  cacheEntry.pushStatus = "pushing";
 
   const { provider } = await client["_localPromise"];
   const socket = client["_socket"];
@@ -123,14 +126,14 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
         message: error instanceof Error ? error.message : String(error),
       },
     });
-    pushStatusByDocId.set(docId, "idle");
+    cacheEntry.pushStatus = "idle";
     void handleSync(client, docId);
     return;
   }
 
   if ("error" in response && response.error) {
     client["_events"].emit("sync", { req, error: response.error });
-    pushStatusByDocId.set(docId, "idle");
+    cacheEntry.pushStatus = "idle";
     void handleSync(client, docId);
     return;
   }
@@ -197,10 +200,13 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     }
   }
 
-  const currentStatus = pushStatusByDocId.get(docId);
-  const shouldRetry = currentStatus === "pushing-with-pending";
-  pushStatusByDocId.set(docId, "idle");
-  if (shouldRetry) {
-    void handleSync(client, docId);
+  const currentEntry = client["_docsCache"].get(docId);
+  if (currentEntry) {
+    const currentStatus = currentEntry.pushStatus;
+    const shouldRetry = currentStatus === "pushing-with-pending";
+    currentEntry.pushStatus = "idle";
+    if (shouldRetry) {
+      void handleSync(client, docId);
+    }
   }
 };

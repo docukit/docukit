@@ -22,16 +22,16 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
       const msg = ev.data;
       if (msg.type === "OPERATIONS") {
         const { docId, operations, presence } = msg;
-        const currentStatus = client["_pushStatusByDocId"].get(docId) ?? "idle";
-        if (currentStatus === "pushing") {
-          client["_pushStatusByDocId"].set(docId, "pushing-with-pending");
+        const cacheEntry = client["_docsCache"].get(docId);
+        if (cacheEntry) {
+          const currentStatus = cacheEntry.pushStatus;
+          if (currentStatus === "pushing") {
+            cacheEntry.pushStatus = "pushing-with-pending";
+          }
         }
         void this._applyOperations(client, operations, docId);
-        if (presence) {
-          const cacheEntry = client["_docsCache"].get(docId);
-          if (cacheEntry)
-            applyPresencePatch(client["_clientId"], cacheEntry, presence);
-        }
+        if (presence && cacheEntry)
+          applyPresencePatch(client["_clientId"], cacheEntry, presence);
         return;
       }
       if (msg.type === "PRESENCE") {
