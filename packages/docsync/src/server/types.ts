@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
+import type { Server, Socket } from "socket.io";
 import type {
   ClientToServerEvents,
   DocBinding,
@@ -39,9 +40,14 @@ export type SyncRequestEvent<O = unknown, S = unknown> = {
   socketId: string;
   status: "success" | "error";
 
-  req: { docId: string; operations?: O[]; clock: number; presence?: unknown };
+  req: {
+    docId: string;
+    operations?: O[] | "deleted";
+    clock: number;
+    presence?: unknown;
+  };
 
-  res?: { operations?: O[]; clock?: number; serializedDoc?: S };
+  res?: { operations?: O[]; clock?: number; serializedDoc?: S | "deleted" };
 
   durationMs?: number;
   devicesCount?: number;
@@ -123,15 +129,32 @@ export type ServerProvider<S, O> = {
 // Socket (server)
 // ============================================================================
 
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- type-only reference to socket.io
-export type ServerSocket<S, O> = import("socket.io").Server<
+/**
+ * Data attached to each socket after authentication. Used as the 4th type
+ * parameter of Socket.IO Server/Socket so that socket.data is typed.
+ */
+export type AuthenticatedContext<TContext = {}> = {
+  userId: string;
+  deviceId: string;
+  /** Client-generated id for presence (set from auth or socket.id in connection flow) */
+  clientId: string;
+  context: TContext;
+};
+
+/** InterServerEvents: unused; we do not use serverSideEmit. */
+type InterServerEvents = Record<string, never>;
+
+export type ServerSocket<S, O, TContext = {}> = Server<
   ClientToServerEvents<S, O>,
-  ServerToClientEvents
+  ServerToClientEvents,
+  InterServerEvents,
+  AuthenticatedContext<TContext>
 >;
 
 /** Per-connection socket on the server (has .id, .join, .emit, .on, etc.). */
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- type-only reference to socket.io
-export type ServerConnectionSocket<S, O> = import("socket.io").Socket<
+export type ServerConnectionSocket<S, O, TContext = {}> = Socket<
   ClientToServerEvents<S, O>,
-  ServerToClientEvents
+  ServerToClientEvents,
+  InterServerEvents,
+  AuthenticatedContext<TContext>
 >;

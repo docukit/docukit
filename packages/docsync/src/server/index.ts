@@ -2,6 +2,7 @@
 import { Server } from "socket.io";
 import type { DocBinding, Presence } from "../shared/types.js";
 import type {
+  AuthenticatedContext,
   ClientConnectEventListener,
   ClientDisconnectEventListener,
   ServerConfig,
@@ -12,16 +13,8 @@ import type {
 import { handleDeleteDoc } from "./handlers/deleteDoc.js";
 import { handleDisconnect } from "./handlers/disconnect.js";
 import { handlePresence } from "./handlers/presence.js";
-import { handleSync } from "./handlers/sync.js";
+import { handleSync } from "./handlers/sync/handleSync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
-
-type AuthenticatedContext<TContext = {}> = {
-  userId: string;
-  deviceId: string;
-  /** Client-generated id for presence (set from auth or socket.id in connection flow) */
-  clientId: string;
-  context: TContext;
-};
 
 export class DocSyncServer<
   TContext = {},
@@ -29,7 +22,7 @@ export class DocSyncServer<
   S extends {} = {},
   O extends {} = {},
 > {
-  private _io: ServerSocket<S, O>;
+  private _io: ServerSocket<S, O, TContext>;
   private _docBinding: DocBinding<D, S, O>;
   private _provider: ServerProvider<S, O>;
   private _authenticate: ServerConfig<TContext, D, S, O>["authenticate"];
@@ -120,8 +113,7 @@ export class DocSyncServer<
     );
 
     this._io.on("connection", (socket) => {
-      const { userId, deviceId, clientId, context } =
-        socket.data as AuthenticatedContext;
+      const { userId, deviceId, context } = socket.data;
 
       // Emit client connect event
       this._emit(this._clientConnectEventListeners, {
@@ -131,13 +123,12 @@ export class DocSyncServer<
         context,
       });
 
-      const server = this as DocSyncServer;
-      handleDisconnect({ server, socket, userId, deviceId, clientId });
-      // prettier-ignore
-      handleSync({ server, socket, userId, deviceId, clientId, context });
-      handleUnsubscribeDoc({ server, socket, clientId });
-      handlePresence({ server, socket, userId, clientId, context });
-      handleDeleteDoc({ server, socket, userId, context });
+      const server = this;
+      handleDisconnect({ server, socket });
+      handleSync({ server, socket });
+      handleUnsubscribeDoc({ server, socket });
+      handlePresence({ server, socket });
+      handleDeleteDoc({ server, socket });
     });
   }
 
