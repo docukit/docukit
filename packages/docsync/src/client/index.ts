@@ -22,7 +22,7 @@ import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { handleDirty } from "./handlers/serverInitiated/dirty.js";
 import { handlePresence } from "./handlers/clientInitiated/presence.js";
 import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
-import { handleSync } from "./handlers/clientInitiated/sync.js";
+import { handleSync } from "./handlers/clientInitiated/sync/sync.js";
 import { handleUnsubscribe } from "./handlers/clientInitiated/unsubscribe.js";
 import { BCHelper } from "./utils/BCHelper.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
