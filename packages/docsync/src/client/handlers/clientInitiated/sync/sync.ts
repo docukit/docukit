@@ -3,7 +3,7 @@ import type { SyncResponse } from "../../../../shared/types.js";
 import type { DocSyncClient } from "../../../index.js";
 import { request } from "../../../utils/request.js";
 import { buildSyncPayload } from "./buildSyncPayload.js";
-import { handleSyncResponse } from "./handleSyncResponse.js";
+import { handleSyncResponse } from "./handleSyncResponse/handleSyncResponse.js";
 
 /**
  * Sync (push) a document to the server. Queues if already pushing (sets

@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import type { SyncRequest } from "../../../../shared/types.js";
-import type { DocSyncClient } from "../../../index.js";
+import type { SyncRequest } from "../../../../../shared/types.js";
+import type { DocSyncClient } from "../../../../index.js";
 import { applyAndBroadcastServerOps } from "./applyAndBroadcastServerOps.js";
-import type { BuildSyncPayloadResult } from "./buildSyncPayload.js";
+import type { BuildSyncPayloadResult } from "../buildSyncPayload.js";
 import { persistDocDeleted } from "./persistDocDeleted.js";
 import {
   type SyncResponseData,

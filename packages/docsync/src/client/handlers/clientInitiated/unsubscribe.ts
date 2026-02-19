@@ -2,7 +2,7 @@ import type { UnsubscribeDocRequest } from "../../../shared/types.js";
 import type { ClientSocket } from "../../types.js";
 import { request } from "../../utils/request.js";
 
-export const handleUnsubscribe = async (
+export const handleUnsubscribeDoc = async (
   socket: ClientSocket<object, object>,
   payload: UnsubscribeDocRequest,
   timeoutMs = 5000,
