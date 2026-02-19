@@ -18,7 +18,7 @@ describe("Server Events", () => {
       const auth = { getToken: async () => "valid-user1" };
       await testWrapper({ auth }, async (T) => {
         let called = false;
-        T.server.onClientConnect(() => {
+        T.server.on("clientConnect", () => {
           called = true;
         });
 
@@ -45,7 +45,7 @@ describe("Server Events", () => {
       });
 
       let capturedContext: { role: string; permissions: string[] } | undefined;
-      server.onClientConnect((event) => {
+      server.on("clientConnect", (event) => {
         capturedContext = event.context;
       });
 
@@ -71,10 +71,10 @@ describe("Server Events", () => {
         let called1 = false;
         let called2 = false;
 
-        T.server.onClientConnect(() => {
+        T.server.on("clientConnect", () => {
           called1 = true;
         });
-        T.server.onClientConnect(() => {
+        T.server.on("clientConnect", () => {
           called2 = true;
         });
 
@@ -99,7 +99,7 @@ describe("Server Events", () => {
       });
 
       let called = false;
-      const unsubscribe = server.onClientConnect(() => {
+      const unsubscribe = server.on("clientConnect", () => {
         called = true;
       });
       unsubscribe();
@@ -124,7 +124,7 @@ describe("Server Events", () => {
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: ClientConnectEvent | undefined;
 
-        T.server.onClientConnect((event) => {
+        T.server.on("clientConnect", (event) => {
           capturedEvent = event;
         });
 
@@ -147,7 +147,7 @@ describe("Server Events", () => {
         let disconnectReason: string | undefined;
 
         await T.waitForConnect();
-        T.server.onClientDisconnect((event) => {
+        T.server.on("clientDisconnect", (event) => {
           disconnectReason = event.reason;
         });
 
@@ -174,10 +174,10 @@ describe("Server Events", () => {
 
         await T.waitForConnect();
 
-        T.server.onClientDisconnect(() => {
+        T.server.on("clientDisconnect", () => {
           called1 = true;
         });
-        T.server.onClientDisconnect(() => {
+        T.server.on("clientDisconnect", () => {
           called2 = true;
         });
 
@@ -195,7 +195,7 @@ describe("Server Events", () => {
         let called = false;
 
         await T.waitForConnect();
-        const unsubscribe = T.server.onClientDisconnect(() => {
+        const unsubscribe = T.server.on("clientDisconnect", () => {
           called = true;
         });
         unsubscribe();
@@ -214,7 +214,7 @@ describe("Server Events", () => {
 
         await T.waitForConnect();
 
-        T.server.onClientDisconnect((event) => {
+        T.server.on("clientDisconnect", (event) => {
           capturedEvent = event;
         });
 
@@ -237,7 +237,7 @@ describe("Server Events", () => {
       const auth = { getToken: async () => "valid-user9" };
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
-        T.server.onSyncRequest((event) => {
+        T.server.on("syncRequest", (event) => {
           capturedEvent = event;
         });
 
@@ -278,7 +278,7 @@ describe("Server Events", () => {
       });
 
       let capturedStatus: string | undefined;
-      server.onSyncRequest((event) => {
+      server.on("syncRequest", (event) => {
         capturedStatus = event.status;
       });
 
@@ -304,7 +304,7 @@ describe("Server Events", () => {
       const auth = { getToken: async () => "valid-user11" };
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
-        T.server.onSyncRequest((event) => {
+        T.server.on("syncRequest", (event) => {
           capturedEvent = event;
         });
 
@@ -328,7 +328,7 @@ describe("Server Events", () => {
       const auth = { getToken: async () => "valid-user12" };
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
-        T.server.onSyncRequest((event) => {
+        T.server.on("syncRequest", (event) => {
           capturedEvent = event;
         });
 
@@ -361,10 +361,10 @@ describe("Server Events", () => {
         let called1 = false;
         let called2 = false;
 
-        T.server.onSyncRequest(() => {
+        T.server.on("syncRequest", () => {
           called1 = true;
         });
-        T.server.onSyncRequest(() => {
+        T.server.on("syncRequest", () => {
           called2 = true;
         });
 
@@ -384,7 +384,7 @@ describe("Server Events", () => {
       const auth = { getToken: async () => "valid-user16" };
       await testWrapper({ auth }, async (T) => {
         let called = false;
-        const unsubscribe = T.server.onSyncRequest(() => {
+        const unsubscribe = T.server.on("syncRequest", () => {
           called = true;
         });
         unsubscribe();
@@ -404,7 +404,7 @@ describe("Server Events", () => {
       const auth = { getToken: async () => "valid-user17" };
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
-        T.server.onSyncRequest((event) => {
+        T.server.on("syncRequest", (event) => {
           capturedEvent = event;
         });
 
@@ -426,7 +426,7 @@ describe("Server Events", () => {
       const auth = { getToken: async () => "valid-user18" };
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
-        T.server.onSyncRequest((event) => {
+        T.server.on("syncRequest", (event) => {
           capturedEvent = event;
         });
 
@@ -455,9 +455,9 @@ describe("Server Events", () => {
         const events: string[] = [];
 
         // Register handlers before waiting for connect
-        T.server.onClientConnect(() => events.push("connect"));
-        T.server.onSyncRequest(() => events.push("sync"));
-        T.server.onClientDisconnect(() => events.push("disconnect"));
+        T.server.on("clientConnect", () => events.push("connect"));
+        T.server.on("syncRequest", () => events.push("sync"));
+        T.server.on("clientDisconnect", () => events.push("disconnect"));
 
         // Wait for connection (connect event should have fired by now if handler was registered in time)
         await T.waitForConnect();
@@ -488,7 +488,7 @@ describe("Server Events", () => {
       await testWrapper({ auth }, async (T) => {
         const docIds: string[] = [];
 
-        T.server.onSyncRequest((event) => {
+        T.server.on("syncRequest", (event) => {
           docIds.push(event.req.docId);
         });
 
@@ -535,7 +535,7 @@ describe("Server Events", () => {
       });
 
       let capturedEvent: SyncRequestEvent | undefined;
-      server.onSyncRequest((event) => {
+      server.on("syncRequest", (event) => {
         capturedEvent = event;
       });
 
@@ -567,7 +567,7 @@ describe("Server Events", () => {
       const auth = { getToken: async () => "valid-user22" };
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
-        T.server.onSyncRequest((event) => {
+        T.server.on("syncRequest", (event) => {
           capturedEvent = event;
         });
 

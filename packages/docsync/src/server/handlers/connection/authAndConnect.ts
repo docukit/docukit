@@ -64,7 +64,7 @@ export function handleAuthAndConnect<
     "connection_error",
     (err: { req: { _query?: { deviceId?: string } }; message: string }) => {
       const deviceId = err.req._query?.deviceId ?? "unknown";
-      server["_emit"](server["_clientDisconnectEventListeners"], {
+      server["_events"].emit("clientDisconnect", {
         userId: "unknown",
         deviceId,
         socketId: "unknown",
@@ -76,7 +76,7 @@ export function handleAuthAndConnect<
   io.on("connection", (socket) => {
     const { userId, deviceId, context } = socket.data;
 
-    server["_emit"](server["_clientConnectEventListeners"], {
+    server["_events"].emit("clientConnect", {
       userId,
       deviceId,
       socketId: socket.id,

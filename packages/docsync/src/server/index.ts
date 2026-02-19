@@ -1,15 +1,10 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { Server } from "socket.io";
 import type { DocBinding, Presence } from "../shared/types.js";
-import type {
-  ClientConnectEventListener,
-  ClientDisconnectEventListener,
-  ServerConfig,
-  ServerProvider,
-  ServerSocket,
-  SyncRequestEventListener,
-} from "./types.js";
+import type { ServerConfig, ServerProvider, ServerSocket } from "./types.js";
+import type { ServerEventMap, ServerEventName } from "./utils/events.js";
 import { handleAuthAndConnect } from "./handlers/connection/authAndConnect.js";
+import { createServerEventEmitter } from "./utils/events.js";
 import { handleDeleteDoc } from "./handlers/deleteDoc.js";
 import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { handlePresence } from "./handlers/presence.js";
@@ -34,12 +29,7 @@ export class DocSyncServer<
   // Track which sockets are subscribed to which documents (for cleanup on disconnect)
   private _socketToDocsMap = new Map<string, Set<string>>();
 
-  // Event listeners (observers); distinct from socket request/response handlers
-  // ClientConnectEventListener and SyncRequestEventListener use default (unknown) to allow covariance
-  private _clientConnectEventListeners = new Set<ClientConnectEventListener>();
-  private _clientDisconnectEventListeners =
-    new Set<ClientDisconnectEventListener>();
-  private _syncRequestEventListeners = new Set<SyncRequestEventListener>();
+  private _events = createServerEventEmitter<TContext, O, S>();
 
   constructor(config: ServerConfig<TContext, D, S, O>) {
     this._io = new Server(config.port ?? 8080, {
@@ -72,55 +62,21 @@ export class DocSyncServer<
   }
 
   // ============================================================================
-  // Event Registration Methods
+  // Event Registration
   // ============================================================================
 
   /**
-   * Register a listener for client connection events.
-   * @returns Unsubscribe function
+   * Register a listener for an event. Returns an unsubscribe function.
    */
-  onClientConnect(listener: ClientConnectEventListener<TContext>): () => void {
-    this._clientConnectEventListeners.add(
-      listener as ClientConnectEventListener,
+  on<K extends ServerEventName>(
+    event: K,
+    listener: (payload: ServerEventMap<TContext, O, S>[K]) => void,
+  ): () => void {
+    return this._events.on(
+      event,
+      listener as (
+        payload: ServerEventMap<TContext, O, S>[ServerEventName],
+      ) => void,
     );
-    return () => {
-      this._clientConnectEventListeners.delete(
-        listener as ClientConnectEventListener,
-      );
-    };
-  }
-
-  /**
-   * Register a listener for client disconnection events.
-   * @returns Unsubscribe function
-   */
-  onClientDisconnect(listener: ClientDisconnectEventListener): () => void {
-    this._clientDisconnectEventListeners.add(listener);
-    return () => {
-      this._clientDisconnectEventListeners.delete(listener);
-    };
-  }
-
-  /**
-   * Register a listener for sync request events.
-   * @returns Unsubscribe function
-   */
-  onSyncRequest(listener: SyncRequestEventListener<O, S>): () => void {
-    this._syncRequestEventListeners.add(listener as SyncRequestEventListener);
-    return () => {
-      this._syncRequestEventListeners.delete(
-        listener as SyncRequestEventListener,
-      );
-    };
-  }
-
-  // ============================================================================
-  // Event Emitters (private methods)
-  // ============================================================================
-
-  protected _emit<T>(listeners: Set<(event: T) => void>, event: T) {
-    for (const listener of listeners) {
-      listener(event);
-    }
   }
 }

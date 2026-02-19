@@ -80,7 +80,7 @@ export function handleSync<
           operations,
         );
 
-        server["_emit"](server["_syncRequestEventListeners"], {
+        server["_events"].emit("syncRequest", {
           userId,
           deviceId,
           socketId: socket.id,

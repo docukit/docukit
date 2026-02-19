@@ -161,12 +161,12 @@ Return `true` to allow the operation, `false` to deny.
 
 ## Events
 
-### onClientConnect
+### clientConnect
 
 Called when a client successfully connects after authentication.
 
 ```ts
-server.onClientConnect((event) => {
+server.on("clientConnect", (event) => {
   console.log(`User ${event.userId} connected from device ${event.deviceId}`);
 });
 ```
@@ -183,12 +183,12 @@ server.onClientConnect((event) => {
   }}
 />
 
-### onClientDisconnect
+### clientDisconnect
 
 Called when a client disconnects.
 
 ```ts
-server.onClientDisconnect((event) => {
+server.on("clientDisconnect", (event) => {
   console.log(`User ${event.userId} disconnected: ${event.reason}`);
 });
 ```
@@ -215,12 +215,12 @@ server.onClientDisconnect((event) => {
   }}
 />
 
-### onSyncRequest
+### syncRequest
 
 Called after each sync request completes. Follows "wide events" philosophy: one event per operation with all context.
 
 ```ts
-server.onSyncRequest((event) => {
+server.on("syncRequest", (event) => {
   console.log(
     `Sync ${event.status} for doc ${event.req.docId} in ${event.durationMs}ms`,
   );

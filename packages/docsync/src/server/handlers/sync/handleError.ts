@@ -24,7 +24,7 @@ export function handleError<
   const errorEvent = { type: "DatabaseError" as const, message: errorMessage };
   const { userId, deviceId } = socket.data;
 
-  server["_emit"](server["_syncRequestEventListeners"], {
+  server["_events"].emit("syncRequest", {
     userId,
     deviceId,
     socketId: socket.id,

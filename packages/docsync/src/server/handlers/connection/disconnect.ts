@@ -29,7 +29,7 @@ export function handleDisconnect<
       socketToDocsMap.delete(socket.id);
     }
 
-    server["_emit"](server["_clientDisconnectEventListeners"], {
+    server["_events"].emit("clientDisconnect", {
       userId,
       deviceId,
       socketId: socket.id,

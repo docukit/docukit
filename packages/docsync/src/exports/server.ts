@@ -6,5 +6,9 @@ export type {
   ClientDisconnectEvent,
   SyncRequestEvent,
 } from "../server/types.js";
+export type {
+  ServerEventMap,
+  ServerEventName,
+} from "../server/utils/events.js";
 export { PostgresProvider } from "../server/providers/postgres/index.js";
 export { InMemoryServerProvider } from "../server/providers/memory.js";

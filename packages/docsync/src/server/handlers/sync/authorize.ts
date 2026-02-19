@@ -32,7 +32,7 @@ export async function authorize<
       message: "Access denied",
     };
 
-    server["_emit"](server["_syncRequestEventListeners"], {
+    server["_events"].emit("syncRequest", {
       userId,
       deviceId,
       socketId,
