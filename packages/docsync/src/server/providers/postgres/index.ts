@@ -42,16 +42,20 @@ export class PostgresProvider<S, O> implements ServerProvider<S, O> {
         },
 
         deleteOperations: async ({ docId, count }) => {
-          // Get the first `count` operations ordered by clock (oldest first)
-          const toDelete = await tx
+          // When count is undefined, delete all; otherwise delete oldest first up to count.
+          const baseQuery = tx
             .select({
               docId: schema.operations.docId,
               clock: schema.operations.clock,
             })
             .from(schema.operations)
             .where(eq(schema.operations.docId, docId))
-            .orderBy(schema.operations.clock)
-            .limit(count);
+            .orderBy(schema.operations.clock);
+
+          const toDelete =
+            count !== undefined
+              ? await baseQuery.limit(count)
+              : await baseQuery;
 
           if (toDelete.length > 0) {
             // Delete operations using their composite primary key (docId, clock)
