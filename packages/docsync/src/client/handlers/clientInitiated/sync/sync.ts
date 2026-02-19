@@ -2,10 +2,8 @@
 import type { SyncResponse } from "../../../../shared/types.js";
 import type { DocSyncClient } from "../../../index.js";
 import { request } from "../../../utils/request.js";
-import { applyAndBroadcastServerOps } from "./applyAndBroadcastServerOps.js";
 import { buildSyncPayload } from "./buildSyncPayload.js";
-import { persistDocDeleted } from "./persistDocDeleted.js";
-import { persistSyncResult } from "./persistSyncResult.js";
+import { handleSyncResponse } from "./handleSyncResponse.js";
 
 /**
  * Sync (push) a document to the server. Queues if already pushing (sets
@@ -28,7 +26,6 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   cacheEntry.pushStatus = "pushing";
 
   // Build the sync payload (clock, operations or serialized doc) and send request.
-  const socket = client["_socket"];
   const { payload, req, operationsBatches } = await buildSyncPayload(
     client,
     docId,
@@ -37,7 +34,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
 
   let response: SyncResponse<S, O>;
   try {
-    response = await request(socket, "sync", payload);
+    response = await request(client["_socket"], "sync", payload);
   } catch (error) {
     // Network failure: emit error, reset status, and retry sync once.
     client["_events"].emit("sync", {
@@ -60,60 +57,19 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     return;
   }
 
-  // Success: emit sync event with server data (operations, serializedDoc, clock).
-  const { data } = response;
-  client["_events"].emit("sync", {
+  await handleSyncResponse(
+    client,
+    docId,
+    payload,
     req,
-    data: {
-      docId: data.docId,
-      ...(data.operations ? { operations: data.operations } : {}),
-      ...(data.serializedDoc ? { serializedDoc: data.serializedDoc } : {}),
-      clock: data.clock,
-    },
-  });
+    operationsBatches,
+    response.data,
+  );
 
-  if (data.serializedDoc === "deleted") {
-    // Server says doc is deleted: persist deletion and resolve cache to "deleted".
-    await persistDocDeleted(client, docId, data.clock);
-    const entry = client["_docsCache"].get(docId);
-    if (entry) {
-      client["_docsCache"].set(docId, {
-        ...entry,
-        promisedDoc: Promise.resolve("deleted"),
-      });
-    }
-  } else {
-    // Normal sync: persist server result and optionally apply server ops locally.
-    if (payload.operations === "deleted")
-      throw new Error(
-        "If client sends 'deleted', server should respond with 'deleted' too",
-      );
-    const didConsolidate = await persistSyncResult(
-      client,
-      docId,
-      data,
-      operationsBatches,
-      payload.operations ?? [],
-    );
-
-    // If we consolidated and server sent new ops, apply them and broadcast to listeners.
-    const persistedServerOperations = data.operations ?? [];
-    if (didConsolidate && persistedServerOperations.length > 0) {
-      await applyAndBroadcastServerOps(
-        client,
-        docId,
-        persistedServerOperations,
-      );
-    }
-  }
-
-  // Reset push status; if another sync was queued (pushing-with-pending), run it now.
-  const currentEntry = client["_docsCache"].get(docId);
-  if (currentEntry) {
-    const shouldRetry = currentEntry.pushStatus === "pushing-with-pending";
-    currentEntry.pushStatus = "idle";
-    if (shouldRetry) {
-      void handleSync(client, docId);
-    }
+  const current = client["_docsCache"].get(docId);
+  if (current) {
+    const retry = current.pushStatus === "pushing-with-pending";
+    current.pushStatus = "idle";
+    if (retry) void handleSync(client, docId);
   }
 };
