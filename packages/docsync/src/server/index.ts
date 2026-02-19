@@ -61,10 +61,6 @@ export class DocSyncServer<
     await this._io.close();
   }
 
-  // ============================================================================
-  // Event Registration
-  // ============================================================================
-
   /**
    * Register a listener for an event. Returns an unsubscribe function.
    */
