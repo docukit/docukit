@@ -18,6 +18,8 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return;
 
+  // Serialize pushes: if a push is already in progress, mark that another one is
+  // pending and return; the pending sync will run after the current one finishes.
   const status = cacheEntry.pushStatus;
   if (status !== "idle") {
     cacheEntry.pushStatus = "pushing-with-pending";
@@ -25,6 +27,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   }
   cacheEntry.pushStatus = "pushing";
 
+  // Build the sync payload (clock, operations or serialized doc) and send request.
   const socket = client["_socket"];
   const { payload, req, operationsBatches } = await buildSyncPayload(
     client,
@@ -36,6 +39,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   try {
     response = await request(socket, "sync", payload);
   } catch (error) {
+    // Network failure: emit error, reset status, and retry sync once.
     client["_events"].emit("sync", {
       req,
       error: {
@@ -48,6 +52,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     return;
   }
 
+  // Server returned an application error (e.g. validation); emit and retry.
   if ("error" in response && response.error) {
     client["_events"].emit("sync", { req, error: response.error });
     cacheEntry.pushStatus = "idle";
@@ -55,6 +60,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     return;
   }
 
+  // Success: emit sync event with server data (operations, serializedDoc, clock).
   const { data } = response;
   client["_events"].emit("sync", {
     req,
@@ -67,6 +73,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   });
 
   if (data.serializedDoc === "deleted") {
+    // Server says doc is deleted: persist deletion and resolve cache to "deleted".
     await persistDocDeleted(client, docId, data.clock);
     const entry = client["_docsCache"].get(docId);
     if (entry) {
@@ -76,6 +83,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
       });
     }
   } else {
+    // Normal sync: persist server result and optionally apply server ops locally.
     if (payload.operations === "deleted")
       throw new Error(
         "If client sends 'deleted', server should respond with 'deleted' too",
@@ -88,6 +96,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
       payload.operations ?? [],
     );
 
+    // If we consolidated and server sent new ops, apply them and broadcast to listeners.
     const persistedServerOperations = data.operations ?? [];
     if (didConsolidate && persistedServerOperations.length > 0) {
       await applyAndBroadcastServerOps(
@@ -98,6 +107,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     }
   }
 
+  // Reset push status; if another sync was queued (pushing-with-pending), run it now.
   const currentEntry = client["_docsCache"].get(docId);
   if (currentEntry) {
     const shouldRetry = currentEntry.pushStatus === "pushing-with-pending";
