@@ -4,6 +4,7 @@ import type { DocSyncClient } from "../../../index.js";
 import { request } from "../../../utils/request.js";
 import { applyAndBroadcastServerOps } from "./applyAndBroadcastServerOps.js";
 import { buildSyncPayload } from "./buildSyncPayload.js";
+import { persistDocDeleted } from "./persistDocDeleted.js";
 import { persistSyncResult } from "./persistSyncResult.js";
 
 /**
@@ -65,19 +66,36 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     },
   });
 
-  const operations =
-    typeof payload.operations === "string" ? [] : (payload.operations ?? []);
-  const didConsolidate = await persistSyncResult(
-    client,
-    docId,
-    data,
-    operationsBatches,
-    operations,
-  );
+  if (data.serializedDoc === "deleted") {
+    await persistDocDeleted(client, docId, data.clock);
+    const entry = client["_docsCache"].get(docId);
+    if (entry) {
+      client["_docsCache"].set(docId, {
+        ...entry,
+        promisedDoc: Promise.resolve("deleted"),
+      });
+    }
+  } else {
+    if (payload.operations === "deleted")
+      throw new Error(
+        "If client sends 'deleted', server should respond with 'deleted' too",
+      );
+    const didConsolidate = await persistSyncResult(
+      client,
+      docId,
+      data,
+      operationsBatches,
+      payload.operations ?? [],
+    );
 
-  const persistedServerOperations = data.operations ?? [];
-  if (didConsolidate && persistedServerOperations.length > 0) {
-    await applyAndBroadcastServerOps(client, docId, persistedServerOperations);
+    const persistedServerOperations = data.operations ?? [];
+    if (didConsolidate && persistedServerOperations.length > 0) {
+      await applyAndBroadcastServerOps(
+        client,
+        docId,
+        persistedServerOperations,
+      );
+    }
   }
 
   const currentEntry = client["_docsCache"].get(docId);
