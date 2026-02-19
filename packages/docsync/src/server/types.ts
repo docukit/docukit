@@ -111,7 +111,7 @@ export type ServerProviderContext<S, O> = {
   saveSerializedDoc(arg: SerializedDocPayload<S | "deleted">): Promise<void>;
   getOperations(arg: { docId: string; clock: number }): Promise<O[][]>;
   saveOperations(arg: { docId: string; operations: O[] }): Promise<number>;
-  deleteOperations(arg: { docId: string; count: number }): Promise<void>;
+  deleteOperations(arg: { docId: string; count?: number }): Promise<void>;
 };
 
 /**

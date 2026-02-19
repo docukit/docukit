@@ -19,6 +19,8 @@ export async function squashIfNeeded<
   payload: SyncRequest<O>,
   result: SyncTransactionResult<S, O>,
 ): Promise<void> {
+  // TODO: maybe the squash for the delete case should be handled here
+  if (result.serializedDoc === "deleted") return;
   if (!result.operations || result.operations.length < OPERATION_THRESHOLD) {
     return;
   }
