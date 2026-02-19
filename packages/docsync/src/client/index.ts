@@ -23,7 +23,7 @@ import { handleDirty } from "./handlers/serverInitiated/dirty.js";
 import { handlePresence } from "./handlers/clientInitiated/presence.js";
 import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
 import { handleSync } from "./handlers/clientInitiated/sync/sync.js";
-import { handleUnsubscribe } from "./handlers/clientInitiated/unsubscribe.js";
+import { handleUnsubscribeDoc } from "./handlers/clientInitiated/unsubscribe.js";
 import { BCHelper } from "./utils/BCHelper.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
 import { getOwnPresencePatch } from "./utils/getOwnPresencePatch.js";
@@ -408,7 +408,7 @@ export class DocSyncClient<
           clearTimeout(currentEntry.presenceDebounceState.timeout);
         this._docsCache.delete(docId);
         if (doc && doc !== "deleted") {
-          await handleUnsubscribe(this._socket, { docId });
+          await handleUnsubscribeDoc(this._socket, { docId });
           this._docBinding.dispose(doc);
         }
       }
