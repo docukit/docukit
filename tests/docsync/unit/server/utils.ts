@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { DocSyncServer, InMemoryServerProvider } from "@docukit/docsync/server";
 import {

@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
-
 import type { DocBinding } from "../shared/types.js";
 
 export const createDocBinding = <D extends {}, S extends {}, O extends {} = {}>(

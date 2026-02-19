@@ -181,7 +181,10 @@ export const rootEslintConfig = tseslint.config(
     files: ["packages/**/exports/**"],
     rules: { "barrel-files/avoid-barrel-files": "off" },
   },
-
+  {
+    files: ["**/*docsync*/**"],
+    rules: { "@typescript-eslint/no-empty-object-type": "off" },
+  },
   {
     rules: {
       "@typescript-eslint/no-restricted-types": [

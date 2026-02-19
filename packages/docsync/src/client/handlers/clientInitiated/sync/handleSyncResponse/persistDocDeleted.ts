@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
-import type { DocSyncClient } from "../../../index.js";
+import type { DocSyncClient } from "../../../../index.js";
 
 /**
  * Persists that the document was deleted: deletes all operations for the doc

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { Server, Socket } from "socket.io";
 import type {
   ClientToServerEvents,

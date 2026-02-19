@@ -1,11 +1,9 @@
 // TODO: review this line! Importing socket.io and socket.io-client
 // as dynamic imports produces environment pollution errors.
-import type { DeleteDocHandler } from "../server/handlers/deleteDoc.js";
 import type { PresenceHandler } from "../server/handlers/presence.js";
 import type { SyncHandler } from "../server/handlers/sync/handleSync.js";
 import type { UnsubscribeDocHandler } from "../server/handlers/unsubscribe.js";
 
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 /**
  * DocSync Type Definitions
  *
@@ -109,7 +107,6 @@ export type SerializedDocPayload<S> = {
 export type ClientToServerEvents<S, O> = {
   sync: SyncHandler<S, O>;
   presence: PresenceHandler;
-  "delete-doc": DeleteDocHandler;
   "unsubscribe-doc": UnsubscribeDocHandler;
 };
 

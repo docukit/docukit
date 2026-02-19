@@ -1,7 +1,6 @@
 // Server unit tests - run in Node process for coverage
 // (integration tests run server in globalSetup, excluded from coverage)
 
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import { describe, test, expect, expectTypeOf } from "vitest";
 import { testWrapper, testPort } from "./utils.js";
 import { DocSyncServer, InMemoryServerProvider } from "@docukit/docsync/server";

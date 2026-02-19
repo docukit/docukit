@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import { vi, type Mock } from "vitest";
 import {
   DocSyncClient,

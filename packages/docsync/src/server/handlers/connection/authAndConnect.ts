@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { DocSyncServer } from "../../index.js";
 import type {
   AuthenticatedContext,

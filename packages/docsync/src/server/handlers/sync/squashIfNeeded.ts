@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { SyncRequest } from "../../../shared/types.js";
 import type { DocSyncServer } from "../../index.js";
 import type { SyncTransactionResult } from "./runSyncTransaction.js";

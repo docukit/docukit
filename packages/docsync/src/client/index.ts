@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import { io } from "socket.io-client";
 import type { DocBinding, Presence } from "../shared/types.js";
 import type {
@@ -14,10 +13,6 @@ import type {
 import type { ClientEventMap, ClientEventName } from "./utils/events.js";
 import { createClientEventEmitter } from "./utils/events.js";
 import { handleConnect } from "./handlers/connection/connect.js";
-import {
-  handleDelete,
-  handleDeleteDoc,
-} from "./handlers/clientInitiated/deleteDoc.js";
 import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { handleDirty } from "./handlers/serverInitiated/dirty.js";
 import { handlePresence } from "./handlers/clientInitiated/presence.js";
@@ -451,16 +446,12 @@ export class DocSyncClient<
     state.timeout = setTimeout(runBatch, this._batchDelay);
   }
 
-  protected async _deleteDoc(docId: string): Promise<boolean> {
-    return handleDeleteDoc(this._socket, { docId });
-  }
-
   /**
    * Delete a document: persist a local "deleted" marker (so it survives offline),
    * update cache, then either queue sync (offline) or send delete to server and clear ops on success.
    */
   async deleteDoc({ docId }: { docId: string }): Promise<void> {
-    await handleDelete(this, docId);
+    // await handleDelete(this, docId);
   }
 
   /**

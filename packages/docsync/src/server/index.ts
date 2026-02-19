@@ -1,11 +1,9 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import { Server } from "socket.io";
 import type { DocBinding, Presence } from "../shared/types.js";
 import type { ServerConfig, ServerProvider, ServerSocket } from "./types.js";
 import type { ServerEventMap, ServerEventName } from "./utils/events.js";
 import { handleAuthAndConnect } from "./handlers/connection/authAndConnect.js";
 import { createServerEventEmitter } from "./utils/events.js";
-import { handleDeleteDoc } from "./handlers/deleteDoc.js";
 import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { handlePresence } from "./handlers/presence.js";
 import { handleSync } from "./handlers/sync/handleSync.js";
@@ -50,7 +48,6 @@ export class DocSyncServer<
       handleSync({ server, socket });
       handleUnsubscribeDoc({ server, socket });
       handlePresence({ server, socket });
-      handleDeleteDoc({ server, socket });
     });
   }
 

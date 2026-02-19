@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { Presence } from "../../shared/types.js";
 import type { ServerConnectionSocket } from "../types.js";
 
