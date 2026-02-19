@@ -2,7 +2,6 @@
 import { Server } from "socket.io";
 import type { DocBinding, Presence } from "../shared/types.js";
 import type {
-  AuthenticatedContext,
   ClientConnectEventListener,
   ClientDisconnectEventListener,
   ServerConfig,
@@ -10,8 +9,9 @@ import type {
   ServerSocket,
   SyncRequestEventListener,
 } from "./types.js";
+import { handleAuthAndConnect } from "./handlers/connection/authAndConnect.js";
 import { handleDeleteDoc } from "./handlers/deleteDoc.js";
-import { handleDisconnect } from "./handlers/disconnect.js";
+import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { handlePresence } from "./handlers/presence.js";
 import { handleSync } from "./handlers/sync/handleSync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
@@ -52,78 +52,10 @@ export class DocSyncServer<
     this._provider = new config.provider();
     this._authenticate = config.authenticate.bind(config);
     this._authorize = config.authorize?.bind(config);
-    this._setupSocketServer();
-  }
 
-  private _setupSocketServer() {
-    // Middleware: authenticate before allowing connection
-    this._io.use((socket, next) => {
-      const { token, deviceId, clientId } = socket.handshake.auth;
-      if (!token || typeof token !== "string") {
-        next(new Error("Authentication required: no token provided"));
-        return;
-      }
-
-      if (!deviceId || typeof deviceId !== "string") {
-        next(new Error("Device ID required"));
-        return;
-      }
-
-      // TODO: should I check that no one is using an already taken ID, presumably intentionally?
-      if (!clientId || typeof clientId !== "string" || clientId.length === 0) {
-        next(new Error("Client ID required"));
-        return;
-      }
-
-      this._authenticate({ token })
-        .then((authResult) => {
-          if (!authResult) {
-            next(new Error("Authentication failed: invalid token"));
-            return;
-          }
-
-          // Attach authenticated context to socket data
-          socket.data = {
-            userId: authResult.userId,
-            deviceId,
-            clientId,
-            context: authResult.context ?? ({} as TContext),
-          } satisfies AuthenticatedContext<TContext>;
-
-          next();
-        })
-        .catch((err: unknown) => {
-          next(new Error(`Authentication error: ${String(err)}`));
-        });
-    });
-
-    // Handle connection errors (auth failures)
-    this._io.engine.on(
-      "connection_error",
-      (err: { req: { _query?: { deviceId?: string } }; message: string }) => {
-        // Try to extract deviceId from the failed connection request
-        const deviceId = err.req._query?.deviceId ?? "unknown";
-        this._emit(this._clientDisconnectEventListeners, {
-          userId: "unknown",
-          deviceId,
-          socketId: "unknown",
-          reason: `Authentication failed: ${err.message}`,
-        });
-      },
-    );
-
-    this._io.on("connection", (socket) => {
-      const { userId, deviceId, context } = socket.data;
-
-      // Emit client connect event
-      this._emit(this._clientConnectEventListeners, {
-        userId,
-        deviceId,
-        socketId: socket.id,
-        context,
-      });
-
-      const server = this;
+    // Setup socket server
+    const server = this;
+    handleAuthAndConnect(server, (socket) => {
       handleDisconnect({ server, socket });
       handleSync({ server, socket });
       handleUnsubscribeDoc({ server, socket });
