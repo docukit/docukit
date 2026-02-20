@@ -1,11 +1,11 @@
 import type { DocSyncClient } from "../index.js";
 import { handleSync } from "../handlers/clientInitiated/sync/sync.js";
 
-export function deleteDocMethod<
+export async function deleteDocMethod<
   D extends {} = {},
   S extends {} = {},
   O extends {} = {},
->(client: DocSyncClient<D, S, O>, args: { docId: string }): void {
+>(client: DocSyncClient<D, S, O>, args: { docId: string }): Promise<void> {
   const docId = args.docId;
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return;
@@ -14,11 +14,9 @@ export function deleteDocMethod<
   if (state) clearTimeout(state.timeout);
   cacheEntry.localOpsBatchState = undefined;
 
-  void (async () => {
-    const local = await client["_localPromise"];
-    await local?.provider.transaction("readwrite", (ctx) =>
-      ctx.saveOperations({ docId, operations: "deleted" }),
-    );
-    void handleSync(client, docId);
-  })();
+  const local = await client["_localPromise"];
+  await local?.provider.transaction("readwrite", (ctx) =>
+    ctx.saveOperations({ docId, operations: "deleted" }),
+  );
+  void handleSync(client, docId);
 }

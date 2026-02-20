@@ -191,7 +191,7 @@ export class DocSyncClient<
    * update cache, then either queue sync (offline) or send delete to server and clear ops on success.
    */
   deleteDoc({ docId }: { docId: string }): void {
-    deleteDocMethod(this, { docId });
+    void deleteDocMethod(this, { docId });
   }
 
   /**
