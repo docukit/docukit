@@ -1,6 +1,7 @@
-import type { DocSyncClient } from "../index.js";
-import type { DocData, GetDocArgs, QueryResult } from "../types.js";
-import { handleSync } from "../handlers/clientInitiated/sync/sync.js";
+import type { DocSyncClient } from "../../index.js";
+import type { DocData, GetDocArgs, QueryResult } from "../../types.js";
+import { handleSync } from "../../handlers/clientInitiated/sync/sync.js";
+import { setupChangeListener } from "./setupChangeListener.js";
 
 export function getDocMethod<
   D extends {} = {},
@@ -38,7 +39,7 @@ export function getDocMethod<
       localOpsBatchState: undefined,
       presenceDebounceState: undefined,
     });
-    client["_setupChangeListener"](doc, createdDocId);
+    setupChangeListener(client, doc, createdDocId);
     emit({ status: "success", data: { doc, docId: createdDocId } });
 
     client["_events"].emit("docLoad", {
@@ -102,7 +103,7 @@ export function getDocMethod<
           doc = await cacheEntry.promisedDoc;
           if (doc && doc !== "deleted") {
             // Register listener only for new docs (not cache hits)
-            client["_setupChangeListener"](doc, docId);
+            setupChangeListener(client, doc, docId);
             source = createIfMissing ? "created" : "local";
           }
         }

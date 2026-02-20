@@ -25,8 +25,7 @@ import { handleSync } from "./handlers/clientInitiated/sync/sync.js";
 import { handleUnsubscribeDoc } from "./handlers/clientInitiated/unsubscribe.js";
 import { BCHelper } from "./utils/BCHelper.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
-import { getOwnPresencePatch } from "./utils/getOwnPresencePatch.js";
-import { getDocMethod } from "./methods/getDoc.js";
+import { getDocMethod } from "./methods/getDoc/getDoc.js";
 import { getPresenceMethod } from "./methods/getPresence.js";
 
 // TODO: review this type!
@@ -191,36 +190,6 @@ export class DocSyncClient<
 
   async setPresence({ docId, presence }: { docId: string; presence: unknown }) {
     void handlePresence(this, { docId, presence });
-  }
-
-  private _setupChangeListener(doc: D, docId: string) {
-    this._docBinding.onChange(doc, ({ operations }) => {
-      if (this._shouldBroadcast) {
-        void this.onLocalOperations({ docId, operations: [operations] });
-
-        this._events.emit("change", {
-          docId,
-          origin: "local",
-          operations: [operations],
-        });
-
-        // Defer BC send so Lexical can update selection first; then the presence we
-        // include is the new cursor. Two frames so setPresence (from selection change) has run.
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            const presencePatch = getOwnPresencePatch(this, docId);
-            this._bcHelper?.broadcast({
-              type: "OPERATIONS",
-              operations,
-              docId,
-              ...(presencePatch && { presence: presencePatch }),
-            });
-          });
-        });
-      }
-      // Don't automatically reset _shouldBroadcast here!
-      // Let the caller explicitly control when to re-enable broadcasting
-    });
   }
 
   private async _loadOrCreateDoc(
