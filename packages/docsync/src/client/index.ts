@@ -50,7 +50,6 @@ export class DocSyncClient<
     }
   >();
   protected _localPromise: Promise<LocalResolved<S, O>>;
-  protected _deviceId: string;
   /** Client-generated id for presence (works offline; sent in auth so server uses same key) */
   protected _clientId: string;
   private _shouldBroadcast = true;
@@ -81,11 +80,10 @@ export class DocSyncClient<
       return { provider, identity };
     })();
 
-    this._deviceId = getDeviceId();
     this._socket = io(config.server.url, {
       auth: (cb) => {
         void config.server.auth.getToken().then((token) => {
-          cb({ token, deviceId: this._deviceId, clientId: this._clientId });
+          cb({ token, deviceId: getDeviceId(), clientId: this._clientId });
         });
       },
       // Performance optimizations for testing
