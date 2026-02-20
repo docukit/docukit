@@ -19,7 +19,7 @@ import {
 import * as operations from "./operations.js";
 import { nodeIdFactory } from "./idGenerator.js";
 import { ulid } from "ulid";
-import type { DocNode } from "./DocNode.js";
+import { DocNode } from "./DocNode.js";
 
 export class Doc {
   // private readonly _subDocs = new Map<string, Doc>();
