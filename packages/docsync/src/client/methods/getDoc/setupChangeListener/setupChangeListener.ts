@@ -1,5 +1,6 @@
-import type { DocSyncClient } from "../../index.js";
-import { getOwnPresencePatch } from "../../utils/getOwnPresencePatch.js";
+import type { DocSyncClient } from "../../../index.js";
+import { getOwnPresencePatch } from "../../../utils/getOwnPresencePatch.js";
+import { onLocalOperations } from "./onLocalOperations.js";
 
 export function setupChangeListener<
   D extends {} = {},
@@ -8,7 +9,7 @@ export function setupChangeListener<
 >(client: DocSyncClient<D, S, O>, doc: D, docId: string): void {
   client["_docBinding"].onChange(doc, ({ operations }) => {
     if (client["_shouldBroadcast"]) {
-      void client.onLocalOperations({ docId, operations: [operations] });
+      onLocalOperations(client, { docId, operations: [operations] });
 
       client["_events"].emit("change", {
         docId,

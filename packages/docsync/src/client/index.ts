@@ -21,7 +21,6 @@ import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { handleDirty } from "./handlers/serverInitiated/dirty.js";
 import { handlePresence } from "./handlers/clientInitiated/presence.js";
 import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
-import { handleSync } from "./handlers/clientInitiated/sync/sync.js";
 import { BCHelper } from "./utils/BCHelper.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
 import { getDocMethod } from "./methods/getDoc/getDoc.js";
@@ -189,42 +188,6 @@ export class DocSyncClient<
 
   async setPresence({ docId, presence }: { docId: string; presence: unknown }) {
     void handlePresence(this, { docId, presence });
-  }
-
-  onLocalOperations({ docId, operations }: { docId: string; operations: O[] }) {
-    const cacheEntry = this._docsCache.get(docId);
-    if (!cacheEntry) return;
-
-    const runBatch = () => {
-      void (async () => {
-        const currentEntry = this._docsCache.get(docId);
-        const currentState = currentEntry?.localOpsBatchState;
-        if (!currentEntry || !currentState) return;
-
-        const opsToSave = currentState.data;
-        currentEntry.localOpsBatchState = undefined;
-
-        if (opsToSave.length > 0) {
-          const local = await this._localPromise;
-          await local?.provider.transaction("readwrite", (ctx) =>
-            ctx.saveOperations({ docId, operations: opsToSave }),
-          );
-          void handleSync(this, docId);
-        }
-      })();
-    };
-
-    const state = cacheEntry.localOpsBatchState;
-    if (!state) {
-      cacheEntry.localOpsBatchState = {
-        data: operations.length > 0 ? [...operations] : [],
-        timeout: setTimeout(runBatch, this._batchDelay),
-      };
-      return;
-    }
-    if (operations.length > 0) state.data.push(...operations);
-    if (state.timeout !== undefined) return;
-    state.timeout = setTimeout(runBatch, this._batchDelay);
   }
 
   /**

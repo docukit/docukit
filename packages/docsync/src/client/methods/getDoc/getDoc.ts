@@ -1,7 +1,7 @@
 import type { DocSyncClient } from "../../index.js";
 import type { DocData, GetDocArgs, QueryResult } from "../../types.js";
 import { handleSync } from "../../handlers/clientInitiated/sync/sync.js";
-import { setupChangeListener } from "./setupChangeListener.js";
+import { setupChangeListener } from "./setupChangeListener/setupChangeListener.js";
 import { loadOrCreateDoc } from "./loadOrCreateDoc.js";
 import { unloadDoc } from "./unloadDoc.js";
 
