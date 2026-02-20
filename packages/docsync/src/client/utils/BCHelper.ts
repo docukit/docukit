@@ -8,7 +8,8 @@ type BroadcastMessage<O> =
       docId: string;
       presence?: Record<string, unknown>;
     }
-  | { type: "PRESENCE"; docId: string; presence: Record<string, unknown> };
+  | { type: "PRESENCE"; docId: string; presence: Record<string, unknown> }
+  | { type: "DELETED"; docId: string };
 
 export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
   private _channel: BroadcastChannel;
@@ -30,6 +31,17 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
         void this._applyOperations(client, operations, docId);
         if (presence && cacheEntry)
           applyPresencePatch(client["_clientId"], cacheEntry, presence);
+        return;
+      }
+      if (msg.type === "DELETED") {
+        const { docId } = msg;
+        const cacheEntry = client["_docsCache"].get(docId);
+        if (cacheEntry) {
+          client["_docsCache"].set(docId, {
+            ...cacheEntry,
+            promisedDoc: Promise.resolve("deleted"),
+          });
+        }
         return;
       }
       if (msg.type === "PRESENCE") {

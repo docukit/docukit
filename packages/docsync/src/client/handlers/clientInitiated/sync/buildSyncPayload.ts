@@ -33,7 +33,8 @@ export async function buildSyncPayload<
     },
   );
   const operationsBatches = rawBatches === "deleted" ? [] : rawBatches;
-  const operations = operationsBatches.flat();
+  const flatOps = operationsBatches.flat();
+  const operations = rawBatches === "deleted" ? "deleted" : flatOps;
   const clientClock = stored?.clock ?? 0;
 
   const presenceState = cacheEntry.presenceDebounceState;
@@ -55,7 +56,7 @@ export async function buildSyncPayload<
     operations,
     ...(presence !== undefined ? { presence } : {}),
   };
-  const req = { docId, operations, clock: clientClock };
+  const req = { docId, operations: flatOps, clock: clientClock };
 
   return { payload, req, operationsBatches };
 }

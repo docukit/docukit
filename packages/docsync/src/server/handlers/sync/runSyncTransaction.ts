@@ -36,19 +36,25 @@ export async function runSyncTransaction<S extends {} = {}, O extends {} = {}>(
   const operations = payload.operations ?? [];
 
   return provider.transaction("readwrite", async (ctx) => {
-    const serverOps = await ctx.getOperations({ docId, clock });
     const serverDoc = await ctx.getSerializedDoc(docId);
-    const newClock = await ctx.saveOperations({ docId, operations });
 
-    const serializedDoc =
-      serverDoc?.serializedDoc !== "deleted"
-        ? serverDoc?.serializedDoc
-        : undefined;
+    if (serverDoc?.serializedDoc === "deleted") {
+      return {
+        docId,
+        serializedDoc: "deleted" as const,
+        clock: serverDoc.clock,
+      };
+    }
+
+    const serverOps = await ctx.getOperations({ docId, clock });
+    const newClock = await ctx.saveOperations({ docId, operations });
 
     return {
       docId,
       ...(serverOps.length > 0 ? { operations: serverOps.flat() } : {}),
-      ...(serializedDoc ? { serializedDoc } : {}),
+      ...(serverDoc?.serializedDoc
+        ? { serializedDoc: serverDoc.serializedDoc }
+        : {}),
       clock: newClock,
     };
   });

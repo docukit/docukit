@@ -14,7 +14,7 @@ export function handleError<
 >(
   server: DocSyncServer<TContext, D, S, O>,
   socket: ServerConnectionSocket<S, O, TContext>,
-  opts: { docId: string; operations: O[]; clock: number },
+  opts: { docId: string; operations: O[] | "deleted"; clock: number },
   error: unknown,
   startTime: number,
   cb: (res: SyncResponse<S, O>) => void,

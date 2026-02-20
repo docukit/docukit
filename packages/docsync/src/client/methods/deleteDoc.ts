@@ -23,5 +23,6 @@ export async function deleteDocMethod<
     ...cacheEntry,
     promisedDoc: Promise.resolve("deleted"),
   });
+  client["_bcHelper"]?.broadcast({ type: "DELETED", docId });
   void handleSync(client, docId);
 }

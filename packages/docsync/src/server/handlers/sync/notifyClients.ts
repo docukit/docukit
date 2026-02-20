@@ -19,13 +19,13 @@ export function notifyClients<
   server: DocSyncServer<TContext, D, S, O>,
   socket: ServerConnectionSocket<S, O, TContext>,
   docId: string,
-  operations: O[],
+  operations: O[] | "deleted",
 ): NotifyClientsResult {
   const io = server["_io"];
   const deviceId = socket.data.deviceId;
   const docRoom = io.sockets.adapter.rooms.get(`doc:${docId}`);
   const devicesInRoom = new Set<string>();
-  const shouldNotifyClients = operations.length > 0;
+  const shouldNotifyClients = operations === "deleted" || operations.length > 0;
 
   if (docRoom) {
     for (const socketId of docRoom) {

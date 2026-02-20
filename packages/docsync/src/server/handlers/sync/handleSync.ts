@@ -33,9 +33,7 @@ export function handleSync<
       cb: (res: SyncResponse<S, O>) => void,
     ): Promise<void> => {
       const { docId } = payload;
-      const operations = Array.isArray(payload.operations)
-        ? payload.operations
-        : [];
+      const operations = payload.operations ?? [];
       const startTime = Date.now();
       const { userId, deviceId } = socket.data;
 
