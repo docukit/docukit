@@ -256,11 +256,7 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
             nodes.add(node);
           });
           // Check if the target is a descendant of the range
-          let isTargetDescendantOfRange = false;
-          target.ancestors().forEach((ancestor) => {
-            if (nodes.has(ancestor)) isTargetDescendantOfRange = true;
-          });
-          if (isTargetDescendantOfRange)
+          if (target.ancestors().find((node) => nodes.has(node)))
             throw new Error("Target is descendant of the range");
 
           const newPrev =
