@@ -26,6 +26,8 @@ import { handleUnsubscribeDoc } from "./handlers/clientInitiated/unsubscribe.js"
 import { BCHelper } from "./utils/BCHelper.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
 import { getOwnPresencePatch } from "./utils/getOwnPresencePatch.js";
+import { getDocMethod } from "./methods/getDoc.js";
+import { getPresenceMethod } from "./methods/getPresence.js";
 
 // TODO: review this type!
 type LocalResolved<S, O> = {
@@ -170,117 +172,7 @@ export class DocSyncClient<
       >,
     ) => void,
   ): () => void {
-    const type = args.type;
-    const argId = "id" in args ? args.id : undefined;
-    const createIfMissing = "createIfMissing" in args && args.createIfMissing;
-    // Internal emit uses wider type (doc may be "deleted"); runtime logic ensures correct data per overload
-    const emit = onChange as (
-      result: QueryResult<DocData<D | "deleted"> | undefined>,
-    ) => void;
-    let docId: string | undefined;
-
-    // Case: { type, createIfMissing: true } → Create new doc with auto-generated ID (sync).
-    if (!argId && createIfMissing) {
-      const { doc, docId: createdDocId } = this._docBinding.create(type);
-      docId = createdDocId;
-      this._docsCache.set(createdDocId, {
-        promisedDoc: Promise.resolve(doc),
-        refCount: 1,
-        presence: {},
-        presenceListeners: new Set(),
-        pushStatus: "idle",
-        localOpsBatchState: undefined,
-        presenceDebounceState: undefined,
-      });
-      this._setupChangeListener(doc, createdDocId);
-      emit({ status: "success", data: { doc, docId: createdDocId } });
-
-      this._events.emit("docLoad", {
-        docId: createdDocId,
-        source: "created",
-        refCount: 1,
-      });
-
-      void (async () => {
-        const local = await this._localPromise;
-        if (!local) return;
-        await local.provider.transaction("readwrite", (ctx) =>
-          ctx.saveSerializedDoc({
-            serializedDoc: this._docBinding.serialize(doc),
-            docId: createdDocId,
-            clock: 0,
-          }),
-        );
-      })();
-      // We don't trigger an initial sync here because argId is undefined;
-      // so this is truly a new doc. Initial operations will be pushed to server
-      return () => void this._unloadDoc(createdDocId);
-    }
-
-    // Preparing for the async cases
-    emit({ status: "loading" });
-
-    // Case: { type, id } or { type, id, createIfMissing } → Load or create (async).
-    if (argId) {
-      docId = argId;
-      // Check cache BEFORE async block to avoid race conditions with getPresence
-      const existingCacheEntry = this._docsCache.get(docId);
-      if (existingCacheEntry) {
-        existingCacheEntry.refCount += 1;
-      } else {
-        // Create cache entry immediately so getPresence can subscribe
-        const promisedDoc = this._loadOrCreateDoc(
-          docId,
-          createIfMissing ? type : undefined,
-        );
-        this._docsCache.set(docId, {
-          promisedDoc,
-          refCount: 1,
-          presence: {},
-          presenceListeners: new Set(),
-          pushStatus: "idle",
-          localOpsBatchState: undefined,
-          presenceDebounceState: undefined,
-        });
-      }
-
-      void (async () => {
-        try {
-          let doc: D | "deleted" | undefined;
-          let source: "cache" | "local" | "created" = "local";
-          const cacheEntry = this._docsCache.get(docId)!;
-          if (existingCacheEntry) {
-            doc = await cacheEntry.promisedDoc;
-            source = "cache";
-          } else {
-            doc = await cacheEntry.promisedDoc;
-            if (doc && doc !== "deleted") {
-              // Register listener only for new docs (not cache hits)
-              this._setupChangeListener(doc, docId);
-              source = createIfMissing ? "created" : "local";
-            }
-          }
-
-          if (doc) {
-            const refCount = this._docsCache.get(docId)?.refCount ?? 1;
-            this._events.emit("docLoad", { docId, source, refCount });
-          }
-
-          emit({ status: "success", data: doc ? { doc, docId } : undefined });
-          // Fetch from server to check if document exists there
-          if (doc) {
-            void handleSync(this, docId);
-          }
-        } catch (e) {
-          const error = e instanceof Error ? e : new Error(String(e));
-          emit({ status: "error", error });
-        }
-      })();
-    }
-
-    return () => {
-      if (docId) void this._unloadDoc(docId);
-    };
+    return getDocMethod(this, args, onChange);
   }
 
   /**
@@ -294,31 +186,7 @@ export class DocSyncClient<
     args: { docId: string | undefined },
     onChange: (presence: Presence) => void,
   ): () => void {
-    const { docId } = args;
-    if (!docId) return () => void undefined;
-    const cacheEntry = this._docsCache.get(docId);
-
-    if (!cacheEntry) {
-      throw new Error(
-        `Cannot subscribe to presence for document "${docId}" - document not loaded.`,
-      );
-    }
-
-    // Add listener to the set
-    cacheEntry.presenceListeners.add(onChange);
-
-    // Immediately call with current presence if available
-    if (Object.keys(cacheEntry.presence).length > 0) {
-      onChange(cacheEntry.presence);
-    }
-
-    // Return unsubscribe function that removes only this listener
-    return () => {
-      const entry = this._docsCache.get(docId);
-      if (entry) {
-        entry.presenceListeners.delete(onChange);
-      }
-    };
+    return getPresenceMethod(this, args, onChange);
   }
 
   async setPresence({ docId, presence }: { docId: string; presence: unknown }) {
