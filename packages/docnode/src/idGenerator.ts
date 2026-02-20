@@ -1,5 +1,5 @@
 import { decodeTime } from "ulid";
-import type { Doc } from "./main.js";
+import type { Doc } from "./Doc.js";
 
 // RFC 4648 §5 alphabet: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 // But Lexicographically sorted.

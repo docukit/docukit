@@ -1,4 +1,5 @@
-import { type Doc, type DocNode } from "./main.js";
+import { type Doc } from "./Doc.js";
+import type { DocNode } from "./DocNode.js";
 import type { Operations } from "./operations.js";
 
 // For convention, we are not goint to uppercase all letters in Json (JSON),

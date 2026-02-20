@@ -1,4 +1,5 @@
-export { Doc, DocNode } from "../main.js";
+export { Doc } from "../Doc.js";
+export { DocNode } from "../DocNode.js";
 export {
   type Json,
   type JsonDoc,

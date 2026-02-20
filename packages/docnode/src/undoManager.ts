@@ -1,4 +1,4 @@
-import { type Doc } from "./main.js";
+import { type Doc } from "./Doc.js";
 import type { Operations } from "./operations.js";
 
 export class UndoManager {

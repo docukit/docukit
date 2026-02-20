@@ -1,4 +1,5 @@
-import type { Doc, DocNode } from "./main.js";
+import type { Doc } from "./Doc.js";
+import type { DocNode } from "./DocNode.js";
 import type { NodeDefinition, StateRecord } from "./types.js";
 
 // lowercase ulid

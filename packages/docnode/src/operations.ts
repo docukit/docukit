@@ -1,4 +1,5 @@
-import { type Doc, type DocNode } from "./main.js";
+import { type Doc } from "./Doc.js";
+import type { DocNode } from "./DocNode.js";
 import { type Json, type UnsafeDefinition } from "./types.js";
 import { detachRange, isObjectEmpty } from "./utils.js";
 
