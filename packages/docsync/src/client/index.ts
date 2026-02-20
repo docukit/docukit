@@ -23,6 +23,7 @@ import { handlePresence } from "./handlers/clientInitiated/presence.js";
 import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
 import { BCHelper } from "./utils/BCHelper.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
+import { deleteDocMethod } from "./methods/deleteDoc.js";
 import { getDocMethod } from "./methods/getDoc/getDoc.js";
 import { getPresenceMethod } from "./methods/getPresence.js";
 
@@ -70,13 +71,11 @@ export class DocSyncClient<
     this._docBinding = docBinding;
     this._clientId = crypto.randomUUID();
 
-    // Initialize local provider (if configured)
+    // Initialize local provider
     this._localPromise = (async () => {
       const identity = await local.getIdentity();
       const provider = new local.provider(identity) as ClientProvider<S, O>;
-
       this._bcHelper = new BCHelper(this, identity.userId);
-
       return { provider, identity };
     })();
 
@@ -86,8 +85,7 @@ export class DocSyncClient<
           cb({ token, deviceId: getDeviceId(), clientId: this._clientId });
         });
       },
-      // Performance optimizations for testing
-      transports: ["websocket"], // Skip polling, go straight to WebSocket
+      transports: ["websocket"], // Skip polling, go straight to WebSocket for performance
       ackTimeout: 5000,
     });
 
@@ -192,8 +190,8 @@ export class DocSyncClient<
    * Delete a document: persist a local "deleted" marker (so it survives offline),
    * update cache, then either queue sync (offline) or send delete to server and clear ops on success.
    */
-  async deleteDoc({ docId }: { docId: string }): Promise<void> {
-    // await handleDelete(this, docId);
+  deleteDoc({ docId }: { docId: string }): void {
+    deleteDocMethod(this, { docId });
   }
 
   /**
