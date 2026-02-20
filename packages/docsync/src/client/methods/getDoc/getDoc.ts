@@ -2,6 +2,8 @@ import type { DocSyncClient } from "../../index.js";
 import type { DocData, GetDocArgs, QueryResult } from "../../types.js";
 import { handleSync } from "../../handlers/clientInitiated/sync/sync.js";
 import { setupChangeListener } from "./setupChangeListener.js";
+import { loadOrCreateDoc } from "./loadOrCreateDoc.js";
+import { unloadDoc } from "./unloadDoc.js";
 
 export function getDocMethod<
   D extends {} = {},
@@ -61,7 +63,7 @@ export function getDocMethod<
     })();
     // We don't trigger an initial sync here because argId is undefined;
     // so this is truly a new doc. Initial operations will be pushed to server
-    return () => void client["_unloadDoc"](createdDocId);
+    return () => void unloadDoc(client, createdDocId);
   }
 
   // Preparing for the async cases
@@ -76,7 +78,8 @@ export function getDocMethod<
       existingCacheEntry.refCount += 1;
     } else {
       // Create cache entry immediately so getPresence can subscribe
-      const promisedDoc = client["_loadOrCreateDoc"](
+      const promisedDoc = loadOrCreateDoc(
+        client,
         docId,
         createIfMissing ? type : undefined,
       );
@@ -126,6 +129,6 @@ export function getDocMethod<
   }
 
   return () => {
-    if (docId) void client["_unloadDoc"](docId);
+    if (docId) void unloadDoc(client, docId);
   };
 }

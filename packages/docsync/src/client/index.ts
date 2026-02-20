@@ -22,7 +22,6 @@ import { handleDirty } from "./handlers/serverInitiated/dirty.js";
 import { handlePresence } from "./handlers/clientInitiated/presence.js";
 import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
 import { handleSync } from "./handlers/clientInitiated/sync/sync.js";
-import { handleUnsubscribeDoc } from "./handlers/clientInitiated/unsubscribe.js";
 import { BCHelper } from "./utils/BCHelper.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
 import { getDocMethod } from "./methods/getDoc/getDoc.js";
@@ -190,85 +189,6 @@ export class DocSyncClient<
 
   async setPresence({ docId, presence }: { docId: string; presence: unknown }) {
     void handlePresence(this, { docId, presence });
-  }
-
-  private async _loadOrCreateDoc(
-    docId: string,
-    type?: string,
-  ): Promise<D | "deleted" | undefined> {
-    const local = await this._localPromise;
-    if (!local) return undefined;
-
-    return local.provider.transaction("readwrite", async (ctx) => {
-      // Try to load existing doc
-      const stored = await ctx.getSerializedDoc(docId);
-      const localOperations = await ctx.getOperations({ docId });
-
-      if (localOperations === "deleted") return "deleted";
-      if (stored?.serializedDoc === "deleted") return "deleted";
-
-      if (stored) {
-        const doc = this._docBinding.deserialize(stored.serializedDoc);
-        this._shouldBroadcast = false;
-        localOperations.forEach((operationsBatch) => {
-          operationsBatch.forEach((operations) => {
-            this._docBinding.applyOperations(doc, operations);
-          });
-        });
-        this._shouldBroadcast = true;
-        return doc;
-      }
-
-      // Create new doc if type provided
-      if (type) {
-        const { doc } = this._docBinding.create(type, docId);
-        this._shouldBroadcast = false;
-        if (localOperations.length > 0)
-          throw new Error(
-            `Doc ${docId} has operations stored locally but no serialized doc found`,
-          );
-        this._shouldBroadcast = true;
-        // Save the new doc to IDB
-        await ctx.saveSerializedDoc({
-          serializedDoc: this._docBinding.serialize(doc),
-          docId,
-          clock: 0,
-        });
-        return doc;
-      }
-
-      return undefined;
-    });
-  }
-
-  /**
-   * Decrease the reference count of a document and, if it is 0, delete the document from the cache.
-   */
-  protected async _unloadDoc(docId: string) {
-    const cacheEntry = this._docsCache.get(docId);
-    if (!cacheEntry) return;
-    if (cacheEntry.refCount > 1) {
-      cacheEntry.refCount -= 1;
-      this._events.emit("docUnload", { docId, refCount: cacheEntry.refCount });
-    } else {
-      cacheEntry.refCount = 0;
-      this._events.emit("docUnload", { docId, refCount: 0 });
-
-      // Dispose when promise resolves
-      const doc = await cacheEntry.promisedDoc;
-      const currentEntry = this._docsCache.get(docId);
-      if (currentEntry?.refCount === 0) {
-        if (currentEntry.localOpsBatchState)
-          clearTimeout(currentEntry.localOpsBatchState.timeout);
-        if (currentEntry.presenceDebounceState)
-          clearTimeout(currentEntry.presenceDebounceState.timeout);
-        this._docsCache.delete(docId);
-        if (doc && doc !== "deleted") {
-          await handleUnsubscribeDoc(this, { docId });
-          this._docBinding.dispose(doc);
-        }
-      }
-    }
   }
 
   onLocalOperations({ docId, operations }: { docId: string; operations: O[] }) {
