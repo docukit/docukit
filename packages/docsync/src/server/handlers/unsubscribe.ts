@@ -44,7 +44,7 @@ export function handleUnsubscribeDoc<
 
       applyPresenceUpdate(presenceByDoc, socket, { docId, presence: null });
 
-      cb({ success: true });
+      cb({ data: void undefined });
     },
   );
 }

@@ -178,13 +178,30 @@ export const triggerSync = (
   client: DocSyncClient<Doc, JsonDoc, Operations>,
   docId: string,
 ): void => {
+  // TODO: This shouldn't be here. Find a better way
+  if (!client["_docsCache"].has(docId)) {
+    client["_docsCache"].set(docId, {
+      promisedDoc: Promise.resolve(undefined),
+      refCount: 1,
+      presence: {},
+      presenceListeners: new Set(),
+      pushStatus: "idle",
+      localOpsBatchState: undefined,
+      presenceDebounceState: undefined,
+    });
+  }
+
   const socket = client["_socket"] as unknown as {
     listeners: (e: string) => ((payload: { docId: string }) => void)[];
   };
-  const fns = socket.listeners("dirty");
-  if (fns.length > 0 && typeof fns[0] === "function") {
-    fns[0]({ docId });
-  }
+  const fns = socket
+    .listeners("dirty")
+    .filter(
+      (fn): fn is (payload: { docId: string }) => void =>
+        typeof fn === "function",
+    );
+  const listener = fns.at(0);
+  if (listener) listener({ docId });
 };
 
 // ============================================================================
@@ -192,7 +209,7 @@ export const triggerSync = (
 // ============================================================================
 
 /**
- * Creates a request spy by intercepting socket emit calls.
+ * Creates a request spy by intercepting client _request calls.
  * Keeps the old testing API shape: (event, payload) => Promise<response>.
  */
 export const spyOnRequest = (
@@ -203,38 +220,24 @@ export const spyOnRequest = (
     payload: { docId: string; [key: string]: unknown },
   ) => Promise<unknown>;
   const requestSpy = vi.fn<RequestFn>();
-  type SocketEmitLike = {
-    emit: (
-      event: string,
-      payload: unknown,
-      cb?: (res: unknown) => void,
-    ) => unknown;
+  type ClientRequestLike = {
+    _request: (event: string, payload: unknown) => Promise<unknown>;
   };
-  const socket = client["_socket"] as unknown as SocketEmitLike;
-  const originalEmit = socket.emit.bind(socket);
-  vi.spyOn(socket, "emit").mockImplementation(
-    (event: string, payload: unknown, cb?: (res: unknown) => void) => {
+  const clientForSpy = client as unknown as ClientRequestLike;
+  const originalRequest = clientForSpy._request.bind(clientForSpy);
+  vi.spyOn(clientForSpy, "_request").mockImplementation(
+    (event: string, payload: unknown) => {
       const maybeResult = requestSpy(
         event,
         payload as { docId: string; [key: string]: unknown },
       );
-      if (maybeResult === undefined) {
-        return originalEmit(event, payload, cb);
-      }
-      const pending = Promise.resolve(maybeResult);
-      void pending
-        .then((result) => {
-          cb?.(result);
-        })
-        .catch((error) => {
-          cb?.({
-            error: {
-              type: "DatabaseError",
-              message: error instanceof Error ? error.message : String(error),
-            },
-          });
-        });
-      return socket;
+      if (maybeResult === undefined) return originalRequest(event, payload);
+      return Promise.resolve(maybeResult).catch((error: unknown) => ({
+        error: {
+          type: "NetworkError" as const,
+          message: error instanceof Error ? error.message : String(error),
+        },
+      }));
     },
   );
   return requestSpy as unknown as Mock<RequestFn>;

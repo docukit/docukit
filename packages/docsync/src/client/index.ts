@@ -1,5 +1,9 @@
 import { io } from "socket.io-client";
-import type { DocBinding, Presence } from "../shared/types.js";
+import type {
+  ClientToServerEvents,
+  DocBinding,
+  Presence,
+} from "../shared/types.js";
 import type {
   ClientConfig,
   ClientProvider,
@@ -28,9 +32,6 @@ type LocalResolved<S, O> = {
   provider: ClientProvider<S, O>;
   identity: Identity;
 };
-
-type PushStatus = "idle" | "pushing" | "pushing-with-pending";
-
 export class DocSyncClient<
   D extends {} = {},
   S extends {} = {},
@@ -44,7 +45,7 @@ export class DocSyncClient<
       refCount: number;
       presence: Presence;
       presenceListeners: Set<(presence: Presence) => void>;
-      pushStatus: PushStatus;
+      pushStatus: "idle" | "pushing" | "pushing-with-pending";
       localOpsBatchState: DeferredState<O[]>;
       presenceDebounceState: DeferredState<unknown>;
     }
@@ -90,12 +91,35 @@ export class DocSyncClient<
       },
       // Performance optimizations for testing
       transports: ["websocket"], // Skip polling, go straight to WebSocket
+      ackTimeout: 5000,
     });
 
     handleConnect({ client: this });
     handleDisconnect({ client: this });
     handleDirty({ client: this });
     handleServerPresence({ client: this });
+  }
+
+  protected async _request<E extends keyof ClientToServerEvents<S, O>>(
+    event: E,
+    payload: Parameters<ClientToServerEvents<S, O>[E]>[0],
+  ) {
+    type Res = Parameters<Parameters<ClientToServerEvents<S, O>[E]>[1]>[0];
+    let response: Res;
+    try {
+      const socket = this._socket;
+      response = await (
+        socket.emitWithAck as (e: E, p: typeof payload) => Promise<Res>
+      )(event, payload);
+    } catch (error) {
+      response = {
+        error: {
+          type: "NetworkError",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      };
+    }
+    return response;
   }
 
   connect() {
@@ -403,7 +427,7 @@ export class DocSyncClient<
           clearTimeout(currentEntry.presenceDebounceState.timeout);
         this._docsCache.delete(docId);
         if (doc && doc !== "deleted") {
-          await handleUnsubscribeDoc(this._socket, { docId });
+          await handleUnsubscribeDoc(this, { docId });
           this._docBinding.dispose(doc);
         }
       }

@@ -54,7 +54,11 @@ export type SyncResponse<S = unknown, O = unknown> = Result<
     clock: number;
   },
   {
-    type: "AuthorizationError" | "DatabaseError" | "ValidationError";
+    type:
+      | "AuthorizationError"
+      | "DatabaseError"
+      | "ValidationError"
+      | "NetworkError";
     message: string;
   }
 >;
@@ -63,12 +67,15 @@ export type SyncResponse<S = unknown, O = unknown> = Result<
 export type PresenceRequest = { docId: string; presence: unknown };
 export type PresenceResponse = Result<
   void,
-  { type: "AuthorizationError"; message: string }
+  { type: "AuthorizationError" | "NetworkError"; message: string }
 >;
 
 /** Shared request/response for the unsubscribe-doc event. */
 export type UnsubscribeDocRequest = { docId: string };
-export type UnsubscribeDocResponse = { success: boolean };
+export type UnsubscribeDocResponse = Result<
+  void,
+  { type: "NetworkError"; message: string }
+>;
 
 export type DocSyncEventName =
   | "sync"

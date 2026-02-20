@@ -1,6 +1,4 @@
-import type { SyncResponse } from "../../../../shared/types.js";
 import type { DocSyncClient } from "../../../index.js";
-import { request } from "../../../utils/request.js";
 import { buildSyncPayload } from "./buildSyncPayload.js";
 import { handleSyncResponse } from "./handleSyncResponse/handleSyncResponse.js";
 
@@ -31,39 +29,24 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     cacheEntry,
   );
 
-  let response: SyncResponse<S, O>;
-  try {
-    response = await request(client["_socket"], "sync", payload);
-  } catch (error) {
-    // Network failure: emit error, reset status, and retry sync once.
-    client["_events"].emit("sync", {
+  const { error, data } = await client["_request"]("sync", payload);
+  if (error) {
+    client["_events"].emit("sync", { req, error });
+    cacheEntry.pushStatus = "idle";
+    void handleSync(client, docId);
+    return;
+  }
+
+  if (data) {
+    await handleSyncResponse(
+      client,
+      docId,
+      payload,
       req,
-      error: {
-        type: "NetworkError",
-        message: error instanceof Error ? error.message : String(error),
-      },
-    });
-    cacheEntry.pushStatus = "idle";
-    void handleSync(client, docId);
-    return;
+      operationsBatches,
+      data,
+    );
   }
-
-  // Server returned an application error (e.g. validation); emit and retry.
-  if ("error" in response && response.error) {
-    client["_events"].emit("sync", { req, error: response.error });
-    cacheEntry.pushStatus = "idle";
-    void handleSync(client, docId);
-    return;
-  }
-
-  await handleSyncResponse(
-    client,
-    docId,
-    payload,
-    req,
-    operationsBatches,
-    response.data,
-  );
 
   const current = client["_docsCache"].get(docId);
   if (current) {

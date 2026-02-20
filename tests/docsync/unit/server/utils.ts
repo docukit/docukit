@@ -88,14 +88,14 @@ export async function testWrapper(
       socket.on("connect_error", resolve);
     });
   const sync = (payload: SyncPayload) =>
-    new Promise<SyncResponse>((resolve) => {
-      socket.emit("sync", payload, resolve);
-    });
+    // TODO: should be covariant
+    client["_request"]("sync", payload) as Promise<SyncResponse>;
 
   await fn({ server, client, waitForConnect, waitForError, socket, sync });
   await server.close();
 }
 
+// This should be inferred
 type SyncPayload = { docId: string; operations?: {}[]; clock: number };
 type SyncResponse =
   | {
@@ -108,7 +108,11 @@ type SyncResponse =
     }
   | {
       error: {
-        type: "AuthorizationError" | "DatabaseError" | "ValidationError";
+        type:
+          | "AuthorizationError"
+          | "DatabaseError"
+          | "ValidationError"
+          | "NetworkError";
         message: string;
       };
     };

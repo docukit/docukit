@@ -1,6 +1,5 @@
 import type { PresenceRequest } from "../../../shared/types.js";
 import type { DocSyncClient } from "../../index.js";
-import { request } from "../../utils/request.js";
 import { applyPresencePatch } from "../../utils/applyPresencePatch.js";
 
 /**
@@ -41,13 +40,9 @@ export function handlePresence<D extends {}, S extends {}, O extends {}>(
     const socket = client["_socket"];
     if (socket.connected) {
       void (async () => {
-        try {
-          const payload: PresenceRequest = { docId, presence: data };
-          const { error } = await request(socket, "presence", payload, 5000);
-          if (error) {
-            console.error(`Error setting presence for doc ${docId}:`, error);
-          }
-        } catch (error) {
+        const payload: PresenceRequest = { docId, presence: data };
+        const { error } = await client["_request"]("presence", payload);
+        if (error) {
           console.error(`Error setting presence for doc ${docId}:`, error);
         }
       })();
