@@ -79,10 +79,13 @@ export class DocSyncClient<
       return { provider, identity };
     })();
 
+    // deviceId needs to be captured at construction, not in the auth callback,
+    // to avoid race conditions.
+    const deviceId = getDeviceId();
     this._socket = io(config.server.url, {
       auth: (cb) => {
         void config.server.auth.getToken().then((token) => {
-          cb({ token, deviceId: getDeviceId(), clientId: this._clientId });
+          cb({ token, deviceId, clientId: this._clientId });
         });
       },
       transports: ["websocket"], // Skip polling, go straight to WebSocket for performance
