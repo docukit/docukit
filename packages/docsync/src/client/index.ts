@@ -1,4 +1,3 @@
-import { io } from "socket.io-client";
 import type {
   ClientToServerEvents,
   DocBinding,
@@ -22,10 +21,10 @@ import { handleDirty } from "./handlers/serverInitiated/dirty.js";
 import { handlePresence } from "./handlers/clientInitiated/presence.js";
 import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
 import { BCHelper } from "./utils/BCHelper.js";
-import { getDeviceId } from "./utils/getDeviceId.js";
 import { deleteDocMethod } from "./methods/deleteDoc.js";
 import { getDocMethod } from "./methods/getDoc/getDoc.js";
 import { getPresenceMethod } from "./methods/getPresence.js";
+import { createSocket } from "./utils/createSocket.js";
 
 // TODO: review this type!
 type LocalResolved<S, O> = {
@@ -79,18 +78,7 @@ export class DocSyncClient<
       return { provider, identity };
     })();
 
-    // deviceId needs to be captured at construction, not in the auth callback,
-    // to avoid race conditions.
-    const deviceId = getDeviceId();
-    this._socket = io(config.server.url, {
-      auth: (cb) => {
-        void config.server.auth.getToken().then((token) => {
-          cb({ token, deviceId, clientId: this._clientId });
-        });
-      },
-      transports: ["websocket"], // Skip polling, go straight to WebSocket for performance
-      ackTimeout: 5000,
-    });
+    this._socket = createSocket(this, config);
 
     handleConnect({ client: this });
     handleDisconnect({ client: this });
