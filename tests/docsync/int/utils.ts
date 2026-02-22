@@ -95,7 +95,7 @@ type ClientUtils = {
   addChild: (text: string) => void;
   deleteDoc: () => void;
   assertIDBDoc: (expected?: {
-    clock: number | number[];
+    clock: number;
     doc: string[] | "deleted";
     ops: string[] | "deleted";
   }) => Promise<void>;
@@ -397,7 +397,7 @@ const createClientUtils = async (
           expect({
             clock: result.docResult.clock,
             doc: actualDocChildren,
-            ops: opsChildren,
+            ops,
           }).toStrictEqual(expected);
           return true;
         })
