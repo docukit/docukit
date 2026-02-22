@@ -26,11 +26,6 @@ import { getDocMethod } from "./methods/getDoc/getDoc.js";
 import { getPresenceMethod } from "./methods/getPresence.js";
 import { createSocket } from "./utils/createSocket.js";
 
-// TODO: review this type!
-type LocalResolved<S, O> = {
-  provider: ClientProvider<S, O>;
-  identity: Identity;
-};
 export class DocSyncClient<
   D extends {} = {},
   S extends {} = {},
@@ -49,7 +44,10 @@ export class DocSyncClient<
       presenceDebounceState: DeferredState<unknown>;
     }
   >();
-  protected _localPromise: Promise<LocalResolved<S, O>>;
+  protected _localPromise: Promise<{
+    provider: ClientProvider<S, O>;
+    identity: Identity;
+  }>;
   /** Client-generated id for presence (works offline; sent in auth so server uses same key) */
   protected _clientId: string;
   private _shouldBroadcast = true;
