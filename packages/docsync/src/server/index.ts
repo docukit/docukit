@@ -8,6 +8,7 @@ import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { handlePresence } from "./handlers/presence.js";
 import { handleSync } from "./handlers/sync/handleSync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
+// import { setRateLimits } from "./utils/setRateLimits.js";
 
 export class DocSyncServer<
   TContext = {},
@@ -43,6 +44,8 @@ export class DocSyncServer<
 
     // Setup socket server
     const server = this;
+    // TODO: maybe
+    // setRateLimits(server);
     handleAuthAndConnect(server, (socket) => {
       handleDisconnect({ server, socket });
       handleSync({ server, socket });
