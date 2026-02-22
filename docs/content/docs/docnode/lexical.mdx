@@ -8,7 +8,7 @@ import { TypeTable } from "fumadocs-ui/components/type-table";
 ## 1. Installation
 
 ```npm
-npm i @docukit/lexical
+npm i @docukit/docnode-lexical
 ```
 
 ## 2. Usage
@@ -19,7 +19,7 @@ in the next section.
 
 ```tsx tab="React"
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
-import { DocNodePlugin } from "@docukit/lexical/react";
+import { DocNodePlugin } from "@docukit/docnode-lexical/react";
 
 function Editor({ doc, presence, setPresence }) {
   return (
@@ -73,7 +73,7 @@ function Editor({ doc, presence, setPresence }) {
 
 ```tsx tab="React"
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
-import { DocNodePlugin } from "@docukit/lexical/react";
+import { DocNodePlugin } from "@docukit/docnode-lexical/react";
 // see the DocSync docs for more info on how to generate these hooks
 import { useDoc, usePresence } from "../docsync/client";
 
