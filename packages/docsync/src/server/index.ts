@@ -2,13 +2,14 @@ import { Server } from "socket.io";
 import type { DocBinding, Presence } from "../shared/types.js";
 import type { ServerConfig, ServerProvider, ServerSocket } from "./types.js";
 import type { ServerEventMap, ServerEventName } from "./utils/events.js";
-import { handleAuthAndConnect } from "./handlers/connection/authAndConnect.js";
+import { handleAuthenticationAndConnection } from "./handlers/connection/authenticationAndConnection.js";
 import { createServerEventEmitter } from "./utils/events.js";
 import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { handlePresence } from "./handlers/presence.js";
 import { handleSync } from "./handlers/sync/handleSync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
-// import { setRateLimits } from "./utils/setRateLimits.js";
+import { authorizeMiddleware } from "./utils/authorizeMiddleware.js";
+// import { rateLimitMiddleware } from "./utils/rateLimitMiddleware.js";
 
 export class DocSyncServer<
   TContext = {},
@@ -19,10 +20,7 @@ export class DocSyncServer<
   private _io: ServerSocket<S, O, TContext>;
   private _docBinding: DocBinding<D, S, O>;
   private _provider: ServerProvider<S, O>;
-  private _authenticate: ServerConfig<TContext, D, S, O>["authenticate"];
   private _authorize?: ServerConfig<TContext, D, S, O>["authorize"];
-  // TODO: see comment in sync
-  private _LRUCache = new Map<string, { deviceId: string; clock: number }>();
   // Track presence state per document: docId -> Record<clientId, presence data>
   private _presenceByDoc = new Map<string, Presence>();
   // Track which sockets are subscribed to which documents (for cleanup on disconnect)
@@ -39,19 +37,21 @@ export class DocSyncServer<
 
     this._docBinding = config.docBinding;
     this._provider = new config.provider();
-    this._authenticate = config.authenticate.bind(config);
     this._authorize = config.authorize?.bind(config);
 
     // Setup socket server
     const server = this;
-    // TODO: maybe
-    // setRateLimits(server);
-    handleAuthAndConnect(server, (socket) => {
-      handleDisconnect({ server, socket });
-      handleSync({ server, socket });
-      handleUnsubscribeDoc({ server, socket });
-      handlePresence({ server, socket });
-    });
+
+    // Middlewares
+    // rateLimitMiddleware(server);
+    authorizeMiddleware(server);
+
+    // Handlers
+    handleAuthenticationAndConnection(server, config);
+    handleDisconnect({ server });
+    handleSync({ server });
+    handleUnsubscribeDoc({ server });
+    handlePresence({ server });
   }
 
   /**

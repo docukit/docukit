@@ -1,25 +1,19 @@
 import type { DocSyncServer } from "../../index.js";
-import type {
-  AuthenticatedContext,
-  ServerConnectionSocket,
-} from "../../types.js";
+import type { AuthenticatedContext, ServerConfig } from "../../types.js";
 
 /**
- * Sets up auth middleware, connection_error handling, and the connection
- * listener. Calls onConnect(socket) for each authenticated connection so
- * the caller can register socket handlers (handleDisconnect, handleSync, etc.).
+ * Sets up auth middleware, connection_error handling, and connect event emission.
  */
-export function handleAuthAndConnect<
+export function handleAuthenticationAndConnection<
   TContext = {},
   D extends {} = {},
   S extends {} = {},
   O extends {} = {},
 >(
   server: DocSyncServer<TContext, D, S, O>,
-  onConnect: (socket: ServerConnectionSocket<S, O, TContext>) => void,
+  config: ServerConfig<TContext, D, S, O>,
 ): void {
   const io = server["_io"];
-  const authenticate = server["_authenticate"];
 
   io.use((socket, next) => {
     const { token, deviceId, clientId } = socket.handshake.auth;
@@ -38,7 +32,8 @@ export function handleAuthAndConnect<
       return;
     }
 
-    authenticate({ token })
+    config
+      .authenticate({ token })
       .then((authResult) => {
         if (!authResult) {
           next(new Error("Authentication failed: invalid token"));
@@ -81,7 +76,5 @@ export function handleAuthAndConnect<
       socketId: socket.id,
       context,
     });
-
-    onConnect(socket);
   });
 }

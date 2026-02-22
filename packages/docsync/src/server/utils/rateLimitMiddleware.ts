@@ -9,16 +9,14 @@ import type { DocSyncServer } from "../index.js";
 const RATE_LIMIT_WINDOW_MS = 50;
 
 /**
- * Registers a per-user, per-endpoint 50ms throttle for this server.
+ * Registers a per-user, per-endpoint 50ms hard rate limit for this server.
  */
-export function setRateLimits<
+export function rateLimitMiddleware<
   TContext = {},
   D extends {} = {},
   S extends {} = {},
   O extends {} = {},
 >(server: DocSyncServer<TContext, D, S, O>): void {
-  // This map is created once per server initialization and then shared by all
-  // socket connections through closure, so the limit is user-based, not socket-based.
   const endpointLastHitAtMap = new Map<string, number>();
   const io = server["_io"];
 
@@ -53,29 +51,26 @@ function rejectPacket(packet: unknown[], eventName: DocSyncEventName): void {
   const maybeAck = packet.at(-1);
 
   if (eventName === "sync") {
-    if (!isAckFn<SyncResponse<unknown, unknown>>(maybeAck)) return;
-    const payload: SyncResponse<unknown, unknown> = {
+    if (!isAckFn<SyncResponse>(maybeAck)) return;
+    maybeAck({
       error: { type: "NetworkError", message: "Rate limit exceeded" },
-    };
-    maybeAck(payload);
+    });
     return;
   }
 
   if (eventName === "presence") {
     if (!isAckFn<PresenceResponse>(maybeAck)) return;
-    const payload: PresenceResponse = {
+    maybeAck({
       error: { type: "NetworkError", message: "Rate limit exceeded" },
-    };
-    maybeAck(payload);
+    });
     return;
   }
 
   if (eventName === "unsubscribe-doc") {
     if (!isAckFn<UnsubscribeDocResponse>(maybeAck)) return;
-    const payload: UnsubscribeDocResponse = {
+    maybeAck({
       error: { type: "NetworkError", message: "Rate limit exceeded" },
-    };
-    maybeAck(payload);
+    });
   }
 }
 

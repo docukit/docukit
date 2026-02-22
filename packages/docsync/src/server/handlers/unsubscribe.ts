@@ -2,7 +2,6 @@ import type {
   UnsubscribeDocRequest,
   UnsubscribeDocResponse,
 } from "../../shared/types.js";
-import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
 import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
 
@@ -16,35 +15,32 @@ export function handleUnsubscribeDoc<
   D extends {} = {},
   S extends {} = {},
   O extends {} = {},
->({
-  server,
-  socket,
-}: {
-  server: DocSyncServer<TContext, D, S, O>;
-  socket: ServerConnectionSocket<S, O, TContext>;
-}): void {
+>({ server }: { server: DocSyncServer<TContext, D, S, O> }): void {
   const socketToDocsMap = server["_socketToDocsMap"];
   const presenceByDoc = server["_presenceByDoc"];
+  const io = server["_io"];
 
-  socket.on(
-    "unsubscribe-doc",
-    async (
-      { docId }: UnsubscribeDocRequest,
-      cb: (res: UnsubscribeDocResponse) => void,
-    ): Promise<void> => {
-      await socket.leave(`doc:${docId}`);
+  io.on("connection", (socket) => {
+    socket.on(
+      "unsubscribe-doc",
+      async (
+        { docId }: UnsubscribeDocRequest,
+        cb: (res: UnsubscribeDocResponse) => void,
+      ): Promise<void> => {
+        await socket.leave(`doc:${docId}`);
 
-      const subscribedDocs = socketToDocsMap.get(socket.id);
-      if (subscribedDocs) {
-        subscribedDocs.delete(docId);
-        if (subscribedDocs.size === 0) {
-          socketToDocsMap.delete(socket.id);
+        const subscribedDocs = socketToDocsMap.get(socket.id);
+        if (subscribedDocs) {
+          subscribedDocs.delete(docId);
+          if (subscribedDocs.size === 0) {
+            socketToDocsMap.delete(socket.id);
+          }
         }
-      }
 
-      applyPresenceUpdate(presenceByDoc, socket, { docId, presence: null });
+        applyPresenceUpdate(presenceByDoc, socket, { docId, presence: null });
 
-      cb({ data: void undefined });
-    },
-  );
+        cb({ data: void undefined });
+      },
+    );
+  });
 }
