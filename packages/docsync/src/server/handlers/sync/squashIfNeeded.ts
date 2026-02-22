@@ -1,5 +1,5 @@
 import type { SyncRequest, DocBinding } from "../../../shared/types.js";
-import type { DocSyncServer } from "../../index.js";
+import type { ServerProvider } from "../../types.js";
 import type { SyncTransactionResult } from "./runSyncTransaction.js";
 
 const OPERATION_THRESHOLD = 100;
@@ -9,12 +9,11 @@ const OPERATION_THRESHOLD = 100;
  * into the serialized doc and delete one operation batch from storage.
  */
 export async function squashIfNeeded<
-  TContext = {},
   D extends {} = {},
   S extends {} = {},
   O extends {} = {},
 >(
-  server: DocSyncServer<TContext, D, S, O>,
+  provider: ServerProvider<S, O>,
   docBinding: DocBinding<D, S, O>,
   payload: SyncRequest<O>,
   result: SyncTransactionResult<S, O>,
@@ -25,7 +24,6 @@ export async function squashIfNeeded<
     return;
   }
 
-  const provider = server["_provider"];
   const {
     docId: resultDocId,
     operations: serverOps,

@@ -1,6 +1,6 @@
 import { Server } from "socket.io";
 import type { Presence } from "../shared/types.js";
-import type { ServerConfig, ServerProvider, ServerSocket } from "./types.js";
+import type { ServerConfig, ServerSocket } from "./types.js";
 import type { ServerEventMap, ServerEventName } from "./utils/events.js";
 import { handleAuthenticationAndConnection } from "./handlers/connection/authenticationAndConnection.js";
 import { createServerEventEmitter } from "./utils/events.js";
@@ -18,7 +18,6 @@ export class DocSyncServer<
   O extends {} = {},
 > {
   private _io: ServerSocket<S, O, TContext>;
-  private _provider: ServerProvider<S, O>;
   // Track presence state per document: docId -> Record<clientId, presence data>
   private _presenceByDoc = new Map<string, Presence>();
   // Track which sockets are subscribed to which documents (for cleanup on disconnect)
@@ -30,10 +29,8 @@ export class DocSyncServer<
     const { docBinding, authorize, authenticate, port } = config;
     this._io = new Server(port ?? 8080, {
       cors: { origin: "*" },
-      transports: ["websocket"], // Performance: Only WebSocket, no polling
+      transports: ["websocket"], // Performance: only ws, no polling
     });
-
-    this._provider = new config.provider();
 
     // Setup socket server
     const server = this;
@@ -45,7 +42,7 @@ export class DocSyncServer<
     // Handlers
     handleAuthenticationAndConnection(server, authenticate);
     handleDisconnect({ server });
-    handleSync({ server, docBinding });
+    handleSync({ server, provider: new config.provider(), docBinding });
     handleUnsubscribeDoc({ server });
     handlePresence({ server });
   }
