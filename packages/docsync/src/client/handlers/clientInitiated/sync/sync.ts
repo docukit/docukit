@@ -10,6 +10,8 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   client: DocSyncClient<D, S, O>,
   docId: string,
 ): Promise<void> => {
+  if (!client["_socket"].connected) return;
+
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return;
 
