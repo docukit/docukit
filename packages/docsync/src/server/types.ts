@@ -84,16 +84,20 @@ export type ServerConfig<TContext, D extends {}, S extends {}, O extends {}> = {
   port?: number;
   provider: new () => ServerProvider<NoInfer<S>, NoInfer<O>>;
 
-  authenticate(ev: {
-    token: string;
-  }): Promise<{ userId: string; context?: TContext } | undefined>;
+  authenticate(
+    this: void,
+    ev: { token: string },
+  ): Promise<{ userId: string; context?: TContext } | undefined>;
 
-  authorize?(ev: {
-    type: DocSyncEventName;
-    payload: unknown;
-    userId: string;
-    context: TContext;
-  }): Promise<boolean>;
+  authorize?(
+    this: void,
+    ev: {
+      type: DocSyncEventName;
+      payload: unknown;
+      userId: string;
+      context: TContext;
+    },
+  ): Promise<boolean>;
 };
 
 // ============================================================================

@@ -1,5 +1,5 @@
 import { Server } from "socket.io";
-import type { DocBinding, Presence } from "../shared/types.js";
+import type { Presence } from "../shared/types.js";
 import type { ServerConfig, ServerProvider, ServerSocket } from "./types.js";
 import type { ServerEventMap, ServerEventName } from "./utils/events.js";
 import { handleAuthenticationAndConnection } from "./handlers/connection/authenticationAndConnection.js";
@@ -18,9 +18,7 @@ export class DocSyncServer<
   O extends {} = {},
 > {
   private _io: ServerSocket<S, O, TContext>;
-  private _docBinding: DocBinding<D, S, O>;
   private _provider: ServerProvider<S, O>;
-  private _authorize?: ServerConfig<TContext, D, S, O>["authorize"];
   // Track presence state per document: docId -> Record<clientId, presence data>
   private _presenceByDoc = new Map<string, Presence>();
   // Track which sockets are subscribed to which documents (for cleanup on disconnect)
@@ -29,27 +27,25 @@ export class DocSyncServer<
   private _events = createServerEventEmitter<TContext, O, S>();
 
   constructor(config: ServerConfig<TContext, D, S, O>) {
-    this._io = new Server(config.port ?? 8080, {
+    const { docBinding, authorize, authenticate, port } = config;
+    this._io = new Server(port ?? 8080, {
       cors: { origin: "*" },
-      // Performance: Only WebSocket transport, no polling
-      transports: ["websocket"],
+      transports: ["websocket"], // Performance: Only WebSocket, no polling
     });
 
-    this._docBinding = config.docBinding;
     this._provider = new config.provider();
-    this._authorize = config.authorize?.bind(config);
 
     // Setup socket server
     const server = this;
 
     // Middlewares
     // rateLimitMiddleware(server);
-    authorizeMiddleware(server);
+    authorizeMiddleware(server, authorize);
 
     // Handlers
-    handleAuthenticationAndConnection(server, config);
+    handleAuthenticationAndConnection(server, authenticate);
     handleDisconnect({ server });
-    handleSync({ server });
+    handleSync({ server, docBinding });
     handleUnsubscribeDoc({ server });
     handlePresence({ server });
   }

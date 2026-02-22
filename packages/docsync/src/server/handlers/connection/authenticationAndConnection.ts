@@ -11,7 +11,7 @@ export function handleAuthenticationAndConnection<
   O extends {} = {},
 >(
   server: DocSyncServer<TContext, D, S, O>,
-  config: ServerConfig<TContext, D, S, O>,
+  authenticate: ServerConfig<TContext, D, S, O>["authenticate"],
 ): void {
   const io = server["_io"];
 
@@ -32,8 +32,7 @@ export function handleAuthenticationAndConnection<
       return;
     }
 
-    config
-      .authenticate({ token })
+    authenticate({ token })
       .then((authResult) => {
         if (!authResult) {
           next(new Error("Authentication failed: invalid token"));

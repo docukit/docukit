@@ -1,4 +1,8 @@
-import type { SyncRequest, SyncResponse } from "../../../shared/types.js";
+import type {
+  DocBinding,
+  SyncRequest,
+  SyncResponse,
+} from "../../../shared/types.js";
 import type { DocSyncServer } from "../../index.js";
 import { applyPresenceUpdate } from "../../utils/applyPresenceUpdate.js";
 import { handleError } from "./handleError.js";
@@ -17,7 +21,13 @@ export function handleSync<
   D extends {} = {},
   S extends {} = {},
   O extends {} = {},
->({ server }: { server: DocSyncServer<TContext, D, S, O> }): void {
+>({
+  server,
+  docBinding,
+}: {
+  server: DocSyncServer<TContext, D, S, O>;
+  docBinding: DocBinding<D, S, O>;
+}): void {
   // TODO: private _LRUCache = new Map<string, { deviceId: string; clock: number }>();
   const io = server["_io"];
 
@@ -89,7 +99,7 @@ export function handleSync<
             devicesCount,
           });
 
-          await squashIfNeeded(server, payload, result);
+          await squashIfNeeded(server, docBinding, payload, result);
         } catch (error) {
           handleError(
             server,

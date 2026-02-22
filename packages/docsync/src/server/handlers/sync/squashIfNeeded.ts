@@ -1,4 +1,4 @@
-import type { SyncRequest } from "../../../shared/types.js";
+import type { SyncRequest, DocBinding } from "../../../shared/types.js";
 import type { DocSyncServer } from "../../index.js";
 import type { SyncTransactionResult } from "./runSyncTransaction.js";
 
@@ -15,6 +15,7 @@ export async function squashIfNeeded<
   O extends {} = {},
 >(
   server: DocSyncServer<TContext, D, S, O>,
+  docBinding: DocBinding<D, S, O>,
   payload: SyncRequest<O>,
   result: SyncTransactionResult<S, O>,
 ): Promise<void> {
@@ -25,7 +26,6 @@ export async function squashIfNeeded<
   }
 
   const provider = server["_provider"];
-  const docBinding = server["_docBinding"];
   const {
     docId: resultDocId,
     operations: serverOps,

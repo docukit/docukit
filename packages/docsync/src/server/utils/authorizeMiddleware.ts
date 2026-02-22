@@ -4,13 +4,17 @@ import type {
   SyncResponse,
 } from "../../shared/types.js";
 import type { DocSyncServer } from "../index.js";
+import type { ServerConfig } from "../types.js";
 
 export function authorizeMiddleware<
   TContext = {},
   D extends {} = {},
   S extends {} = {},
   O extends {} = {},
->(server: DocSyncServer<TContext, D, S, O>): void {
+>(
+  server: DocSyncServer<TContext, D, S, O>,
+  authorize: ServerConfig<TContext, D, S, O>["authorize"] | undefined,
+): void {
   const io = server["_io"];
 
   io.on("connection", (socket) => {
@@ -23,7 +27,6 @@ export function authorizeMiddleware<
           return;
         }
 
-        const authorize = server["_authorize"];
         if (!authorize) {
           next();
           return;
