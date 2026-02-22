@@ -248,13 +248,43 @@ describe("Local-First", () => {
       // TODO: find a way to deterministically insert with conflicts
       await otherDevice.assertMemoryDoc(["C", "A", "B"]);
 
-      await reference.assertIDBDoc({ clock: 3, doc: ["A", "B", "C"], ops: [] });
-      await otherTab.assertIDBDoc({ clock: 3, doc: ["A", "B", "C"], ops: [] });
+      await reference.assertIDBDoc({ clock: 2, doc: ["A", "B", "C"], ops: [] });
+      await otherTab.assertIDBDoc({ clock: 2, doc: ["A", "B", "C"], ops: [] });
       await otherDevice.assertIDBDoc({
-        clock: 3,
+        clock: 2,
         doc: ["A", "B", "C"],
         ops: [],
       });
+    });
+  });
+
+  test("delete doc syncs to other devices", async () => {
+    await testWrapper(async ({ reference, otherDevice }) => {
+      await reference.loadDoc();
+      await otherDevice.loadDoc();
+
+      reference.addChild("Hello");
+      await reference.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
+      await otherDevice.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
+
+      // Disconnect to observe intermediate state
+      reference.disconnect();
+      reference.deleteDoc();
+
+      // Intermediate: ops marked "deleted" locally, serialized doc unchanged
+      await reference.assertIDBDoc({
+        clock: 1,
+        doc: ["Hello"],
+        ops: "deleted",
+      });
+
+      // Reconnect: sync sends deletion to server
+      reference.connect();
+      await reference.assertIDBDoc({ clock: 2, doc: "deleted", ops: [] });
+
+      // Other device: server notifies via dirty → re-sync → receives deleted
+      await otherDevice.assertIDBDoc({ clock: 2, doc: "deleted", ops: [] });
+      await otherDevice.assertMemoryDoc("deleted");
     });
   });
 

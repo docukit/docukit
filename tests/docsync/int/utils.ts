@@ -93,12 +93,13 @@ type ClientUtils = {
   loadDoc: () => Promise<void>;
   unLoadDoc: () => void;
   addChild: (text: string) => void;
+  deleteDoc: () => void;
   assertIDBDoc: (expected?: {
-    clock: number;
-    doc: string[];
-    ops: string[];
+    clock: number | number[];
+    doc: string[] | "deleted";
+    ops: string[] | "deleted";
   }) => Promise<void>;
-  assertMemoryDoc: (children?: string[]) => Promise<void>;
+  assertMemoryDoc: (children?: string[] | "deleted") => Promise<void>;
   reqSpy: Mock<
     (
       event: string,
@@ -218,9 +219,14 @@ const setupClients = async (): Promise<ClientsSetup> => {
 
   // OtherDevice: local enabled with different userId2, RT enabled, BC disabled
   const otherDeviceUserId = generateUserId();
-  // Wait for reference and otherTab sockets to connect before creating otherDevice
-  // This ensures they get their deviceId before we change it
-  await new Promise((resolve) => setTimeout(resolve, 40));
+  // Wait until both sockets are connected before changing deviceId.
+  await expect
+    .poll(
+      () =>
+        referenceClient["_socket"].connected &&
+        otherTabClient["_socket"].connected,
+    )
+    .toBe(true);
   // Force a different deviceId for otherDevice to simulate a different physical device
   const newDeviceId = crypto.randomUUID();
   localStorage.setItem("docsync:deviceId", newDeviceId);
@@ -304,6 +310,9 @@ const createClientUtils = async (
       child.state.value.set(text);
       cachedDoc.root.append(child);
     },
+    deleteDoc: () => {
+      client.deleteDoc({ docId });
+    },
     assertIDBDoc: async (expected?: {
       clock: number;
       doc: string[] | "deleted";
@@ -357,29 +366,32 @@ const createClientUtils = async (
             actualDocChildren.push(typedChild.state.value.get());
           });
 
-          const opsChildren: string[] = [];
-          const operationsBatches =
-            result.operations === "deleted" ? [] : result.operations;
+          let ops: string[] | "deleted";
+          if (result.operations === "deleted") {
+            ops = "deleted";
+          } else {
+            const opsChildren: string[] = [];
+            for (const batch of result.operations) {
+              if (batch.length === 0) continue;
+              for (const item of batch) {
+                if (!Array.isArray(item) || item.length < 2) continue;
+                const stateUpdates = item[1];
+                if (!stateUpdates || typeof stateUpdates !== "object") continue;
 
-          for (const batch of operationsBatches) {
-            if (batch.length === 0) continue;
-            for (const item of batch) {
-              if (!Array.isArray(item) || item.length < 2) continue;
-              const stateUpdates = item[1];
-              if (!stateUpdates || typeof stateUpdates !== "object") continue;
-
-              for (const [, nodeState] of Object.entries(stateUpdates)) {
-                if (
-                  nodeState &&
-                  typeof nodeState === "object" &&
-                  "value" in nodeState
-                ) {
-                  const jsonValue = nodeState.value;
-                  const parsedValue = JSON.parse(jsonValue) as string;
-                  opsChildren.push(parsedValue);
+                for (const [, nodeState] of Object.entries(stateUpdates)) {
+                  if (
+                    nodeState &&
+                    typeof nodeState === "object" &&
+                    "value" in nodeState
+                  ) {
+                    const jsonValue = nodeState.value;
+                    const parsedValue = JSON.parse(jsonValue) as string;
+                    opsChildren.push(parsedValue);
+                  }
                 }
               }
             }
+            ops = opsChildren;
           }
 
           expect({
@@ -391,7 +403,18 @@ const createClientUtils = async (
         })
         .toBe(true);
     },
-    assertMemoryDoc: async (expectedChildren?: string[]) => {
+    assertMemoryDoc: async (expectedChildren?: string[] | "deleted") => {
+      if (expectedChildren === "deleted") {
+        await expect
+          .poll(async () => {
+            const entry = client["_docsCache"].get(docId);
+            if (!entry) return "no-entry";
+            return await entry.promisedDoc;
+          })
+          .toBe("deleted");
+        return;
+      }
+
       await expect
         .poll(() => {
           if (!expectedChildren) {
