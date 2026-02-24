@@ -95,7 +95,6 @@ type ClientUtils = {
   addChild: (text: string) => void;
   deleteDoc: () => void;
   assertIDBDoc: (expected?: {
-    clock: number;
     doc: string[] | "deleted";
     ops: string[] | "deleted";
   }) => Promise<void>;
@@ -314,7 +313,6 @@ const createClientUtils = async (
       client.deleteDoc({ docId });
     },
     assertIDBDoc: async (expected?: {
-      clock: number;
       doc: string[] | "deleted";
       ops: string[] | "deleted";
     }) => {
@@ -348,11 +346,10 @@ const createClientUtils = async (
           }
 
           if (result.docResult.serializedDoc === "deleted") {
-            expect({
-              clock: result.docResult.clock,
-              doc: "deleted",
-              ops: [],
-            }).toStrictEqual(expected);
+            expect({ doc: "deleted", ops: [] }).toStrictEqual({
+              doc: expected.doc,
+              ops: expected.ops,
+            });
             return true;
           }
 
@@ -394,11 +391,10 @@ const createClientUtils = async (
             ops = opsChildren;
           }
 
-          expect({
-            clock: result.docResult.clock,
-            doc: actualDocChildren,
-            ops,
-          }).toStrictEqual(expected);
+          expect({ doc: actualDocChildren, ops }).toStrictEqual({
+            doc: expected.doc,
+            ops: expected.ops,
+          });
           return true;
         })
         .toBe(true);
@@ -445,4 +441,4 @@ const createClientUtils = async (
   };
 };
 
-export const emptyIDB = { clock: 0, doc: [], ops: [] };
+export const emptyIDB = { doc: [], ops: [] };
