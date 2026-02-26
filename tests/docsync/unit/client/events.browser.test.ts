@@ -63,6 +63,13 @@ describe("Client Events", () => {
     test("should clear push status on disconnect", async () => {
       const client = await createClient();
       const docId = generateDocId();
+      // TODO: review this
+      spyOnRequest(client).mockImplementation(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(() => resolve({ data: { docId, clock: 1 } }), 50),
+          ),
+      );
 
       await saveOperations(client, docId);
       triggerSync(client, docId);

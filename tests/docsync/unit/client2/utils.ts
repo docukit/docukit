@@ -178,6 +178,14 @@ export const triggerSync = (
   client: DocSyncClient<Doc, JsonDoc, Operations>,
   docId: string,
 ): void => {
+  // Unit tests in this suite focus on sync flow internals. They invoke the
+  // dirty listener directly (without relying on an actual socket lifecycle),
+  // so we force connected=true to bypass the runtime guard in handleSync.
+  const socketForConnection = client["_socket"] as unknown as {
+    connected?: boolean;
+  };
+  socketForConnection.connected = true;
+
   // TODO: This shouldn't be here. Find a better way
   if (!client["_docsCache"].has(docId)) {
     client["_docsCache"].set(docId, {
