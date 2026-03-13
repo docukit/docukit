@@ -7,7 +7,27 @@ import {
 } from "drizzle-orm/pg-core";
 import postgres from "postgres";
 
-export const queryClient = postgres(process.env.DOCNODE_DB_URL!);
+const DOCNODE_DB_URL =
+  process.env.DOCNODE_DB_URL ??
+  "postgres://docukit:docukit@localhost:5433/docukit";
+
+export const queryClient = postgres(DOCNODE_DB_URL, {
+  onnotice: () => void {},
+  connect_timeout: 5,
+  idle_timeout: 0,
+  connection: { application_name: "docukit" },
+});
+
+queryClient`SELECT 1`.catch(() => {
+  console.error(
+    `\n[DocSync] Failed to connect to PostgreSQL at: ${DOCNODE_DB_URL}\n` +
+      (process.env.DOCNODE_DB_URL
+        ? "Check that DOCNODE_DB_URL in your .env is correct and the database is running."
+        : "Make sure Docker is running (pnpm dev starts it automatically).") +
+      "\n",
+  );
+  process.exit(1);
+});
 
 export const documents = pgTable("docsync-documents", {
   userId: varchar("userId", { length: 26 }).notNull(),
