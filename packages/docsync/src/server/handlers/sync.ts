@@ -147,7 +147,7 @@ export function handleSync<
           socketId: socket.id,
           status: "success",
           req: {
-            type: payload.type,
+            ...(payload.type ? { type: payload.type } : {}),
             docId: payload.docId,
             operations,
             clock: payload.clock,
@@ -220,7 +220,7 @@ export function handleSync<
           socketId: socket.id,
           status: "error",
           req: {
-            type: payload.type,
+            ...(payload.type ? { type: payload.type } : {}),
             docId: payload.docId,
             operations,
             clock: payload.clock,
