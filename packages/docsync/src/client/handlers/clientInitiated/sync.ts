@@ -54,6 +54,7 @@ export async function replaceDocInCache<
   client["_docsCache"].set(args.docId, {
     promisedDoc: Promise.resolve(newDoc),
     refCount: cacheEntry.refCount,
+    type: cacheEntry.type,
     presence: cacheEntry.presence,
     presenceListeners: cacheEntry.presenceListeners,
   });
@@ -104,13 +105,20 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   }
 
   const presence = presenceState?.data;
+  const type = client["_docsCache"].get(docId)?.type;
   const payload: SyncRequest<O> = {
+    ...(type ? { type } : {}),
     clock: clientClock,
     docId,
     operations,
     ...(presence !== undefined ? { presence } : {}),
   };
-  const req = { docId, operations, clock: clientClock };
+  const req = {
+    ...(type ? { type } : {}),
+    docId,
+    operations,
+    clock: clientClock,
+  };
 
   let response: SyncResponse<S, O>;
   try {

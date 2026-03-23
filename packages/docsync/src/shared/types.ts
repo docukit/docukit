@@ -41,6 +41,7 @@ export type Result<D, E = Error> =
 
 /** Shared request payload for the sync event (client sends, server receives). */
 export type SyncRequest<O = unknown> = {
+  type?: string;
   docId: string;
   operations?: O[];
   clock: number;

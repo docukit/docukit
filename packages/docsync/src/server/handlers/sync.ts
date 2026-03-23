@@ -146,7 +146,12 @@ export function handleSync<
           deviceId,
           socketId: socket.id,
           status: "success",
-          req: { docId: payload.docId, operations, clock: payload.clock },
+          req: {
+            type: payload.type,
+            docId: payload.docId,
+            operations,
+            clock: payload.clock,
+          },
           ...(result.operations || result.serializedDoc
             ? {
                 res: {
@@ -176,9 +181,17 @@ export function handleSync<
             clock: resultClock,
           } = result;
           const allOperations = [...serverOps, ...(payload.operations ?? [])];
-          const doc = serializedDoc
-            ? docBinding.deserialize(serializedDoc)
-            : docBinding.create("test", resultDocId).doc;
+          let doc: D;
+          if (serializedDoc) {
+            doc = docBinding.deserialize(serializedDoc);
+          } else {
+            if (!payload.type) return; // can't create without type
+            try {
+              doc = docBinding.create(payload.type, resultDocId).doc;
+            } catch {
+              return; // invalid type, skip squashing
+            }
+          }
           allOperations.forEach((operation) => {
             docBinding.applyOperations(doc, operation);
           });
@@ -206,7 +219,12 @@ export function handleSync<
           deviceId,
           socketId: socket.id,
           status: "error",
-          req: { docId: payload.docId, operations, clock: payload.clock },
+          req: {
+            type: payload.type,
+            docId: payload.docId,
+            operations,
+            clock: payload.clock,
+          },
           error: {
             ...errorEvent,
             ...(error instanceof Error && error.stack
