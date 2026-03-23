@@ -178,7 +178,7 @@ export function handleSync<
           const allOperations = [...serverOps, ...(payload.operations ?? [])];
           const doc = serializedDoc
             ? docBinding.deserialize(serializedDoc)
-            : docBinding.create("test", resultDocId).doc;
+            : docBinding.create(payload.type, resultDocId).doc;
           allOperations.forEach((operation) => {
             docBinding.applyOperations(doc, operation);
           });

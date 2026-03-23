@@ -97,7 +97,12 @@ export async function testWrapper(
   await server.close();
 }
 
-type SyncPayload = { docId: string; operations?: {}[]; clock: number };
+type SyncPayload = {
+  type: string;
+  docId: string;
+  operations?: {}[];
+  clock: number;
+};
 type SyncResponse =
   | {
       data: {
