@@ -320,6 +320,7 @@ describe("Server Events", () => {
 
         expect(capturedEvent).toBeDefined();
         expect(capturedEvent?.req).toStrictEqual({
+          type: "test",
           docId: "test-doc",
           operations: [{ type: "test" }],
           clock: 5,
