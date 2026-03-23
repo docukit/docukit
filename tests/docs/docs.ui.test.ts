@@ -16,9 +16,11 @@ test("after navigating to DocNode and back, editor demo is visible (not stuck on
   await expect(page.getByText("Connecting…")).toBeHidden({ timeout: 15_000 });
   await expect(page.locator("[data-lexical-editor]")).toHaveCount(2);
 
-  // Navigate away from home to DocNode docs
-  await page.goto("/docnode");
-  await expect(page).toHaveURL(/\/docnode/);
+  // Navigate to DocNode docs via SPA link (wait for fade-in animation to finish)
+  const docNodeCard = page.getByRole("link", { name: /DocNode Type-safe/ });
+  await expect(docNodeCard).toBeVisible();
+  await docNodeCard.click();
+  await expect(page).toHaveURL(/\/docnode/, { timeout: 15_000 });
 
   // Go back to home
   await page.goBack();
