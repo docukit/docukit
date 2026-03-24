@@ -78,15 +78,15 @@ describe("Local-First", () => {
 
       reference.addChild("Hello");
       await reference.assertMemoryDoc(["Hello"]);
-      await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
+      await reference.assertIDBDoc({ doc: [], ops: ["Hello"] });
 
       // Reconnect and sync will happen automatically
       reference.connect();
-      await reference.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
+      await reference.assertIDBDoc({ doc: ["Hello"], ops: [] });
 
       // LOAD OTHER TAB
       await otherTab.loadDoc();
-      await otherTab.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
+      await otherTab.assertIDBDoc({ doc: ["Hello"], ops: [] });
       await otherTab.assertMemoryDoc(["Hello"]);
       await otherDevice.assertMemoryDoc();
       await otherDevice.assertIDBDoc();
@@ -95,7 +95,7 @@ describe("Local-First", () => {
       await otherDevice.loadDoc();
       // otherDevice gets operations from server and applies them
       await otherDevice.assertMemoryDoc(["Hello"]);
-      await otherDevice.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
+      await otherDevice.assertIDBDoc({ doc: ["Hello"], ops: [] });
     });
   });
 
@@ -110,12 +110,12 @@ describe("Local-First", () => {
       await reference.assertMemoryDoc(["Hello"]);
       await otherTab.assertMemoryDoc([]);
       await otherDevice.assertMemoryDoc([]);
-      await reference.assertIDBDoc({ clock: 0, doc: [], ops: [] });
+      await reference.assertIDBDoc({ doc: [], ops: [] });
       await otherTab.assertMemoryDoc(["Hello"]);
 
       // broadcastChannel then IDB
       await otherDevice.assertMemoryDoc([]);
-      await reference.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
+      await reference.assertIDBDoc({ doc: ["Hello"], ops: [] });
 
       // websocket
       await otherDevice.assertMemoryDoc(["Hello"]);
@@ -137,9 +137,9 @@ describe("Local-First", () => {
       await reference.assertMemoryDoc(["Hello"]);
       await otherTab.assertMemoryDoc([]);
       await otherDevice.assertMemoryDoc([]);
-      await reference.assertIDBDoc({ clock: 0, doc: [], ops: [] });
+      await reference.assertIDBDoc({ doc: [], ops: [] });
 
-      await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
+      await reference.assertIDBDoc({ doc: [], ops: ["Hello"] });
 
       // broadcastChannel
       await otherTab.assertMemoryDoc(["Hello"]);
@@ -147,18 +147,18 @@ describe("Local-First", () => {
 
       // websocket
       await otherDevice.assertMemoryDoc([]);
-      await otherDevice.assertIDBDoc({ clock: 0, doc: [], ops: [] });
-      await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["Hello"] });
+      await otherDevice.assertIDBDoc({ doc: [], ops: [] });
+      await reference.assertIDBDoc({ doc: [], ops: ["Hello"] });
 
       // reference connects
       reference.connect();
       await reference.assertMemoryDoc(["Hello"]);
-      await reference.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
+      await reference.assertIDBDoc({ doc: ["Hello"], ops: [] });
 
       // otherDevice connects
       otherDevice.connect();
       await otherDevice.assertMemoryDoc(["Hello"]);
-      await otherDevice.assertIDBDoc({ clock: 1, doc: ["Hello"], ops: [] });
+      await otherDevice.assertIDBDoc({ doc: ["Hello"], ops: [] });
     });
   });
 
@@ -178,11 +178,11 @@ describe("Local-First", () => {
       await reference.assertMemoryDoc(["A"]);
       await otherTab.assertMemoryDoc([]);
       await otherDevice.assertMemoryDoc(["B"]);
-      await reference.assertIDBDoc({ clock: 0, doc: [], ops: [] });
+      await reference.assertIDBDoc({ doc: [], ops: [] });
 
       await otherTab.assertMemoryDoc(["A"]);
       await otherDevice.assertMemoryDoc(["B"]);
-      await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["A"] });
+      await reference.assertIDBDoc({ doc: [], ops: ["A"] });
 
       // without connecting, ws doesn't work
       await otherDevice.assertMemoryDoc(["B"]);
@@ -199,9 +199,9 @@ describe("Local-First", () => {
       // TODO: find a way to deterministically insert with conflicts
       await otherDevice.assertMemoryDoc(["B", "A"]);
 
-      await reference.assertIDBDoc({ clock: 2, doc: ["A", "B"], ops: [] });
-      await otherTab.assertIDBDoc({ clock: 2, doc: ["A", "B"], ops: [] });
-      await otherDevice.assertIDBDoc({ clock: 2, doc: ["A", "B"], ops: [] });
+      await reference.assertIDBDoc({ doc: ["A", "B"], ops: [] });
+      await otherTab.assertIDBDoc({ doc: ["A", "B"], ops: [] });
+      await otherDevice.assertIDBDoc({ doc: ["A", "B"], ops: [] });
     });
   });
 
@@ -222,15 +222,15 @@ describe("Local-First", () => {
       await reference.assertMemoryDoc(["A"]);
       await otherTab.assertMemoryDoc(["B"]);
       await otherDevice.assertMemoryDoc(["C"]);
-      await reference.assertIDBDoc({ clock: 0, doc: [], ops: [] });
+      await reference.assertIDBDoc({ doc: [], ops: [] });
 
       await reference.assertMemoryDoc(["A", "B"]);
       await otherTab.assertMemoryDoc(["B", "A"]);
       await otherDevice.assertMemoryDoc(["C"]);
       // IDB has ops persisted (throttle); doc is only updated after sync
-      await reference.assertIDBDoc({ clock: 0, doc: [], ops: ["A", "B"] });
-      await otherTab.assertIDBDoc({ clock: 0, doc: [], ops: ["A", "B"] });
-      await otherDevice.assertIDBDoc({ clock: 0, doc: [], ops: ["C"] });
+      await reference.assertIDBDoc({ doc: [], ops: ["A", "B"] });
+      await otherTab.assertIDBDoc({ doc: [], ops: ["A", "B"] });
+      await otherDevice.assertIDBDoc({ doc: [], ops: ["C"] });
 
       // without connecting, ws doesn't work
       await otherDevice.assertMemoryDoc(["C"]);
@@ -248,13 +248,9 @@ describe("Local-First", () => {
       // TODO: find a way to deterministically insert with conflicts
       await otherDevice.assertMemoryDoc(["C", "A", "B"]);
 
-      await reference.assertIDBDoc({ clock: 3, doc: ["A", "B", "C"], ops: [] });
-      await otherTab.assertIDBDoc({ clock: 3, doc: ["A", "B", "C"], ops: [] });
-      await otherDevice.assertIDBDoc({
-        clock: 3,
-        doc: ["A", "B", "C"],
-        ops: [],
-      });
+      await reference.assertIDBDoc({ doc: ["A", "B", "C"], ops: [] });
+      await otherTab.assertIDBDoc({ doc: ["A", "B", "C"], ops: [] });
+      await otherDevice.assertIDBDoc({ doc: ["A", "B", "C"], ops: [] });
     });
   });
 
@@ -270,7 +266,7 @@ describe("Local-First", () => {
         reference.doc?.forceCommit();
       }
       expect(childrenArray1.length).toBe(101);
-      await reference.assertIDBDoc({ clock: 1, doc: childrenArray1, ops: [] });
+      await reference.assertIDBDoc({ doc: childrenArray1, ops: [] });
       expect(reference.reqSpy.mock.calls.length).toBeLessThan(4);
 
       // without batching delay
@@ -285,7 +281,6 @@ describe("Local-First", () => {
       }
       expect(childrenArray2.length).toBe(101);
       await reference.assertIDBDoc({
-        clock: 2,
         doc: [...childrenArray1, ...childrenArray2],
         ops: [],
       });

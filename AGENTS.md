@@ -38,6 +38,10 @@
 
 ## Troubleshooting
 
+### `pnpm run check` fails with "Cannot find name 'LayoutProps'" or 'PageProps'
+
+Next.js auto-generates these types in `.next/types/` during `next dev` or `next build`. Run `pnpm dev` (or `pnpm build`) first to generate them, then re-run `pnpm run check`. In CI this is not an issue because `pnpm build` runs before the check.
+
 ### Playwright Browser Tests Failing (For AI Agents)
 
 ⚠️ **This is an AI agent problem, not a user problem.** Users can run tests normally in their terminal.
