@@ -17,18 +17,18 @@ test.fixme("after navigating to DocNode and back, editor demo is visible (not st
   await expect(page.getByText("Connecting…")).toBeHidden({ timeout: 15_000 });
   await expect(page.locator("[data-lexical-editor]")).toHaveCount(2);
 
-  // Navigate to DocNode docs via SPA link click
+  // Navigate to DocNode docs (product card link; sidebar also has a DocNode link)
   const docNodeCard = page.getByRole("link", { name: /DocNode Type-safe/ });
-  await expect(docNodeCard).toBeVisible();
+  await docNodeCard.scrollIntoViewIfNeeded();
   await docNodeCard.click();
-  await expect(page).toHaveURL(/\/docnode/, { timeout: 15_000 });
+  await expect(page).toHaveURL(/\/docnode/);
 
   // Go back to home
   await page.goBack();
   await expect(page).toHaveURL(/\/$/);
 
   // Editor demo should be visible again, not stuck on loading
-  await expect(page.getByText("Connecting…")).toBeHidden({ timeout: 15_000 });
+  await expect(page.getByText("Connecting…")).toBeHidden({ timeout: 5_000 });
   await expect(page.locator("[data-lexical-editor]")).toHaveCount(2, {
     timeout: 15_000,
   });
