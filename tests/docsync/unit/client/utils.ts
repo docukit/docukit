@@ -136,6 +136,7 @@ export const createFailingProvider = (errorMessage: string) => {
     constructor(_identity: Identity) {
       // Identity accepted but not used in failing provider
     }
+    // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
     async transaction() {
       throw new Error(errorMessage);
     }

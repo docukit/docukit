@@ -56,6 +56,7 @@ export class HelperBase {
     this._otherDeviceHidden = page.locator("#otherDevice-hidden").first();
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await -- subclasses override as async
   static async create<T extends HelperBase>(
     this: new (page: Page, docId: string) => T,
     { page }: { page: Page },
