@@ -31,10 +31,12 @@ function createClient(
   return createDocSyncClient({
     server: {
       url: "ws://non-existent-url.com",
+      // eslint-disable-next-line @typescript-eslint/require-await
       auth: { getToken: async () => userId },
     },
     local: {
       provider: IndexedDBProvider,
+      // eslint-disable-next-line @typescript-eslint/require-await
       getIdentity: async () => ({ userId, secret: "docs-demo" }),
     },
     docBinding: DocNodeBinding(docConfigs),
