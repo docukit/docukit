@@ -18,8 +18,7 @@ export const queryClient = postgres(DOCNODE_DB_URL, {
   connection: { application_name: "docukit" },
 });
 
-/** Verify that PostgreSQL is reachable. Call this when actually using the provider, not at import time. */
-export const verifyConnection = () =>
+export function checkConnection() {
   queryClient`SELECT 1`.catch(() => {
     console.error(
       `\n[DocSync] Failed to connect to PostgreSQL at: ${DOCNODE_DB_URL}\n` +
@@ -30,6 +29,7 @@ export const verifyConnection = () =>
     );
     process.exit(1);
   });
+}
 
 export const documents = pgTable("docsync-documents", {
   userId: varchar("userId", { length: 26 }).notNull(),

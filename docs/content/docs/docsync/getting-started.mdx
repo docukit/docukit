@@ -18,9 +18,11 @@ npm i @docukit/docsync
 
 ```ts tab="React"
 // client.ts
-import { createDocSyncClient } from "@docukit/docsync-react/client";
+import {
+  createDocSyncClient,
+  IndexedDBProvider,
+} from "@docukit/docsync-react/client";
 import { DocNodeBinding } from "@docukit/docsync-react/docnode";
-import { IndexedDBProvider } from "@docukit/docsync-react/indexeddb";
 // Refer to the DocNode documentation for more information
 // on how to define a DocConfig
 import { yourDocConfigs } from "./shared.ts";
@@ -41,9 +43,8 @@ export const { useDoc, usePresence, client } = createDocSyncClient({
 
 ```ts tab="Vanilla"
 // client.ts
-import { DocSyncClient } from "@docukit/docsync/client";
+import { DocSyncClient, IndexedDBProvider } from "@docukit/docsync/client";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
-import { IndexedDBProvider } from "@docukit/docsync/indexeddb";
 // Refer to the DocNode documentation for more information
 // on how to define a DocConfig
 import { yourDocConfigs } from "./shared.ts";
@@ -66,9 +67,8 @@ export const client = new DocSyncClient({
 
 ```ts
 // server.ts
-import { DocSyncServer } from "@docukit/docsync-react/server";
+import { DocSyncServer, PostgresProvider } from "@docukit/docsync-react/server";
 import { DocNodeBinding } from "@docukit/docsync-react/docnode";
-import { PostgresProvider } from "@docukit/docsync-react/postgres";
 // Refer to the DocNode documentation for more information
 // on how to define a DocConfig
 import { yourDocConfigs } from "./shared.ts";
