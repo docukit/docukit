@@ -28,14 +28,9 @@ export function handlePresence<TContext = unknown>({
       { docId, presence }: PresenceRequest,
       cb: (res: PresenceResponse) => void,
     ): Promise<void> => {
-      const payload: PresenceRequest = { docId, presence };
+      const req: PresenceRequest = { docId, presence };
       const authorized = server["_authorize"]
-        ? await server["_authorize"]({
-            type: "presence",
-            payload,
-            userId,
-            context,
-          })
+        ? await server["_authorize"]({ type: "presence", req, userId, context })
         : true;
       if (!authorized) {
         cb({ error: { type: "AuthorizationError", message: "Access denied" } });

@@ -91,7 +91,7 @@ export type ServerConfig<TContext, D extends {}, S extends {}, O extends {}> = {
 
   authorize?(ev: {
     type: DocSyncEventName;
-    payload: unknown;
+    req: unknown;
     userId: string;
     context: TContext;
   }): Promise<boolean>;

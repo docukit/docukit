@@ -43,12 +43,7 @@ export function handleSync<
       // TODO: we should validate req with Valibot here
 
       const authorized = server["_authorize"]
-        ? await server["_authorize"]({
-            type: "sync",
-            payload: req,
-            userId,
-            context,
-          })
+        ? await server["_authorize"]({ type: "sync", req, userId, context })
         : true;
       if (!authorized) {
         const errorEvent = {
