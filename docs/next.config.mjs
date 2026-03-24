@@ -18,7 +18,7 @@ const withMDX = createMDX({
 /** @type {import('next').NextConfig} */
 const config = {
   reactStrictMode: true,
-  async redirects() {
+  redirects() {
     return [
       {
         source: "/local-first",
@@ -34,7 +34,7 @@ const config = {
       { source: "/docs", destination: "/docnode", permanent: true },
     ];
   },
-  async rewrites() {
+  rewrites() {
     return [
       // Map clean URLs to internal /docs/ structure
       { source: "/docnode/:path*", destination: "/docs/docnode/:path*" },
