@@ -40,7 +40,7 @@ export type SyncRequestEvent<O = unknown, S = unknown> = {
   status: "success" | "error";
 
   req: {
-    type?: string;
+    type: string;
     docId: string;
     operations?: O[];
     clock: number;

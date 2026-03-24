@@ -105,20 +105,15 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   }
 
   const presence = presenceState?.data;
-  const type = client["_docsCache"].get(docId)?.type;
+  const type = client["_docsCache"].get(docId)!.type;
   const payload: SyncRequest<O> = {
-    ...(type ? { type } : {}),
+    type,
     clock: clientClock,
     docId,
     operations,
     ...(presence !== undefined ? { presence } : {}),
   };
-  const req = {
-    ...(type ? { type } : {}),
-    docId,
-    operations,
-    clock: clientClock,
-  };
+  const req = { type, docId, operations, clock: clientClock };
 
   let response: SyncResponse<S, O>;
   try {

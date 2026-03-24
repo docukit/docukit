@@ -98,7 +98,7 @@ export async function testWrapper(
 }
 
 type SyncPayload = {
-  type?: string;
+  type: string;
   docId: string;
   operations?: {}[];
   clock: number;
