@@ -39,7 +39,13 @@ export type SyncRequestEvent<O = unknown, S = unknown> = {
   socketId: string;
   status: "success" | "error";
 
-  req: { docId: string; operations?: O[]; clock: number; presence?: unknown };
+  req: {
+    type: string;
+    docId: string;
+    operations?: O[];
+    clock: number;
+    presence?: unknown;
+  };
 
   res?: { operations?: O[]; clock?: number; serializedDoc?: S };
 
@@ -85,7 +91,7 @@ export type ServerConfig<TContext, D extends {}, S extends {}, O extends {}> = {
 
   authorize?(ev: {
     type: DocSyncEventName;
-    payload: unknown;
+    req: unknown;
     userId: string;
     context: TContext;
   }): Promise<boolean>;

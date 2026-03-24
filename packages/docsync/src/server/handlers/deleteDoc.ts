@@ -22,14 +22,9 @@ export const handleDeleteDoc = <TContext = {}>({
   userId: string;
   context: TContext;
 }): void => {
-  socket.on("delete-doc", async (payload, cb) => {
+  socket.on("delete-doc", async (req, cb) => {
     const authorized = server["_authorize"]
-      ? await server["_authorize"]({
-          type: "delete-doc",
-          payload,
-          userId,
-          context,
-        })
+      ? await server["_authorize"]({ type: "delete-doc", req, userId, context })
       : true;
     if (!authorized) {
       cb({ success: false });
