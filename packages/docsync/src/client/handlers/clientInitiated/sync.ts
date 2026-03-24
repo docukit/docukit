@@ -105,7 +105,13 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   }
 
   const presence = presenceState?.data;
-  const type = client["_docsCache"].get(docId)!.type;
+  const cacheEntry = client["_docsCache"].get(docId);
+  if (!cacheEntry) {
+    // Doc was unloaded while this sync was in-flight — abort.
+    pushStatusByDocId.set(docId, "idle");
+    return;
+  }
+  const type = cacheEntry.type;
   const payload: SyncRequest<O> = {
     type,
     clock: clientClock,
