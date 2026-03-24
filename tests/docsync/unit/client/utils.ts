@@ -48,11 +48,13 @@ const createValidConfig = (userId?: string) =>
   createClientConfig({
     server: {
       url: "ws://localhost:8081",
+      // eslint-disable-next-line @typescript-eslint/require-await
       auth: { getToken: async () => "test-token" },
     },
     docBinding: createMockDocBinding(),
     local: {
       provider: IndexedDBProvider,
+      // eslint-disable-next-line @typescript-eslint/require-await
       getIdentity: async () => ({
         userId: userId ?? generateTestUserId(),
         secret: "test-secret",
@@ -78,11 +80,13 @@ export const createClientWithDisposeSpy = (userId?: string) => {
   const config = createClientConfig({
     server: {
       url: "ws://localhost:8081",
+      // eslint-disable-next-line @typescript-eslint/require-await
       auth: { getToken: async () => "test-token" },
     },
     docBinding,
     local: {
       provider: IndexedDBProvider,
+      // eslint-disable-next-line @typescript-eslint/require-await
       getIdentity: async () => ({
         userId: userId ?? generateTestUserId(),
         secret: "test-secret",
@@ -148,11 +152,13 @@ export const createClientWithProvider = (
   const config = createClientConfig({
     server: {
       url: "ws://localhost:8081",
+      // eslint-disable-next-line @typescript-eslint/require-await
       auth: { getToken: async () => "test-token" },
     },
     docBinding: createMockDocBinding(),
     local: {
       provider: ProviderClass,
+      // eslint-disable-next-line @typescript-eslint/require-await
       getIdentity: async () => ({ userId: "test-user", secret: "test-secret" }),
     },
   });
