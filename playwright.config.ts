@@ -7,7 +7,7 @@ const baseURLExamples =
 const baseURLDocs =
   process.env.VERCEL_URL != null
     ? `https://${process.env.VERCEL_URL}/`
-    : "http://localhost:3000/";
+    : "http://localhost:4100/";
 
 export default defineConfig({
   testDir: "./tests",
@@ -28,7 +28,7 @@ export default defineConfig({
   },
   webServer: {
     command: "pnpm dev",
-    url: "http://localhost:3000",
+    url: "http://localhost:4100",
     timeout: 120_000,
     reuseExistingServer: !process.env.CI,
   },

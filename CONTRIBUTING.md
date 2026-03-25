@@ -32,7 +32,7 @@ The two main apps are:
 | App          | Port             | Description                                                       |
 | ------------ | ---------------- | ----------------------------------------------------------------- |
 | **examples** | `localhost:4000` | Docukit playground (see below) with a DocSync server on port 8081 |
-| **docs**     | `localhost:3000` | Documentation site ([docukit.dev](https://docukit.dev))           |
+| **docs**     | `localhost:4100` | Documentation site ([docukit.dev](https://docukit.dev))           |
 
 The playground includes two examples:
 

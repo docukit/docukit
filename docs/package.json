@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "next build",
-    "dev": "next dev",
+    "dev": "next dev -p 4100",
     "clean": "rm -rf .next node_modules .turbo || rmdir /s /q .next node_modules .turbo",
-    "start": "next start",
+    "start": "next start -p 4100",
     "typecheck": "tsc --noEmit"
   },
   "license": "SEE LICENSE IN LICENSE.md",
