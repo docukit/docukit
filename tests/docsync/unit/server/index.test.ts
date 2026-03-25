@@ -11,8 +11,7 @@ import type { ClientProvider } from "@docukit/docsync/client";
 
 describe("authentication", () => {
   test("rejects without token", async () => {
-    // eslint-disable-next-line @typescript-eslint/require-await
-    const auth = { getToken: async () => "" };
+    const auth = { getToken: () => "" };
     await testWrapper({ auth }, async (T) => {
       const error = await T.waitForError();
       expect(error.message).toContain("no token provided");
@@ -20,8 +19,7 @@ describe("authentication", () => {
   });
 
   test("rejects invalid token0", async () => {
-    // eslint-disable-next-line @typescript-eslint/require-await
-    const auth = { getToken: async () => "test-token" };
+    const auth = { getToken: () => "test-token" };
     await testWrapper({ auth }, async (T) => {
       const error = await T.waitForError();
       expect(error.message).toContain("invalid token");
@@ -29,8 +27,7 @@ describe("authentication", () => {
   });
 
   test("accepts valid token", async () => {
-    // eslint-disable-next-line @typescript-eslint/require-await
-    const auth = { getToken: async () => "valid-user1" };
+    const auth = { getToken: () => "valid-user1" };
     await testWrapper({ auth }, async (T) => {
       await T.waitForConnect();
       expect(T.socket.connected).toBe(true);
@@ -51,8 +48,7 @@ describe("presence", () => {
       docBinding: DocNodeBinding([]),
       port,
       provider: InMemoryServerProvider,
-      // eslint-disable-next-line @typescript-eslint/require-await
-      authenticate: async ({ token }) => {
+      authenticate: ({ token }) => {
         if (token.startsWith("valid-")) {
           return { userId: token.replace("valid-", "") };
         }
@@ -169,8 +165,7 @@ describe("presence", () => {
       docBinding: DocNodeBinding([]),
       port,
       provider: InMemoryServerProvider,
-      // eslint-disable-next-line @typescript-eslint/require-await
-      authenticate: async ({ token }) => {
+      authenticate: ({ token }) => {
         if (token.startsWith("valid-")) {
           return { userId: token.replace("valid-", "") };
         }
@@ -235,18 +230,13 @@ describe("presence", () => {
 // Helper to create a mock client for testing
 function createMockDocSyncClient(port: number, token: string): DocSyncClient {
   return new DocSyncClient({
-    server: {
-      url: `ws://localhost:${port}`,
-      // eslint-disable-next-line @typescript-eslint/require-await
-      auth: { getToken: async () => token },
-    },
+    server: { url: `ws://localhost:${port}`, auth: { getToken: () => token } },
     local: {
       provider: InMemoryServerProvider as unknown as new (
         identity: { userId: string; secret: string },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ) => ClientProvider<any, any>,
-      // eslint-disable-next-line @typescript-eslint/require-await
-      getIdentity: async () => ({
+      getIdentity: () => ({
         userId: token.replace("valid-", ""),
         secret: "test-secret",
       }),
@@ -257,8 +247,7 @@ function createMockDocSyncClient(port: number, token: string): DocSyncClient {
 
 describe("sync", () => {
   test("returns incremented clock", async () => {
-    // eslint-disable-next-line @typescript-eslint/require-await
-    const auth = { getToken: async () => "valid-user1" };
+    const auth = { getToken: () => "valid-user1" };
     await testWrapper({ auth }, async (T) => {
       await T.waitForConnect();
       expect(T.socket.connected).toBe(true);
@@ -277,8 +266,7 @@ describe("sync", () => {
   });
 
   test("squashes operations after threshold", async () => {
-    // eslint-disable-next-line @typescript-eslint/require-await
-    const auth = { getToken: async () => "valid-user1" };
+    const auth = { getToken: () => "valid-user1" };
     await testWrapper({ auth }, async (T) => {
       await T.waitForConnect();
 
@@ -351,8 +339,7 @@ describe("authenticate/authorize: different function syntaxes", () => {
       provider: InMemoryServerProvider,
 
       // Method shorthand - most concise
-      // eslint-disable-next-line @typescript-eslint/require-await
-      async authenticate({ token }) {
+      authenticate({ token }) {
         if (token === "valid-token") {
           return {
             userId: "user1",
@@ -362,8 +349,7 @@ describe("authenticate/authorize: different function syntaxes", () => {
         return undefined;
       },
 
-      // eslint-disable-next-line @typescript-eslint/require-await
-      async authorize(ev) {
+      authorize(ev) {
         // Type inference should work - ev should have context with role and permissions
         return ev.context.role === "admin";
       },
@@ -391,16 +377,14 @@ describe("authenticate/authorize: different function syntaxes", () => {
       provider: InMemoryServerProvider,
 
       // Traditional function expression
-      // eslint-disable-next-line @typescript-eslint/require-await
-      authenticate: async function ({ token }) {
+      authenticate: function ({ token }) {
         if (token === "valid-token") {
           return { userId: "user2", context: { isAdmin: true, level: 5 } };
         }
         return undefined;
       },
 
-      // eslint-disable-next-line @typescript-eslint/require-await
-      authorize: async function (ev) {
+      authorize: function (ev) {
         // Type inference should work here too
         return ev.context.isAdmin && ev.context.level > 3;
       },
@@ -428,8 +412,7 @@ describe("authenticate/authorize: different function syntaxes", () => {
       provider: InMemoryServerProvider,
 
       // Arrow function - most common in modern code
-      // eslint-disable-next-line @typescript-eslint/require-await
-      authenticate: async ({ token }) => {
+      authenticate: ({ token }) => {
         if (token === "valid-token") {
           return {
             userId: "user3",
@@ -442,8 +425,7 @@ describe("authenticate/authorize: different function syntaxes", () => {
         return undefined;
       },
 
-      // eslint-disable-next-line @typescript-eslint/require-await
-      authorize: async (ev) => {
+      authorize: (ev) => {
         // Type inference works perfectly with arrow functions
         return ev.context.tenantId.startsWith("tenant-");
       },
@@ -470,8 +452,7 @@ describe("authenticate/authorize: different function syntaxes", () => {
       provider: InMemoryServerProvider,
 
       // Method shorthand for authenticate
-      // eslint-disable-next-line @typescript-eslint/require-await
-      async authenticate({ token }) {
+      authenticate({ token }) {
         if (token === "mixed-token") {
           return {
             userId: "mixed-user",
@@ -486,8 +467,7 @@ describe("authenticate/authorize: different function syntaxes", () => {
       },
 
       // Arrow function for authorize
-      // eslint-disable-next-line @typescript-eslint/require-await
-      authorize: async (ev) => {
+      authorize: (ev) => {
         return ev.context.quota > 500 && ev.context.flags.premium;
       },
     });
@@ -520,8 +500,7 @@ describe("DocSyncServer assignability", () => {
         docBinding: DocNodeBinding([]),
         port: 0, // Let OS assign available port
         provider: InMemoryServerProvider,
-        // eslint-disable-next-line @typescript-eslint/require-await
-        async authenticate({ token: _token }) {
+        authenticate({ token: _token }) {
           if (_token === "test") {
             return {
               userId: "user1",
@@ -552,8 +531,7 @@ describe("DocSyncServer assignability", () => {
         docBinding: DocNodeBinding([]),
         port: 0, // Let OS assign available port
         provider: InMemoryServerProvider,
-        // eslint-disable-next-line @typescript-eslint/require-await
-        async authenticate({ token: _token }) {
+        authenticate({ token: _token }) {
           return {
             userId: "user1",
             context: {
@@ -585,8 +563,7 @@ describe("DocSyncServer assignability", () => {
         docBinding: DocNodeBinding([]),
         port: 0, // Let OS assign available port
         provider: InMemoryServerProvider,
-        // eslint-disable-next-line @typescript-eslint/require-await
-        async authenticate({ token: _token }) {
+        authenticate({ token: _token }) {
           return { userId: "user1", context: { premium: true } };
         },
       });
@@ -596,12 +573,10 @@ describe("DocSyncServer assignability", () => {
         docBinding: DocNodeBinding([]),
         port: 0, // Let OS assign available port
         provider: InMemoryServerProvider,
-        // eslint-disable-next-line @typescript-eslint/require-await
-        async authenticate({ token: _token }) {
+        authenticate({ token: _token }) {
           return { userId: "user1", context: { premium: true } };
         },
-        // eslint-disable-next-line @typescript-eslint/require-await
-        async authorize(ev) {
+        authorize(ev) {
           return ev.context.premium;
         },
       });
@@ -626,8 +601,7 @@ describe("DocSyncServer assignability", () => {
         docBinding: DocNodeBinding([]),
         port: 0, // Let OS assign available port
         provider: InMemoryServerProvider,
-        // eslint-disable-next-line @typescript-eslint/require-await
-        async authenticate({ token: _token }) {
+        authenticate({ token: _token }) {
           return {
             userId: "user1",
             context: {
@@ -680,8 +654,7 @@ describe("DocSyncServer assignability", () => {
         docBinding: DocNodeBinding([]),
         port: 0, // Let OS assign available port
         provider: InMemoryServerProvider,
-        // eslint-disable-next-line @typescript-eslint/require-await
-        async authenticate({ token: _token }) {
+        authenticate({ token: _token }) {
           return { userId: "user1" }; // No context
         },
       });
@@ -702,8 +675,7 @@ describe("DocSyncServer assignability", () => {
         docBinding: DocNodeBinding([]),
         port: 0, // Let OS assign available port
         provider: InMemoryServerProvider,
-        // eslint-disable-next-line @typescript-eslint/require-await
-        async authenticate({ token: _token }) {
+        authenticate({ token: _token }) {
           return {
             userId: "user1",
             context: {

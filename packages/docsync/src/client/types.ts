@@ -2,6 +2,7 @@
 import type {
   ClientToServerEvents,
   DocBinding,
+  MaybePromise,
   ServerToClientEvents,
   SerializedDocPayload,
 } from "../shared/types.js";
@@ -41,11 +42,11 @@ export type ClientConfig<
   O extends {} = {},
 > = {
   docBinding: DocBinding<D, S, O>;
-  server: { url: string; auth: { getToken: () => Promise<string> } };
+  server: { url: string; auth: { getToken: () => MaybePromise<string> } };
   local: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     provider: new (identity: Identity) => ClientProvider<any, any>;
-    getIdentity: () => Promise<Identity>;
+    getIdentity: () => MaybePromise<Identity>;
   };
 };
 

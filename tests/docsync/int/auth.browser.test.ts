@@ -18,13 +18,11 @@ const url = `ws://localhost:${globalThis.__TEST_SERVER_PORT__ ?? 8082}`;
 
 const createClient = (token: string) =>
   new DocSyncClient({
-    // eslint-disable-next-line @typescript-eslint/require-await
-    server: { url, auth: { getToken: async () => token } },
+    server: { url, auth: { getToken: () => token } },
     docBinding,
     local: {
       provider: IndexedDBProvider,
-      // eslint-disable-next-line @typescript-eslint/require-await
-      getIdentity: async () => ({ userId: "u", secret: "s" }),
+      getIdentity: () => ({ userId: "u", secret: "s" }),
     },
   });
 

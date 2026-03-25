@@ -3,6 +3,7 @@ import type {
   ClientToServerEvents,
   DocBinding,
   DocSyncEventName,
+  MaybePromise,
   ServerToClientEvents,
   SerializedDocPayload,
 } from "../shared/types.js";
@@ -87,14 +88,14 @@ export type ServerConfig<TContext, D extends {}, S extends {}, O extends {}> = {
 
   authenticate(ev: {
     token: string;
-  }): Promise<{ userId: string; context?: TContext } | undefined>;
+  }): MaybePromise<{ userId: string; context?: TContext } | undefined>;
 
   authorize?(ev: {
     type: DocSyncEventName;
     req: unknown;
     userId: string;
     context: TContext;
-  }): Promise<boolean>;
+  }): MaybePromise<boolean>;
 };
 
 // ============================================================================

@@ -82,7 +82,7 @@ export class DocSyncServer<
         return;
       }
 
-      this._authenticate({ token })
+      Promise.resolve(this._authenticate({ token }))
         .then((authResult) => {
           if (!authResult) {
             next(new Error("Authentication failed: invalid token"));
