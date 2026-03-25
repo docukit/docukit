@@ -17,7 +17,7 @@ import { children, descendants, nextSiblings } from "./shared.js";
 import { assert, bench, describe, wrapper } from "./utils.js";
 import { TextExtension } from "../utils.js";
 
-void (await wrapper(async () => {
+void (await wrapper(() => {
   const Text = defineNode({ type: "text", state: { value: string("") } });
 
   // Helper function to create text nodes

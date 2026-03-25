@@ -587,6 +587,7 @@ describe("DocSyncClient", () => {
         constructor(_identity: Identity) {
           // Identity accepted but not used
         }
+        // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
         async transaction() {
           // eslint-disable-next-line @typescript-eslint/only-throw-error
           throw "string error message";

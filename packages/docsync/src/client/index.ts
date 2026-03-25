@@ -296,7 +296,7 @@ export class DocSyncClient<
     };
   }
 
-  async setPresence({ docId, presence }: { docId: string; presence: unknown }) {
+  setPresence({ docId, presence }: { docId: string; presence: unknown }) {
     void handlePresence(this, { docId, presence });
   }
 

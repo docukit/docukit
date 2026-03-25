@@ -6,5 +6,6 @@ new DocSyncServer({
   docBinding: DocNodeBinding([]),
   port: 8081,
   provider: PostgresProvider,
+  // eslint-disable-next-line @typescript-eslint/require-await
   authenticate: async () => ({ userId: "John" }),
 });

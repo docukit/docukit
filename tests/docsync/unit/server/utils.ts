@@ -31,6 +31,7 @@ const createMockDocSyncClient = (serverOverrides?: {
   return new DocSyncClient({
     server: {
       url: serverOverrides?.url ?? `ws://localhost:${BASE_PORT}`,
+      // eslint-disable-next-line @typescript-eslint/require-await
       auth: serverOverrides?.auth ?? { getToken: async () => "test-token" },
     },
     local: {
@@ -38,6 +39,7 @@ const createMockDocSyncClient = (serverOverrides?: {
         identity: Identity,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ) => ClientProvider<any, any>,
+      // eslint-disable-next-line @typescript-eslint/require-await
       getIdentity: async () => ({ userId: "test-user", secret: "test-secret" }),
     },
     docBinding: DocNodeBinding([]),
@@ -49,6 +51,7 @@ const createServer = (port = BASE_PORT) => {
     docBinding: DocNodeBinding([testDocConfig]),
     port,
     provider: InMemoryServerProvider,
+    // eslint-disable-next-line @typescript-eslint/require-await
     authenticate: async ({ token }) => {
       if (token.startsWith("valid-")) {
         return { userId: token.replace("valid-", "") };

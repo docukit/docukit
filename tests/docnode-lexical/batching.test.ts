@@ -1,7 +1,7 @@
 import { $getRoot, createEditor } from "lexical";
 import { expect, test } from "vitest";
 
-test("batch updates", async () => {
+test("batch updates", () => {
   const editor = createEditor();
   const logOp: string[] = [];
   editor.registerUpdateListener(() => {

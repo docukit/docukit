@@ -167,6 +167,7 @@ describe("Client 2", () => {
       const client = await createClient();
       const docId = generateDocId();
       let statusDuringPush: string | undefined;
+      // eslint-disable-next-line @typescript-eslint/require-await -- sync mock of async interface
       spyOnRequest(client).mockImplementation(async () => {
         statusDuringPush = client["_pushStatusByDocId"].get(docId);
         return { data: { docId, clock: 1 } };

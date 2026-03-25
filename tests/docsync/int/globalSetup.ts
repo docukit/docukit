@@ -59,6 +59,7 @@ export async function setup() {
     docBinding: DocNodeBinding([testDocConfig]),
     port: serverPort,
     provider: InMemoryServerProvider,
+    // eslint-disable-next-line @typescript-eslint/require-await
     authenticate: async ({ token }) => {
       const userId = parseTestToken(token);
       if (!userId) return undefined;

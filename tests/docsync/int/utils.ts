@@ -174,11 +174,13 @@ const createClientWithConfig = (config: {
   const clientConfig: ClientConfig<Doc, JsonDoc, Operations> = {
     server: {
       url: getTestServerUrl(),
+      // eslint-disable-next-line @typescript-eslint/require-await
       auth: { getToken: async () => config.token },
     },
     docBinding: config.docBinding,
     local: {
       provider: IndexedDBProvider,
+      // eslint-disable-next-line @typescript-eslint/require-await
       getIdentity: async () => ({
         userId: config.userId,
         secret: "test-secret",

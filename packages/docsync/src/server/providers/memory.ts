@@ -32,10 +32,12 @@ export class InMemoryServerProvider<S, O> implements ServerProvider<S, O> {
   ): Promise<T> {
     // In-memory provider doesn't need real transactions since operations are synchronous
     const ctx: ServerProviderContext<S, O> = {
+      // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
       getSerializedDoc: async (docId: string) => {
         return this._docs.get(docId);
       },
 
+      // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
       getOperations: async ({ docId, clock }) => {
         const allOps = this._operations.get(docId) ?? [];
         const serverOps = allOps
@@ -44,6 +46,7 @@ export class InMemoryServerProvider<S, O> implements ServerProvider<S, O> {
         return serverOps;
       },
 
+      // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
       deleteOperations: async ({ docId, count }) => {
         const allOps = this._operations.get(docId) ?? [];
         allOps.splice(0, count);
@@ -54,6 +57,7 @@ export class InMemoryServerProvider<S, O> implements ServerProvider<S, O> {
         }
       },
 
+      // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
       saveOperations: async ({ docId, operations }) => {
         if (operations.length === 0) {
           // Return current clock if no operations to save
@@ -73,6 +77,7 @@ export class InMemoryServerProvider<S, O> implements ServerProvider<S, O> {
         return newClock;
       },
 
+      // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
       saveSerializedDoc: async ({ docId, serializedDoc, clock }) => {
         this._docs.set(docId, { serializedDoc, clock });
       },

@@ -15,6 +15,7 @@ describe("Server Events", () => {
 
   describe("onClientConnect", () => {
     test("should emit when client successfully authenticates and connects", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user1" };
       await testWrapper({ auth }, async (T) => {
         let called = false;
@@ -33,6 +34,7 @@ describe("Server Events", () => {
         docBinding: DocNodeBinding([]),
         port: testPort(1),
         provider: InMemoryServerProvider,
+        // eslint-disable-next-line @typescript-eslint/require-await
         authenticate: async ({ token }) => {
           if (token === "admin-token") {
             return {
@@ -49,6 +51,7 @@ describe("Server Events", () => {
         capturedContext = event.context;
       });
 
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "admin-token" };
       await testWrapper(
         { auth, url: `ws://localhost:${testPort(1)}` },
@@ -66,6 +69,7 @@ describe("Server Events", () => {
     });
 
     test("should support multiple handlers", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user2" };
       await testWrapper({ auth }, async (T) => {
         let called1 = false;
@@ -90,6 +94,7 @@ describe("Server Events", () => {
         docBinding: DocNodeBinding([]),
         port: testPort(2),
         provider: InMemoryServerProvider,
+        // eslint-disable-next-line @typescript-eslint/require-await
         authenticate: async ({ token }) => {
           if (token.startsWith("valid-")) {
             return { userId: token.replace("valid-", "") };
@@ -104,6 +109,7 @@ describe("Server Events", () => {
       });
       unsubscribe();
 
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user3" };
       await testWrapper(
         { auth, url: `ws://localhost:${testPort(2)}` },
@@ -120,6 +126,7 @@ describe("Server Events", () => {
     });
 
     test("should include socketId", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user4" };
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: ClientConnectEvent | undefined;
@@ -142,6 +149,7 @@ describe("Server Events", () => {
 
   describe("onClientDisconnect", () => {
     test("should emit when client disconnects normally", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user5" };
       await testWrapper({ auth }, async (T) => {
         let disconnectReason: string | undefined;
@@ -159,7 +167,7 @@ describe("Server Events", () => {
       });
     });
 
-    test("should emit when authentication fails", async () => {
+    test("should emit when authentication fails", () => {
       // TODO: This test requires registering handler before client connects
       // The current testWrapper API doesn't support this timing requirement
       // Skip for now
@@ -167,6 +175,7 @@ describe("Server Events", () => {
     });
 
     test("should support multiple handlers", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user6" };
       await testWrapper({ auth }, async (T) => {
         let called1 = false;
@@ -190,6 +199,7 @@ describe("Server Events", () => {
     });
 
     test("should allow unsubscribing", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user7" };
       await testWrapper({ auth }, async (T) => {
         let called = false;
@@ -208,6 +218,7 @@ describe("Server Events", () => {
     });
 
     test("should include disconnect reason", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user8" };
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: ClientDisconnectEvent | undefined;
@@ -234,6 +245,7 @@ describe("Server Events", () => {
 
   describe("onSyncRequest", () => {
     test("should emit on successful sync request", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user9" };
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
@@ -269,12 +281,14 @@ describe("Server Events", () => {
         docBinding: DocNodeBinding([]),
         port: testPort(4),
         provider: InMemoryServerProvider,
+        // eslint-disable-next-line @typescript-eslint/require-await
         authenticate: async ({ token }) => {
           if (token.startsWith("valid-")) {
             return { userId: token.replace("valid-", "") };
           }
           return undefined;
         },
+        // eslint-disable-next-line @typescript-eslint/require-await
         authorize: async () => false, // Deny all operations
       });
 
@@ -283,6 +297,7 @@ describe("Server Events", () => {
         capturedStatus = event.status;
       });
 
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user10" };
       await testWrapper(
         { auth, url: `ws://localhost:${testPort(4)}` },
@@ -303,6 +318,7 @@ describe("Server Events", () => {
     });
 
     test("should include request context in all cases", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user11" };
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
@@ -329,6 +345,7 @@ describe("Server Events", () => {
     });
 
     test("should include duration when available", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user12" };
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
@@ -353,7 +370,7 @@ describe("Server Events", () => {
       });
     });
 
-    test("should include collaboration metrics when multiple clients", async () => {
+    test("should include collaboration metrics when multiple clients", () => {
       // This test requires two clients connecting to the same server
       // The testWrapper creates a new server for each call, so we skip this for now
       // TODO: Improve test infrastructure to support multiple clients to same server
@@ -361,6 +378,7 @@ describe("Server Events", () => {
     });
 
     test("should support multiple handlers", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user15" };
       await testWrapper({ auth }, async (T) => {
         let called1 = false;
@@ -387,6 +405,7 @@ describe("Server Events", () => {
     });
 
     test("should allow unsubscribing", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user16" };
       await testWrapper({ auth }, async (T) => {
         let called = false;
@@ -408,6 +427,7 @@ describe("Server Events", () => {
     });
 
     test("should include response data on success", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user17" };
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
@@ -431,6 +451,7 @@ describe("Server Events", () => {
     });
 
     test("should handle sync without operations (fetch only)", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user18" };
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
@@ -458,6 +479,7 @@ describe("Server Events", () => {
 
   describe("Event Order", () => {
     test("should emit events in correct order during connection lifecycle", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user19" };
       await testWrapper({ auth }, async (T) => {
         const events: string[] = [];
@@ -493,6 +515,7 @@ describe("Server Events", () => {
     });
 
     test("should emit multiple sync events in order", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user20" };
       await testWrapper({ auth }, async (T) => {
         const docIds: string[] = [];
@@ -537,12 +560,14 @@ describe("Server Events", () => {
         docBinding: DocNodeBinding([]),
         port: testPort(5),
         provider: InMemoryServerProvider,
+        // eslint-disable-next-line @typescript-eslint/require-await
         authenticate: async ({ token }) => {
           if (token.startsWith("valid-")) {
             return { userId: token.replace("valid-", "") };
           }
           return undefined;
         },
+        // eslint-disable-next-line @typescript-eslint/require-await
         authorize: async () => false,
       });
 
@@ -551,6 +576,7 @@ describe("Server Events", () => {
         capturedEvent = event;
       });
 
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user21" };
       await testWrapper(
         { auth, url: `ws://localhost:${testPort(5)}` },
@@ -577,6 +603,7 @@ describe("Server Events", () => {
     });
 
     test("onSyncRequest should accumulate optional fields as they become available", async () => {
+      // eslint-disable-next-line @typescript-eslint/require-await
       const auth = { getToken: async () => "valid-user22" };
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;

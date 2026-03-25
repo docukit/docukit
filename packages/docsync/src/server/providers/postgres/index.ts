@@ -88,6 +88,7 @@ export class PostgresProvider<S, O> implements ServerProvider<S, O> {
           return inserted[0]!.clock.getTime();
         },
 
+        // eslint-disable-next-line @typescript-eslint/require-await -- not implemented yet
         saveSerializedDoc: async (_arg) => {
           // TODO: saveSerializedDoc needs userId to work with Postgres schema.
           // This will be called during operation squashing (not implemented yet).
