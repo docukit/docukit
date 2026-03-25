@@ -67,14 +67,12 @@ export const createClient = async () => {
   const config: ClientConfig<Doc, JsonDoc, Operations> = {
     server: {
       url: "ws://localhost:8081",
-      // eslint-disable-next-line @typescript-eslint/require-await
-      auth: { getToken: async () => "test-token" },
+      auth: { getToken: () => "test-token" },
     },
     docBinding,
     local: {
       provider: IndexedDBProvider,
-      // eslint-disable-next-line @typescript-eslint/require-await
-      getIdentity: async () => ({ userId, secret: "test-secret" }),
+      getIdentity: () => ({ userId, secret: "test-secret" }),
     },
   };
 

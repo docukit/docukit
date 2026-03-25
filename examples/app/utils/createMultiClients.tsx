@@ -22,14 +22,12 @@ const createClientForUser = (
     server: {
       url: "ws://localhost:8081",
       auth: {
-        // eslint-disable-next-line @typescript-eslint/require-await
-        getToken: async () => userId, // Use userId as token
+        getToken: () => userId, // Use userId as token
       },
     },
     local: {
       provider: IndexedDBProvider,
-      // eslint-disable-next-line @typescript-eslint/require-await
-      getIdentity: async () => ({ userId, secret: "asdasdasd" }),
+      getIdentity: () => ({ userId, secret: "asdasdasd" }),
     },
     docBinding: DocNodeBinding(docConfigs),
   });

@@ -13,13 +13,11 @@ test("createDocSyncClient", async () => {
   const { useDoc } = createDocSyncClient({
     server: {
       url: "ws://localhost:8081",
-      // eslint-disable-next-line @typescript-eslint/require-await
-      auth: { getToken: async () => "1234567890" as string },
+      auth: { getToken: () => "1234567890" as string },
     },
     local: {
       provider: IndexedDBProvider,
-      // eslint-disable-next-line @typescript-eslint/require-await
-      getIdentity: async () => ({ userId: "John", secret: "asdasdasd" }),
+      getIdentity: () => ({ userId: "John", secret: "asdasdasd" }),
     },
     docBinding: DocNodeBinding([docConfig]),
   });

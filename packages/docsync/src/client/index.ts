@@ -87,7 +87,7 @@ export class DocSyncClient<
     this._deviceId = getDeviceId();
     this._socket = io(config.server.url, {
       auth: (cb) => {
-        void config.server.auth.getToken().then((token) => {
+        void Promise.resolve(config.server.auth.getToken()).then((token) => {
           cb({ token, deviceId: this._deviceId, clientId: this._clientId });
         });
       },
