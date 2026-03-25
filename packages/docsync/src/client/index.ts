@@ -44,6 +44,7 @@ export class DocSyncClient<
     {
       promisedDoc: Promise<D | undefined>;
       refCount: number;
+      type: string;
       presence: Presence;
       presenceListeners: Set<(presence: Presence) => void>;
     }
@@ -164,6 +165,7 @@ export class DocSyncClient<
       this._docsCache.set(createdDocId, {
         promisedDoc: Promise.resolve(doc),
         refCount: 1,
+        type,
         presence: {},
         presenceListeners: new Set(),
       });
@@ -211,6 +213,7 @@ export class DocSyncClient<
         this._docsCache.set(docId, {
           promisedDoc,
           refCount: 1,
+          type,
           presence: {},
           presenceListeners: new Set(),
         });

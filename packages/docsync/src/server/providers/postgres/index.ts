@@ -1,4 +1,4 @@
-import { queryClient } from "./schema.js";
+import { queryClient, checkConnection } from "./schema.js";
 import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "./schema.js";
 import { eq, gt, and } from "drizzle-orm";
@@ -6,6 +6,10 @@ import type { ServerProvider, ServerProviderContext } from "../../types.js";
 
 export class PostgresProvider<S, O> implements ServerProvider<S, O> {
   private _db = drizzle(queryClient, { schema });
+
+  constructor() {
+    checkConnection();
+  }
 
   async transaction<T>(
     _mode: "readonly" | "readwrite",

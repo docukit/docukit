@@ -77,10 +77,18 @@ describe("presence", () => {
     // Both clients sync to join the document room
     await Promise.all([
       new Promise((resolve) =>
-        socket1.emit("sync", { docId, operations: [], clock: 0 }, resolve),
+        socket1.emit(
+          "sync",
+          { type: "test", docId, operations: [], clock: 0 },
+          resolve,
+        ),
       ),
       new Promise((resolve) =>
-        socket2.emit("sync", { docId, operations: [], clock: 0 }, resolve),
+        socket2.emit(
+          "sync",
+          { type: "test", docId, operations: [], clock: 0 },
+          resolve,
+        ),
       ),
     ]);
 
@@ -186,7 +194,11 @@ describe("presence", () => {
 
     // Only client 1 joins the room
     await new Promise((resolve) => {
-      socket1.emit("sync", { docId, operations: [], clock: 0 }, resolve);
+      socket1.emit(
+        "sync",
+        { type: "test", docId, operations: [], clock: 0 },
+        resolve,
+      );
     });
 
     // Listen for presence updates on client 2
@@ -251,6 +263,7 @@ describe("sync", () => {
       await T.waitForConnect();
       expect(T.socket.connected).toBe(true);
       const res = await T.sync({
+        type: "test",
         docId: "doc-1",
         operations: [{ type: "insert" }],
         clock: 0,
@@ -275,6 +288,7 @@ describe("sync", () => {
       // Send 100 operations individually
       for (let i = 0; i < 100; i++) {
         const res = await T.sync({
+          type: "test",
           docId,
           operations: [{ type: "insert", data: `op-${i}` }],
           clock: i,
@@ -287,7 +301,12 @@ describe("sync", () => {
       }
 
       // First sync from clock 0: should receive all 100 operations
-      const res1 = await T.sync({ docId, operations: [], clock: 0 });
+      const res1 = await T.sync({
+        type: "test",
+        docId,
+        operations: [],
+        clock: 0,
+      });
 
       expect("error" in res1).toBe(false);
       if ("data" in res1) {
@@ -302,7 +321,12 @@ describe("sync", () => {
 
       // Second sync from clock 100: should receive serializedDoc (squashed)
       // because previous fetch triggered squashing (>= 100 operations)
-      const res2 = await T.sync({ docId, operations: [], clock: 100 });
+      const res2 = await T.sync({
+        type: "test",
+        docId,
+        operations: [],
+        clock: 100,
+      });
 
       expect("error" in res2).toBe(false);
       if ("data" in res2) {

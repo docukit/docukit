@@ -180,6 +180,18 @@ export const triggerSync = (
   client: DocSyncClient<Doc, JsonDoc, Operations>,
   docId: string,
 ): void => {
+  // Ensure a cache entry exists so handleSync can read the type
+  if (!client["_docsCache"].has(docId)) {
+    const { doc } = client["_docBinding"].create("test", docId);
+    client["_docsCache"].set(docId, {
+      promisedDoc: Promise.resolve(doc),
+      refCount: 1,
+      type: "test",
+      presence: {},
+      presenceListeners: new Set(),
+    });
+  }
+
   const socket = client["_socket"] as unknown as {
     listeners: (e: string) => ((payload: { docId: string }) => void)[];
   };

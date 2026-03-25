@@ -156,6 +156,7 @@ describe("Client 2", () => {
       triggerSync(client, docId);
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith("sync", {
+        type: "test",
         clock: 0,
         docId,
         operations: testOperations,

@@ -34,14 +34,16 @@ export function handleSync<
   socket.on(
     "sync",
     async (
-      payload: SyncRequest<O>,
+      req: SyncRequest<O>,
       cb: (res: SyncResponse<S, O>) => void,
     ): Promise<void> => {
-      const { docId, operations = [], clock } = payload;
+      const { type, docId, operations = [], clock } = req;
       const startTime = Date.now();
 
+      // TODO: we should validate req with Valibot here
+
       const authorized = server["_authorize"]
-        ? await server["_authorize"]({ type: "sync", payload, userId, context })
+        ? await server["_authorize"]({ type: "sync", req, userId, context })
         : true;
       if (!authorized) {
         const errorEvent = {
@@ -54,7 +56,7 @@ export function handleSync<
           deviceId,
           socketId: socket.id,
           status: "error",
-          req: payload,
+          req,
           error: errorEvent,
           durationMs: Date.now() - startTime,
         });
@@ -82,10 +84,10 @@ export function handleSync<
         if (presence) socket.emit("presence", { docId, presence });
       }
 
-      if ("presence" in payload) {
+      if ("presence" in req) {
         applyPresenceUpdate(server["_presenceByDoc"], socket, clientId, {
           docId,
-          presence: payload.presence,
+          presence: req.presence,
         });
       }
 
@@ -116,10 +118,9 @@ export function handleSync<
           },
         });
 
-        const docRoom = io.sockets.adapter.rooms.get(`doc:${payload.docId}`);
+        const docRoom = io.sockets.adapter.rooms.get(`doc:${docId}`);
         const devicesInRoom = new Set<string>();
-        const shouldNotifyClients =
-          payload.operations && payload.operations.length > 0;
+        const shouldNotifyClients = operations.length > 0;
 
         if (docRoom) {
           for (const socketId of docRoom) {
@@ -135,7 +136,7 @@ export function handleSync<
                 targetSocket.id !== socket.id &&
                 targetDeviceId !== deviceId
               ) {
-                targetSocket.emit("dirty", { docId: payload.docId });
+                targetSocket.emit("dirty", { docId });
               }
             }
           }
@@ -146,7 +147,7 @@ export function handleSync<
           deviceId,
           socketId: socket.id,
           status: "success",
-          req: { docId: payload.docId, operations, clock: payload.clock },
+          req,
           ...(result.operations || result.serializedDoc
             ? {
                 res: {
@@ -175,10 +176,10 @@ export function handleSync<
             serializedDoc,
             clock: resultClock,
           } = result;
-          const allOperations = [...serverOps, ...(payload.operations ?? [])];
+          const allOperations = [...serverOps, ...operations];
           const doc = serializedDoc
             ? docBinding.deserialize(serializedDoc)
-            : docBinding.create("test", resultDocId).doc;
+            : docBinding.create(type, resultDocId).doc;
           allOperations.forEach((operation) => {
             docBinding.applyOperations(doc, operation);
           });
@@ -206,7 +207,7 @@ export function handleSync<
           deviceId,
           socketId: socket.id,
           status: "error",
-          req: { docId: payload.docId, operations, clock: payload.clock },
+          req,
           error: {
             ...errorEvent,
             ...(error instanceof Error && error.stack

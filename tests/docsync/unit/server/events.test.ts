@@ -255,6 +255,7 @@ describe("Server Events", () => {
 
         await T.waitForConnect();
         await T.sync({
+          type: "test",
           docId: "doc-1",
           operations: [{ type: "insert" }],
           clock: 0,
@@ -303,6 +304,7 @@ describe("Server Events", () => {
         async (T) => {
           await T.waitForConnect();
           await T.sync({
+            type: "test",
             docId: "doc-1",
             operations: [{ type: "insert" }],
             clock: 0,
@@ -326,6 +328,7 @@ describe("Server Events", () => {
 
         await T.waitForConnect();
         await T.sync({
+          type: "test",
           docId: "test-doc",
           operations: [{ type: "test" }],
           clock: 5,
@@ -333,6 +336,7 @@ describe("Server Events", () => {
 
         expect(capturedEvent).toBeDefined();
         expect(capturedEvent?.req).toStrictEqual({
+          type: "test",
           docId: "test-doc",
           operations: [{ type: "test" }],
           clock: 5,
@@ -351,6 +355,7 @@ describe("Server Events", () => {
 
         await T.waitForConnect();
         await T.sync({
+          type: "test",
           docId: "doc-2",
           operations: [{ type: "insert" }],
           clock: 0,
@@ -388,6 +393,7 @@ describe("Server Events", () => {
 
         await T.waitForConnect();
         await T.sync({
+          type: "test",
           docId: "doc-3",
           operations: [{ type: "insert" }],
           clock: 0,
@@ -410,6 +416,7 @@ describe("Server Events", () => {
 
         await T.waitForConnect();
         await T.sync({
+          type: "test",
           docId: "doc-4",
           operations: [{ type: "insert" }],
           clock: 0,
@@ -430,6 +437,7 @@ describe("Server Events", () => {
 
         await T.waitForConnect();
         await T.sync({
+          type: "test",
           docId: "doc-5",
           operations: [{ type: "insert" }],
           clock: 0,
@@ -452,7 +460,7 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.sync({ docId: "doc-6", clock: 0 });
+        await T.sync({ type: "test", docId: "doc-6", clock: 0 });
 
         expect(capturedEvent).toBeDefined();
         // When no operations are sent, the server receives an empty array
@@ -486,6 +494,7 @@ describe("Server Events", () => {
 
         // Do a sync
         await T.sync({
+          type: "test",
           docId: "doc-7",
           operations: [{ type: "insert" }],
           clock: 0,
@@ -518,16 +527,19 @@ describe("Server Events", () => {
         await T.waitForConnect();
 
         await T.sync({
+          type: "test",
           docId: "doc-a",
           operations: [{ type: "insert" }],
           clock: 0,
         });
         await T.sync({
+          type: "test",
           docId: "doc-b",
           operations: [{ type: "insert" }],
           clock: 0,
         });
         await T.sync({
+          type: "test",
           docId: "doc-c",
           operations: [{ type: "insert" }],
           clock: 0,
@@ -571,6 +583,7 @@ describe("Server Events", () => {
         async (T) => {
           await T.waitForConnect();
           await T.sync({
+            type: "test",
             docId: "doc-8",
             operations: [{ type: "insert" }],
             clock: 0,
@@ -601,6 +614,7 @@ describe("Server Events", () => {
         await T.waitForConnect();
 
         await T.sync({
+          type: "test",
           docId: "doc-9",
           operations: [{ type: "insert" }],
           clock: 0,
