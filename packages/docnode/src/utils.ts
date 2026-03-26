@@ -42,7 +42,6 @@ export function withTransaction(
 ): void {
   if (
     doc["_lifeCycleStage"] === "change" ||
-    doc["_lifeCycleStage"] === "init" ||
     doc["_lifeCycleStage"] === "disposed"
   )
     throw new Error(

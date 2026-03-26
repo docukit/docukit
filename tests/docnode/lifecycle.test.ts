@@ -75,15 +75,11 @@ describe("register lifecycle", () => {
       register: (doc) => {
         const node = doc.createNode(Text);
         node.state.value.set("test");
-        expect(() => {
-          doc.root.append(node);
-        }).toThrowError("You can't trigger an update inside a init event");
+        doc.root.append(node);
       },
     };
-
-    expect(() => {
-      new Doc({ type: "root", extensions: [TestExtension] });
-    }).toThrowError("You can't trigger an update inside a init stage");
+    const doc = new Doc({ type: "root", extensions: [TestExtension] });
+    assertDoc(doc, ["test"]);
   });
 
   test("can register change event inside and outside register", () => {
