@@ -570,6 +570,7 @@ export class Doc {
     updated: new Set(),
   };
   protected _nodeIdGenerator: (doc: Doc) => string;
+  protected _idGen!: NodeIdGenerator;
   readonly root: DocNode;
 
   constructor(config: DocConfig) {
@@ -731,6 +732,8 @@ export class Doc {
       validate: (id) => ULID_REGEX.test(id),
       extractTime: (id) => decodeTime(id.toUpperCase()),
     };
+
+    this._idGen = idGen;
 
     if (config.id && !idGen.validate(config.id)) {
       throw new Error(`Invalid document id: ${config.id}.`);
@@ -1074,7 +1077,7 @@ export class Doc {
         }
       });
     };
-    const root = doc._createNodeFromJson(jsonDoc);
+    const root = doc._createNodeFromJson(jsonDoc, true);
     doc._nodeMap.delete(doc.root.id);
     // @ts-expect-error - read-only property
     doc.root = root;
@@ -1083,8 +1086,12 @@ export class Doc {
     return doc;
   }
 
-  private _createNodeFromJson(jsonNode: JsonDoc): DocNode {
+  private _createNodeFromJson(jsonNode: JsonDoc, isRoot = false): DocNode {
     const [id, type] = jsonNode;
+    const shouldValidate = isRoot || !this._idGen.extractTime;
+    if (shouldValidate && !this._idGen.validate(id)) {
+      throw new Error(`Invalid node id: ${id}.`);
+    }
     // @ts-expect-error - private constructor
     const node = new DocNode(this, type, id) as DocNode;
     const state = this["_createStateFromJson"](jsonNode);

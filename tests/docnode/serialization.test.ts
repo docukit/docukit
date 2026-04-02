@@ -245,4 +245,88 @@ describe("json serialization", () => {
 
     expect(doc.root.id).toBe(id);
   });
+
+  test("fromJSON with custom nodeIdGenerator with extractTime validates only root", () => {
+    const baseTime = Date.now();
+    const doc = Doc.fromJSON(
+      {
+        type: "root",
+        extensions: [TextExtension],
+        nodeIdGenerator: {
+          generate: () => `ts-${baseTime}`,
+          validate: (id) => id.startsWith("ts-"),
+          extractTime: (id) => parseInt(id.split("-")[1]!, 10),
+        },
+      },
+      [
+        `ts-${baseTime}`,
+        "root",
+        {},
+        [
+          ["compact-1", "text", { value: '"1"' }],
+          ["compact-2", "text", { value: '"2"' }],
+        ],
+      ],
+    );
+    expect(doc.root.id).toBe(`ts-${baseTime}`);
+    assertDoc(doc, ["1", "2"]);
+  });
+
+  test("fromJSON with custom nodeIdGenerator with extractTime rejects invalid root", () => {
+    const baseTime = Date.now();
+    expect(() =>
+      Doc.fromJSON(
+        {
+          type: "root",
+          extensions: [TextExtension],
+          nodeIdGenerator: {
+            generate: () => `ts-${baseTime}`,
+            validate: (id) => id.startsWith("ts-"),
+            extractTime: (id) => parseInt(id.split("-")[1]!, 10),
+          },
+        },
+        ["bad-root", "root", {}],
+      ),
+    ).toThrowError("Invalid document id: bad-root.");
+  });
+
+  test("fromJSON with custom nodeIdGenerator without extractTime validates all nodes", () => {
+    const doc = Doc.fromJSON(
+      {
+        type: "root",
+        extensions: [TextExtension],
+        nodeIdGenerator: {
+          generate: () => `ok-${Date.now()}`,
+          validate: (id) => id.startsWith("ok-"),
+        },
+      },
+      [
+        "ok-root",
+        "root",
+        {},
+        [
+          ["ok-1", "text", { value: '"1"' }],
+          ["ok-2", "text", { value: '"2"' }],
+        ],
+      ],
+    );
+    expect(doc.root.id).toBe("ok-root");
+    assertDoc(doc, ["1", "2"]);
+  });
+
+  test("fromJSON with custom nodeIdGenerator without extractTime rejects invalid child", () => {
+    expect(() =>
+      Doc.fromJSON(
+        {
+          type: "root",
+          extensions: [TextExtension],
+          nodeIdGenerator: {
+            generate: () => `ok-${Date.now()}`,
+            validate: (id) => id.startsWith("ok-"),
+          },
+        },
+        ["ok-root", "root", {}, [["bad-child", "text", { value: '"1"' }]]],
+      ),
+    ).toThrowError("Invalid node id: bad-child.");
+  });
 });
