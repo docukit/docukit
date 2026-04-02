@@ -75,15 +75,33 @@ describe("register lifecycle", () => {
       register: (doc) => {
         const node = doc.createNode(Text);
         node.state.value.set("test");
-        expect(() => {
-          doc.root.append(node);
-        }).toThrowError("You can't trigger an update inside a init event");
+        doc.root.append(node);
       },
     };
+    const doc = new Doc({ type: "root", extensions: [TestExtension] });
+    assertDoc(doc, ["test"]);
+  });
 
-    expect(() => {
-      new Doc({ type: "root", extensions: [TestExtension] });
-    }).toThrowError("You can't trigger an update inside a init stage");
+  test("update in a register with a normalizer", () => {
+    const TestExtension: Extension = {
+      nodes: [Text],
+      register: (doc) => {
+        const node = doc.createNode(Text);
+        node.state.value.set("test");
+        doc.root.append(node);
+
+        doc.onNormalize(() => {
+          if (doc.root.first?.next) return;
+          const node2 = doc.createNode(Text);
+          node2.state.value.set("test2");
+          doc.root.append(node2);
+        });
+      },
+    };
+    const doc = new Doc({ type: "root", extensions: [TestExtension] });
+    assertDoc(doc, ["test"]);
+    doc.forceCommit();
+    assertDoc(doc, ["test", "test2"]);
   });
 
   test("can register change event inside and outside register", () => {
