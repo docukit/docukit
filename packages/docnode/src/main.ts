@@ -1077,7 +1077,7 @@ export class Doc {
         }
       });
     };
-    const root = doc._createNodeFromJson(jsonDoc, true);
+    const root = doc._createNodeFromJson(jsonDoc);
     doc._nodeMap.delete(doc.root.id);
     // @ts-expect-error - read-only property
     doc.root = root;
@@ -1086,10 +1086,9 @@ export class Doc {
     return doc;
   }
 
-  private _createNodeFromJson(jsonNode: JsonDoc, isRoot = false): DocNode {
+  private _createNodeFromJson(jsonNode: JsonDoc): DocNode {
     const [id, type] = jsonNode;
-    const shouldValidate = isRoot || !this._idGen.extractTime;
-    if (shouldValidate && !this._idGen.validate(id)) {
+    if (!this._idGen.extractTime && !this._idGen.validate(id)) {
       throw new Error(`Invalid node id: ${id}.`);
     }
     // @ts-expect-error - private constructor

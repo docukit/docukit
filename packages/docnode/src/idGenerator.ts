@@ -74,7 +74,14 @@ export const nodeIdFactory = (
   extractTime: (id: string) => number,
 ) => {
   const rootId = doc.root.id;
-  const createdAt = extractTime(rootId);
+  let createdAt: number;
+  try {
+    createdAt = extractTime(rootId);
+  } catch (error) {
+    throw new Error(
+      `Failed to extract time from root id '${rootId}'. ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   const milisecondsPassed = Date.now() - createdAt;
   const milisecondsInBase64 = numberToBase64(milisecondsPassed);
   const randomString = randomStringBase64(3);

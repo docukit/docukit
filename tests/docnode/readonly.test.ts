@@ -89,6 +89,25 @@ describe("accessors & getters", () => {
       expect(node.id).toMatch(DOCNODE_ID());
     });
 
+    test("custom nodeIdGenerator with extractTime that throws wraps the error", () => {
+      expect(
+        () =>
+          new Doc({
+            type: "test",
+            extensions: [TextExtension],
+            nodeIdGenerator: {
+              generate: () => "id-123",
+              validate: () => true,
+              extractTime: () => {
+                throw new Error("bad format");
+              },
+            },
+          }),
+      ).toThrowError(
+        "Failed to extract time from root id 'id-123'. bad format",
+      );
+    });
+
     test("type", () => {
       expect(node1.type).toBe("text");
       expect(root.type).toBe("root");
