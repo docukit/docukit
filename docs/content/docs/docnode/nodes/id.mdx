@@ -1,0 +1,92 @@
+---
+title: ID Generation
+description: How DocNode generates and validates node IDs, and how to customize it.
+---
+
+## Stable, Exposed IDs
+
+Unlike most popular CRDTs, DocNode exposes node IDs as stable, first-class values, and lets you customize how they are generated. Every node has an `id` that you can read, store, and use to look up nodes in O(1) via `doc.getNodeById(id)`.
+
+This is important because it is common to need a stable reference to a node — for example, to track which node a UI component is editing, to store a selection, or to reference one node from another. In CRDTs that hide or randomize their IDs, you end up creating your own `id` state property, and then paying O(n) to find a node by it.
+
+When your domain data already has its own IDs (database rows, external entities, etc.), this gets worse: you end up with two IDs per node — the CRDT's internal one and yours — with no way to use `getNodeById` for your domain ID.
+
+`nodeIdGenerator` solves both problems. You can make DocNode use your own IDs directly, getting O(1) lookups and zero redundancy.
+
+## Default Behavior
+
+By default, DocNode uses **lowercase ULIDs** for root node IDs and a compact **base64 Lamport Timestamp** for all other nodes. The compact IDs encode the elapsed time since the document was created, 3 random characters, and a monotonic clock — making them short and collision-resistant.
+
+```ts
+const doc = new Doc({ type: "root", extensions: [TextExtension] });
+doc.root.id; // '01kdfwt92h5jqa8a0tc7w3jfc8' (ULID)
+const node = doc.createNode(TextNode);
+node.id; // '0abc.-' (compact base64)
+```
+
+## Custom `nodeIdGenerator`
+
+You can provide a custom `nodeIdGenerator` in your `DocConfig` to control how IDs are generated and validated.
+
+```ts
+import { type NodeIdGenerator } from "@docukit/docnode";
+```
+
+### Properties
+
+| Property      | Type                      | Required | Description                                                                                                                            |
+| ------------- | ------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `generate`    | `() => string`            | Yes      | Produces a new ID string.                                                                                                              |
+| `validate`    | `(id: string) => boolean` | Yes      | Returns `true` if the given string is a valid ID. Used when creating a doc with a specific `id` and when importing via `Doc.fromJSON`. |
+| `extractTime` | `(id: string) => number`  | No       | Extracts the creation timestamp (ms) from an ID. Controls how non-root nodes are generated (see below).                                |
+
+### With `extractTime`
+
+When `extractTime` is defined, only the **root node** uses `generate`. All other nodes use the optimized compact ID system, which derives a session offset from the root node's timestamp.
+
+This is the recommended approach when your ID format encodes a timestamp (e.g., ULID, UUID v7, etc.).
+
+```ts
+import { ulid, decodeTime } from "ulid";
+
+const doc = new Doc({
+  type: "editor",
+  extensions: [TextExtension],
+  nodeIdGenerator: {
+    generate: () => ulid().toLowerCase(),
+    validate: (id) => /^[0-7][0-9a-hjkmnp-tv-z]{25}$/.test(id),
+    extractTime: (id) => decodeTime(id.toUpperCase()),
+  },
+});
+```
+
+<Callout type="info">
+  This is equivalent to the default behavior. You only need to provide a custom
+  `nodeIdGenerator` if you want to use a different ID format.
+</Callout>
+
+### Without `extractTime`
+
+When `extractTime` is omitted, `generate` is used for **all nodes** — both root and non-root. `validate` is also applied to all node IDs during `Doc.fromJSON`.
+
+```ts
+import { v4 as uuidv4, validate } from "uuid";
+
+const doc = new Doc({
+  type: "editor",
+  extensions: [TextExtension],
+  nodeIdGenerator: { generate: () => uuidv4(), validate },
+});
+```
+
+## Validation during `Doc.fromJSON`
+
+When importing a document from JSON, DocNode validates node IDs using `nodeIdGenerator.validate`:
+
+- **With `extractTime`**: only the root node ID is validated (non-root nodes use the compact format).
+- **Without `extractTime`**: all node IDs are validated.
+
+```ts
+// This will throw "Invalid node id: ..." if any ID fails validation
+const doc = Doc.fromJSON(config, jsonDoc);
+```

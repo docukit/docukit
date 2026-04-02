@@ -13,6 +13,7 @@ import {
   type NodeState,
   type DefaultStateMethods,
   type ChangeEvent,
+  type NodeIdGenerator,
 } from "./types.js";
 import {
   detachRange,
@@ -23,7 +24,7 @@ import {
 } from "./utils.js";
 import * as operations from "./operations.js";
 import { nodeIdFactory } from "./idGenerator.js";
-import { ulid } from "ulid";
+import { decodeTime, ulid } from "ulid";
 
 export class DocNode<T extends NodeDefinition = NodeDefinition> {
   readonly id: string;
@@ -569,6 +570,7 @@ export class Doc {
     updated: new Set(),
   };
   protected _nodeIdGenerator: (doc: Doc) => string;
+  protected _idGen: NodeIdGenerator;
   readonly root: DocNode;
 
   constructor(config: DocConfig) {
@@ -725,27 +727,26 @@ export class Doc {
       };
     });
 
-    // Reasons why root id is required to be lowercase ulid:
-    // - The ulid timestamp is used by nodeIdFactory to generate small IDs on other nodes.
-    // - Database providers can be optimized by using ULIDs column type.
-    // I could allow it when using a custom nodeIdFactory, but that's not supported
-    // and is complex, error-prone, and confusing. For example, a user might want
-    // to use ulid but accidentally make a mistake (e.g., uppercase).
-    if (config.id && !ULID_REGEX.test(config.id)) {
-      throw new Error(
-        `Invalid document id: ${config.id}. It must be a lowercase ULID.`,
-      );
+    const idGen: NodeIdGenerator = config.nodeIdGenerator ?? {
+      generate: () => ulid().toLowerCase(),
+      validate: (id) => ULID_REGEX.test(id),
+      extractTime: (id) => decodeTime(id.toUpperCase()),
+    };
+
+    this._idGen = idGen;
+
+    if (config.id && !idGen.validate(config.id)) {
+      throw new Error(`Invalid document id: ${config.id}.`);
     }
 
-    const id = config.id ?? ulid().toLowerCase();
+    const id = config.id ?? idGen.generate();
     // @ts-expect-error - private constructor
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     this.root = new DocNode(this, config.type, id);
     this._nodeMap.set(id, this.root);
-    this._nodeIdGenerator =
-      config.nodeIdGenerator === "ulid"
-        ? () => ulid().toLowerCase()
-        : nodeIdFactory(this);
+    this._nodeIdGenerator = idGen.extractTime
+      ? nodeIdFactory(this, idGen.extractTime)
+      : idGen.generate;
 
     this._lifeCycleStage = "init";
     config.extensions.forEach((extension) => {
@@ -1087,6 +1088,9 @@ export class Doc {
 
   private _createNodeFromJson(jsonNode: JsonDoc): DocNode {
     const [id, type] = jsonNode;
+    if (!this._idGen.extractTime && !this._idGen.validate(id)) {
+      throw new Error(`Invalid node id: ${id}.`);
+    }
     // @ts-expect-error - private constructor
     const node = new DocNode(this, type, id) as DocNode;
     const state = this["_createStateFromJson"](jsonNode);

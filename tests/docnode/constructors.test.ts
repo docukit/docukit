@@ -335,9 +335,7 @@ describe("new Doc", () => {
             extensions: [TextExtension],
             id: "invalid-id",
           }),
-      ).toThrowError(
-        "Invalid document id: invalid-id. It must be a lowercase ULID.",
-      );
+      ).toThrowError("Invalid document id: invalid-id.");
     });
 
     test("should throw for uppercase ULID", () => {
@@ -349,9 +347,7 @@ describe("new Doc", () => {
             extensions: [TextExtension],
             id: "01KCFHZZ66V3393XHGGX6AEB6T",
           }),
-      ).toThrowError(
-        "Invalid document id: 01KCFHZZ66V3393XHGGX6AEB6T. It must be a lowercase ULID.",
-      );
+      ).toThrowError("Invalid document id: 01KCFHZZ66V3393XHGGX6AEB6T.");
     });
 
     test("should accept valid lowercase ULID", () => {
@@ -367,6 +363,34 @@ describe("new Doc", () => {
       const doc = new Doc({ type: "root", extensions: [TextExtension] });
       // Generated ULIDs should be lowercase and 26 characters
       expect(doc.root.id).toMatch(/^[0-7][0-9a-hjkmnp-tv-z]{25}$/);
+    });
+
+    test("custom validate rejects invalid root id", () => {
+      expect(
+        () =>
+          new Doc({
+            type: "test",
+            extensions: [TextExtension],
+            id: "bad-id",
+            nodeIdGenerator: {
+              generate: () => "ok-123",
+              validate: (id) => id.startsWith("ok-"),
+            },
+          }),
+      ).toThrowError("Invalid document id: bad-id.");
+    });
+
+    test("custom validate accepts valid root id", () => {
+      const doc = new Doc({
+        type: "test",
+        extensions: [TextExtension],
+        id: "ok-123",
+        nodeIdGenerator: {
+          generate: () => "ok-456",
+          validate: (id) => id.startsWith("ok-"),
+        },
+      });
+      expect(doc.root.id).toBe("ok-123");
     });
   });
 });

@@ -17,7 +17,6 @@ import {
   DOCNODE_ID,
   checkUndoManager,
 } from "./utils.js";
-import { ULID_REGEX } from "valibot";
 
 describe("accessors & getters", () => {
   init(({ doc, root, node1, node2, node4 }) => {
@@ -57,15 +56,56 @@ describe("accessors & getters", () => {
       assertTimeId(64 ** 3, "0---");
     });
 
-    test("id generator with nodeIdGenerator: 'ulid' generates lowercase ULIDs for all nodes", () => {
+    test("custom nodeIdGenerator without extractTime uses generate for all nodes", () => {
+      let counter = 0;
       const doc = new Doc({
         type: "test",
         extensions: [TextExtension],
-        nodeIdGenerator: "ulid",
+        nodeIdGenerator: {
+          generate: () => `custom-${counter++}`,
+          validate: (id) => id.startsWith("custom-"),
+        },
       });
-      expect(doc.root.id).toMatch(ULID_REGEX);
+      expect(doc.root.id).toBe("custom-0");
       const node = doc.createNode(Text);
-      expect(node.id).toMatch(ULID_REGEX);
+      expect(node.id).toBe("custom-1");
+    });
+
+    test("custom nodeIdGenerator with extractTime uses optimized IDs for non-root nodes", () => {
+      const baseTime = Date.now();
+      let counter = 0;
+      const doc = new Doc({
+        type: "test",
+        extensions: [TextExtension],
+        nodeIdGenerator: {
+          generate: () => `ts-${baseTime}-${counter++}`,
+          validate: (id) => id.startsWith("ts-"),
+          extractTime: (id) => parseInt(id.split("-")[1]!, 10),
+        },
+      });
+      expect(doc.root.id).toBe(`ts-${baseTime}-0`);
+      const node = doc.createNode(Text);
+      // Non-root uses nodeIdFactory (compact IDs), not generate
+      expect(node.id).toMatch(DOCNODE_ID());
+    });
+
+    test("custom nodeIdGenerator with extractTime that throws wraps the error", () => {
+      expect(
+        () =>
+          new Doc({
+            type: "test",
+            extensions: [TextExtension],
+            nodeIdGenerator: {
+              generate: () => "id-123",
+              validate: () => true,
+              extractTime: () => {
+                throw new Error("bad format");
+              },
+            },
+          }),
+      ).toThrowError(
+        "Failed to extract time from root id 'id-123'. bad format",
+      );
     });
 
     test("type", () => {

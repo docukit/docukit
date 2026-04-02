@@ -1,4 +1,3 @@
-import { decodeTime } from "ulid";
 import type { Doc } from "./main.js";
 
 // RFC 4648 §5 alphabet: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
@@ -70,16 +69,17 @@ function incrementStringInBase64(str: string): string {
  * @param doc
  * @returns nodeIdGenerator
  */
-export const nodeIdFactory = (doc: Doc) => {
+export const nodeIdFactory = (
+  doc: Doc,
+  extractTime: (id: string) => number,
+) => {
   const rootId = doc.root.id;
   let createdAt: number;
   try {
-    // Convert to uppercase because ulid's decodeTime expects uppercase Crockford Base32
-    createdAt = decodeTime(rootId.toUpperCase());
+    createdAt = extractTime(rootId);
   } catch (error) {
-    /* v8 ignore next -- @preserve */
     throw new Error(
-      `Invalid doc/root id: ${rootId}. It must be a valid ULID. ${error instanceof Error ? error.message : String(error)}`,
+      `Failed to extract time from root id '${rootId}'. ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   const milisecondsPassed = Date.now() - createdAt;
