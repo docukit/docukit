@@ -570,7 +570,7 @@ export class Doc {
     updated: new Set(),
   };
   protected _nodeIdGenerator: (doc: Doc) => string;
-  protected _idGen!: NodeIdGenerator;
+  protected _idGen: NodeIdGenerator;
   readonly root: DocNode;
 
   constructor(config: DocConfig) {
