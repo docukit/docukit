@@ -1,4 +1,5 @@
 import { defineNode, string, type DocConfig, type Doc } from "@docukit/docnode";
+import { ulid } from "ulid";
 
 // Shared node definition for both client and server
 export const IndexNode = defineNode({
@@ -17,5 +18,8 @@ export function createIndexNode(doc: Doc, { value }: { value: string }) {
 export const indexDocConfig: DocConfig = {
   type: "indexDoc",
   extensions: [{ nodes: [IndexNode] }],
-  nodeIdGenerator: "ulid",
+  nodeIdGenerator: {
+    generate: () => ulid().toLowerCase(),
+    validate: (id) => /^[0-7][0-9a-hjkmnp-tv-z]{25}$/.test(id),
+  },
 };

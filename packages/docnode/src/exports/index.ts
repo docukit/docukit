@@ -12,6 +12,7 @@ export {
   type DefaultStateMethods,
   type Extension,
   type ChangeEvent,
+  type NodeIdGenerator,
 } from "../types.js";
 export { defineNode } from "../utils.js";
 export { boolean, number, string, defineState } from "../stateDefinitions.js";
