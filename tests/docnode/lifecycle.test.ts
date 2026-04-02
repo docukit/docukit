@@ -82,6 +82,28 @@ describe("register lifecycle", () => {
     assertDoc(doc, ["test"]);
   });
 
+  test("update in a register with a normalizer", () => {
+    const TestExtension: Extension = {
+      nodes: [Text],
+      register: (doc) => {
+        const node = doc.createNode(Text);
+        node.state.value.set("test");
+        doc.root.append(node);
+
+        doc.onNormalize(() => {
+          if (doc.root.first?.next) return;
+          const node2 = doc.createNode(Text);
+          node2.state.value.set("test2");
+          doc.root.append(node2);
+        });
+      },
+    };
+    const doc = new Doc({ type: "root", extensions: [TestExtension] });
+    assertDoc(doc, ["test"]);
+    doc.forceCommit();
+    assertDoc(doc, ["test", "test2"]);
+  });
+
   test("can register change event inside and outside register", () => {
     const logs: string[] = [];
     const doc = new Doc({

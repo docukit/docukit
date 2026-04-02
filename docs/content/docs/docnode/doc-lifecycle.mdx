@@ -113,8 +113,6 @@ const MyExtension: Extension = {
 };
 ```
 
-You cannot update the document in the register callback. Its purpose is to register events, primarily normalize events.
-
 Unlike the change event, the normalize event must be registered within the `register` function of an extension, otherwise it will result in a runtime error:
 
 ```ts
