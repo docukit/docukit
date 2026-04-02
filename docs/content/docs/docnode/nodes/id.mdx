@@ -44,7 +44,7 @@ import { type NodeIdGenerator } from "@docukit/docnode";
 
 When `extractTime` is defined, only the **root node** uses `generate`. All other nodes use the optimized compact ID system, which derives a session offset from the root node's timestamp.
 
-This is the recommended approach when your ID format encodes a timestamp (e.g., ULID, KSUID, etc.).
+This is the recommended approach when your ID format encodes a timestamp (e.g., ULID, UUID v7, etc.).
 
 ```ts
 import { ulid, decodeTime } from "ulid";
