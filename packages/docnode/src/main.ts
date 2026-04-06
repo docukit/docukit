@@ -754,6 +754,7 @@ export class Doc {
     });
     operations.maybeTriggerListeners(this, true);
     this._lifeCycleStage = "idle";
+    this.forceCommit();
   }
 
   getNodeById(docNodeId: string): DocNode | undefined {

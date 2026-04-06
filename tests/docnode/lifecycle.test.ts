@@ -234,13 +234,15 @@ describe("doc.onNormalize", () => {
       strictMode: false,
     });
 
+    expect(callOrder).toStrictEqual([1, 2]);
+
     checkUndoManager(1, doc, () => {
       const node = doc.createNode(Text);
       node.state.value.set("test");
       doc.root.append(node);
     });
 
-    expect(callOrder).toStrictEqual([1, 2]);
+    expect(callOrder).toStrictEqual([1, 2, 1, 2]);
   });
 
   test("onNormalize can mutate the document", () => {
@@ -265,17 +267,7 @@ describe("doc.onNormalize", () => {
       strictMode: false,
     });
 
-    // Initially, root should be empty
-    expect(doc.root.first).toBeFalsy();
-
-    checkUndoManager(1, doc, () => {
-      // Trigger a transaction that will call normalize
-      const text = doc.createNode(Text);
-      text.state.value.set("test");
-      doc.root.append(text);
-    });
-
-    // After the transaction, there should be at least the text node we added
+    // Initially, root should have a container node
     expect(doc.root.first).toBeTruthy();
   });
 
@@ -313,15 +305,12 @@ describe("doc.onNormalize", () => {
   });
 
   test("onNormalize callback can access document state", () => {
-    let normalizeRan = false;
-
     const TestExtension: Extension = {
       nodes: [Text],
       register: (doc) => {
         doc.onNormalize(() => {
           // Ensure we always have at least one text node
           if (!doc.root.first) {
-            normalizeRan = true;
             const node = doc.createNode(Text);
             node.state.value.set("default");
             doc.root.append(node);
@@ -336,22 +325,50 @@ describe("doc.onNormalize", () => {
       strictMode: false,
     });
 
-    // Root should be empty initially
-    expect(doc.root.first).toBeFalsy();
-
-    // Add a node
-    const node = doc.createNode(Text);
-    node.state.value.set("temp");
-    doc.root.append(node);
-    doc.forceCommit();
-    expect(doc.root.first).toBeTruthy();
-
-    // Delete it, which will trigger normalize to add default
-    node.delete();
+    assertDoc(doc, ["default"]);
+    // Delete the node which will trigger normalize to add default
+    doc.root.first!.delete();
+    assertDoc(doc, []);
     doc.forceCommit();
 
     // After normalize, there should be a default text node
-    expect(normalizeRan).toBe(true);
+    assertDoc(doc, ["default"]);
+  });
+
+  test("There is an initial transaction separate from the subsequent update", () => {
+    // Note: this is on purpose the same as the test above, but
+    // the title is different because it test different things.
+    const TestExtension: Extension = {
+      nodes: [Text],
+      register: (doc) => {
+        doc.onNormalize(() => {
+          // Ensure we always have at least one text node
+          if (!doc.root.first) {
+            const node = doc.createNode(Text);
+            node.state.value.set("default");
+            doc.root.append(node);
+          }
+        });
+      },
+    };
+
+    const doc = new Doc({
+      type: "root",
+      extensions: [TestExtension],
+      strictMode: false,
+    });
+
+    assertDoc(doc, ["default"]);
+    // Delete the node which will trigger normalize to add default
+    doc.root.first!.delete();
+    assertDoc(doc, []);
+    doc.forceCommit();
+
+    // If it weren't for the `forceCommit` that `main`
+    // has after the register events, the `delete` would
+    // be considered part of the same transaction, and
+    // we would have square brackets here because `normalize`
+    // wouldn't trigger again
     assertDoc(doc, ["default"]);
   });
 });
@@ -370,18 +387,9 @@ describe("onNormalize in strict mode", () => {
       },
     };
 
-    const doc = new Doc({
-      type: "root",
-      extensions: [TestExtension],
-      strictMode: true,
-    });
-
     // This should throw because normalize keeps mutating on second pass
     expect(() => {
-      const node = doc.createNode(Text);
-      node.state.value.set("initial");
-      doc.root.append(node);
-      doc.forceCommit();
+      new Doc({ type: "root", extensions: [TestExtension], strictMode: true });
     }).toThrowError(
       /Strict mode has caught an error: normalize listeners are not idempotent. I.e, they should not mutate the document on the second pass./,
     );
@@ -411,18 +419,9 @@ describe("onNormalize in strict mode", () => {
       },
     };
 
-    const doc = new Doc({
-      type: "root",
-      extensions: [TestExtension],
-      strictMode: true,
-    });
-
     // In strict mode, this should throw because normalize keeps adding nodes
     expect(() => {
-      const node = doc.createNode(Text);
-      node.state.value.set("initial");
-      doc.root.append(node);
-      doc.forceCommit();
+      new Doc({ type: "root", extensions: [TestExtension], strictMode: true });
     }).toThrowError(
       /Strict mode has caught an error: normalize listeners are not idempotent. I.e, they should not mutate the document on the second pass./,
     );
@@ -532,8 +531,7 @@ describe("lifecycle transitions", () => {
     stages.push(doc["_lifeCycleStage"] as string);
 
     // Should start in init, then move to idle
-    expect(stages[0]).toBe("init");
-    expect(stages[1]).toBe("idle");
+    expect(stages).toStrictEqual(["init", "normalize", "normalize2", "idle"]);
 
     checkUndoManager(1, doc, () => {
       const node = doc.createNode(Text);
