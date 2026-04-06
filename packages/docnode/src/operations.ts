@@ -310,7 +310,7 @@ export const onApplyOperations = (doc: Doc, operations: Operations) => {
 };
 
 /** We trigger listeners at the end of each update if there were operations (i.e. something changed) */
-export const maybeTriggerListeners = (doc: Doc) => {
+export const maybeTriggerListeners = (doc: Doc, forceNormalizers = false) => {
   const hasChanges = () => {
     const { inserted, deleted, moved } = doc["_diff"];
     return (
@@ -320,7 +320,7 @@ export const maybeTriggerListeners = (doc: Doc) => {
       !isObjectEmpty(doc["_operations"][1])
     );
   };
-  if (!hasChanges()) return;
+  if (!hasChanges() && !forceNormalizers) return;
   doc["_lifeCycleStage"] = "normalize";
   doc["_normalizeListeners"].forEach((listener) =>
     listener({ diff: doc["_diff"] }),

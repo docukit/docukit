@@ -752,6 +752,7 @@ export class Doc {
     config.extensions.forEach((extension) => {
       extension.register?.(this);
     });
+    operations.maybeTriggerListeners(this, true);
     this._lifeCycleStage = "idle";
   }
 

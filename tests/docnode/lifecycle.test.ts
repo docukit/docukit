@@ -99,9 +99,23 @@ describe("register lifecycle", () => {
       },
     };
     const doc = new Doc({ type: "root", extensions: [TestExtension] });
-    assertDoc(doc, ["test"]);
-    doc.forceCommit();
     assertDoc(doc, ["test", "test2"]);
+  });
+
+  test("normalizer is called onInit", () => {
+    const TestExtension: Extension = {
+      nodes: [Text],
+      register: (doc) => {
+        doc.onNormalize(() => {
+          if (doc.root.first) return;
+          const node = doc.createNode(Text);
+          node.state.value.set("test");
+          doc.root.append(node);
+        });
+      },
+    };
+    const doc = new Doc({ type: "root", extensions: [TestExtension] });
+    assertDoc(doc, ["test"]);
   });
 
   test("can register change event inside and outside register", () => {
@@ -601,6 +615,7 @@ describe("onNormalize edge cases", () => {
       nodes: [Text],
       register: (doc) => {
         doc.onNormalize(() => {
+          if (!doc.root.first) return;
           throw new Error("Normalize error");
         });
       },
