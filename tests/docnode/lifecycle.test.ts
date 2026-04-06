@@ -118,6 +118,26 @@ describe("register lifecycle", () => {
     assertDoc(doc, ["test"]);
   });
 
+  test("onChange fires only once for init normalizer mutations", () => {
+    const changeLogs: number[] = [];
+    const TestExtension: Extension = {
+      nodes: [Text],
+      register: (doc) => {
+        doc.onNormalize(() => {
+          if (doc.root.first) return;
+          const node = doc.createNode(Text);
+          node.state.value.set("initial");
+          doc.root.append(node);
+        });
+        doc.onChange(() => {
+          changeLogs.push(1);
+        });
+      },
+    };
+    new Doc({ type: "root", extensions: [TestExtension] });
+    expect(changeLogs).toStrictEqual([1]);
+  });
+
   test("can register change event inside and outside register", () => {
     const logs: string[] = [];
     const doc = new Doc({

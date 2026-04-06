@@ -120,7 +120,6 @@ describe("getState", () => {
     expect(x1.state.string.get()).toStrictEqual("foo");
   });
   test("in normalize and change events", () => {
-    let firstNormalize = true;
     const doc = new Doc({
       type: "root",
       extensions: [
@@ -134,7 +133,7 @@ describe("getState", () => {
               expect(x1.state.string.get()).toStrictEqual("baz");
             });
             doc.onNormalize(() => {
-              if (firstNormalize) return;
+              if (!doc.root.first) return;
               expect(stage).toBe(1);
               stage++;
               const x1 = doc.root.first as DocNode<typeof TestNode>;
@@ -142,10 +141,7 @@ describe("getState", () => {
               x1.state.string.set("bar");
             });
             doc.onNormalize(() => {
-              if (firstNormalize) {
-                firstNormalize = false;
-                return;
-              }
+              if (!doc.root.first) return;
               expect(stage).toBe(2);
               stage++;
               const x1 = doc.root.first as DocNode<typeof TestNode>;

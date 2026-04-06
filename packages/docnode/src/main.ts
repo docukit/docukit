@@ -752,9 +752,8 @@ export class Doc {
     config.extensions.forEach((extension) => {
       extension.register?.(this);
     });
-    operations.maybeTriggerListeners(this, true);
     this._lifeCycleStage = "idle";
-    this.forceCommit();
+    this.forceCommit(true);
   }
 
   getNodeById(docNodeId: string): DocNode | undefined {
@@ -964,14 +963,14 @@ export class Doc {
    * Terminates the transaction early and synchronously, triggering events.
    * Using forceCommit is uncommon and can hurt your app's performance.
    */
-  forceCommit() {
+  forceCommit(ignoreEmptyDiff = false) {
     if (this._lifeCycleStage === "change")
       throw new Error("You can't trigger an update inside a change event");
     // push + reverse is more performant than unshift at insertion time
     this._inverseOperations[0].reverse();
     // End update stage before normalization
     this._lifeCycleStage = "idle";
-    operations.maybeTriggerListeners(this);
+    operations.maybeTriggerListeners(this, ignoreEmptyDiff);
     this._operations = [[], {}];
     this._inverseOperations = [[], {}];
     this._diff = {
