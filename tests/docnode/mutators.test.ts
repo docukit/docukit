@@ -1364,7 +1364,7 @@ describe("to", () => {
 });
 
 test("A root node cannot be inserted (there cannot be two root nodes)", () => {
-  const RootNode = defineNode({ type: "docType", state: {} });
+  const RootNode = defineNode({ type: "docType" });
   const doc = new Doc({ type: "docType", extensions: [TextExtension] });
   checkUndoManager(0, doc, () => {
     assertError(

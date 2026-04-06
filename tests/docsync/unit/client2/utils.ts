@@ -17,8 +17,8 @@ import { vi, type Mock } from "vitest";
 // Node Definitions
 // ============================================================================
 
-const TestNode = defineNode({ type: "test", state: {} });
-export const ChildNode = defineNode({ type: "child", state: {} });
+const TestNode = defineNode({ type: "test" });
+export const ChildNode = defineNode({ type: "child" });
 
 // ============================================================================
 // Generators
