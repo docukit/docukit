@@ -368,9 +368,6 @@ importers:
       concurrently:
         specifier: ^9.1.2
         version: 9.2.1
-      drizzle-kit:
-        specifier: ^0.31.8
-        version: 0.31.8
 
   packages/docsync-react:
     dependencies:
@@ -3768,10 +3765,6 @@ packages:
 
   drizzle-kit@0.30.6:
     resolution: {integrity: sha512-U4wWit0fyZuGuP7iNmRleQyK2V8wCuv57vf5l3MnG4z4fzNTjY/U13M8owyQ5RavqvqxBifWORaR3wIUzlN64g==}
-    hasBin: true
-
-  drizzle-kit@0.31.8:
-    resolution: {integrity: sha512-O9EC/miwdnRDY10qRxM8P3Pg8hXe3LyU4ZipReKOgTwn4OqANmftj8XJz1UPUAS6NMHf0E2htjsbQujUTkncCg==}
     hasBin: true
 
   drizzle-orm@0.38.4:
@@ -9825,15 +9818,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  drizzle-kit@0.31.8:
-    dependencies:
-      '@drizzle-team/brocli': 0.10.2
-      '@esbuild-kit/esm-loader': 2.6.5
-      esbuild: 0.25.12
-      esbuild-register: 3.6.0(esbuild@0.25.12)
-    transitivePeerDependencies:
-      - supports-color
-
   drizzle-orm@0.38.4(@opentelemetry/api@1.9.0)(@types/react@19.2.8)(postgres@3.4.8)(react@19.2.3):
     optionalDependencies:
       '@opentelemetry/api': 1.9.0
@@ -10015,13 +9999,6 @@ snapshots:
     dependencies:
       debug: 4.4.3
       esbuild: 0.19.12
-    transitivePeerDependencies:
-      - supports-color
-
-  esbuild-register@3.6.0(esbuild@0.25.12):
-    dependencies:
-      debug: 4.4.3
-      esbuild: 0.25.12
     transitivePeerDependencies:
       - supports-color
 

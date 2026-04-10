@@ -4,7 +4,7 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { describe, test, expect, expectTypeOf } from "vitest";
 import { testWrapper, testPort } from "./utils.js";
-import { DocSyncServer, InMemoryServerProvider } from "@docukit/docsync/server";
+import { DocSyncServer, inMemoryServerProvider } from "@docukit/docsync/server";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { DocSyncClient } from "@docukit/docsync/client";
 import type { ClientProvider } from "@docukit/docsync/client";
@@ -47,7 +47,7 @@ describe("presence", () => {
     const server = new DocSyncServer({
       docBinding: DocNodeBinding([]),
       port,
-      provider: InMemoryServerProvider,
+      provider: inMemoryServerProvider(),
       authenticate: ({ token }) => {
         if (token.startsWith("valid-")) {
           return { userId: token.replace("valid-", "") };
@@ -164,7 +164,7 @@ describe("presence", () => {
     const server = new DocSyncServer({
       docBinding: DocNodeBinding([]),
       port,
-      provider: InMemoryServerProvider,
+      provider: inMemoryServerProvider(),
       authenticate: ({ token }) => {
         if (token.startsWith("valid-")) {
           return { userId: token.replace("valid-", "") };
@@ -232,7 +232,8 @@ function createMockDocSyncClient(port: number, token: string): DocSyncClient {
   return new DocSyncClient({
     server: { url: `ws://localhost:${port}`, auth: { getToken: () => token } },
     local: {
-      provider: InMemoryServerProvider as unknown as new (
+      // TODO: review this. ServerProvider in the client?
+      provider: inMemoryServerProvider as unknown as new (
         identity: { userId: string; secret: string },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ) => ClientProvider<any, any>,
@@ -336,7 +337,7 @@ describe("authenticate/authorize: different function syntaxes", () => {
     const server = new DocSyncServer({
       docBinding: DocNodeBinding([]),
       port: 0, // Let OS assign available port
-      provider: InMemoryServerProvider,
+      provider: inMemoryServerProvider(),
 
       // Method shorthand - most concise
       authenticate({ token }) {
@@ -374,7 +375,7 @@ describe("authenticate/authorize: different function syntaxes", () => {
     const server = new DocSyncServer({
       docBinding: DocNodeBinding([]),
       port: 0, // Let OS assign available port
-      provider: InMemoryServerProvider,
+      provider: inMemoryServerProvider(),
 
       // Traditional function expression
       authenticate: function ({ token }) {
@@ -409,7 +410,7 @@ describe("authenticate/authorize: different function syntaxes", () => {
     const server = new DocSyncServer({
       docBinding: DocNodeBinding([]),
       port: 0, // Let OS assign available port
-      provider: InMemoryServerProvider,
+      provider: inMemoryServerProvider(),
 
       // Arrow function - most common in modern code
       authenticate: ({ token }) => {
@@ -449,7 +450,7 @@ describe("authenticate/authorize: different function syntaxes", () => {
     const server = new DocSyncServer({
       docBinding: DocNodeBinding([]),
       port: 0, // Let OS assign available port
-      provider: InMemoryServerProvider,
+      provider: inMemoryServerProvider(),
 
       // Method shorthand for authenticate
       authenticate({ token }) {
@@ -499,7 +500,7 @@ describe("DocSyncServer assignability", () => {
       const specificServer = new DocSyncServer({
         docBinding: DocNodeBinding([]),
         port: 0, // Let OS assign available port
-        provider: InMemoryServerProvider,
+        provider: inMemoryServerProvider(),
         authenticate({ token: _token }) {
           if (_token === "test") {
             return {
@@ -530,7 +531,7 @@ describe("DocSyncServer assignability", () => {
       const _narrowServer = new DocSyncServer({
         docBinding: DocNodeBinding([]),
         port: 0, // Let OS assign available port
-        provider: InMemoryServerProvider,
+        provider: inMemoryServerProvider(),
         authenticate({ token: _token }) {
           return {
             userId: "user1",
@@ -562,7 +563,7 @@ describe("DocSyncServer assignability", () => {
       const serverWithoutAuth = new DocSyncServer({
         docBinding: DocNodeBinding([]),
         port: 0, // Let OS assign available port
-        provider: InMemoryServerProvider,
+        provider: inMemoryServerProvider(),
         authenticate({ token: _token }) {
           return { userId: "user1", context: { premium: true } };
         },
@@ -572,7 +573,7 @@ describe("DocSyncServer assignability", () => {
       const serverWithAuth = new DocSyncServer({
         docBinding: DocNodeBinding([]),
         port: 0, // Let OS assign available port
-        provider: InMemoryServerProvider,
+        provider: inMemoryServerProvider(),
         authenticate({ token: _token }) {
           return { userId: "user1", context: { premium: true } };
         },
@@ -600,7 +601,7 @@ describe("DocSyncServer assignability", () => {
       const complexServer = new DocSyncServer({
         docBinding: DocNodeBinding([]),
         port: 0, // Let OS assign available port
-        provider: InMemoryServerProvider,
+        provider: inMemoryServerProvider(),
         authenticate({ token: _token }) {
           return {
             userId: "user1",
@@ -653,7 +654,7 @@ describe("DocSyncServer assignability", () => {
       const emptyContextServer = new DocSyncServer({
         docBinding: DocNodeBinding([]),
         port: 0, // Let OS assign available port
-        provider: InMemoryServerProvider,
+        provider: inMemoryServerProvider(),
         authenticate({ token: _token }) {
           return { userId: "user1" }; // No context
         },
@@ -674,7 +675,7 @@ describe("DocSyncServer assignability", () => {
       const literalServer = new DocSyncServer({
         docBinding: DocNodeBinding([]),
         port: 0, // Let OS assign available port
-        provider: InMemoryServerProvider,
+        provider: inMemoryServerProvider(),
         authenticate({ token: _token }) {
           return {
             userId: "user1",

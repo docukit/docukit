@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { testWrapper, testPort } from "./utils.js";
-import { DocSyncServer, InMemoryServerProvider } from "@docukit/docsync/server";
+import { DocSyncServer, inMemoryServerProvider } from "@docukit/docsync/server";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import type {
   ClientConnectEvent,
@@ -32,7 +32,7 @@ describe("Server Events", () => {
       const server = new DocSyncServer({
         docBinding: DocNodeBinding([]),
         port: testPort(1),
-        provider: InMemoryServerProvider,
+        provider: inMemoryServerProvider(),
         authenticate: ({ token }) => {
           if (token === "admin-token") {
             return {
@@ -89,7 +89,7 @@ describe("Server Events", () => {
       const server = new DocSyncServer({
         docBinding: DocNodeBinding([]),
         port: testPort(2),
-        provider: InMemoryServerProvider,
+        provider: inMemoryServerProvider(),
         authenticate: ({ token }) => {
           if (token.startsWith("valid-")) {
             return { userId: token.replace("valid-", "") };
@@ -268,7 +268,7 @@ describe("Server Events", () => {
       const server = new DocSyncServer({
         docBinding: DocNodeBinding([]),
         port: testPort(4),
-        provider: InMemoryServerProvider,
+        provider: inMemoryServerProvider(),
         authenticate: ({ token }) => {
           if (token.startsWith("valid-")) {
             return { userId: token.replace("valid-", "") };
@@ -536,7 +536,7 @@ describe("Server Events", () => {
       const server = new DocSyncServer({
         docBinding: DocNodeBinding([]),
         port: testPort(5),
-        provider: InMemoryServerProvider,
+        provider: inMemoryServerProvider(),
         authenticate: ({ token }) => {
           if (token.startsWith("valid-")) {
             return { userId: token.replace("valid-", "") };

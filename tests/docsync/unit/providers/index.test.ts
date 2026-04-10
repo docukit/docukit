@@ -1,10 +1,10 @@
 import type { ClientProvider } from "@docukit/docsync/client";
 import type { ServerProvider } from "@docukit/docsync/server";
 import { IndexedDBProvider } from "@docukit/docsync/client";
-import { InMemoryServerProvider } from "@docukit/docsync/server";
+import { inMemoryServerProvider } from "@docukit/docsync/server";
 import { test } from "vitest";
 
-function testProviderServer<S, O>(_provider: ServerProvider<S, O>) {
+function testProviderServer(_provider: ServerProvider) {
   throw new Error("Not implemented");
 }
 
@@ -13,7 +13,7 @@ function testProviderClient<S, O>(_provider: ClientProvider<S, O>) {
 }
 
 test.todo("in memory provider", () => {
-  testProviderServer(new InMemoryServerProvider());
+  testProviderServer(inMemoryServerProvider());
 });
 
 // test.todo("postgres provider", () => {

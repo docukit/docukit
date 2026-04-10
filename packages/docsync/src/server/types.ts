@@ -84,7 +84,8 @@ export type SyncRequestEventListener<O = unknown, S = unknown> = (
 export type ServerConfig<TContext, D extends {}, S extends {}, O extends {}> = {
   docBinding: DocBinding<D, S, O>;
   port?: number;
-  provider: new () => ServerProvider<NoInfer<S>, NoInfer<O>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- providers are generic-agnostic storage; the server casts internally
+  provider: ServerProvider<any, any>;
 
   authenticate(ev: {
     token: string;
@@ -119,7 +120,7 @@ export type ServerProviderContext<S, O> = {
  * Storage provider for the server.
  * All operations must be performed within a transaction.
  */
-export type ServerProvider<S, O> = {
+export type ServerProvider<S extends {} = {}, O extends {} = {}> = {
   transaction<T>(
     mode: "readonly" | "readwrite",
     callback: (ctx: ServerProviderContext<S, O>) => Promise<T>,

@@ -18,17 +18,13 @@
     "dev": "tsc -p tsconfig.build.json --watch",
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf .next node_modules .turbo dist tsconfig.build.tsbuildinfo || rmdir /s /q .next node_modules .turbo dist tsconfig.build.tsbuildinfo",
-    "db:push": "drizzle-kit push --config=./src/server/providers/postgres/drizzle.config.ts",
-    "test-db:push": "drizzle-kit push --config=./src/tests-int/db-models-bench/test-drizzle.config.ts",
-    "db:studio": "drizzle-kit studio --config=./src/server/providers/postgres/drizzle.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "bin": {
     "docsync-server": "./dist/src/server/cli.js"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2",
-    "drizzle-kit": "^0.31.8"
+    "concurrently": "^9.1.2"
   },
   "exports": {
     ".": {

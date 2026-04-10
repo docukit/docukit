@@ -1,12 +1,12 @@
 /**
  * Vitest globalSetup for integration tests.
- * Starts a DocSyncServer with InMemoryServerProvider before browser tests run.
+ * Starts a DocSyncServer with inMemoryServerProvider before browser tests run.
  *
- * Uses @docukit/docsync/server (InMemoryServerProvider) to avoid loading PostgresProvider which requires DB env vars.
+ * Uses @docukit/docsync/server (inMemoryServerProvider) to avoid loading PostgresProvider which requires DB env vars.
  */
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { testDocConfig } from "./utils.js";
-import { DocSyncServer, InMemoryServerProvider } from "@docukit/docsync/server";
+import { DocSyncServer, inMemoryServerProvider } from "@docukit/docsync/server";
 import { createServer } from "node:net";
 
 const PREFERRED_PORT = 8082;
@@ -58,7 +58,7 @@ export async function setup() {
   server = new DocSyncServer({
     docBinding: DocNodeBinding([testDocConfig]),
     port: serverPort,
-    provider: InMemoryServerProvider,
+    provider: inMemoryServerProvider(),
     authenticate: ({ token }) => {
       const userId = parseTestToken(token);
       if (!userId) return undefined;
