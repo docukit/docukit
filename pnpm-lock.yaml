@@ -267,6 +267,9 @@ importers:
       '@lexical/utils':
         specifier: ^0.38.2
         version: 0.38.2
+      '@lexical/yjs':
+        specifier: ^0.38.2
+        version: 0.38.2(yjs@13.6.29)
       lexical:
         specifier: ^0.38.2
         version: 0.38.2
@@ -285,6 +288,12 @@ importers:
       ulid:
         specifier: ^2.4.0
         version: 2.4.0
+      y-protocols:
+        specifier: ^1.0.0
+        version: 1.0.7(yjs@13.6.29)
+      yjs:
+        specifier: ^13.6.0
+        version: 13.6.29
     devDependencies:
       '@tailwindcss/postcss':
         specifier: ^4
@@ -364,6 +373,9 @@ importers:
       socket.io-client:
         specifier: ^4.8.1
         version: 4.8.3
+      yjs:
+        specifier: ^13.6.0
+        version: 13.6.29
     devDependencies:
       concurrently:
         specifier: ^9.1.2
@@ -408,6 +420,9 @@ importers:
       valibot:
         specifier: ^1.0.0
         version: 1.2.0(typescript@5.9.3)
+      yjs:
+        specifier: ^13.6.0
+        version: 13.6.29
     devDependencies:
       '@playwright/test':
         specifier: 1.51.0
@@ -6408,6 +6423,12 @@ packages:
   xmlhttprequest-ssl@2.1.2:
     resolution: {integrity: sha512-TEU+nJVUUnA4CYJFLvK5X9AOeH4KvDvhIfm0vV1GaQRtchnG0hgK5p8hw/xjv8cunWYCsiPCSDzObPyhEwq3KQ==}
     engines: {node: '>=0.4.0'}
+
+  y-protocols@1.0.7:
+    resolution: {integrity: sha512-YSVsLoXxO67J6eE/nV4AtFtT3QEotZf5sK5BHxFBXso7VDUT3Tx07IfA6hsu5Q5OmBdMkQVmFZ9QOA7fikWvnw==}
+    engines: {node: '>=16.0.0', npm: '>=8.0.0'}
+    peerDependencies:
+      yjs: ^13.0.0
 
   y18n@5.0.8:
     resolution: {integrity: sha512-0pfFzegeDWJHJIAmTLRP2DwHjdF5s7jo9tuztdQxAhINCdvS+3nGINqPd00AphqJR/0LhANUS6/+7SCb98YOfA==}
@@ -13181,6 +13202,11 @@ snapshots:
   ws@8.18.3: {}
 
   xmlhttprequest-ssl@2.1.2: {}
+
+  y-protocols@1.0.7(yjs@13.6.29):
+    dependencies:
+      lib0: 0.2.117
+      yjs: 13.6.29
 
   y18n@5.0.8: {}
 

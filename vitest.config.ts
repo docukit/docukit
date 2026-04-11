@@ -28,7 +28,7 @@ const project = (name: string, browser: boolean): TestProjectConfiguration => ({
             "**/dist",
           ],
         }),
-    globalSetup: ["./tests/docsync/int/globalSetup.ts"],
+    ...(browser && { globalSetup: ["./tests/docsync/int/globalSetup.ts"] }),
     benchmark: { include: ["**/*browser.bench.ts"] },
     name,
     browser: {

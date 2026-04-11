@@ -13,7 +13,8 @@
     "@docukit/docnode": "workspace:*",
     "lexical": "^0.38.2",
     "ulid": "^2.3.0",
-    "valibot": "^1.0.0"
+    "valibot": "^1.0.0",
+    "yjs": "^13.6.0"
   },
   "devDependencies": {
     "@playwright/test": "1.51.0",

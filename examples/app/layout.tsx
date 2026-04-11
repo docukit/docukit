@@ -5,8 +5,10 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 
 const examples = [
-  { name: "Editor", path: "/editor" },
-  { name: "Subdocs", path: "/subdocs" },
+  { name: "Editor (DocNode)", path: "/editor-docnode" },
+  { name: "Editor (Yjs)", path: "/editor-yjs" },
+  { name: "Subdocs (DocNode)", path: "/subdocs-docnode" },
+  { name: "Subdocs (Yjs)", path: "/subdocs-yjs" },
 ];
 
 export default function RootLayout({
@@ -21,7 +23,7 @@ export default function RootLayout({
           {/* Sidebar */}
           <aside className="w-64 border-r border-zinc-800 bg-zinc-900/50 p-6">
             <h2 className="mb-6 text-lg font-semibold text-white">
-              DocNode Examples
+              DocuKit Examples
             </h2>
             <nav className="space-y-1">
               {examples.map((example) => {

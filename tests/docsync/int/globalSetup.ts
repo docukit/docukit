@@ -1,42 +1,14 @@
 /**
  * Vitest globalSetup for integration tests.
- * Starts a DocSyncServer with InMemoryServerProvider before browser tests run.
- *
- * Uses @docukit/docsync/server (InMemoryServerProvider) to avoid loading PostgresProvider which requires DB env vars.
+ * Starts DocNode and Yjs DocSyncServers with InMemoryServerProvider before browser tests run.
  */
 import { DocNodeBinding } from "@docukit/docsync/docnode";
-import { testDocConfig } from "./utils.js";
+import { YjsBinding } from "@docukit/docsync/yjs";
+import { testDocConfig } from "./adapters.js";
 import { DocSyncServer, InMemoryServerProvider } from "@docukit/docsync/server";
-import { createServer } from "node:net";
 
-const PREFERRED_PORT = 8082;
-
-// Extend globalThis to include test server port
-declare global {
-  var __TEST_SERVER_PORT__: number | undefined;
-}
-
-/**
- * Find an available port starting from the preferred port.
- */
-async function findAvailablePort(startPort: number): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.unref();
-    server.on("error", (err: NodeJS.ErrnoException) => {
-      if (err.code === "EADDRINUSE") {
-        // Port is in use, try next one
-        resolve(findAvailablePort(startPort + 1));
-      } else {
-        reject(err);
-      }
-    });
-    server.listen(startPort, () => {
-      const { port } = server.address() as { port: number };
-      server.close(() => resolve(port));
-    });
-  });
-}
+const DOCNODE_PORT = 8082;
+const YJS_PORT = 8083;
 
 /**
  * Test token format: "test-token-{userId}"
@@ -48,33 +20,38 @@ const parseTestToken = (token: string): string | undefined => {
   return token.slice(prefix.length);
 };
 
-let server: DocSyncServer | undefined;
-let serverPort: number;
+const authenticate = ({ token }: { token: string }) => {
+  const userId = parseTestToken(token);
+  if (!userId) return undefined;
+  return { userId };
+};
+
+let docNodeServer: DocSyncServer | undefined;
+let yjsServer: DocSyncServer | undefined;
 
 export async function setup() {
-  // Find an available port
-  serverPort = await findAvailablePort(PREFERRED_PORT);
-
-  server = new DocSyncServer({
+  docNodeServer = new DocSyncServer({
     docBinding: DocNodeBinding([testDocConfig]),
-    port: serverPort,
+    port: DOCNODE_PORT,
     provider: InMemoryServerProvider,
-    authenticate: ({ token }) => {
-      const userId = parseTestToken(token);
-      if (!userId) return undefined;
-      return { userId };
-    },
+    authenticate,
   });
 
-  // Give the server a moment to start
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  console.log(`✅ Test server ready on port ${serverPort}\n`);
+  yjsServer = new DocSyncServer({
+    docBinding: YjsBinding(),
+    port: YJS_PORT,
+    provider: InMemoryServerProvider,
+    authenticate,
+  });
 
-  // Store the port in globalThis so tests can access it
-  globalThis.__TEST_SERVER_PORT__ = serverPort;
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  console.log(
+    `\n  Test servers ready: DocNode(:${DOCNODE_PORT}) Yjs(:${YJS_PORT})\n`,
+  );
 }
 
 export async function teardown() {
-  if (server) await server.close();
-  console.log("✅ Test server stopped\n");
+  if (docNodeServer) await docNodeServer.close();
+  if (yjsServer) await yjsServer.close();
+  console.log("\n  Test servers stopped\n");
 }

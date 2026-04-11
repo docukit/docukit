@@ -3,6 +3,7 @@ import { ulid } from "ulid";
 
 export class HelperBase {
   protected _page: Page;
+  protected _basePath: string;
 
   // clients
   protected _reference: Locator;
@@ -18,8 +19,8 @@ export class HelperBase {
 
   async navigateToNewDoc() {
     const oldDocId = this.docId;
-    // Click on the subdocs link in the sidebar
-    await this._page.locator("a[href='/subdocs']").click();
+    // Click on the sidebar link matching this helper's base path
+    await this._page.locator(`a[href='${this._basePath}']`).click();
 
     // Wait for the URL to change and get the new docId in one go
     const docId = await this._page
@@ -41,9 +42,10 @@ export class HelperBase {
     this.docId = docId;
   }
 
-  protected constructor(page: Page, docId: string) {
+  protected constructor(page: Page, docId: string, basePath: string) {
     this._page = page;
     this.docId = docId;
+    this._basePath = basePath;
 
     // Page 1: reference, otherTab, otherDevice
     this._reference = page.locator("#reference").first();

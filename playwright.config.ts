@@ -12,13 +12,14 @@ const baseURLDocs =
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,
+  workers: process.env.CI ? 2 : 2,
   testMatch: "tests/**/*.ui*.ts",
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI
     ? "github"
     : [["html", { outputFolder: ".test-results/playwright/report" }]],
   outputDir: ".test-results/playwright/test-results",
-  timeout: process.env.CI ? 30_000 : 20_000,
+  timeout: 30_000,
   retries: 1,
   use: {
     baseURL: baseURLExamples,

@@ -8,3 +8,4 @@ export type {
 } from "../server/types.js";
 export { PostgresProvider } from "../server/providers/postgres/index.js";
 export { InMemoryServerProvider } from "../server/providers/memory.js";
+export { PostgresBinaryProvider } from "../server/providers/postgres-binary/index.js";
