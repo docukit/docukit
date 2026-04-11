@@ -53,7 +53,6 @@ By submitting a contribution to this repository, you agree to the following:
    - Commit the changes to `main` with the message: `chore: release v${version}`
 
 2. **Publish packages to npm**
-   - `npm login`
    - `pnpm publish`. You'll need to add the 2FA code with --otp=XXXXXX.
 
 3. **Create GitHub release notes**
