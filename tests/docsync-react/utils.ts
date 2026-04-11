@@ -2,7 +2,7 @@ import type { DocConfig } from "@docukit/docnode";
 
 export const docConfig: DocConfig = {
   type: "test",
-  extensions: [{ nodes: [{ type: "test" }] }],
+  extensions: [{ nodes: [{ type: "test", state: {} }] }],
 };
 
 export const id = {
