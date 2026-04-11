@@ -1,5 +1,6 @@
 import { expect, type Page, type Locator } from "@playwright/test";
 import { HelperBase } from "../utils.js";
+import { ulid } from "ulid";
 
 type ClientUtils = {
   connect: () => Promise<void>;
@@ -11,7 +12,7 @@ type ClientUtils = {
   delete: (arg: { node: string; panel: "main" | "secondary" }) => Promise<void>;
 };
 
-export class DocNodeHelper extends HelperBase {
+export class SubdocsHelper extends HelperBase {
   reference: ClientUtils;
   otherTab: ClientUtils;
   otherDevice: ClientUtils;
@@ -20,23 +21,23 @@ export class DocNodeHelper extends HelperBase {
     return client.locator(`.${panel}-doc .docnode`);
   }
 
-  constructor(page: Page, docId: string) {
-    super(page, docId);
+  constructor(page: Page, docId: string, basePath: string) {
+    super(page, docId, basePath);
     // Initialize client utils
     this.reference = this._createClientUtils(this._reference);
     this.otherTab = this._createClientUtils(this._otherTab);
     this.otherDevice = this._createClientUtils(this._otherDevice);
   }
 
-  static override async create<T extends HelperBase>(
-    this: new (page: Page, docId: string) => T,
-    { page }: { page: Page },
-  ): Promise<T> {
-    const helper = await super.create({ page });
-    await page.goto(`subdocs?docId=${helper.docId}`);
-    await page.waitForLoadState("networkidle");
-    await page.locator("#reference").first().waitFor({ state: "visible" });
-    return helper as T;
+  static createForRoute(basePath: string) {
+    return async ({ page }: { page: Page }): Promise<SubdocsHelper> => {
+      const docId = ulid().toLowerCase();
+      const helper = new SubdocsHelper(page, docId, basePath);
+      await page.goto(`${basePath.slice(1)}?docId=${helper.docId}`);
+      await page.waitForLoadState("networkidle");
+      await page.locator("#reference").first().waitFor({ state: "visible" });
+      return helper;
+    };
   }
 
   private _createClientUtils(clientLocator: Locator): ClientUtils {
@@ -213,3 +214,6 @@ export class DocNodeHelper extends HelperBase {
     await this._assertSync();
   }
 }
+
+// Backward compatibility alias
+export const DocNodeHelper = SubdocsHelper;

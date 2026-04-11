@@ -19,6 +19,7 @@
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf .next node_modules .turbo dist tsconfig.build.tsbuildinfo || rmdir /s /q .next node_modules .turbo dist tsconfig.build.tsbuildinfo",
     "db:push": "drizzle-kit push --config=./src/server/providers/postgres/drizzle.config.ts",
+    "db:push-binary": "drizzle-kit push --config=./src/server/providers/postgres-binary/drizzle.config.ts",
     "test-db:push": "drizzle-kit push --config=./src/tests-int/db-models-bench/test-drizzle.config.ts",
     "db:studio": "drizzle-kit studio --config=./src/server/providers/postgres/drizzle.config.ts",
     "typecheck": "tsc --noEmit"
@@ -38,6 +39,14 @@
     "./*": {
       "types": "./dist/src/exports/*.d.ts",
       "default": "./dist/src/exports/*.js"
+    }
+  },
+  "peerDependencies": {
+    "yjs": "^13.6.0"
+  },
+  "peerDependenciesMeta": {
+    "yjs": {
+      "optional": true
     }
   },
   "dependencies": {
