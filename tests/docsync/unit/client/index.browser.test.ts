@@ -41,7 +41,7 @@ describe("DocSyncClient", () => {
 
   describe("constructor", () => {
     test("should throw error when duplicate type is provided", () => {
-      const DuplicateNode = defineNode({ type: "test", state: {} });
+      const DuplicateNode = defineNode({ type: "test" });
 
       expect(() =>
         DocNodeBinding([

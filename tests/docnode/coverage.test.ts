@@ -48,7 +48,6 @@ describe("main.ts coverage", () => {
             nodes: [
               defineNode({
                 type: "", // empty type
-                state: {},
               }),
             ],
           },
