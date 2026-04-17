@@ -9,6 +9,7 @@
     "--- Learn ---",
     "client",
     "server",
+    "providers",
     "--- Guides ---",
     "auth",
     "persistence",

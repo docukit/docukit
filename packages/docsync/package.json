@@ -20,9 +20,6 @@
     "clean": "rm -rf .next node_modules .turbo dist tsconfig.build.tsbuildinfo || rmdir /s /q .next node_modules .turbo dist tsconfig.build.tsbuildinfo",
     "typecheck": "tsc --noEmit"
   },
-  "bin": {
-    "docsync-server": "./dist/src/server/cli.js"
-  },
   "devDependencies": {
     "concurrently": "^9.1.2"
   },
@@ -38,9 +35,7 @@
   },
   "dependencies": {
     "@docukit/docnode": "workspace:*",
-    "drizzle-orm": "^0.38.4",
     "idb": "^8.0.1",
-    "postgres": "^3.4.5",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1"
   },

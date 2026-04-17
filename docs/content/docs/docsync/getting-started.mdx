@@ -67,7 +67,10 @@ export const client = new DocSyncClient({
 
 ```ts
 // server.ts
-import { DocSyncServer, postgresProvider } from "@docukit/docsync-react/server";
+import {
+  DocSyncServer,
+  inMemoryServerProvider,
+} from "@docukit/docsync-react/server";
 import { DocNodeBinding } from "@docukit/docsync-react/docnode";
 // Refer to the DocNode documentation for more information
 // on how to define a DocConfig
@@ -77,10 +80,12 @@ import { yourDocConfigs } from "./shared.ts";
 const server = new DocSyncServer({
   docBinding: DocNodeBinding([...yourDocConfigs]),
   port: 8080,
-  provider: postgresProvider({ url: process.env.DATABASE_URL! }),
+  provider: inMemoryServerProvider(), // don't use in production
   authenticate: async ({ token }) => ({ userId: token }),
 });
 ```
+
+For production, you'll want to bring your own storage provider — see [Providers](./providers).
 
 ## 3. Client Usage
 
