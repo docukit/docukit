@@ -25,10 +25,12 @@
   },
   "exports": {
     ".": {
+      "vitest": "./src/exports/shared.ts",
       "types": "./dist/src/exports/shared.d.ts",
       "default": "./dist/src/exports/shared.js"
     },
     "./*": {
+      "vitest": "./src/exports/*.ts",
       "types": "./dist/src/exports/*.d.ts",
       "default": "./dist/src/exports/*.js"
     }

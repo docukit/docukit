@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"next dev -p 4000\" \"pnpm:docsync-server\"",
-    "docsync-server": "node --env-file-if-exists=.env --watch --watch-preserve-output ./docsync-server.ts",
+    "docsync-server": "node --env-file-if-exists=.env --watch --watch-preserve-output ./collab-server/docsync-server.ts",
     "build": "next build",
     "start": "next start -p 4000",
-    "db:push": "drizzle-kit push --config=./drizzle.config.ts",
-    "db:studio": "drizzle-kit studio --config=./drizzle.config.ts",
+    "db:push": "drizzle-kit push --config=./collab-server/drizzle.config.ts",
+    "db:studio": "drizzle-kit studio --config=./collab-server/drizzle.config.ts",
     "clean": "rm -rf .next node_modules .turbo || rmdir /s /q .next node_modules .turbo",
     "typecheck": "tsc --noEmit"
   },

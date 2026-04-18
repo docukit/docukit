@@ -1,0 +1,216 @@
+---
+title: Providers
+description: Bring your own storage backend for DocSync
+---
+
+DocSync is storage-agnostic on the server. You provide a `ServerProvider` and DocSync calls into it to read and write documents and operations.
+
+The package only ships `inMemoryServerProvider`, which is intended for tests and local development. For production, you implement a provider against the database you already use.
+
+## The interface
+
+```ts
+type ServerProvider<S, O> = {
+  transaction<T>(
+    mode: "readonly" | "readwrite",
+    callback: (ctx: ServerProviderContext<S, O>) => Promise<T>,
+  ): Promise<T>;
+};
+
+type ServerProviderContext<S, O> = {
+  getSerializedDoc(
+    docId: string,
+  ): Promise<{ serializedDoc: S; clock: number } | undefined>;
+  getOperations(arg: { docId: string; clock: number }): Promise<O[][]>;
+  deleteOperations(arg: { docId: string; count: number }): Promise<void>;
+  saveOperations(arg: { docId: string; operations: O[] }): Promise<number>;
+  saveSerializedDoc(arg: {
+    docId: string;
+    serializedDoc: S;
+    clock: number;
+  }): Promise<void>;
+};
+```
+
+## Reference: Postgres provider
+
+Here is a working Postgres provider using [Drizzle ORM](https://orm.drizzle.team) and [postgres.js](https://github.com/porsager/postgres). Copy it, adapt the schema and table names, and wire up your own migration tool — DocSync does not create tables for you.
+
+### Schema
+
+```ts
+// postgres-schema.ts
+import {
+  jsonb,
+  pgTable,
+  primaryKey,
+  timestamp,
+  varchar,
+} from "drizzle-orm/pg-core";
+
+export const documents = pgTable("_docsync_documents", {
+  userId: varchar("userId", { length: 26 }).notNull(),
+  docId: varchar("docId", { length: 26 }).notNull().primaryKey(),
+  doc: jsonb("doc").notNull(),
+  clock: timestamp("clock", { precision: 3, withTimezone: true }).notNull(),
+});
+
+export const operations = pgTable(
+  "_docsync_operations",
+  {
+    docId: varchar("docId", { length: 26 }).notNull(),
+    operations: jsonb("operations").notNull(),
+    clock: timestamp("clock", { precision: 3, withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.docId, table.clock] })],
+);
+```
+
+Apply this with `drizzle-kit push` (or your migration workflow of choice) before starting the server.
+
+### Drizzle instance
+
+```ts
+// db.ts
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
+import * as schema from "./postgres-schema.ts";
+
+const queryClient = postgres(process.env.DATABASE_URL!);
+export const db = drizzle(queryClient, { schema });
+```
+
+### Provider
+
+```ts
+// postgres-provider.ts
+import { eq, gt, and } from "drizzle-orm";
+import type {
+  ServerProvider,
+  ServerProviderContext,
+} from "@docukit/docsync/server";
+import { db } from "./db.ts";
+import * as schema from "./postgres-schema.ts";
+
+type S = {}; // shape of your serialized doc
+type O = {}; // shape of one operation
+
+export const postgresProvider: ServerProvider<S, O> = {
+  async transaction(mode, callback) {
+    const accessMode = mode === "readonly" ? "read only" : "read write";
+    return await db.transaction(
+      async (tx) => {
+        const ctx: ServerProviderContext<S, O> = {
+          getSerializedDoc: async (docId) => {
+            const doc = await tx.query.documents.findFirst({
+              where: eq(schema.documents.docId, docId),
+            });
+            return doc
+              ? { serializedDoc: doc.doc as S, clock: doc.clock.getTime() }
+              : undefined;
+          },
+
+          getOperations: async ({ docId, clock }) => {
+            const rows = await tx
+              .select({ operations: schema.operations.operations })
+              .from(schema.operations)
+              .where(
+                and(
+                  eq(schema.operations.docId, docId),
+                  gt(schema.operations.clock, new Date(clock)),
+                ),
+              )
+              .orderBy(schema.operations.clock);
+            return rows.map((r) => r.operations as O[]);
+          },
+
+          saveOperations: async ({ docId, operations }) => {
+            if (operations.length === 0) {
+              const latest = await tx.query.operations.findFirst({
+                where: eq(schema.operations.docId, docId),
+                orderBy: (ops, { desc }) => [desc(ops.clock)],
+              });
+              return latest?.clock.getTime() ?? 0;
+            }
+            const inserted = await tx
+              .insert(schema.operations)
+              .values({ docId, operations: operations as unknown[] })
+              .returning({ clock: schema.operations.clock });
+            return inserted[0]!.clock.getTime();
+          },
+
+          deleteOperations: async ({ docId, count }) => {
+            const toDelete = await tx
+              .select({ clock: schema.operations.clock })
+              .from(schema.operations)
+              .where(eq(schema.operations.docId, docId))
+              .orderBy(schema.operations.clock)
+              .limit(count);
+            for (const op of toDelete) {
+              await tx
+                .delete(schema.operations)
+                .where(
+                  and(
+                    eq(schema.operations.docId, docId),
+                    eq(schema.operations.clock, op.clock),
+                  ),
+                );
+            }
+          },
+
+          saveSerializedDoc: async () => {
+            throw new Error("Not implemented in this reference example");
+          },
+        };
+
+        return callback(ctx);
+      },
+      { accessMode },
+    );
+  },
+};
+```
+
+Then plug it directly into the server:
+
+```ts
+import { postgresProvider } from "./postgres-provider.ts";
+
+new DocSyncServer({
+  /* ... */
+  provider: postgresProvider,
+});
+```
+
+You can find this exact code in the [`/examples` folder](https://github.com/docukit/docukit/tree/main/examples) of the repository.
+
+## Method semantics
+
+<dl>
+  <dt>`getSerializedDoc(docId)`</dt>
+  <dd>Return the latest snapshot for the doc, or `undefined` if none has been saved yet. The `clock` is the snapshot's logical timestamp.</dd>
+
+  <dt>`getOperations({ docId, clock })`</dt>
+  <dd>Return all operation batches for `docId` whose clock is strictly greater than the given `clock`, in clock order. Each entry in the returned array is one batch (one `saveOperations` call's worth).</dd>
+
+  <dt>`saveOperations({ docId, operations })`</dt>
+  <dd>Append a new batch and return its assigned clock. If `operations` is empty, return the current latest clock for the doc (or `0` if none).</dd>
+
+  <dt>`deleteOperations({ docId, count })`</dt>
+  <dd>Delete the oldest `count` operation batches for the doc. Used during squashing.</dd>
+
+  <dt>`saveSerializedDoc({ docId, serializedDoc, clock })`</dt>
+  <dd>Replace the snapshot for the doc. Called during squashing.</dd>
+</dl>
+
+## In-memory provider
+
+```ts
+import { inMemoryServerProvider } from "@docukit/docsync/server";
+
+const provider = inMemoryServerProvider();
+```
+
+Stores everything in process memory — data is lost when the process exits. Use it in tests and local exploration, never in production.
