@@ -15,8 +15,8 @@ import { type Doc, defineNode } from "@docukit/docnode";
 // Node Definitions
 // ============================================================================
 
-export const TestNode = defineNode({ type: "test", state: {} });
-export const ChildNode = defineNode({ type: "child", state: {} });
+export const TestNode = defineNode({ type: "test" });
+export const ChildNode = defineNode({ type: "child" });
 
 // ============================================================================
 // Config Factories
