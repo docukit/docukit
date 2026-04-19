@@ -15,6 +15,8 @@ const config: KnipConfig = {
     "mitata",
     "concurrently",
     "postcss",
+    // Required by ESLint for TypeScript-config syntax highlighting in Node.
+    "shiki",
   ],
   ignoreBinaries: ["lsof"], // used in the package.json scripts
   workspaces: {
