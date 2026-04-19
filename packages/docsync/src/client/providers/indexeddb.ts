@@ -43,7 +43,7 @@ export function indexedDBProvider(
 
       try {
         const result = await callback({
-          async getSerializedDoc(docId) {
+          async getSerializedDoc({ docId }) {
             const store = tx.objectStore("docs");
             return await store.get(docId);
           },

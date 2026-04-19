@@ -82,7 +82,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     async (ctx) => {
       return Promise.all([
         ctx.getOperations({ docId }),
-        ctx.getSerializedDoc(docId),
+        ctx.getSerializedDoc({ docId }),
       ]);
     },
   );
@@ -157,7 +157,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
       await ctx.deleteOperations({ docId, count: operationsBatches.length });
     }
 
-    const stored = await ctx.getSerializedDoc(docId);
+    const stored = await ctx.getSerializedDoc({ docId });
     if (!stored) return;
 
     if (stored.clock >= data.clock) {
@@ -175,7 +175,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     }
     const serializedDoc = docBinding.serialize(doc);
 
-    const recheckStored = await ctx.getSerializedDoc(docId);
+    const recheckStored = await ctx.getSerializedDoc({ docId });
     if (recheckStored?.clock !== stored.clock) {
       return;
     }

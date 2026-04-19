@@ -10,7 +10,7 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
     return await db.transaction(
       async (tx) =>
         callback({
-          getSerializedDoc: async (docId) => {
+          getSerializedDoc: async ({ docId }) => {
             const doc = await tx.query.documents.findFirst({
               where: eq(schema.documents.docId, docId),
             });

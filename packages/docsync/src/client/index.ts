@@ -339,7 +339,7 @@ export class DocSyncClient<
 
     return local.provider.transaction("readwrite", async (ctx) => {
       // Try to load existing doc
-      const stored = await ctx.getSerializedDoc(docId);
+      const stored = await ctx.getSerializedDoc({ docId });
       const localOperations = await ctx.getOperations({ docId });
 
       if (stored) {

@@ -94,7 +94,7 @@ export function handleSync<
       try {
         const result = await provider.transaction("readwrite", async (ctx) => {
           const serverOps = await ctx.getOperations({ docId, clock });
-          const serverDoc = await ctx.getSerializedDoc(docId);
+          const serverDoc = await ctx.getSerializedDoc({ docId });
           const newClock = await ctx.saveOperations({ docId, operations });
 
           return {

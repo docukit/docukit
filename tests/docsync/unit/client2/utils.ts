@@ -160,7 +160,7 @@ export const getStoredClock = async (
 ) => {
   const provider = (await client["_localPromise"]).provider;
   const stored = await provider.transaction("readonly", (ctx) =>
-    ctx.getSerializedDoc(docId),
+    ctx.getSerializedDoc({ docId }),
   );
   return stored?.clock;
 };

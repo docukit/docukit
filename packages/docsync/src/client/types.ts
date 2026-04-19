@@ -58,9 +58,9 @@ export type ClientConfig<
  * All operations share the same underlying transaction.
  */
 export type ClientProviderContext<S, O> = {
-  getSerializedDoc(
-    docId: string,
-  ): Promise<{ serializedDoc: S; clock: number } | undefined>;
+  getSerializedDoc(arg: {
+    docId: string;
+  }): Promise<{ serializedDoc: S; clock: number } | undefined>;
   getOperations(arg: { docId: string }): Promise<O[][]>;
   deleteOperations(arg: { docId: string; count: number }): Promise<void>;
   saveOperations(arg: { docId: string; operations: O[] }): Promise<void>;

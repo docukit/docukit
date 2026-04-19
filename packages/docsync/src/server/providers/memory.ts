@@ -34,7 +34,7 @@ export function inMemoryServerProvider(): ServerProvider<any, any> {
     ): Promise<T> {
       const ctx: ServerProviderContext<any, any> = {
         // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
-        getSerializedDoc: async (docId: string) => {
+        getSerializedDoc: async ({ docId }) => {
           return docs.get(docId);
         },
 

@@ -25,9 +25,9 @@ type ServerProvider<S, O> = {
 };
 
 type ServerProviderContext<S, O> = {
-  getSerializedDoc(
-    docId: string,
-  ): Promise<{ serializedDoc: S; clock: number } | undefined>;
+  getSerializedDoc(arg: {
+    docId: string;
+  }): Promise<{ serializedDoc: S; clock: number } | undefined>;
   getOperations(arg: { docId: string; clock: number }): Promise<O[][]>;
   deleteOperations(arg: { docId: string; count: number }): Promise<void>;
   saveOperations(arg: { docId: string; operations: O[] }): Promise<number>;
@@ -107,7 +107,7 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
     return await db.transaction(
       async (tx) =>
         callback({
-          getSerializedDoc: async (docId) => {
+          getSerializedDoc: async ({ docId }) => {
             const doc = await tx.query.documents.findFirst({
               where: eq(schema.documents.docId, docId),
             });
@@ -197,7 +197,7 @@ You can find this exact code in the [`/examples` folder](https://github.com/docu
 ### Method semantics
 
 <dl>
-  <dt>`getSerializedDoc(docId)`</dt>
+  <dt>`getSerializedDoc({ docId })`</dt>
   <dd>Return the latest snapshot for the doc, or `undefined` if none has been saved yet. The `clock` is the snapshot's logical timestamp.</dd>
 
   <dt>`getOperations({ docId, clock })`</dt>
@@ -239,9 +239,9 @@ type ClientProvider<S, O> = {
 };
 
 type ClientProviderContext<S, O> = {
-  getSerializedDoc(
-    docId: string,
-  ): Promise<{ serializedDoc: S; clock: number } | undefined>;
+  getSerializedDoc(arg: {
+    docId: string;
+  }): Promise<{ serializedDoc: S; clock: number } | undefined>;
   getOperations(arg: { docId: string }): Promise<O[][]>;
   deleteOperations(arg: { docId: string; count: number }): Promise<void>;
   saveOperations(arg: { docId: string; operations: O[] }): Promise<void>;
@@ -295,7 +295,7 @@ export const myProvider = (
 ): ClientProvider<JsonDoc, Operations> => ({
   async transaction(mode, callback) {
     return callback({
-      getSerializedDoc: async (docId) => {
+      getSerializedDoc: async ({ docId }) => {
         /* ... */
       },
       saveSerializedDoc: async ({ docId, serializedDoc, clock }) => {

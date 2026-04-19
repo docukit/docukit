@@ -303,7 +303,7 @@ const createClientUtils = async (
           const result = await local.provider.transaction(
             "readonly",
             async (ctx) => {
-              const docResult = await ctx.getSerializedDoc(docId);
+              const docResult = await ctx.getSerializedDoc({ docId });
               const operations = await ctx.getOperations({ docId });
               return { docResult, operations };
             },
