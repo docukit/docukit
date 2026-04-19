@@ -5,11 +5,7 @@ import { getOwnPresencePatch } from "../../utils/getOwnPresencePatch.js";
 import { request } from "../../utils/request.js";
 
 /** Applies server operations to the cached doc and emits change event (remote). */
-export async function applyServerOperations<
-  D extends {},
-  S extends {},
-  O extends {},
->(
+async function applyServerOperations<D extends {}, S extends {}, O extends {}>(
   client: DocSyncClient<D, S, O>,
   args: { docId: string; operations: O[] },
 ): Promise<void> {
@@ -33,10 +29,10 @@ export async function applyServerOperations<
 }
 
 /**
- * Replaces the cached document (e.g. when server responds with a squashed doc).
+ * TODO: Replaces the cached document (e.g. when server responds with a squashed doc).
  * Keeps refCount, presence, and presenceListeners unchanged.
  */
-export function replaceDocInCache<D extends {}, S extends {}, O extends {}>(
+function _replaceDocInCache<D extends {}, S extends {}, O extends {}>(
   client: DocSyncClient<D, S, O>,
   args: { docId: string; doc?: D; serializedDoc?: S },
 ): void {
