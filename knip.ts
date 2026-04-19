@@ -19,6 +19,11 @@ const config: KnipConfig = {
     "shiki",
   ],
   ignoreBinaries: ["lsof"], // used in the package.json scripts
+  rules: {
+    // Optional peer deps (e.g. react in @docukit/docnode-lexical) are
+    // legitimately referenced from optional bindings.
+    optionalPeerDependencies: "off",
+  },
   workspaces: {
     examples: {
       entry: [
