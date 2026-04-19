@@ -243,7 +243,7 @@ For large documents with many operations:
 ## Implementation Checklist
 
 - [x] Add `clock` (timestamp) column to operations table
-- [x] Implement `sync` method in PostgresProvider
+- [x] Implement `sync` method in postgres example
 - [x] Single-document sync (not array)
 - [x] Operations stored as array per row
 - [x] Use `RETURNING` to get inserted clock

@@ -72,11 +72,24 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
             return inserted[0]!.clock;
           },
 
-          // eslint-disable-next-line @typescript-eslint/require-await -- not implemented yet
-          saveSerializedDoc: async () => {
-            throw new Error(
-              "saveSerializedDoc not implemented for postgresProvider yet - requires userId context",
-            );
+          saveSerializedDoc: async ({ docId, serializedDoc, clock }) => {
+            await tx
+              .insert(schema.documents)
+              .values({
+                docId,
+                doc: JSON.stringify(serializedDoc),
+                clock,
+                // placeholder — in your app, set from request/auth context
+                userId: "",
+              })
+              .onConflictDoUpdate({
+                target: schema.documents.docId,
+                set: {
+                  doc: JSON.stringify(serializedDoc),
+                  clock,
+                  updatedAt: new Date(),
+                },
+              });
           },
         }),
       { accessMode },

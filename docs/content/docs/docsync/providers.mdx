@@ -158,7 +158,7 @@ export const db = drizzle(queryClient, { schema });
 // postgres-provider.ts
 import { eq, gt, and } from "drizzle-orm";
 import type { JsonDoc, Operations } from "@docukit/docnode";
-import type { ServerProvider } from "@docukit/docsync/server";
+import type { ServerProvider } from "@docukit/docsync-react/server";
 import { db } from "./db.ts";
 import * as schema from "./postgres-schema.ts";
 
@@ -228,8 +228,24 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
             }
           },
 
-          saveSerializedDoc: async () => {
-            throw new Error("Not implemented in this reference example");
+          saveSerializedDoc: async ({ docId, serializedDoc, clock }) => {
+            await tx
+              .insert(schema.documents)
+              .values({
+                docId,
+                doc: JSON.stringify(serializedDoc),
+                clock,
+                // placeholder — in your app, set from request/auth context
+                userId: "",
+              })
+              .onConflictDoUpdate({
+                target: schema.documents.docId,
+                set: {
+                  doc: JSON.stringify(serializedDoc),
+                  clock,
+                  updatedAt: new Date(),
+                },
+              });
           },
         }),
       { accessMode },
