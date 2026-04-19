@@ -1,6 +1,6 @@
 ---
 title: Providers
-description: Bring your own storage backend for DocSync
+description: Bring your own storage provider
 ---
 
 DocSync is storage-agnostic. You provide a `ServerProvider` (server) and a `ClientProvider` (client), and DocSync calls into them to read and write documents and operations.
@@ -43,7 +43,7 @@ type ServerProviderContext<S, O> = {
 
 ### Reference: Postgres provider
 
-A working Postgres provider using [Drizzle ORM](https://orm.drizzle.team) and [postgres.js](https://github.com/porsager/postgres). Copy it, adapt the schema and table names, and wire up your own migration tool — DocSync does not create tables for you.
+A working Postgres provider using [Drizzle ORM](https://orm.drizzle.team) and [postgres.js](https://github.com/porsager/postgres). You can copy it, adapt it, or use it as inspiration to make your own provider.
 
 #### Schema
 
@@ -179,7 +179,7 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
 
 The CRUD methods are inlined directly into `callback({...})`. This way TypeScript flows the contextual type from `transaction`'s callback signature into each method, so parameters like `docId`, `clock`, and `operations` are inferred — no `ctx: ServerProviderContext<S, O>` annotation needed.
 
-The two `as JsonDoc` / `as Operations[]` casts on the read path exist only because Drizzle returns the `text` column as `string`. If you typed your columns with `.$type<JsonDoc>()`, the casts disappear.
+The two `as JsonDoc` / `as Operations[]` casts on the read path exist because Drizzle returns the `text` column as `string`, you can type your columns with `.$type<JsonDoc>()` or validate as well.
 
 Then plug it directly into the server:
 
