@@ -1,0 +1,80 @@
+---
+title: How It Works
+description: A short tour of the DocSync sync model
+---
+
+DocSync's job is to keep every client's document consistent without dictating how your documents are structured. It's a sync protocol, not a document library — the document library you plug in (DocNode, Yjs, Loro, custom OT, etc.) is what actually understands operations. DocSync's job is to assign them a single global order and shuttle them between clients.
+
+## Vocabulary
+
+Three concepts show up everywhere in the rest of the docs:
+
+- **Snapshot (`serializedDoc`)** — the full state of a document at some point in time, ready to persist as a single blob.
+- **Operation** — a change you can apply to a snapshot to produce a newer state.
+- **Clock** — a monotonically increasing number per document. Every operation gets one when the server accepts it. Snapshots carry the clock of the most recent operation they include.
+
+## The client
+
+For each open document, the client keeps three things in memory:
+
+1. **`serializedDoc`** — the last snapshot received from the server, frozen at some `clock`.
+2. **`localOps`** — operations the user has made locally that the server hasn't confirmed yet.
+3. **`doc`** — the "live" document the UI reads from. Conceptually equal to `serializedDoc` with `localOps` applied on top.
+
+Every edit (a keystroke, a click, anything) follows the same path:
+
+- The new operation is appended to `localOps`.
+- `doc` is updated immediately so the UI re-renders right away — no round-trip required.
+- A sync request is scheduled (debounced) to push `localOps` to the server.
+
+Pieces 1 and 2 are persisted (by default to IndexedDB), so closing the tab or going offline doesn't lose anything. Piece 3 is reconstructed from 1 + 2 on startup.
+
+## The sync round-trip
+
+The client sends `localOps` to the server. Two things can come back:
+
+### a) No concurrent edits
+
+The server confirms: "got your ops, nothing new from anyone else." The response carries the `clock` assigned to those ops. The client then:
+
+- Squashes `localOps` into `serializedDoc` (applies them to the snapshot).
+- Clears `localOps`.
+- `doc` doesn't visibly change — the UI was already showing the same state.
+
+### b) Concurrent edits from other clients
+
+The server confirms, but also returns `serverOps` — operations from other clients that the requesting client hadn't seen yet. The client then:
+
+- Starts from `serializedDoc`.
+- Applies `serverOps` first.
+- Applies `localOps` on top.
+- Replaces `doc` with the result.
+
+The UI re-renders to reflect the merged state.
+
+This is what makes DocSync agnostic to the document library you choose: it guarantees that every client applies operations in the same total order — the order the server assigns. That's a stronger guarantee than what protocols like Hocuspocus give, which lean on CRDT-specific properties to converge. Because DocSync enforces order at the protocol level, it works equally well with CRDT libraries (where operations commute naturally) and with OT-style libraries (where the library handles re-application via transformation).
+
+## The server
+
+The server stores, per document:
+
+- The latest **snapshot** (clock-tagged).
+- An append-only **log of operation batches** since that snapshot, each tagged with its own clock.
+
+When a sync request arrives with `clock = X`, the server:
+
+1. Looks up operations with `clock > X` (what the client is missing).
+2. Appends the client's incoming operations to the log, assigning them a new `clock`.
+3. Replies with the missing operations (if any), the snapshot (if newer than the client's), and the assigned clock.
+
+When the operation log gets long, the server squashes it into the snapshot and trims the log.
+
+## Persistence and offline
+
+The client's `serializedDoc` and `localOps` need to live somewhere. We ship [`indexedDBProvider`](./providers#indexeddb-provider) for the browser, which writes both to IndexedDB on every change. With it plugged in:
+
+- Reloads lose nothing.
+- Offline edits accumulate in `localOps` and flush as soon as the connection comes back.
+- Startup reads from disk, rebuilds `doc`, then syncs.
+
+Both client and server use the same pluggable provider model — see [Providers](./providers) for the full interface and how to bring your own.

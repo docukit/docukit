@@ -17,33 +17,28 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
             return doc
               ? {
                   serializedDoc: JSON.parse(doc.doc) as JsonDoc,
-                  clock: doc.clock.getTime(),
+                  clock: doc.clock,
                 }
               : undefined;
           },
 
           getOperations: async ({ docId, clock }) => {
-            const serverOps = await tx
+            const rows = await tx
               .select({ operations: schema.operations.operations })
               .from(schema.operations)
               .where(
                 and(
                   eq(schema.operations.docId, docId),
-                  gt(schema.operations.clock, new Date(clock)),
+                  gt(schema.operations.clock, clock),
                 ),
               )
               .orderBy(schema.operations.clock);
-            return serverOps.map(
-              (r) => JSON.parse(r.operations) as Operations[],
-            );
+            return rows.map((r) => JSON.parse(r.operations) as Operations[]);
           },
 
           deleteOperations: async ({ docId, count }) => {
             const toDelete = await tx
-              .select({
-                docId: schema.operations.docId,
-                clock: schema.operations.clock,
-              })
+              .select({ clock: schema.operations.clock })
               .from(schema.operations)
               .where(eq(schema.operations.docId, docId))
               .orderBy(schema.operations.clock)
@@ -54,7 +49,7 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
                 .delete(schema.operations)
                 .where(
                   and(
-                    eq(schema.operations.docId, op.docId),
+                    eq(schema.operations.docId, docId),
                     eq(schema.operations.clock, op.clock),
                   ),
                 );
@@ -67,14 +62,14 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
                 where: eq(schema.operations.docId, docId),
                 orderBy: (ops, { desc }) => [desc(ops.clock)],
               });
-              return latestOp?.clock.getTime() ?? 0;
+              return latestOp?.clock ?? 0;
             }
 
             const inserted = await tx
               .insert(schema.operations)
               .values({ docId, operations: JSON.stringify(operations) })
               .returning({ clock: schema.operations.clock });
-            return inserted[0]!.clock.getTime();
+            return inserted[0]!.clock;
           },
 
           // eslint-disable-next-line @typescript-eslint/require-await -- not implemented yet
