@@ -92,11 +92,7 @@ type ClientUtils = {
   loadDoc: () => Promise<void>;
   unLoadDoc: () => void;
   addChild: (text: string) => void;
-  assertIDBDoc: (expected?: {
-    clock: number;
-    doc: string[];
-    ops: string[];
-  }) => Promise<void>;
+  assertIDBDoc: (expected?: { doc: string[]; ops: string[] }) => Promise<void>;
   assertMemoryDoc: (children?: string[]) => Promise<void>;
   reqSpy: Mock<
     (
@@ -297,11 +293,7 @@ const createClientUtils = async (
       child.state.value.set(text);
       cachedDoc.root.append(child);
     },
-    assertIDBDoc: async (expected?: {
-      clock: number;
-      doc: string[];
-      ops: string[];
-    }) => {
+    assertIDBDoc: async (expected?: { doc: string[]; ops: string[] }) => {
       await expect
         .poll(async () => {
           if (!local) {
@@ -362,11 +354,9 @@ const createClientUtils = async (
             }
           }
 
-          expect({
-            clock: result.docResult.clock,
-            doc: actualDocChildren,
-            ops: opsChildren,
-          }).toStrictEqual(expected);
+          expect({ doc: actualDocChildren, ops: opsChildren }).toStrictEqual(
+            expected,
+          );
           return true;
         })
         .toBe(true);
@@ -402,4 +392,4 @@ const createClientUtils = async (
   };
 };
 
-export const emptyIDB = { clock: 0, doc: [], ops: [] };
+export const emptyIDB = { doc: [], ops: [] };
