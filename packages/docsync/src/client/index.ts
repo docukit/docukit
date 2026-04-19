@@ -77,7 +77,7 @@ export class DocSyncClient<
     // Initialize local provider (if configured)
     this._localPromise = (async () => {
       const identity = await local.getIdentity();
-      const provider = new local.provider(identity) as ClientProvider<S, O>;
+      const provider = local.provider(identity);
 
       this._bcHelper = new BCHelper(this, identity.userId);
 

@@ -22,6 +22,6 @@ test.todo("in memory provider", () => {
 
 test.todo("indexeddb provider", () => {
   testProviderClient(
-    new IndexedDBProvider({ userId: "test-user", secret: "test-secret" }),
+    IndexedDBProvider({ userId: "test-user", secret: "test-secret" }),
   );
 });

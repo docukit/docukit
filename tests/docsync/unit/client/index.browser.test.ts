@@ -583,16 +583,13 @@ describe("DocSyncClient", () => {
 
     test("should convert non-Error throws to Error objects", async () => {
       // Create a provider that throws a string instead of an Error
-      const StringThrowingProvider = class {
-        constructor(_identity: Identity) {
-          // Identity accepted but not used
-        }
+      const StringThrowingProvider = (_identity: Identity) => ({
         // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
         async transaction() {
           // eslint-disable-next-line @typescript-eslint/only-throw-error
           throw "string error message";
-        }
-      };
+        },
+      });
       const client = createClientWithProvider(StringThrowingProvider);
       const callback = createCallback();
 

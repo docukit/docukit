@@ -233,7 +233,7 @@ function createMockDocSyncClient(port: number, token: string): DocSyncClient {
     server: { url: `ws://localhost:${port}`, auth: { getToken: () => token } },
     local: {
       // TODO: review this. ServerProvider in the client?
-      provider: inMemoryServerProvider as unknown as new (
+      provider: inMemoryServerProvider as unknown as (
         identity: { userId: string; secret: string },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ) => ClientProvider<any, any>,

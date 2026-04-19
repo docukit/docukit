@@ -35,7 +35,7 @@ const createMockDocSyncClient = (serverOverrides?: {
     },
     local: {
       // TODO: review this. ServerProvider in the client?
-      provider: inMemoryServerProvider as unknown as new (
+      provider: inMemoryServerProvider as unknown as (
         identity: Identity,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ) => ClientProvider<any, any>,

@@ -61,8 +61,8 @@ const { client, useDoc, usePresence } = createDocSyncClient({
     },
     "local.provider": {
       description:
-        "Storage provider class constructor (e.g., IndexedDBProvider) for persistent local storage.",
-      type: "Provider",
+        "Storage provider factory (e.g., IndexedDBProvider) for persistent local storage.",
+      type: "(identity: Identity) => ClientProvider<S, O>",
       required: true,
     },
     "local.getIdentity": {

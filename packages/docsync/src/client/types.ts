@@ -44,8 +44,7 @@ export type ClientConfig<
   docBinding: DocBinding<D, S, O>;
   server: { url: string; auth: { getToken: () => MaybePromise<string> } };
   local: {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    provider: new (identity: Identity) => ClientProvider<any, any>;
+    provider: (identity: Identity) => ClientProvider<NoInfer<S>, NoInfer<O>>;
     getIdentity: () => MaybePromise<Identity>;
   };
 };
