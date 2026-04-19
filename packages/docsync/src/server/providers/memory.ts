@@ -1,13 +1,13 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { ServerProvider, ServerProviderContext } from "../types.js";
 
-interface StoredDoc<S> {
-  serializedDoc: S;
+interface StoredDoc {
+  serializedDoc: unknown;
   clock: number;
 }
 
-interface StoredOperation<O> {
-  operations: O;
+interface StoredOperation {
+  operations: unknown;
   clock: number;
 }
 
@@ -15,12 +15,9 @@ interface StoredOperation<O> {
  * In-memory server provider for testing.
  * Stores documents and operations in memory - data is lost when the process ends.
  */
-export function inMemoryServerProvider<
-  S extends {} = {},
-  O extends {} = {},
->(): ServerProvider<S, O> {
-  const docs = new Map<string, StoredDoc<S>>();
-  const operationsMap = new Map<string, StoredOperation<O>[]>();
+export function inMemoryServerProvider(): ServerProvider<any, any> {
+  const docs = new Map<string, StoredDoc>();
+  const operationsMap = new Map<string, StoredOperation[]>();
   const clockCounterByDocId = new Map<string, number>();
 
   function nextClock(docId: string): number {
@@ -33,9 +30,9 @@ export function inMemoryServerProvider<
   return {
     async transaction<T>(
       _mode: "readonly" | "readwrite",
-      callback: (ctx: ServerProviderContext<S, O>) => Promise<T>,
+      callback: (ctx: ServerProviderContext<any, any>) => Promise<T>,
     ): Promise<T> {
-      const ctx: ServerProviderContext<S, O> = {
+      const ctx: ServerProviderContext<any, any> = {
         // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
         getSerializedDoc: async (docId: string) => {
           return docs.get(docId);
