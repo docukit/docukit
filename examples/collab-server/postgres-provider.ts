@@ -1,27 +1,24 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import { eq, gt, and } from "drizzle-orm";
-import type {
-  ServerProvider,
-  ServerProviderContext,
-} from "@docukit/docsync-react/server";
+import type { JsonDoc, Operations } from "@docukit/docnode";
+import type { ServerProvider } from "@docukit/docsync-react/server";
 import { db } from "./db.ts";
 import * as schema from "./postgres-schema.ts";
 
-type S = {};
-type O = {};
-
-export const postgresProvider: ServerProvider<S, O> = {
+export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
   async transaction(mode, callback) {
     const accessMode = mode === "readonly" ? "read only" : "read write";
     return await db.transaction(
-      async (tx) => {
-        const ctx: ServerProviderContext<S, O> = {
+      async (tx) =>
+        callback({
           getSerializedDoc: async (docId) => {
             const doc = await tx.query.documents.findFirst({
               where: eq(schema.documents.docId, docId),
             });
             return doc
-              ? { serializedDoc: doc.doc as S, clock: doc.clock.getTime() }
+              ? {
+                  serializedDoc: JSON.parse(doc.doc) as JsonDoc,
+                  clock: doc.clock.getTime(),
+                }
               : undefined;
           },
 
@@ -36,7 +33,9 @@ export const postgresProvider: ServerProvider<S, O> = {
                 ),
               )
               .orderBy(schema.operations.clock);
-            return serverOps.map((r) => r.operations as O[]);
+            return serverOps.map(
+              (r) => JSON.parse(r.operations) as Operations[],
+            );
           },
 
           deleteOperations: async ({ docId, count }) => {
@@ -73,7 +72,7 @@ export const postgresProvider: ServerProvider<S, O> = {
 
             const inserted = await tx
               .insert(schema.operations)
-              .values({ docId, operations: operations as unknown[] })
+              .values({ docId, operations: JSON.stringify(operations) })
               .returning({ clock: schema.operations.clock });
             return inserted[0]!.clock.getTime();
           },
@@ -84,10 +83,7 @@ export const postgresProvider: ServerProvider<S, O> = {
               "saveSerializedDoc not implemented for postgresProvider yet - requires userId context",
             );
           },
-        };
-
-        return callback(ctx);
-      },
+        }),
       { accessMode },
     );
   },

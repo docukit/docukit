@@ -4,7 +4,7 @@ import { IndexedDBProvider } from "@docukit/docsync/client";
 import { inMemoryServerProvider } from "@docukit/docsync/server";
 import { test } from "vitest";
 
-function testProviderServer(_provider: ServerProvider) {
+function testProviderServer<S, O>(_provider: ServerProvider<S, O>) {
   throw new Error("Not implemented");
 }
 
