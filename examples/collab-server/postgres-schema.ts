@@ -17,7 +17,8 @@ export const documents = pgTable("documents", {
   userId: varchar("userId", { length: 26 }).notNull(),
   updatedAt: timestamp("updatedAt", { precision: 3, withTimezone: true })
     .notNull()
-    .defaultNow(),
+    .defaultNow()
+    .$onUpdate(() => new Date()),
 });
 
 export const operations = pgTable(

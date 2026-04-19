@@ -84,11 +84,7 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
               })
               .onConflictDoUpdate({
                 target: schema.documents.docId,
-                set: {
-                  doc: JSON.stringify(serializedDoc),
-                  clock,
-                  updatedAt: new Date(),
-                },
+                set: { doc: JSON.stringify(serializedDoc), clock },
               });
           },
         }),
