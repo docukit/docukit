@@ -1,7 +1,7 @@
 // TODO: move to unit tests
 
 import { describe, test, expect, vi } from "vitest";
-import { DocSyncClient, IndexedDBProvider } from "@docukit/docsync/client";
+import { DocSyncClient, indexedDBProvider } from "@docukit/docsync/client";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { defineNode, string } from "@docukit/docnode";
 
@@ -21,7 +21,7 @@ const createClient = (token: string) =>
     server: { url, auth: { getToken: () => token } },
     docBinding,
     local: {
-      provider: IndexedDBProvider,
+      provider: indexedDBProvider,
       getIdentity: () => ({ userId: "u", secret: "s" }),
     },
   });

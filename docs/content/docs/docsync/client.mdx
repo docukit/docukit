@@ -19,7 +19,7 @@ const { client, useDoc, usePresence } = createDocSyncClient({
     auth: { getToken: async () => await fetchAuthToken() },
   },
   local: {
-    provider: IndexedDBProvider,
+    provider: indexedDBProvider,
     getIdentity: async () => ({
       userId: "user-123",
       secret: await fetchUserSecret(),
@@ -61,7 +61,7 @@ const { client, useDoc, usePresence } = createDocSyncClient({
     },
     "local.provider": {
       description:
-        "Storage provider factory (e.g., IndexedDBProvider) for persistent local storage.",
+        "Storage provider factory (e.g., indexedDBProvider) for persistent local storage.",
       type: "(identity: Identity) => ClientProvider<S, O>",
       required: true,
     },

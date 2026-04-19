@@ -1,10 +1,10 @@
 // ============================================================================
-// IndexedDBProvider Tests
+// indexedDBProvider Tests
 // ============================================================================
 
 import { test } from "vitest";
 
-test.todo("IndexedDBProvider integration tests - placeholder");
+test.todo("indexedDBProvider integration tests - placeholder");
 
 // Constructor tests
 // "should initialize IndexedDB database with correct schema"

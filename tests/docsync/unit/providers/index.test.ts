@@ -1,6 +1,6 @@
 import type { ClientProvider } from "@docukit/docsync/client";
 import type { ServerProvider } from "@docukit/docsync/server";
-import { IndexedDBProvider } from "@docukit/docsync/client";
+import { indexedDBProvider } from "@docukit/docsync/client";
 import { inMemoryServerProvider } from "@docukit/docsync/server";
 import { test } from "vitest";
 
@@ -22,6 +22,6 @@ test.todo("in memory provider", () => {
 
 test.todo("indexeddb provider", () => {
   testProviderClient(
-    IndexedDBProvider({ userId: "test-user", secret: "test-secret" }),
+    indexedDBProvider({ userId: "test-user", secret: "test-secret" }),
   );
 });

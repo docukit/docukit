@@ -1,6 +1,6 @@
 import {
   DocSyncClient,
-  IndexedDBProvider,
+  indexedDBProvider,
   type ClientConfig,
 } from "@docukit/docsync/client";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
@@ -174,7 +174,7 @@ const createClientWithConfig = (config: {
     server: { url: getTestServerUrl(), auth: { getToken: () => config.token } },
     docBinding: config.docBinding,
     local: {
-      provider: IndexedDBProvider,
+      provider: indexedDBProvider,
       getIdentity: () => ({ userId: config.userId, secret: "test-secret" }),
     },
   };

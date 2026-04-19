@@ -18,7 +18,7 @@ interface DocNodeIDB extends DBSchema {
 /**
  * IndexedDB-backed client provider.
  */
-export function IndexedDBProvider(
+export function indexedDBProvider(
   identity: Identity,
 ): ClientProvider<any, any> {
   // Each user gets their own database for isolation and performance.

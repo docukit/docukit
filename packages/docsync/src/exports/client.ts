@@ -1,6 +1,6 @@
 export { createDocBinding } from "../bindings/index.js";
 export { DocSyncClient } from "../client/index.js";
-export { IndexedDBProvider } from "../client/providers/indexeddb.js";
+export { indexedDBProvider } from "../client/providers/indexeddb.js";
 export type { DocBinding, Presence } from "../shared/types.js";
 export type {
   ChangeEvent,

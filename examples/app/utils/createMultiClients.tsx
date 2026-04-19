@@ -2,7 +2,7 @@
 
 import { DocNodeBinding } from "@docukit/docsync-react/docnode";
 import {
-  IndexedDBProvider,
+  indexedDBProvider,
   createDocSyncClient,
 } from "@docukit/docsync-react/client";
 import type { DocConfig } from "@docukit/docnode";
@@ -26,7 +26,7 @@ const createClientForUser = (
       },
     },
     local: {
-      provider: IndexedDBProvider,
+      provider: indexedDBProvider,
       getIdentity: () => ({ userId, secret: "asdasdasd" }),
     },
     docBinding: DocNodeBinding(docConfigs),

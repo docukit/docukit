@@ -2,7 +2,7 @@
 import { vi, type Mock } from "vitest";
 import {
   DocSyncClient,
-  IndexedDBProvider,
+  indexedDBProvider,
   type QueryResult,
   type DocData,
   type ClientConfig,
@@ -52,7 +52,7 @@ const createValidConfig = (userId?: string) =>
     },
     docBinding: createMockDocBinding(),
     local: {
-      provider: IndexedDBProvider,
+      provider: indexedDBProvider,
       getIdentity: () => ({
         userId: userId ?? generateTestUserId(),
         secret: "test-secret",
@@ -82,7 +82,7 @@ export const createClientWithDisposeSpy = (userId?: string) => {
     },
     docBinding,
     local: {
-      provider: IndexedDBProvider,
+      provider: indexedDBProvider,
       getIdentity: () => ({
         userId: userId ?? generateTestUserId(),
         secret: "test-secret",
