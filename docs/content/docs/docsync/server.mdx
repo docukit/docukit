@@ -50,7 +50,7 @@ See [Providers](./providers) to bring your own storage backend (Postgres, MySQL,
     provider: {
       description:
         "Storage provider instance. Use inMemoryServerProvider() for testing, or implement your own — see Providers.",
-      type: "ServerProvider",
+      type: "ServerProvider<S, O>",
       required: true,
     },
     authenticate: {

@@ -3,11 +3,18 @@ title: Providers
 description: Bring your own storage backend for DocSync
 ---
 
-DocSync is storage-agnostic on the server. You provide a `ServerProvider` and DocSync calls into it to read and write documents and operations.
+DocSync is storage-agnostic. You provide a `ServerProvider` (server) and a `ClientProvider` (client), and DocSync calls into them to read and write documents and operations.
 
-The package only ships `inMemoryServerProvider`, which is intended for tests and local development. For production, you implement a provider against the database you already use.
+The package ships two reference providers:
 
-## The interface
+- `inMemoryServerProvider` — server-side, intended for tests and local development.
+- `indexedDBProvider` — client-side, browser persistence via IndexedDB.
+
+For a production server, you implement a `ServerProvider` against the database you already use.
+
+## Server Provider
+
+### Interface
 
 ```ts
 type ServerProvider<S, O> = {
@@ -32,18 +39,20 @@ type ServerProviderContext<S, O> = {
 };
 ```
 
-## Reference: Postgres provider
+`S` and `O` (serialized doc and operation shapes) are derived from the `docBinding` you pass to `DocSyncServer`. If your provider's `S`/`O` don't match the binding's, TypeScript will error at the config call-site.
 
-Here is a working Postgres provider using [Drizzle ORM](https://orm.drizzle.team) and [postgres.js](https://github.com/porsager/postgres). Copy it, adapt the schema and table names, and wire up your own migration tool — DocSync does not create tables for you.
+### Reference: Postgres provider
 
-### Schema
+A working Postgres provider using [Drizzle ORM](https://orm.drizzle.team) and [postgres.js](https://github.com/porsager/postgres). Copy it, adapt the schema and table names, and wire up your own migration tool — DocSync does not create tables for you.
+
+#### Schema
 
 ```ts
 // postgres-schema.ts
 import {
-  jsonb,
   pgTable,
   primaryKey,
+  text,
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -51,7 +60,7 @@ import {
 export const documents = pgTable("_docsync_documents", {
   userId: varchar("userId", { length: 26 }).notNull(),
   docId: varchar("docId", { length: 26 }).notNull().primaryKey(),
-  doc: jsonb("doc").notNull(),
+  doc: text("doc").notNull(),
   clock: timestamp("clock", { precision: 3, withTimezone: true }).notNull(),
 });
 
@@ -59,7 +68,7 @@ export const operations = pgTable(
   "_docsync_operations",
   {
     docId: varchar("docId", { length: 26 }).notNull(),
-    operations: jsonb("operations").notNull(),
+    operations: text("operations").notNull(),
     clock: timestamp("clock", { precision: 3, withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -68,9 +77,9 @@ export const operations = pgTable(
 );
 ```
 
-Apply this with `drizzle-kit push` (or your migration workflow of choice) before starting the server.
+Apply this with `drizzle-kit push` (or your migration workflow of choice) before starting the server. `text` columns hold the JSON-serialized payloads — the provider parses and stringifies on read/write. You can use `jsonb` instead if you want to query inside the document; just drop the `JSON.parse` / `JSON.stringify` calls.
 
-### Drizzle instance
+#### Drizzle instance
 
 ```ts
 // db.ts
@@ -82,33 +91,31 @@ const queryClient = postgres(process.env.DATABASE_URL!);
 export const db = drizzle(queryClient, { schema });
 ```
 
-### Provider
+#### Provider
 
 ```ts
 // postgres-provider.ts
 import { eq, gt, and } from "drizzle-orm";
-import type {
-  ServerProvider,
-  ServerProviderContext,
-} from "@docukit/docsync/server";
+import type { JsonDoc, Operations } from "@docukit/docnode";
+import type { ServerProvider } from "@docukit/docsync/server";
 import { db } from "./db.ts";
 import * as schema from "./postgres-schema.ts";
 
-type S = {}; // shape of your serialized doc
-type O = {}; // shape of one operation
-
-export const postgresProvider: ServerProvider<S, O> = {
+export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
   async transaction(mode, callback) {
     const accessMode = mode === "readonly" ? "read only" : "read write";
     return await db.transaction(
-      async (tx) => {
-        const ctx: ServerProviderContext<S, O> = {
+      async (tx) =>
+        callback({
           getSerializedDoc: async (docId) => {
             const doc = await tx.query.documents.findFirst({
               where: eq(schema.documents.docId, docId),
             });
             return doc
-              ? { serializedDoc: doc.doc as S, clock: doc.clock.getTime() }
+              ? {
+                  serializedDoc: JSON.parse(doc.doc) as JsonDoc,
+                  clock: doc.clock.getTime(),
+                }
               : undefined;
           },
 
@@ -123,7 +130,7 @@ export const postgresProvider: ServerProvider<S, O> = {
                 ),
               )
               .orderBy(schema.operations.clock);
-            return rows.map((r) => r.operations as O[]);
+            return rows.map((r) => JSON.parse(r.operations) as Operations[]);
           },
 
           saveOperations: async ({ docId, operations }) => {
@@ -136,7 +143,7 @@ export const postgresProvider: ServerProvider<S, O> = {
             }
             const inserted = await tx
               .insert(schema.operations)
-              .values({ docId, operations: operations as unknown[] })
+              .values({ docId, operations: JSON.stringify(operations) })
               .returning({ clock: schema.operations.clock });
             return inserted[0]!.clock.getTime();
           },
@@ -163,15 +170,16 @@ export const postgresProvider: ServerProvider<S, O> = {
           saveSerializedDoc: async () => {
             throw new Error("Not implemented in this reference example");
           },
-        };
-
-        return callback(ctx);
-      },
+        }),
       { accessMode },
     );
   },
 };
 ```
+
+The CRUD methods are inlined directly into `callback({...})`. This way TypeScript flows the contextual type from `transaction`'s callback signature into each method, so parameters like `docId`, `clock`, and `operations` are inferred — no `ctx: ServerProviderContext<S, O>` annotation needed.
+
+The two `as JsonDoc` / `as Operations[]` casts on the read path exist only because Drizzle returns the `text` column as `string`. If you typed your columns with `.$type<JsonDoc>()`, the casts disappear.
 
 Then plug it directly into the server:
 
@@ -186,7 +194,7 @@ new DocSyncServer({
 
 You can find this exact code in the [`/examples` folder](https://github.com/docukit/docukit/tree/main/examples) of the repository.
 
-## Method semantics
+### Method semantics
 
 <dl>
   <dt>`getSerializedDoc(docId)`</dt>
@@ -205,12 +213,106 @@ You can find this exact code in the [`/examples` folder](https://github.com/docu
   <dd>Replace the snapshot for the doc. Called during squashing.</dd>
 </dl>
 
-## In-memory provider
+### In-memory provider
 
 ```ts
 import { inMemoryServerProvider } from "@docukit/docsync/server";
 
-const provider = inMemoryServerProvider();
+new DocSyncServer({
+  /* ... */
+  provider: inMemoryServerProvider(),
+});
 ```
 
 Stores everything in process memory — data is lost when the process exits. Use it in tests and local exploration, never in production.
+
+## Client Provider
+
+### Interface
+
+```ts
+type ClientProvider<S, O> = {
+  transaction<T>(
+    mode: "readonly" | "readwrite",
+    callback: (ctx: ClientProviderContext<S, O>) => Promise<T>,
+  ): Promise<T>;
+};
+
+type ClientProviderContext<S, O> = {
+  getSerializedDoc(
+    docId: string,
+  ): Promise<{ serializedDoc: S; clock: number } | undefined>;
+  getOperations(arg: { docId: string }): Promise<O[][]>;
+  deleteOperations(arg: { docId: string; count: number }): Promise<void>;
+  saveOperations(arg: { docId: string; operations: O[] }): Promise<void>;
+  saveSerializedDoc(arg: {
+    docId: string;
+    serializedDoc: S;
+    clock: number;
+  }): Promise<void>;
+};
+```
+
+The shape mirrors `ServerProviderContext` with two differences: `getOperations` does not take a `clock` (the client always loads everything it has locally), and `saveOperations` returns `void` (the client doesn't assign clocks — those come from the server).
+
+In the client config, `provider` is a **factory** that receives an `Identity` (resolved from `getIdentity()`) and returns the provider instance:
+
+```ts
+local: {
+  provider: (identity: Identity) => ClientProvider<S, O>;
+  getIdentity: () => MaybePromise<Identity>;
+}
+```
+
+This lets you scope storage per-user (e.g. `indexedDBProvider` opens a separate database per `userId`).
+
+### IndexedDB provider
+
+```ts
+import { DocSyncClient, indexedDBProvider } from "@docukit/docsync/client";
+
+new DocSyncClient({
+  /* ... */
+  local: {
+    provider: indexedDBProvider,
+    getIdentity: async () => ({ userId, secret }),
+  },
+});
+```
+
+Each user gets an isolated IndexedDB database (`docsync-${userId}`). Reads and writes happen inside an IDB transaction so partial failures roll back cleanly.
+
+### Custom client provider
+
+If you want to back the client with something other than IndexedDB (OPFS, SQLite via wasm, encrypted local storage, etc.), write a factory matching the interface:
+
+```ts
+import type { ClientProvider, Identity } from "@docukit/docsync/client";
+import type { JsonDoc, Operations } from "@docukit/docnode";
+
+export const myProvider = (
+  identity: Identity,
+): ClientProvider<JsonDoc, Operations> => ({
+  async transaction(mode, callback) {
+    return callback({
+      getSerializedDoc: async (docId) => {
+        /* ... */
+      },
+      saveSerializedDoc: async ({ docId, serializedDoc, clock }) => {
+        /* ... */
+      },
+      getOperations: async ({ docId }) => {
+        /* ... */
+      },
+      saveOperations: async ({ docId, operations }) => {
+        /* ... */
+      },
+      deleteOperations: async ({ docId, count }) => {
+        /* ... */
+      },
+    });
+  },
+});
+```
+
+As with the server provider, inlining the CRUD methods inside `callback({...})` lets TypeScript infer their parameters from the `transaction` signature.
