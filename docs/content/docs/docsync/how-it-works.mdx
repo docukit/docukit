@@ -69,6 +69,18 @@ When a sync request arrives with `clock = X`, the server:
 
 When the operation log gets long, the server squashes it into the snapshot and trims the log.
 
+## Why a snapshot _and_ an operation log?
+
+A simpler design would be to store just the latest snapshot and rewrite it on every operation. That's how [Hocuspocus's database extension](https://tiptap.dev/docs/hocuspocus/server/extensions/database) works — the provider exposes only `fetch` and `store`, and on every incoming change the server loads the document from storage, parses it, applies the operation, serializes the result, and writes it back.
+
+That's a smaller provider surface, but it pays a parse + serialize round-trip on every edit. DocSync trades two extra methods (`saveOperations` and `deleteOperations`) for a much cheaper hot path:
+
+- **Single-writer documents** — every edit is a single append to the operation log. No read, no parse, no rewrite of the snapshot.
+- **Multiple concurrent writers** — clients exchange small operation deltas through the server, not full document snapshots. The server still just appends and replies with the missing range.
+- **Squashing is rare** — the snapshot is only rebuilt when the log grows long enough to be worth it, not on every write.
+
+The extra methods don't add much code, either. The reference Postgres provider above is well under 100 lines, and most production providers land in the same ballpark.
+
 ## Persistence and offline
 
 The client's `serializedDoc` and `localOps` need to live somewhere. We ship [`indexedDBProvider`](./providers#indexeddb-provider) for the browser, which writes both to IndexedDB on every change. With it plugged in:

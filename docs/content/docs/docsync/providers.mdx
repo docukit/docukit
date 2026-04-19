@@ -90,6 +90,8 @@ Apply this with `drizzle-kit push` (or your migration workflow of choice) before
 
 #### Schema recommendations
 
+For background on why the schema looks the way it does (snapshot + operation log, the role of `clock`), read [How It Works](./how-it-works) first.
+
 DocSync doesn't dictate any particular schema. As long as your provider can satisfy the five context methods (`getSerializedDoc`, `saveSerializedDoc`, `getOperations`, `saveOperations`, `deleteOperations`), the storage shape is up to you. You can collapse tables, denormalize, use a key-value store, store snapshots in object storage and operations in a queue — whatever fits your stack.
 
 That said, the reference schema above bakes in a few choices worth understanding before you adapt it.
