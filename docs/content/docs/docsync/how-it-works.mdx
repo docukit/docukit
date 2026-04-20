@@ -11,7 +11,7 @@ Three concepts show up everywhere in the rest of the docs:
 
 - **Snapshot (`serializedDoc`)** — the full state of a document at some point in time, ready to persist as a single blob.
 - **Operation** — a change you can apply to a snapshot to produce a newer state.
-- **Clock** — a monotonically increasing number per document. Every operation gets one when the server accepts it. Snapshots carry the clock of the most recent operation they include.
+- **Clock** — a monotonically increasing number. Every operation gets one when the server accepts it. Snapshots carry the clock of the most recent operation they include.
 
 ## The client
 

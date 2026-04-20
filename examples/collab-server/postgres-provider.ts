@@ -1,4 +1,4 @@
-import { eq, gt, and } from "drizzle-orm";
+import { eq, gt, and, inArray } from "drizzle-orm";
 import type { JsonDoc, Operations } from "@docukit/docnode";
 import type { ServerProvider } from "@docukit/docsync-react/server";
 import { db } from "./db.ts";
@@ -37,23 +37,20 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
           },
 
           deleteOperations: async ({ docId, count }) => {
-            const toDelete = await tx
+            const oldest = tx
               .select({ clock: schema.operations.clock })
               .from(schema.operations)
               .where(eq(schema.operations.docId, docId))
               .orderBy(schema.operations.clock)
               .limit(count);
-
-            for (const op of toDelete) {
-              await tx
-                .delete(schema.operations)
-                .where(
-                  and(
-                    eq(schema.operations.docId, docId),
-                    eq(schema.operations.clock, op.clock),
-                  ),
-                );
-            }
+            await tx
+              .delete(schema.operations)
+              .where(
+                and(
+                  eq(schema.operations.docId, docId),
+                  inArray(schema.operations.clock, oldest),
+                ),
+              );
           },
 
           saveOperations: async ({ docId, operations }) => {
