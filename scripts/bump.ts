@@ -17,11 +17,11 @@ type Version = {
   major: number;
   minor: number;
   patch: number;
-  alpha: number | null;
+  alpha: number | undefined;
 };
 type Package = { name: string; version?: string; private?: boolean };
 type Loaded = { dir: string; pkgPath: string; raw: string; pkg: Package };
-type DistTags = { latest?: string; alpha?: string } | null;
+type DistTags = { latest?: string; alpha?: string };
 type Mode = "stable" | "alpha";
 type Kind = "major" | "minor" | "patch";
 
@@ -42,8 +42,16 @@ function readWorkspaceGlobs(): string[] {
   const yaml = readFileSync(join(ROOT, "pnpm-workspace.yaml"), "utf8");
   const globs: string[] = [];
   for (const line of yaml.split("\n")) {
-    const m = line.match(/^\s*-\s*["']?([^"']+?)["']?\s*$/);
-    if (m) globs.push(m[1]);
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("-")) continue;
+    let rest = trimmed.slice(1).trim();
+    if (
+      (rest.startsWith('"') && rest.endsWith('"')) ||
+      (rest.startsWith("'") && rest.endsWith("'"))
+    ) {
+      rest = rest.slice(1, -1);
+    }
+    if (rest) globs.push(rest);
   }
   return globs;
 }
@@ -66,28 +74,33 @@ function expandGlobs(globs: string[]): string[] {
   return [...dirs];
 }
 
-function loadPackage(dir: string): Loaded | null {
+function loadPackage(dir: string): Loaded | undefined {
   const pkgPath = join(dir, "package.json");
-  if (!existsSync(pkgPath)) return null;
+  if (!existsSync(pkgPath)) return undefined;
   const raw = readFileSync(pkgPath, "utf8");
-  return { dir, pkgPath, raw, pkg: JSON.parse(raw) };
+  const pkg = JSON.parse(raw) as Package;
+  return { dir, pkgPath, raw, pkg };
 }
 
 const VERSION_RE = /^(\d+)\.(\d+)\.(\d+)(?:-alpha\.(\d+))?$/;
-function parseVersion(v: string | undefined): Version | null {
-  const m = v?.match(VERSION_RE);
-  return m
-    ? {
-        major: +m[1],
-        minor: +m[2],
-        patch: +m[3],
-        alpha: m[4] == null ? null : +m[4],
-      }
-    : null;
+function parseVersion(v: string | undefined): Version | undefined {
+  if (v === undefined) return undefined;
+  const m = VERSION_RE.exec(v);
+  if (!m) return undefined;
+  const [, major, minor, patch, alpha] = m;
+  if (major === undefined || minor === undefined || patch === undefined) {
+    return undefined;
+  }
+  return {
+    major: +major,
+    minor: +minor,
+    patch: +patch,
+    alpha: alpha === undefined ? undefined : +alpha,
+  };
 }
 function formatVersion(v: Version): string {
   const base = `${v.major}.${v.minor}.${v.patch}`;
-  return v.alpha == null ? base : `${base}-alpha.${v.alpha}`;
+  return v.alpha === undefined ? base : `${base}-alpha.${v.alpha}`;
 }
 const isAlpha = (pkg: Package) => !!pkg.version?.includes("-alpha.");
 const isPublishable = (pkg: Package) => !pkg.private && !!pkg.version;
@@ -107,11 +120,13 @@ function assertCleanTree() {
 function assertVersionConsistency(pkgs: Loaded[]) {
   const groups = new Map<string, string[]>();
   for (const { pkg } of pkgs) {
-    const parsed = parseVersion(pkg.version);
-    if (!parsed) fail(`${pkg.name} has invalid version "${pkg.version}"`);
-    const key = `${parsed!.major}.${parsed!.minor}.${parsed!.patch}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(pkg.name);
+    const parsed =
+      parseVersion(pkg.version) ??
+      fail(`${pkg.name} has invalid version "${pkg.version}"`);
+    const key = `${parsed.major}.${parsed.minor}.${parsed.patch}`;
+    const arr = groups.get(key) ?? [];
+    arr.push(pkg.name);
+    groups.set(key, arr);
   }
   if (groups.size > 1) {
     const lines = [...groups.entries()].map(
@@ -123,47 +138,48 @@ function assertVersionConsistency(pkgs: Loaded[]) {
   }
 }
 
-function queryNpmDistTags(name: string): DistTags {
+function queryNpmDistTags(name: string): DistTags | undefined {
   try {
     const out = execSync(`npm view ${name} dist-tags --json 2>/dev/null`, {
       encoding: "utf8",
     }).trim();
-    return out ? JSON.parse(out) : null;
+    return out ? (JSON.parse(out) as DistTags) : undefined;
   } catch {
-    return null;
+    return undefined;
   }
 }
 
 function bumpStable(parsed: Version, kind: Kind): Version {
   if (kind === "major")
-    return { major: parsed.major + 1, minor: 0, patch: 0, alpha: null };
+    return { major: parsed.major + 1, minor: 0, patch: 0, alpha: undefined };
   if (kind === "minor")
     return {
       major: parsed.major,
       minor: parsed.minor + 1,
       patch: 0,
-      alpha: null,
+      alpha: undefined,
     };
   return {
     major: parsed.major,
     minor: parsed.minor,
     patch: parsed.patch + 1,
-    alpha: null,
+    alpha: undefined,
   };
 }
 
 function applyBump(
   parsed: Version,
   mode: Mode,
-  kind: Kind | null,
+  kind: Kind | undefined,
   wasAlpha: boolean,
 ): Version {
   if (mode === "stable") {
-    const next = bumpStable(parsed, kind!);
+    if (!kind) throw new Error("stable bump requires kind");
+    const next = bumpStable(parsed, kind);
     if (wasAlpha) next.alpha = 1;
     return next;
   }
-  if (parsed.alpha == null)
+  if (parsed.alpha === undefined)
     throw new Error("cannot alpha-bump a non-alpha package");
   return { ...parsed, alpha: parsed.alpha + 1 };
 }
@@ -173,7 +189,7 @@ function guardrail(
   publishedVersion: string,
   proposed: Version,
   mode: Mode,
-  kind: Kind | null,
+  kind: Kind | undefined,
   wasAlpha: boolean,
 ): GuardResult {
   const published = parseVersion(publishedVersion);
@@ -198,7 +214,7 @@ type PlanEntry = Loaded & {
   parsed: Version;
   next: Version;
   status: "ok" | "first-publish" | "warning";
-  publishedVersion: string | null;
+  publishedVersion: string | undefined;
 };
 
 (async () => {
@@ -209,7 +225,9 @@ type PlanEntry = Loaded & {
 
   info("• Scanning workspace packages...");
   const dirs = expandGlobs(readWorkspaceGlobs());
-  const loaded = dirs.map(loadPackage).filter((e): e is Loaded => e != null);
+  const loaded = dirs
+    .map(loadPackage)
+    .filter((e): e is Loaded => e !== undefined);
   const publishable = loaded.filter(({ pkg }) => isPublishable(pkg));
   if (publishable.length === 0) fail("no publishable packages found.");
 
@@ -217,7 +235,7 @@ type PlanEntry = Loaded & {
   assertVersionConsistency(publishable);
 
   info("• Querying npm registry...");
-  const distTags: Record<string, DistTags> = {};
+  const distTags: Record<string, DistTags | undefined> = {};
   for (const { pkg } of publishable) {
     distTags[pkg.name] = queryNpmDistTags(pkg.name);
   }
@@ -240,15 +258,14 @@ type PlanEntry = Loaded & {
   );
   info("  (b) Alpha — bumps alpha packages only (alpha.N → alpha.N+1)");
   const modeAns = (await ask("Pick (a/b): ")).trim().toLowerCase();
-  const mode: Mode | null =
+  const mode: Mode =
     modeAns === "a" || modeAns === "stable"
       ? "stable"
       : modeAns === "b" || modeAns === "alpha"
         ? "alpha"
-        : null;
-  if (!mode) fail(`unknown mode "${modeAns}"`);
+        : fail(`unknown mode "${modeAns}"`);
 
-  let kind: Kind | null = null;
+  let kind: Kind | undefined;
   if (mode === "stable") {
     const k = (await ask("  major | minor | patch: ")).trim().toLowerCase();
     if (!["major", "minor", "patch"].includes(k)) fail(`unknown kind "${k}"`);
@@ -271,11 +288,13 @@ type PlanEntry = Loaded & {
   const hardErrors: string[] = [];
   const warnings: string[] = [];
   for (const entry of targets) {
-    const parsed = parseVersion(entry.pkg.version)!;
+    const parsed =
+      parseVersion(entry.pkg.version) ??
+      fail(`${entry.pkg.name}: cannot parse "${entry.pkg.version}"`);
     const wasAlpha = isAlpha(entry.pkg);
-    const next = applyBump(parsed, mode!, kind, wasAlpha);
+    const next = applyBump(parsed, mode, kind, wasAlpha);
     const tag = mode === "alpha" ? "alpha" : wasAlpha ? "alpha" : "latest";
-    const publishedVersion = distTags[entry.pkg.name]?.[tag] ?? null;
+    const publishedVersion = distTags[entry.pkg.name]?.[tag];
 
     let status: PlanEntry["status"] = "ok";
     if (!publishedVersion) {
@@ -286,7 +305,7 @@ type PlanEntry = Loaded & {
         `${entry.pkg.name}: proposed ${formatVersion(next)} is ALREADY on the registry`,
       );
     } else {
-      const g = guardrail(publishedVersion, next, mode!, kind, wasAlpha);
+      const g = guardrail(publishedVersion, next, mode, kind, wasAlpha);
       if (!g.ok) {
         status = "warning";
         warnings.push(`${entry.pkg.name}: ${g.reason}`);
@@ -346,16 +365,23 @@ type PlanEntry = Loaded & {
     const newV = formatVersion(p.next);
     const updated = p.raw.replace(
       /("version"\s*:\s*")[^"]+(")/,
-      (_m, a, b) => `${a}${newV}${b}`,
+      (_m, a: string, b: string) => `${a}${newV}${b}`,
     );
     writeFileSync(p.pkgPath, updated);
   }
 
-  // Release tag: prefer stable (non-alpha) versions. If all bumps are alpha-only, include -alpha.N.
-  const stableEntry = plan.find((p) => p.next.alpha == null);
-  const releaseStr = stableEntry
-    ? `v${stableEntry.next.major}.${stableEntry.next.minor}.${stableEntry.next.patch}`
-    : `v${formatVersion(plan[0].next)}`;
+  // Release tag: prefer stable (non-alpha) versions. If all bumps are alpha-only,
+  // include -alpha.N. Sort by package name for determinism when selecting a fallback.
+  const stableEntry = plan.find((p) => p.next.alpha === undefined);
+  const fallback = [...plan].sort((a, b) =>
+    a.pkg.name.localeCompare(b.pkg.name),
+  )[0];
+  const tagSource =
+    stableEntry ?? fallback ?? fail("internal: no plan entries after bump");
+  const releaseStr =
+    tagSource.next.alpha === undefined
+      ? `v${tagSource.next.major}.${tagSource.next.minor}.${tagSource.next.patch}`
+      : `v${formatVersion(tagSource.next)}`;
 
   info(`\n✓ Bumped ${plan.length} package(s).\n`);
   info("Next steps:");
@@ -369,7 +395,7 @@ type PlanEntry = Loaded & {
   info(
     `   commit as "chore: release ${releaseStr}", open a PR with that title, squash-merge.)\n`,
   );
-})().catch((err) => {
+})().catch((err: unknown) => {
   console.error(err);
   process.exit(1);
 });

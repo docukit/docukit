@@ -6,11 +6,13 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PR_TITLE = process.env.PR_TITLE ?? "";
-const BASE = process.env.GITHUB_BASE_REF || "main";
+const BASE = process.env.GITHUB_BASE_REF ?? "main";
 
 const TITLE_RE = /^chore: release v(\d+\.\d+\.\d+(?:-alpha\.\d+)?)$/;
 const CHANGELOG_RE = /^changelog\/v(\d+\.\d+\.\d+(?:-alpha\.\d+)?)\.md$/;
-const PKG_RE = /^(packages\/[^/]+|docs|examples)\/package\.json$/;
+const PKG_RE = /^packages\/[^/]+\/package\.json$/;
+const VERSION_LINE_RE = /^[+-]\s*"version"\s*:\s*"[^"]+",?\s*$/;
+const VERSION_FIELD_RE = /"version"\s*:\s*"([^"]+)"/;
 
 const fail = (msg: string): never => {
   console.error(`\n✖ ${msg}\n`);
@@ -19,13 +21,11 @@ const fail = (msg: string): never => {
 
 type DiffEntry = { status: string; path: string };
 
-const titleMatch = PR_TITLE.match(TITLE_RE);
-if (!titleMatch) {
+const titleVersion =
+  TITLE_RE.exec(PR_TITLE)?.[1] ??
   fail(
     `PR title "${PR_TITLE}" must match:  chore: release vX.Y.Z  or  chore: release vX.Y.Z-alpha.N`,
   );
-}
-const titleVersion = titleMatch![1];
 
 const diffRaw = execSync(`git diff --name-status origin/${BASE}...HEAD`, {
   cwd: ROOT,
@@ -38,12 +38,14 @@ if (!diffRaw) {
   );
 }
 
-const entries: DiffEntry[] = diffRaw.split("\n").map((line) => {
-  const [status, ...pathParts] = line.split(/\s+/);
-  return { status, path: pathParts.join(" ") };
-});
+const entries: DiffEntry[] = [];
+for (const line of diffRaw.split("\n")) {
+  const [status, ...pathParts] = line.split("\t");
+  if (!status || pathParts.length === 0) continue;
+  entries.push({ status, path: pathParts.join("\t") });
+}
 
-let changelogFound: string | null = null;
+let changelogFound: string | undefined;
 const packageJsonsChanged: string[] = [];
 const errors: string[] = [];
 
@@ -53,8 +55,7 @@ for (const { status, path } of entries) {
     continue;
   }
 
-  const cm = path.match(CHANGELOG_RE);
-  if (cm) {
+  if (CHANGELOG_RE.exec(path)) {
     if (status !== "A") {
       errors.push(
         `changelog file must be newly added (status=${status}): ${path}`,
@@ -85,7 +86,7 @@ for (const { status, path } of entries) {
     for (const line of pkgDiff.split("\n")) {
       if (!line.startsWith("+") && !line.startsWith("-")) continue;
       if (line.startsWith("+++") || line.startsWith("---")) continue;
-      if (!/^[+-]\s*"version"\s*:\s*"[^"]+",?\s*$/.test(line)) {
+      if (!VERSION_LINE_RE.test(line)) {
         errors.push(`${path}: non-version change detected: ${line.trim()}`);
         break;
       }
@@ -95,7 +96,7 @@ for (const { status, path } of entries) {
   }
 
   errors.push(
-    `unexpected file change: ${path} (status=${status}) — release PRs may only change package.json versions and add one changelog file.`,
+    `unexpected file change: ${path} (status=${status}) — release PRs may only change packages/*/package.json versions and add one changelog file.`,
   );
 }
 
@@ -111,10 +112,10 @@ if (packageJsonsChanged.length === 0) {
 }
 
 if (changelogFound) {
-  const cv = changelogFound.match(CHANGELOG_RE)![1];
-  if (cv !== titleVersion) {
+  const cm = CHANGELOG_RE.exec(changelogFound);
+  if (cm?.[1] && cm[1] !== titleVersion) {
     errors.push(
-      `PR title version v${titleVersion} does not match changelog file v${cv}`,
+      `PR title version v${titleVersion} does not match changelog file v${cm[1]}`,
     );
   }
 }
@@ -123,12 +124,12 @@ if (changelogFound) {
 const bumpedVersions = new Set<string>();
 for (const p of packageJsonsChanged) {
   const content = readFileSync(join(ROOT, p), "utf8");
-  const vm = content.match(/"version"\s*:\s*"([^"]+)"/);
-  if (!vm) {
+  const v = VERSION_FIELD_RE.exec(content)?.[1];
+  if (!v) {
     errors.push(`${p}: could not read version`);
     continue;
   }
-  bumpedVersions.add(vm[1]);
+  bumpedVersions.add(v);
 }
 if (packageJsonsChanged.length && !bumpedVersions.has(titleVersion)) {
   errors.push(

@@ -13,7 +13,7 @@ Do not run `pnpm bump` yourself (it is interactive). Do not commit/push until th
 
 1. Check `git status --porcelain`. If dirty, stop and tell the user to commit/stash first.
 2. Check the current branch with `git rev-parse --abbrev-ref HEAD`.
-3. If on `main`, create `release/pending` (or similar) from `origin/main`: `git fetch origin main && git checkout -b release/pending origin/main`.
+3. If on `main`, create a release branch from `origin/main`. Use the intended version if known (e.g. `release/v0.3.2`); otherwise use a placeholder you'll rename once the bump fixes the version: `git fetch origin main && git checkout -b release/pending origin/main`.
 4. If already on a non-main branch, ask the user: "You are on `<branch>`. Keep this branch for the release, or branch off `origin/main`?"
 5. Confirm the branch to the user before moving on.
 
@@ -27,14 +27,13 @@ When the user reports the bump is done, continue.
 
 Silently verify the bump makes sense. If anything is off, flag it to the user before drafting notes.
 
-1. Run `git diff --name-only` — should show only `*/package.json` files. Flag anything else.
+1. Run `git diff --name-only` — should show only `packages/*/package.json` files. Flag anything else.
 2. Read each bumped `package.json` and confirm all publishable packages agree on `major.minor.patch`. Alpha packages may carry `-alpha.N`.
 3. Derive the target release tag:
    - If at least one publishable package is stable (no `-alpha.`), tag = `v<major>.<minor>.<patch>`.
    - Otherwise (alpha-only release), tag = `v<major>.<minor>.<patch>-alpha.<N>`.
 4. Determine the baseline: the most recent `changelog/v*.md` file, or the first commit if none exists.
 5. Count commits between baseline and HEAD (`git log BASELINE..HEAD --no-merges --oneline | wc -l`). If zero, stop — there is nothing to release.
-6. Look at the magnitude of the bump (patch / minor / major / alpha) and compare it to what you'll discover in Phase 4. If in Phase 4 you find breaking changes but the user picked `patch`, or no user-facing changes but they picked `major`, say so before drafting — the user may want to re-bump.
 
 ## Phase 4 — draft changelog
 
@@ -51,6 +50,8 @@ Commands:
 - `git diff BASELINE..HEAD -- 'packages/*/package.json'` — exports/peerDeps/deps shifts
 
 Classify every change into: **Breaking**, **Features**, **Fixes**, **Docs**, **Internal**.
+
+**Before drafting, sanity-check the bump magnitude against what you find.** If the user picked `patch` but the diff contains breaking changes, or picked `major` but nothing is user-facing, surface that to the user before writing the changelog — they may want to `pnpm bump` again with a different kind.
 
 **Breaking-change patterns — hunt actively:**
 
@@ -137,8 +138,8 @@ Wait for explicit approval before continuing. If the user asks for revisions, ed
 
 On approval:
 
-1. `git add changelog/<tag>.md packages/*/package.json` — plus `docs/package.json` / `examples/package.json` only if their versions were bumped (they should not be, but check).
-2. Verify `git status` shows only expected files. If `_DISCORD.md` shows up, abort and check `.gitignore`.
+1. `git add changelog/<tag>.md packages/*/package.json`.
+2. Verify `git status` shows only expected files. If `_DISCORD.md` shows up, abort and check `.gitignore`. If `docs/package.json` or `examples/package.json` appear, abort — those are private and should never change during a release.
 3. `git commit -m "chore: release <tag>"`.
 4. `git push -u origin HEAD`.
 

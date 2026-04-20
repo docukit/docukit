@@ -19,11 +19,11 @@ const run = (cmd: string) => {
   console.log(`$ ${cmd}`);
   execSync(cmd, { cwd: ROOT, stdio: "inherit" });
 };
-const capture = (cmd: string): string | null => {
+const capture = (cmd: string): string | undefined => {
   try {
     return execSync(cmd, { cwd: ROOT, encoding: "utf8" }).trim();
   } catch {
-    return null;
+    return undefined;
   }
 };
 
@@ -31,8 +31,16 @@ function readWorkspaceGlobs(): string[] {
   const yaml = readFileSync(join(ROOT, "pnpm-workspace.yaml"), "utf8");
   const globs: string[] = [];
   for (const line of yaml.split("\n")) {
-    const m = line.match(/^\s*-\s*["']?([^"']+?)["']?\s*$/);
-    if (m) globs.push(m[1]);
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("-")) continue;
+    let rest = trimmed.slice(1).trim();
+    if (
+      (rest.startsWith('"') && rest.endsWith('"')) ||
+      (rest.startsWith("'") && rest.endsWith("'"))
+    ) {
+      rest = rest.slice(1, -1);
+    }
+    if (rest) globs.push(rest);
   }
   return globs;
 }
@@ -56,12 +64,14 @@ function expandGlobs(globs: string[]): string[] {
 }
 
 const loaded: Loaded[] = expandGlobs(readWorkspaceGlobs())
-  .map((d): Loaded | null => {
+  .map((d): Loaded | undefined => {
     const p = join(d, "package.json");
-    if (!existsSync(p)) return null;
+    if (!existsSync(p)) return undefined;
     return { dir: d, pkg: JSON.parse(readFileSync(p, "utf8")) as Package };
   })
-  .filter((e): e is Loaded => !!e && !e.pkg.private && !!e.pkg.version);
+  .filter(
+    (e): e is Loaded => e !== undefined && !e.pkg.private && !!e.pkg.version,
+  );
 
 if (loaded.length === 0) {
   console.error("✖ no publishable packages found");
@@ -78,11 +88,13 @@ const results: { published: string[]; skipped: string[]; failed: string[] } = {
 };
 
 for (const { pkg } of loaded) {
-  const spec = `${pkg.name}@${pkg.version}`;
-  const isAlpha = pkg.version!.includes("-alpha.");
+  const version = pkg.version;
+  if (!version) continue;
+  const spec = `${pkg.name}@${version}`;
+  const isAlpha = version.includes("-alpha.");
 
   const existing = capture(`npm view ${spec} version 2>/dev/null`);
-  if (existing === pkg.version) {
+  if (existing === version) {
     console.log(`⊙ ${spec} already on registry — skipping`);
     results.skipped.push(spec);
     continue;
@@ -105,7 +117,8 @@ for (const { pkg } of loaded) {
 
 const verifyFailed: string[] = [];
 for (const spec of [...results.published, ...results.skipped]) {
-  const expected = spec.split("@").pop();
+  const parts = spec.split("@");
+  const expected = parts[parts.length - 1];
   const actual = capture(`npm view ${spec} version 2>/dev/null`);
   if (actual !== expected)
     verifyFailed.push(`${spec} (registry: ${actual ?? "not found"})`);
@@ -126,10 +139,15 @@ if (verifyFailed.length) {
 
 if (results.failed.length || verifyFailed.length) process.exit(1);
 
-// Release tag: prefer a stable (non-alpha) version. If only alpha packages were bumped,
-// use the full alpha version — the tag/changelog filename must match.
-const stable = loaded.find((l) => !l.pkg.version!.includes("-alpha."));
-const releaseVersion = stable ? stable.pkg.version! : loaded[0].pkg.version!;
+// Release tag: prefer a stable (non-alpha) version. If only alpha packages exist,
+// use the full alpha version. Sort by package name for determinism.
+const sorted = [...loaded].sort((a, b) => a.pkg.name.localeCompare(b.pkg.name));
+const stable = sorted.find((l) => !l.pkg.version?.includes("-alpha."));
+const releaseVersion = (stable ?? sorted[0])?.pkg.version;
+if (!releaseVersion) {
+  console.error("✖ cannot derive release tag");
+  process.exit(1);
+}
 
 if (process.env.GITHUB_OUTPUT) {
   appendFileSync(process.env.GITHUB_OUTPUT, `release_tag=v${releaseVersion}\n`);
