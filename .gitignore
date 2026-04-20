@@ -49,3 +49,6 @@ tsconfig.vitest-temp.json
 .contentlayer
 .content-collections
 .source
+
+# release notes — discord variant is not intended to be committed
+changelog/*_DISCORD.md

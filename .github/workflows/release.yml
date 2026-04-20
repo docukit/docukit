@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    if: "github.event_name == 'pull_request' && startsWith(github.event.pull_request.title, 'chore: release v')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: "pnpm"
+
+      - name: Validate release PR
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          GITHUB_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: node scripts/validate-release-pr.ts
+
+  publish:
+    if: "github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: release v')"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release-publish
+      cancel-in-progress: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: "pnpm"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers (for browser tests)
+        run: pnpm exec playwright install chromium
+
+      - name: Build
+        run: pnpm build
+
+      - name: Lint, format, typecheck
+        run: pnpm check
+
+      - name: Tests
+        run: pnpm test:ci
+
+      - name: Publish to npm
+        id: publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: node scripts/publish.ts
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.publish.outputs.release_tag }}"
+          if [ -z "$TAG" ]; then
+            echo "✖ release_tag output not set — aborting release creation"
+            exit 1
+          fi
+          NOTES="changelog/${TAG}.md"
+          if [ ! -f "$NOTES" ]; then
+            echo "✖ changelog file $NOTES not found"
+            exit 1
+          fi
+          gh release create "$TAG" --title "$TAG" --notes-file "$NOTES"
+
+      - name: Deploy docs to Vercel
+        working-directory: docs
+        env:
+          VERCEL_ORG_ID: team_fCh184rIrqEO1RmklNmEH6dR
+          VERCEL_PROJECT_ID: prj_6hZQc795Nzc7Vuh7CTpS4yJhbblR
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npx vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+          npx vercel build --prod --token=$VERCEL_TOKEN
+          npx vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN

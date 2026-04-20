@@ -2,7 +2,7 @@
   "name": "@docukit/monorepo",
   "private": true,
   "engines": {
-    "node": ">=22"
+    "node": ">=22.18"
   },
   "license": "SEE LICENSE IN LICENSE.md",
   "type": "module",
@@ -30,8 +30,7 @@
     "bench:vitest": "vitest bench",
     "bench:bun": "MITATA=1 bun run tests/core/benchmarks/iterators.bench.ts",
     "dev:docnode": "pnpm --filter @docukit/docnode dev",
-    "publish-docnode": "pnpm build && pnpm check && pnpm test:ci && pnpm publish --filter '@docukit/docnode*' --access public",
-    "publish-docsync": "pnpm build && pnpm check && pnpm test:ci && pnpm publish --filter '@docukit/docsync*' --access public --tag alpha"
+    "bump": "node scripts/bump.ts"
   },
   "packageManager": "pnpm@9.10.0",
   "lint-staged": {
