@@ -107,7 +107,7 @@ export type ServerConfig<TContext, D extends {}, S extends {}, O extends {}> = {
  * All operations share the same underlying transaction.
  */
 // prettier-ignore
-export type ServerProviderContext<S, O> = {
+export type ServerProviderContext<S extends {}, O extends {}> = {
   getSerializedDoc(arg: { docId: string }): Promise<{ serializedDoc: S; clock: number } | undefined>;
   getOperations(arg: { docId: string; clock: number }): Promise<O[][]>;
   deleteOperations(arg: { docId: string; count: number }): Promise<void>;
@@ -119,7 +119,7 @@ export type ServerProviderContext<S, O> = {
  * Storage provider for the server.
  * All operations must be performed within a transaction.
  */
-export type ServerProvider<S, O> = {
+export type ServerProvider<S extends {}, O extends {}> = {
   transaction<T>(
     mode: "readonly" | "readwrite",
     callback: (ctx: ServerProviderContext<S, O>) => Promise<T>,

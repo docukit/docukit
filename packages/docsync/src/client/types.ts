@@ -57,7 +57,7 @@ export type ClientConfig<
  * Context passed to client transaction callbacks.
  * All operations share the same underlying transaction.
  */
-export type ClientProviderContext<S, O> = {
+export type ClientProviderContext<S extends {}, O extends {}> = {
   getSerializedDoc(arg: {
     docId: string;
   }): Promise<{ serializedDoc: S; clock: number } | undefined>;
@@ -71,7 +71,7 @@ export type ClientProviderContext<S, O> = {
  * Storage provider for the client.
  * All operations must be performed within a transaction.
  */
-export type ClientProvider<S, O> = {
+export type ClientProvider<S extends {}, O extends {}> = {
   transaction<T>(
     mode: "readonly" | "readwrite",
     callback: (ctx: ClientProviderContext<S, O>) => Promise<T>,

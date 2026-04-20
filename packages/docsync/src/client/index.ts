@@ -26,7 +26,7 @@ import { getDeviceId } from "./utils/getDeviceId.js";
 import { getOwnPresencePatch } from "./utils/getOwnPresencePatch.js";
 
 // TODO: review this type!
-type LocalResolved<S, O> = {
+type LocalResolved<S extends {}, O extends {}> = {
   provider: ClientProvider<S, O>;
   identity: Identity;
 };
