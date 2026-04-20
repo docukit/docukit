@@ -26,7 +26,7 @@ import { getDeviceId } from "./utils/getDeviceId.js";
 import { getOwnPresencePatch } from "./utils/getOwnPresencePatch.js";
 
 // TODO: review this type!
-type LocalResolved<S, O> = {
+type LocalResolved<S extends {}, O extends {}> = {
   provider: ClientProvider<S, O>;
   identity: Identity;
 };
@@ -77,7 +77,7 @@ export class DocSyncClient<
     // Initialize local provider (if configured)
     this._localPromise = (async () => {
       const identity = await local.getIdentity();
-      const provider = new local.provider(identity) as ClientProvider<S, O>;
+      const provider = local.provider(identity);
 
       this._bcHelper = new BCHelper(this, identity.userId);
 
@@ -339,7 +339,7 @@ export class DocSyncClient<
 
     return local.provider.transaction("readwrite", async (ctx) => {
       // Try to load existing doc
-      const stored = await ctx.getSerializedDoc(docId);
+      const stored = await ctx.getSerializedDoc({ docId });
       const localOperations = await ctx.getOperations({ docId });
 
       if (stored) {

@@ -1,6 +1,6 @@
 import {
   DocSyncClient,
-  IndexedDBProvider,
+  indexedDBProvider,
   type ClientConfig,
 } from "@docukit/docsync/client";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
@@ -23,8 +23,7 @@ import { expect, vi, type Mock } from "vitest";
  * Waits for async operations to complete.
  * Use sparingly - prefer explicit waitFor conditions when possible.
  */
-export const tick = (ms = 3) =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+const tick = (ms = 3) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ============================================================================
 // Constants
@@ -175,7 +174,7 @@ const createClientWithConfig = (config: {
     server: { url: getTestServerUrl(), auth: { getToken: () => config.token } },
     docBinding: config.docBinding,
     local: {
-      provider: IndexedDBProvider,
+      provider: indexedDBProvider,
       getIdentity: () => ({ userId: config.userId, secret: "test-secret" }),
     },
   };
@@ -304,7 +303,7 @@ const createClientUtils = async (
           const result = await local.provider.transaction(
             "readonly",
             async (ctx) => {
-              const docResult = await ctx.getSerializedDoc(docId);
+              const docResult = await ctx.getSerializedDoc({ docId });
               const operations = await ctx.getOperations({ docId });
               return { docResult, operations };
             },

@@ -10,12 +10,15 @@ import { TypeTable } from "fumadocs-ui/components/type-table";
 Creates a DocSync server that handles WebSocket connections, authentication, authorization, and document synchronization.
 
 ```ts
-import { DocSyncServer, PostgresProvider } from "@docukit/docsync/server";
+import {
+  DocSyncServer,
+  inMemoryServerProvider, // don't use in production
+} from "@docukit/docsync/server";
 
 const server = new DocSyncServer({
   port: 8080,
   docBinding,
-  provider: PostgresProvider,
+  provider: inMemoryServerProvider(),
   async authenticate({ token }) {
     const user = await verifyToken(token);
     if (!user) return undefined;
@@ -26,6 +29,8 @@ const server = new DocSyncServer({
   },
 });
 ```
+
+See [Providers](./providers) to bring your own storage backend (Postgres, MySQL, etc.).
 
 ### Props
 
@@ -44,8 +49,8 @@ const server = new DocSyncServer({
     },
     provider: {
       description:
-        "Storage provider class constructor (e.g., PostgresProvider or InMemoryServerProvider for testing).",
-      type: "Provider",
+        "Storage provider instance. Use inMemoryServerProvider() for testing, or implement your own — see Providers.",
+      type: "ServerProvider<S, O>",
       required: true,
     },
     authenticate: {

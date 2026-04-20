@@ -3,12 +3,9 @@ import type { KnipConfig } from "knip";
 const config: KnipConfig = {
   compilers: { mdx: true },
   ignore: [
-    "packages/docsync/src/server/providers/postgres/drizzle.config.ts",
-    "packages/docsync/src/server/cli.ts",
     "packages/docnode-editor/src/**",
     "docs/source.config.ts",
     "docs/src/components/ui/**",
-    "examples/docsync-server.ts",
   ],
   // TODO: maybe I should ignore specifically for each package instead of the whole monorepo
   // Dependencies that are used in the package.json scripts
@@ -17,10 +14,24 @@ const config: KnipConfig = {
     "lint-staged",
     "mitata",
     "concurrently",
-    "drizzle-kit",
     "postcss",
+    // Required by ESLint for TypeScript-config syntax highlighting in Node.
+    "shiki",
   ],
   ignoreBinaries: ["lsof"], // used in the package.json scripts
+  rules: {
+    // Optional peer deps (e.g. react in @docukit/docnode-lexical) are
+    // legitimately referenced from optional bindings.
+    optionalPeerDependencies: "off",
+  },
+  workspaces: {
+    examples: {
+      entry: [
+        "collab-server/docsync-server.ts",
+        "collab-server/drizzle.config.ts",
+      ],
+    },
+  },
 };
 
 export default config;

@@ -25,6 +25,10 @@
 - The pattern for exporting private APIs is to use class methods and properties prefixed with `private`. TypeScript allows access to these from outside the class using bracket notation. If you don't recognize the method, you may need to change it to `protected` in your source code. Never export top-level internal modules, nor use assertions to cast an internal property.
   - **IMPORTANT**: When writing tests that need to access internal class properties, ALWAYS change those properties from `private` to `protected` in the source code. Then use bracket notation (e.g., `instance["_property"]`) in tests WITHOUT any type assertions (`as`, `as any`, `as unknown as`). Never use type assertions to access private/internal properties - change them to `protected` instead.
 
+## TypeScript Rules
+
+- **NEVER add `any` (or `as any`, `as unknown as ...`, etc.) without first stopping, presenting every alternative you can think of, and waiting for explicit approval.** This applies to both implementation code and tests, to both new code and edits to existing code, and to both function signatures (including generic defaults like `<T = any>`) and local values. If TS inference is failing, the right move is to surface the problem and the trade-offs — not to silence it with `any`. Even if the existing code already used `any`, do not preserve it without asking.
+
 ## Critical Rules for Agents
 
 **If you cannot execute tests, you MUST fix that problem FIRST before working on anything else.**

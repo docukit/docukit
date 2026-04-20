@@ -1,6 +1,6 @@
 import {
   DocSyncClient,
-  IndexedDBProvider,
+  indexedDBProvider,
   type ClientConfig,
 } from "@docukit/docsync/client";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
@@ -71,7 +71,7 @@ export const createClient = async () => {
     },
     docBinding,
     local: {
-      provider: IndexedDBProvider,
+      provider: indexedDBProvider,
       getIdentity: () => ({ userId, secret: "test-secret" }),
     },
   };
@@ -160,7 +160,7 @@ export const getStoredClock = async (
 ) => {
   const provider = (await client["_localPromise"]).provider;
   const stored = await provider.transaction("readonly", (ctx) =>
-    ctx.getSerializedDoc(docId),
+    ctx.getSerializedDoc({ docId }),
   );
   return stored?.clock;
 };

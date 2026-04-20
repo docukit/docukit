@@ -1,3 +1,7 @@
-export { DocNodePlugin, type PresenceUser } from "../bindings/react.js";
+export {
+  DocNodePlugin,
+  type DocNodePluginProps,
+  type PresenceUser,
+} from "../bindings/react.js";
 export type { PresenceSelection } from "../types.js";
 export type { Presence } from "../presence/types.js";

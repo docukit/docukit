@@ -1,11 +1,12 @@
 import { DocNodeBinding } from "@docukit/docsync-react/docnode";
-import { DocSyncServer, PostgresProvider } from "@docukit/docsync-react/server";
-import { indexDocConfig } from "./shared-config.ts";
+import { DocSyncServer } from "@docukit/docsync-react/server";
+import { indexDocConfig } from "../shared-config.ts";
 import { lexicalDocNodeConfig } from "@docukit/docnode-lexical";
+import { postgresProvider } from "./postgres-provider.ts";
 
 new DocSyncServer({
   docBinding: DocNodeBinding([indexDocConfig, lexicalDocNodeConfig]),
   port: 8081,
-  provider: PostgresProvider,
+  provider: postgresProvider,
   authenticate: ({ token }) => ({ userId: token }), // Use token as userId
 });

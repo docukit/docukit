@@ -5,10 +5,12 @@
   "pages": [
     "index",
     "getting-started",
+    "how-it-works",
     "external:[License and Pricing](/license)",
     "--- Learn ---",
     "client",
     "server",
+    "providers",
     "--- Guides ---",
     "auth",
     "persistence",

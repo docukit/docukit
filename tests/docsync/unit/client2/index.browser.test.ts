@@ -335,7 +335,7 @@ describe("Client 2", () => {
 
       // Verify server operations were applied to stored document
       const storedDoc = await provider.transaction("readonly", async (ctx) => {
-        const stored = await ctx.getSerializedDoc(docId);
+        const stored = await ctx.getSerializedDoc({ docId });
         if (!stored) return null;
         return docBinding.deserialize(stored.serializedDoc);
       });

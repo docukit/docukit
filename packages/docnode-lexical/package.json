@@ -27,7 +27,10 @@
       "default": "./dist/src/exports/index.js"
     },
     "./*": {
-      "vitest": "./src/exports/*.ts",
+      "vitest": [
+        "./src/exports/*.ts",
+        "./src/exports/*.tsx"
+      ],
       "types": "./dist/src/exports/*.d.ts",
       "default": "./dist/src/exports/*.js"
     }

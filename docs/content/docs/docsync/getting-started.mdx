@@ -20,7 +20,7 @@ npm i @docukit/docsync
 // client.ts
 import {
   createDocSyncClient,
-  IndexedDBProvider,
+  indexedDBProvider,
 } from "@docukit/docsync-react/client";
 import { DocNodeBinding } from "@docukit/docsync-react/docnode";
 // Refer to the DocNode documentation for more information
@@ -35,7 +35,7 @@ export const { useDoc, usePresence, client } = createDocSyncClient({
     auth: { getToken: async () => await fetchAuthToken() },
   },
   local: {
-    provider: IndexedDBProvider,
+    provider: indexedDBProvider,
     getIdentity: async () => await fetchIdentity(),
   },
 });
@@ -43,7 +43,7 @@ export const { useDoc, usePresence, client } = createDocSyncClient({
 
 ```ts tab="Vanilla"
 // client.ts
-import { DocSyncClient, IndexedDBProvider } from "@docukit/docsync/client";
+import { DocSyncClient, indexedDBProvider } from "@docukit/docsync/client";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 // Refer to the DocNode documentation for more information
 // on how to define a DocConfig
@@ -57,7 +57,7 @@ export const client = new DocSyncClient({
     auth: { getToken: async () => await fetchAuthToken() },
   },
   local: {
-    provider: IndexedDBProvider,
+    provider: indexedDBProvider,
     getIdentity: async () => await fetchIdentity(),
   },
 });
@@ -67,7 +67,10 @@ export const client = new DocSyncClient({
 
 ```ts
 // server.ts
-import { DocSyncServer, PostgresProvider } from "@docukit/docsync-react/server";
+import {
+  DocSyncServer,
+  inMemoryServerProvider,
+} from "@docukit/docsync-react/server";
 import { DocNodeBinding } from "@docukit/docsync-react/docnode";
 // Refer to the DocNode documentation for more information
 // on how to define a DocConfig
@@ -77,10 +80,12 @@ import { yourDocConfigs } from "./shared.ts";
 const server = new DocSyncServer({
   docBinding: DocNodeBinding([...yourDocConfigs]),
   port: 8080,
-  provider: PostgresProvider,
+  provider: inMemoryServerProvider(), // don't use in production
   authenticate: async ({ token }) => ({ userId: token }),
 });
 ```
+
+For production, you'll want to bring your own storage provider — see [Providers](./providers).
 
 ## 3. Client Usage
 

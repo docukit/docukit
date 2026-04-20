@@ -1,7 +1,7 @@
 import { test, expectTypeOf, expect } from "vitest";
 import {
   createDocSyncClient,
-  IndexedDBProvider,
+  indexedDBProvider,
 } from "@docukit/docsync-react/client";
 import { DocNodeBinding } from "@docukit/docsync-react/docnode";
 import type { Doc } from "@docukit/docnode";
@@ -16,7 +16,7 @@ test("createDocSyncClient", async () => {
       auth: { getToken: () => "1234567890" as string },
     },
     local: {
-      provider: IndexedDBProvider,
+      provider: indexedDBProvider,
       getIdentity: () => ({ userId: "John", secret: "asdasdasd" }),
     },
     docBinding: DocNodeBinding([docConfig]),

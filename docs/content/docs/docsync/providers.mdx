@@ -1,0 +1,390 @@
+---
+title: Providers
+description: Bring your own storage provider
+---
+
+DocSync is storage-agnostic. You provide a `ServerProvider` (server) and a `ClientProvider` (client), and DocSync calls into them to read and write documents and operations.
+
+The package ships two reference providers:
+
+- `inMemoryServerProvider` — server-side, intended for tests and local development.
+- `indexedDBProvider` — client-side, browser persistence via IndexedDB.
+
+For a production server, you implement a `ServerProvider` against the database you already use.
+
+## Server Provider
+
+### Interface
+
+```ts
+type ServerProvider<S, O> = {
+  transaction<T>(
+    mode: "readonly" | "readwrite",
+    callback: (ctx: ServerProviderContext<S, O>) => Promise<T>,
+  ): Promise<T>;
+};
+
+type ServerProviderContext<S, O> = {
+  getSerializedDoc(arg: {
+    docId: string;
+  }): Promise<{ serializedDoc: S; clock: number } | undefined>;
+  getOperations(arg: { docId: string; clock: number }): Promise<O[][]>;
+  deleteOperations(arg: { docId: string; count: number }): Promise<void>;
+  saveOperations(arg: { docId: string; operations: O[] }): Promise<number>;
+  saveSerializedDoc(arg: {
+    docId: string;
+    serializedDoc: S;
+    clock: number;
+  }): Promise<void>;
+};
+```
+
+`S` and `O` (serialized doc and operation shapes) are derived from the `docBinding` you pass to `DocSyncServer`. If your provider's `S`/`O` don't match the binding's, TypeScript will error at the config call-site.
+
+### Reference: Postgres provider
+
+A working Postgres provider using [Drizzle ORM](https://orm.drizzle.team) and [postgres.js](https://github.com/porsager/postgres). You can copy it, adapt it, or use it as inspiration to make your own provider.
+
+#### Schema
+
+```ts
+// postgres-schema.ts
+import {
+  bigint,
+  bigserial,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/pg-core";
+
+export const documents = pgTable("documents", {
+  docId: varchar("docId", { length: 26 }).notNull().primaryKey(),
+  doc: text("doc").notNull(),
+  // matches the highest operations.clock incorporated into this snapshot
+  clock: bigint("clock", { mode: "number" }).notNull(),
+  // optional: add application-specific fields like userId or updatedAt
+  userId: varchar("userId", { length: 26 }).notNull(),
+  updatedAt: timestamp("updatedAt", { precision: 3, withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+export const operations = pgTable(
+  "operations",
+  {
+    docId: varchar("docId", { length: 26 }).notNull(),
+    clock: bigserial("clock", { mode: "number" }).notNull(),
+    operations: text("operations").notNull(),
+    // optional: add application-specific fields like createdAt
+    createdAt: timestamp("createdAt", { precision: 3, withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.docId, table.clock] })],
+);
+```
+
+Apply this with `drizzle-kit push` (or your migration workflow of choice) before starting the server. `text` columns hold the JSON-serialized payloads — the provider parses and stringifies on read/write. You can use `jsonb` instead if you want to query inside the document; just drop the `JSON.parse` / `JSON.stringify` calls.
+
+#### Schema recommendations
+
+For background on why the schema looks the way it does (snapshot + operation log, the role of `clock`), read [How It Works](./how-it-works) first.
+
+DocSync doesn't dictate any particular schema. As long as your provider can satisfy the five context methods (`getSerializedDoc`, `saveSerializedDoc`, `getOperations`, `saveOperations`, `deleteOperations`), the storage shape is up to you. You can collapse tables, denormalize, use a key-value store, store snapshots in object storage and operations in a queue — whatever fits your stack.
+
+That said, the reference schema above bakes in a few choices worth understanding before you adapt it.
+
+##### Required (semantically)
+
+Two pieces of state per `docId` need to live somewhere:
+
+- A **latest snapshot** of the document, plus the `clock` it was taken at.
+- An **append-only log of operation batches** since that snapshot, each tagged with its own `clock`.
+
+The `clock` is a monotonically increasing number per doc. The snapshot's clock equals the highest operation clock that has been incorporated into it (set by `saveSerializedDoc`). The log keeps growing until the server squashes it into the snapshot.
+
+##### Why `bigserial` for the operations clock
+
+Use `bigserial` (a sequence-backed counter), not `timestamp`. The sequence hands out atomically-unique values, so the composite PK `(docId, clock)` cannot collide under concurrency.
+
+##### Optional fields
+
+Anything DocSync doesn't read is yours to add. Common additions:
+
+- **`userId` on `documents`** — for ownership and per-user queries (`WHERE userId = $1`).
+- **`updatedAt` / `createdAt`** — for audit and queries like "documents modified in the last hour". Cheap (`defaultNow()`) and zero application code.
+- **A separate sharing table** — e.g. `(docId, sharedWithUserId, permissions)` if you want collaborative access control.
+- **Document metadata columns** — title, tags, parent folder, etc. if you want to query without parsing the JSON.
+
+Note that DocSync provides authentication and authorization hooks (`authenticate`, `authorize`) but does not prescribe how you persist the data those hooks consult — that's where these optional columns come in.
+
+##### Computing "when was this doc last modified"
+
+`documents.updatedAt` only gets bumped when `saveSerializedDoc` runs, which is during squash. Between squashes, the real "last touched" time is the `createdAt` of the most recent operation. To compute it accurately:
+
+```sql
+SELECT
+  d.docId,
+  GREATEST(
+    d.updatedAt,
+    COALESCE(
+      (SELECT MAX(createdAt) FROM operations WHERE docId = d.docId),
+      '-infinity'::timestamptz
+    )
+  ) AS lastModifiedAt
+FROM documents d
+WHERE d.docId = $1
+```
+
+If you query this often, consider maintaining `documents.updatedAt` eagerly via a trigger or via a small extension to `saveOperations` — at the cost of an extra UPDATE per write.
+
+#### Drizzle instance
+
+```ts
+// db.ts
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
+import * as schema from "./postgres-schema.ts";
+
+const queryClient = postgres(process.env.DATABASE_URL!);
+export const db = drizzle(queryClient, { schema });
+```
+
+#### Provider
+
+```ts
+// postgres-provider.ts
+import { eq, gt, and, inArray } from "drizzle-orm";
+import type { JsonDoc, Operations } from "@docukit/docnode";
+import type { ServerProvider } from "@docukit/docsync-react/server";
+import { db } from "./db.ts";
+import * as schema from "./postgres-schema.ts";
+
+export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
+  async transaction(mode, callback) {
+    const accessMode = mode === "readonly" ? "read only" : "read write";
+    return await db.transaction(
+      async (tx) =>
+        callback({
+          getSerializedDoc: async ({ docId }) => {
+            const doc = await tx.query.documents.findFirst({
+              where: eq(schema.documents.docId, docId),
+            });
+            return doc
+              ? {
+                  serializedDoc: JSON.parse(doc.doc) as JsonDoc,
+                  clock: doc.clock,
+                }
+              : undefined;
+          },
+
+          getOperations: async ({ docId, clock }) => {
+            const rows = await tx
+              .select({ operations: schema.operations.operations })
+              .from(schema.operations)
+              .where(
+                and(
+                  eq(schema.operations.docId, docId),
+                  gt(schema.operations.clock, clock),
+                ),
+              )
+              .orderBy(schema.operations.clock);
+            return rows.map((r) => JSON.parse(r.operations) as Operations[]);
+          },
+
+          saveOperations: async ({ docId, operations }) => {
+            if (operations.length === 0) {
+              const latest = await tx.query.operations.findFirst({
+                where: eq(schema.operations.docId, docId),
+                orderBy: (ops, { desc }) => [desc(ops.clock)],
+              });
+              return latest?.clock ?? 0;
+            }
+            const inserted = await tx
+              .insert(schema.operations)
+              .values({ docId, operations: JSON.stringify(operations) })
+              .returning({ clock: schema.operations.clock });
+            return inserted[0]!.clock;
+          },
+
+          deleteOperations: async ({ docId, count }) => {
+            const oldest = tx
+              .select({ clock: schema.operations.clock })
+              .from(schema.operations)
+              .where(eq(schema.operations.docId, docId))
+              .orderBy(schema.operations.clock)
+              .limit(count);
+            await tx
+              .delete(schema.operations)
+              .where(
+                and(
+                  eq(schema.operations.docId, docId),
+                  inArray(schema.operations.clock, oldest),
+                ),
+              );
+          },
+
+          saveSerializedDoc: async ({ docId, serializedDoc, clock }) => {
+            await tx
+              .insert(schema.documents)
+              .values({
+                docId,
+                doc: JSON.stringify(serializedDoc),
+                clock,
+                // placeholder — in your app, set from request/auth context
+                userId: "",
+              })
+              .onConflictDoUpdate({
+                target: schema.documents.docId,
+                set: { doc: JSON.stringify(serializedDoc), clock },
+              });
+          },
+        }),
+      { accessMode },
+    );
+  },
+};
+```
+
+The CRUD methods are inlined directly into `callback({...})`. This way TypeScript flows the contextual type from `transaction`'s callback signature into each method, so parameters like `docId`, `clock`, and `operations` are inferred — no `ctx: ServerProviderContext<S, O>` annotation needed.
+
+The two `as JsonDoc` / `as Operations[]` casts on the read path exist because Drizzle returns the `text` column as `string`, you can type your columns with `.$type<JsonDoc>()` or validate as well.
+
+Then plug it directly into the server:
+
+```ts
+import { postgresProvider } from "./postgres-provider.ts";
+
+new DocSyncServer({
+  /* ... */
+  provider: postgresProvider,
+});
+```
+
+You can find this exact code in the [`/examples` folder](https://github.com/docukit/docukit/tree/main/examples) of the repository.
+
+### Method semantics
+
+<dl>
+  <dt>`getSerializedDoc({ docId })`</dt>
+  <dd>Return the latest snapshot for the doc, or `undefined` if none has been saved yet. The `clock` is the snapshot's logical timestamp.</dd>
+
+  <dt>`getOperations({ docId, clock })`</dt>
+  <dd>Return all operation batches for `docId` whose clock is strictly greater than the given `clock`, in clock order. Each entry in the returned array is one batch (one `saveOperations` call's worth).</dd>
+
+  <dt>`saveOperations({ docId, operations })`</dt>
+  <dd>Append a new batch and return its assigned clock. If `operations` is empty, return the current latest clock for the doc (or `0` if none).</dd>
+
+  <dt>`deleteOperations({ docId, count })`</dt>
+  <dd>Delete the oldest `count` operation batches for the doc. Used during squashing.</dd>
+
+  <dt>`saveSerializedDoc({ docId, serializedDoc, clock })`</dt>
+  <dd>Replace the snapshot for the doc. Called during squashing.</dd>
+</dl>
+
+### In-memory provider
+
+```ts
+import { inMemoryServerProvider } from "@docukit/docsync/server";
+
+new DocSyncServer({
+  /* ... */
+  provider: inMemoryServerProvider(),
+});
+```
+
+Stores everything in process memory — data is lost when the process exits. Use it in tests and local exploration, never in production.
+
+## Client Provider
+
+### Interface
+
+```ts
+type ClientProvider<S, O> = {
+  transaction<T>(
+    mode: "readonly" | "readwrite",
+    callback: (ctx: ClientProviderContext<S, O>) => Promise<T>,
+  ): Promise<T>;
+};
+
+type ClientProviderContext<S, O> = {
+  getSerializedDoc(arg: {
+    docId: string;
+  }): Promise<{ serializedDoc: S; clock: number } | undefined>;
+  getOperations(arg: { docId: string }): Promise<O[][]>;
+  deleteOperations(arg: { docId: string; count: number }): Promise<void>;
+  saveOperations(arg: { docId: string; operations: O[] }): Promise<void>;
+  saveSerializedDoc(arg: {
+    docId: string;
+    serializedDoc: S;
+    clock: number;
+  }): Promise<void>;
+};
+```
+
+The shape mirrors `ServerProviderContext` with two differences: `getOperations` does not take a `clock` (the client always loads everything it has locally), and `saveOperations` returns `void` (the client doesn't assign clocks — those come from the server).
+
+In the client config, `provider` is a **factory** that receives an `Identity` (resolved from `getIdentity()`) and returns the provider instance:
+
+```ts
+local: {
+  provider: (identity: Identity) => ClientProvider<S, O>;
+  getIdentity: () => MaybePromise<Identity>;
+}
+```
+
+This lets you scope storage per-user (e.g. `indexedDBProvider` opens a separate database per `userId`).
+
+### IndexedDB provider
+
+```ts
+import { DocSyncClient, indexedDBProvider } from "@docukit/docsync/client";
+
+new DocSyncClient({
+  /* ... */
+  local: {
+    provider: indexedDBProvider,
+    getIdentity: async () => ({ userId, secret }),
+  },
+});
+```
+
+Each user gets an isolated IndexedDB database (`docsync-${userId}`). Reads and writes happen inside an IDB transaction so partial failures roll back cleanly.
+
+### Custom client provider
+
+If you want to back the client with something other than IndexedDB (OPFS, SQLite via wasm, encrypted local storage, etc.), write a factory matching the interface:
+
+```ts
+import type { ClientProvider, Identity } from "@docukit/docsync/client";
+import type { JsonDoc, Operations } from "@docukit/docnode";
+
+export const myProvider = (
+  identity: Identity,
+): ClientProvider<JsonDoc, Operations> => ({
+  async transaction(mode, callback) {
+    return callback({
+      getSerializedDoc: async ({ docId }) => {
+        /* ... */
+      },
+      saveSerializedDoc: async ({ docId, serializedDoc, clock }) => {
+        /* ... */
+      },
+      getOperations: async ({ docId }) => {
+        /* ... */
+      },
+      saveOperations: async ({ docId, operations }) => {
+        /* ... */
+      },
+      deleteOperations: async ({ docId, count }) => {
+        /* ... */
+      },
+    });
+  },
+});
+```
+
+As with the server provider, inlining the CRUD methods inside `callback({...})` lets TypeScript infer their parameters from the `transaction` signature.

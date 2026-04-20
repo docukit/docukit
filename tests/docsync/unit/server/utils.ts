@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { DocNodeBinding } from "@docukit/docsync/docnode";
-import { DocSyncServer, InMemoryServerProvider } from "@docukit/docsync/server";
+import { DocSyncServer, inMemoryServerProvider } from "@docukit/docsync/server";
 import {
   DocSyncClient,
   type ClientProvider,
@@ -34,7 +34,8 @@ const createMockDocSyncClient = (serverOverrides?: {
       auth: serverOverrides?.auth ?? { getToken: () => "test-token" },
     },
     local: {
-      provider: InMemoryServerProvider as unknown as new (
+      // TODO: review this. ServerProvider in the client?
+      provider: inMemoryServerProvider as unknown as (
         identity: Identity,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ) => ClientProvider<any, any>,
@@ -48,7 +49,7 @@ const createServer = (port = BASE_PORT) => {
   return new DocSyncServer({
     docBinding: DocNodeBinding([testDocConfig]),
     port,
-    provider: InMemoryServerProvider,
+    provider: inMemoryServerProvider(),
     authenticate: ({ token }) => {
       if (token.startsWith("valid-")) {
         return { userId: token.replace("valid-", "") };

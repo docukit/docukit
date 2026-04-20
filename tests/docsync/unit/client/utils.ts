@@ -2,7 +2,7 @@
 import { vi, type Mock } from "vitest";
 import {
   DocSyncClient,
-  IndexedDBProvider,
+  indexedDBProvider,
   type QueryResult,
   type DocData,
   type ClientConfig,
@@ -52,7 +52,7 @@ const createValidConfig = (userId?: string) =>
     },
     docBinding: createMockDocBinding(),
     local: {
-      provider: IndexedDBProvider,
+      provider: indexedDBProvider,
       getIdentity: () => ({
         userId: userId ?? generateTestUserId(),
         secret: "test-secret",
@@ -82,7 +82,7 @@ export const createClientWithDisposeSpy = (userId?: string) => {
     },
     docBinding,
     local: {
-      provider: IndexedDBProvider,
+      provider: indexedDBProvider,
       getIdentity: () => ({
         userId: userId ?? generateTestUserId(),
         secret: "test-secret",
@@ -105,13 +105,6 @@ type DocCallback = Mock<
 export const createCallback = () => vi.fn() as DocCallback;
 
 /**
- * Waits for async operations to complete.
- * Use sparingly - prefer explicit waitFor conditions when possible.
- */
-export const tick = (ms = 3) =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
-/**
  * Extracts the successful result from a callback mock.
  */
 export const getSuccessData = (callback: DocCallback) =>
@@ -128,15 +121,12 @@ export const getErrorResult = (callback: DocCallback) =>
  * Creates a mock provider that throws on transaction.
  */
 export const createFailingProvider = (errorMessage: string) => {
-  return class FailingProvider {
-    constructor(_identity: Identity) {
-      // Identity accepted but not used in failing provider
-    }
+  return (_identity: Identity) => ({
     // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
     async transaction() {
       throw new Error(errorMessage);
-    }
-  };
+    },
+  });
 };
 
 /**
@@ -144,7 +134,7 @@ export const createFailingProvider = (errorMessage: string) => {
  */
 export const createClientWithProvider = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ProviderClass: new (identity: Identity) => any,
+  ProviderClass: (identity: Identity) => any,
 ) => {
   const config = createClientConfig({
     server: {

@@ -18,7 +18,6 @@
   "devDependencies": {
     "@playwright/test": "1.51.0",
     "@types/react": "^19.1.0",
-    "drizzle-kit": "^0.30.2",
     "mitata": "^1.0.34",
     "react": "19.1.0",
     "react-dom": "19.1.0",

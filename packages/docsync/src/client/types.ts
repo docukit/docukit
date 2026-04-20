@@ -44,8 +44,7 @@ export type ClientConfig<
   docBinding: DocBinding<D, S, O>;
   server: { url: string; auth: { getToken: () => MaybePromise<string> } };
   local: {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    provider: new (identity: Identity) => ClientProvider<any, any>;
+    provider: (identity: Identity) => ClientProvider<NoInfer<S>, NoInfer<O>>;
     getIdentity: () => MaybePromise<Identity>;
   };
 };
@@ -58,10 +57,10 @@ export type ClientConfig<
  * Context passed to client transaction callbacks.
  * All operations share the same underlying transaction.
  */
-export type ClientProviderContext<S, O> = {
-  getSerializedDoc(
-    docId: string,
-  ): Promise<{ serializedDoc: S; clock: number } | undefined>;
+export type ClientProviderContext<S extends {}, O extends {}> = {
+  getSerializedDoc(arg: {
+    docId: string;
+  }): Promise<{ serializedDoc: S; clock: number } | undefined>;
   getOperations(arg: { docId: string }): Promise<O[][]>;
   deleteOperations(arg: { docId: string; count: number }): Promise<void>;
   saveOperations(arg: { docId: string; operations: O[] }): Promise<void>;
@@ -72,7 +71,7 @@ export type ClientProviderContext<S, O> = {
  * Storage provider for the client.
  * All operations must be performed within a transaction.
  */
-export type ClientProvider<S, O> = {
+export type ClientProvider<S extends {}, O extends {}> = {
   transaction<T>(
     mode: "readonly" | "readwrite",
     callback: (ctx: ClientProviderContext<S, O>) => Promise<T>,

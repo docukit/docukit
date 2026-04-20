@@ -5,11 +5,7 @@ import { getOwnPresencePatch } from "../../utils/getOwnPresencePatch.js";
 import { request } from "../../utils/request.js";
 
 /** Applies server operations to the cached doc and emits change event (remote). */
-export async function applyServerOperations<
-  D extends {},
-  S extends {},
-  O extends {},
->(
+async function applyServerOperations<D extends {}, S extends {}, O extends {}>(
   client: DocSyncClient<D, S, O>,
   args: { docId: string; operations: O[] },
 ): Promise<void> {
@@ -33,10 +29,10 @@ export async function applyServerOperations<
 }
 
 /**
- * Replaces the cached document (e.g. when server responds with a squashed doc).
+ * TODO: Replaces the cached document (e.g. when server responds with a squashed doc).
  * Keeps refCount, presence, and presenceListeners unchanged.
  */
-export function replaceDocInCache<D extends {}, S extends {}, O extends {}>(
+function _replaceDocInCache<D extends {}, S extends {}, O extends {}>(
   client: DocSyncClient<D, S, O>,
   args: { docId: string; doc?: D; serializedDoc?: S },
 ): void {
@@ -82,7 +78,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     async (ctx) => {
       return Promise.all([
         ctx.getOperations({ docId }),
-        ctx.getSerializedDoc(docId),
+        ctx.getSerializedDoc({ docId }),
       ]);
     },
   );
@@ -157,7 +153,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
       await ctx.deleteOperations({ docId, count: operationsBatches.length });
     }
 
-    const stored = await ctx.getSerializedDoc(docId);
+    const stored = await ctx.getSerializedDoc({ docId });
     if (!stored) return;
 
     if (stored.clock >= data.clock) {
@@ -175,7 +171,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     }
     const serializedDoc = docBinding.serialize(doc);
 
-    const recheckStored = await ctx.getSerializedDoc(docId);
+    const recheckStored = await ctx.getSerializedDoc({ docId });
     if (recheckStored?.clock !== stored.clock) {
       return;
     }

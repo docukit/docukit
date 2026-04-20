@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"next dev -p 4000\" \"pnpm:docsync-server\"",
-    "docsync-server": "node --env-file-if-exists=.env --watch --watch-preserve-output ./docsync-server.ts",
+    "docsync-server": "node --env-file-if-exists=.env --watch --watch-preserve-output ./collab-server/docsync-server.ts",
     "build": "next build",
     "start": "next start -p 4000",
+    "db:push": "drizzle-kit push --config=./collab-server/drizzle.config.ts",
+    "db:studio": "drizzle-kit studio --config=./collab-server/drizzle.config.ts",
     "clean": "rm -rf .next node_modules .turbo || rmdir /s /q .next node_modules .turbo",
     "typecheck": "tsc --noEmit"
   },
@@ -19,9 +21,11 @@
     "@lexical/selection": "^0.38.2",
     "@lexical/utils": "^0.38.2",
     "@docukit/docnode": "workspace:*",
+    "drizzle-orm": "^0.38.4",
     "lexical": "^0.38.2",
     "lucide-react": "^0.469.0",
     "next": "16.1.3",
+    "postgres": "^3.4.5",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "ulid": "^2.4.0"
@@ -32,6 +36,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "concurrently": "^9.1.2",
+    "drizzle-kit": "^0.30.6",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
