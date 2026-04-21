@@ -48,13 +48,10 @@ By submitting a contribution to this repository, you agree to the following:
 
 ## Release Process
 
-1. **Update version in `package.json`**
-   - Modify **only** the `version` field of the packages you are releasing.
-   - Commit the changes to `main` with the message: `chore: release v${version}`
+Releases are driven end-to-end by the `/release` skill in Claude Code. From a clean working tree, run:
 
-2. **Publish packages to npm**
-   - `npm login`
-   - `pnpm publish`. You'll need to add the 2FA code with --otp=XXXXXX.
+```
+/release
+```
 
-3. **Create GitHub release notes**
-   - Use Automatic Release Notes. Assign a tag v${version} to the commit you created in step 1.
+The skill walks you through every step: creating the release branch, running `pnpm bump`, sanity-checking the bump, drafting the changelog, reviewing, and opening the PR. Merging the resulting `chore: release v<version>` PR into `main` triggers the GitHub Actions workflow that publishes to npm and creates the GitHub release.

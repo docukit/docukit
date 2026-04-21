@@ -120,6 +120,7 @@ export const rootEslintConfig = tseslint.config(
             "**/drizzle.config.ts",
             "**/*.config.ts",
             "**/benchmarks/**",
+            "scripts/**",
           ],
         },
       ],
