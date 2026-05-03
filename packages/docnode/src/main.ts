@@ -551,7 +551,7 @@ export class Doc {
   private _resolvedNodeDefs: Map<string, ResolvedNodeDefinition>;
   private _strictMode: boolean;
   protected _nodeMap = new Map<string, DocNode>();
-  private _changeListeners = new Set<(ev: ChangeEvent) => void>();
+  protected _changeListeners = new Set<(ev: ChangeEvent) => void>();
   private _normalizeListeners = new Set<(ev: { diff: Diff }) => void>();
   private _lifeCycleStage:
     | "init"

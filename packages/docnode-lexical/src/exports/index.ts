@@ -5,6 +5,7 @@ export {
   createLexicalDoc,
 } from "../lexicalDocNode.js";
 export { syncPresence, updatePresence } from "../presence/index.js";
+export { syncUndoManager as _INTERNAL_syncUndoManager } from "../syncUndoManager.js";
 export type {
   syncLexicalWithDocPresenceOptions,
   KeyBinding,
