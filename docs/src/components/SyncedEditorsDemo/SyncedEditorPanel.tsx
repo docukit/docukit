@@ -82,7 +82,6 @@ export function SyncedEditorPanel({
               }
             />
           </div>
-          <HistoryPlugin />
         </LexicalComposer>
       </div>
     </div>
