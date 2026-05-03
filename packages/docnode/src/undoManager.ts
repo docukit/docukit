@@ -1,15 +1,27 @@
 import { type Doc } from "./main.js";
 import type { Operations } from "./operations.js";
 
+/** `meta` is opaque — consumers attach arbitrary data (e.g. selection). */
+export type UndoStackItem = {
+  operations: Operations;
+  meta: Map<unknown, unknown>;
+};
+
+export type UndoManagerEvent = { item: UndoStackItem; type: "undo" | "redo" };
+
+type Handler = (event: UndoManagerEvent) => void;
+
 export class UndoManager {
   private readonly _doc: Doc;
   private readonly _maxUndoSteps: number;
-  protected _undoStack: Operations[] = [];
-  protected _redoStack: Operations[] = [];
+  protected _undoStack: UndoStackItem[] = [];
+  protected _redoStack: UndoStackItem[] = [];
   // TODO: How are we going to handle remote changes from other users?
   // maybe another flag in onChange args like "isRemote"? arbitrary ctx? sessionId?
   private _txType: "undo" | "redo" | "update" = "update";
   private _lastUpdate?: number; // TODO: threeshold to combine transactions of 500ms
+  private _pushHandlers = new Set<Handler>();
+  private _popHandlers = new Set<Handler>();
 
   constructor(
     doc: Doc,
@@ -31,17 +43,25 @@ export class UndoManager {
     this._doc = doc;
     this._maxUndoSteps = options?.maxUndoSteps ?? 100;
     this._doc.onChange(({ inverseOperations }) => {
+      const item: UndoStackItem = {
+        operations: inverseOperations,
+        meta: new Map(),
+      };
       if (this._txType === "update") {
-        if (this._maxUndoSteps > this._undoStack.length)
-          this._undoStack.push(inverseOperations);
+        if (this._maxUndoSteps > this._undoStack.length) {
+          this._undoStack.push(item);
+          this._pushHandlers.forEach((h) => h({ item, type: "undo" }));
+        }
         this._redoStack = [];
         this._lastUpdate = Date.now();
       } else if (this._txType === "undo") {
-        this._redoStack.push(inverseOperations);
+        this._redoStack.push(item);
         this._txType = "update";
+        this._pushHandlers.forEach((h) => h({ item, type: "redo" }));
       } else {
-        this._undoStack.push(inverseOperations);
+        this._undoStack.push(item);
         this._txType = "update";
+        this._pushHandlers.forEach((h) => h({ item, type: "undo" }));
       }
     });
   }
@@ -49,19 +69,21 @@ export class UndoManager {
   undo() {
     this._doc.forceCommit();
     this._txType = "undo";
-    const operations = this._undoStack.pop();
-    if (!operations) return;
-    this._doc.applyOperations(operations);
+    const item = this._undoStack.pop();
+    if (!item) return;
+    this._doc.applyOperations(item.operations);
     this._doc.forceCommit();
+    this._popHandlers.forEach((h) => h({ item, type: "undo" }));
   }
 
   redo() {
     this._doc.forceCommit();
     this._txType = "redo";
-    const operations = this._redoStack.pop();
-    if (!operations) return;
-    this._doc.applyOperations(operations);
+    const item = this._redoStack.pop();
+    if (!item) return;
+    this._doc.applyOperations(item.operations);
     this._doc.forceCommit();
+    this._popHandlers.forEach((h) => h({ item, type: "redo" }));
   }
 
   canUndo() {
@@ -70,5 +92,21 @@ export class UndoManager {
 
   canRedo() {
     return this._redoStack.length > 0;
+  }
+
+  /** Fires synchronously when an item is pushed to either stack. */
+  onPush(handler: Handler): () => void {
+    this._pushHandlers.add(handler);
+    return () => {
+      this._pushHandlers.delete(handler);
+    };
+  }
+
+  /** Fires synchronously after `applyOperations` returns on undo/redo. */
+  onPop(handler: Handler): () => void {
+    this._popHandlers.add(handler);
+    return () => {
+      this._popHandlers.delete(handler);
+    };
   }
 }

@@ -308,6 +308,102 @@ describe("undoManager", () => {
   });
 });
 
+describe("undoManager events", () => {
+  test("onPush fires synchronously when an item is added to the undo stack", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    const events: { type: "undo" | "redo"; meta: Map<unknown, unknown> }[] = [];
+    undoManager.onPush(({ item, type }) => {
+      events.push({ type, meta: item.meta });
+    });
+
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toStrictEqual("undo");
+    expect(events[0]?.meta).toBeInstanceOf(Map);
+    expect(events[0]?.meta.size).toStrictEqual(0);
+  });
+
+  test("onPush fires with type:'redo' when undo pushes to the redo stack", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+
+    const types: ("undo" | "redo")[] = [];
+    undoManager.onPush(({ type }) => {
+      types.push(type);
+    });
+
+    undoManager.undo();
+    expect(types).toStrictEqual(["redo"]);
+  });
+
+  test("onPop fires after undo/redo applies, with the popped item", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+
+    const popped: { type: "undo" | "redo"; meta: Map<unknown, unknown> }[] = [];
+    undoManager.onPop(({ item, type }) => {
+      popped.push({ type, meta: item.meta });
+    });
+
+    undoManager.undo();
+    expect(popped).toHaveLength(1);
+    expect(popped[0]?.type).toStrictEqual("undo");
+
+    undoManager.redo();
+    expect(popped).toHaveLength(2);
+    expect(popped[1]?.type).toStrictEqual("redo");
+  });
+
+  test("binding can attach metadata via meta and read it back on pop", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+
+    let counter = 0;
+    undoManager.onPush(({ item }) => {
+      item.meta.set("token", `token-${counter++}`);
+    });
+
+    const seenTokens: unknown[] = [];
+    undoManager.onPop(({ item }) => {
+      seenTokens.push(item.meta.get("token"));
+    });
+
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+    doc.root.append(...text(doc, "2"));
+    doc.forceCommit();
+
+    undoManager.undo();
+    undoManager.undo();
+    expect(seenTokens).toStrictEqual(["token-1", "token-0"]);
+  });
+
+  test("the unsubscribe function returned from onPush/onPop removes the handler", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    let pushCount = 0;
+    const off = undoManager.onPush(() => {
+      pushCount++;
+    });
+
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+    expect(pushCount).toStrictEqual(1);
+
+    off();
+    doc.root.append(...text(doc, "2"));
+    doc.forceCommit();
+    expect(pushCount).toStrictEqual(1);
+  });
+});
+
 describe.todo("applyOperations", () => {
   // test.todo("move same item concurrently", () => {
 });
