@@ -2,6 +2,7 @@ import { UndoManager, type Doc } from "@docukit/docnode";
 import {
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
+  COMMAND_PRIORITY_EDITOR,
   COMMAND_PRIORITY_HIGH,
   REDO_COMMAND,
   UNDO_COMMAND,
@@ -80,9 +81,27 @@ export function syncUndoManager(
     COMMAND_PRIORITY_HIGH,
   );
 
+  if (process.env.NODE_ENV !== "production") {
+    warnIfHistoryPluginActive(editor);
+  }
+
   return () => {
     offUndo();
     offRedo();
     offChange();
   };
+}
+
+function warnIfHistoryPluginActive(editor: LexicalEditor): void {
+  queueMicrotask(() => {
+    const undoListeners = editor._commands.get(UNDO_COMMAND);
+    if ((undoListeners?.[COMMAND_PRIORITY_EDITOR]?.size ?? 0) > 0) {
+      console.warn(
+        "[docnode-lexical] Another UNDO_COMMAND handler detected (likely " +
+          "<HistoryPlugin />). Remove it — DocNode's delta-based undo is " +
+          "already wired; the duplicate keeps a full-snapshot history in " +
+          "memory unnecessarily.",
+      );
+    }
+  });
 }
