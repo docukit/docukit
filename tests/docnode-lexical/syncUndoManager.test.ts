@@ -31,6 +31,14 @@ const makeEditor = () =>
     },
   });
 
+// Empty keyBinding — these tests don't exercise selection capture/restore,
+// so the empty maps are fine. (The selection round-trip is exercised by
+// the E2E test in tests/docsync/ui/editor/.)
+const emptyKeyBinding = () => ({
+  lexicalKeyToDocNodeId: new Map<string, string>(),
+  docNodeIdToLexicalKey: new Map<string, string>(),
+});
+
 const listenerCount = (doc: Doc): number => doc["_changeListeners"].size;
 
 const forceGc = async (): Promise<void> => {
@@ -46,7 +54,7 @@ describe("syncUndoManager default cache (WeakMap)", () => {
     const editor = makeEditor();
     expect(listenerCount(doc)).toBe(0);
 
-    const off1 = syncUndoManager(editor, doc);
+    const off1 = syncUndoManager(editor, doc, emptyKeyBinding());
     // +1 from the default UndoManager constructor, +1 from CAN_UNDO/REDO dispatcher.
     expect(listenerCount(doc)).toBe(2);
 
@@ -60,7 +68,7 @@ describe("syncUndoManager default cache (WeakMap)", () => {
     // (so the next mount finds the same instance and same history).
     expect(listenerCount(doc)).toBe(1);
 
-    const off2 = syncUndoManager(editor, doc);
+    const off2 = syncUndoManager(editor, doc, emptyKeyBinding());
     // Cache hit: only the CAN_* dispatcher is added. If the cache failed, we'd
     // see 3 listeners (a second UndoManager would have registered a duplicate).
     expect(listenerCount(doc)).toBe(2);
@@ -96,7 +104,7 @@ describe("syncUndoManager default cache (WeakMap)", () => {
       COMMAND_PRIORITY_LOW,
     );
 
-    const off = syncUndoManager(editor, doc);
+    const off = syncUndoManager(editor, doc, emptyKeyBinding());
     // Initial dispatch: both fire because previous values were undefined.
     expect(dispatches).toStrictEqual([
       { kind: "undo", value: false },
@@ -135,7 +143,7 @@ describe("syncUndoManager default cache (WeakMap)", () => {
     const userUm = new UndoManager(doc);
     const baseline = listenerCount(doc); // 1, from userUm's own constructor
 
-    const off = syncUndoManager(editor, doc, userUm);
+    const off = syncUndoManager(editor, doc, emptyKeyBinding(), userUm);
     // +1 for the CAN_* dispatcher only — no default UndoManager is created.
     expect(listenerCount(doc)).toBe(baseline + 1);
 
@@ -168,7 +176,7 @@ describe("syncUndoManager default cache (WeakMap)", () => {
       COMMAND_PRIORITY_EDITOR,
     );
 
-    const off = syncUndoManager(editor, doc);
+    const off = syncUndoManager(editor, doc, emptyKeyBinding());
 
     // The check is deferred via queueMicrotask so sibling effects can register
     // first. Flush the microtask queue.
@@ -187,7 +195,7 @@ describe("syncUndoManager default cache (WeakMap)", () => {
     const editor = makeEditor();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
-    const off = syncUndoManager(editor, doc);
+    const off = syncUndoManager(editor, doc, emptyKeyBinding());
     await Promise.resolve();
 
     expect(warn).not.toHaveBeenCalled();
@@ -203,7 +211,7 @@ describe("syncUndoManager default cache (WeakMap)", () => {
     (() => {
       const doc = createLexicalDoc();
       const editor = makeEditor();
-      const off = syncUndoManager(editor, doc);
+      const off = syncUndoManager(editor, doc, emptyKeyBinding());
 
       // Snapshot the listener closure registered by the default UndoManager's
       // constructor. It's the first listener in `_changeListeners` because
