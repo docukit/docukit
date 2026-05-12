@@ -3,9 +3,9 @@ import { EditorHelper } from "./utils.js";
 
 test("editor", async ({ page }) => {
   const dn = await EditorHelper.create({ page });
-  await dn.reference.select(0, 3);
+  await dn.reference.select(0, 9);
   await page.keyboard.type(" Hello");
-  await dn.assertContent(["One Hello", "Two", "Three"]);
+  await dn.assertContent(["Item one. Hello", "Item two.", "Item three."]);
 });
 
 // Regression: HistoryPlugin's undo went through setEditorState(), which left
@@ -15,12 +15,12 @@ test("undo through Cmd/Ctrl+Z restores all synced panels in lock-step", async ({
   page,
 }) => {
   const dn = await EditorHelper.create({ page });
-  await dn.reference.select(0, 3);
+  await dn.reference.select(0, 9);
   await page.keyboard.type("X");
-  await dn.assertContent(["OneX", "Two", "Three"]);
+  await dn.assertContent(["Item one.X", "Item two.", "Item three."]);
 
   await page.keyboard.press("ControlOrMeta+z");
-  await dn.assertContent(["One", "Two", "Three"]);
+  await dn.assertContent(["Item one.", "Item two.", "Item three."]);
 });
 
 // Regression: pre-undo cursor jumped to the start of the block (and Lexical
@@ -36,18 +36,18 @@ test("undo restores the cursor to the pre-edit position (no IndexSizeError)", as
   });
 
   const dn = await EditorHelper.create({ page });
-  await dn.reference.select(0, 3);
+  await dn.reference.select(0, 9);
   await page.keyboard.type("X");
-  await dn.assertContent(["OneX", "Two", "Three"]);
+  await dn.assertContent(["Item one.X", "Item two.", "Item three."]);
 
   await page.keyboard.press("ControlOrMeta+z");
-  await dn.assertContent(["One", "Two", "Three"]);
+  await dn.assertContent(["Item one.", "Item two.", "Item three."]);
 
   // Typing immediately after undo should land at the pre-edit position
-  // (offset 3 in "One"), producing "OneY" — not "YOne" or "OYne", which
-  // would indicate the cursor jumped to start/middle.
+  // (offset 9 in "Item one."), producing "Item one.Y" — not a mid-string
+  // insertion, which would indicate the cursor jumped unexpectedly.
   await page.keyboard.type("Y");
-  await dn.assertContent(["OneY", "Two", "Three"]);
+  await dn.assertContent(["Item one.Y", "Item two.", "Item three."]);
 
   // The IndexSizeError that motivated this regression test must not appear.
   const indexSizeErrors = consoleErrors.filter((e) =>
@@ -68,21 +68,21 @@ test("redo restores the post-undo cursor (so subsequent typing extends the redon
   page,
 }) => {
   const dn = await EditorHelper.create({ page });
-  await dn.reference.select(0, 3);
+  await dn.reference.select(0, 9);
   await page.keyboard.type("X");
-  await dn.assertContent(["OneX", "Two", "Three"]);
+  await dn.assertContent(["Item one.X", "Item two.", "Item three."]);
 
   await page.keyboard.press("ControlOrMeta+z");
-  await dn.assertContent(["One", "Two", "Three"]);
+  await dn.assertContent(["Item one.", "Item two.", "Item three."]);
 
   await page.keyboard.press("ControlOrMeta+Shift+z");
-  await dn.assertContent(["OneX", "Two", "Three"]);
+  await dn.assertContent(["Item one.X", "Item two.", "Item three."]);
 
-  // Cursor should be at offset 4 (end of "OneX"), so typing "Y" produces
-  // "OneXY". If redo restored to the pre-edit position (offset 3), we'd get
-  // "OneYX" — that's the regression we're guarding against.
+  // Cursor should be at offset 10 (end of "Item one.X"), so typing "Y"
+  // produces "Item one.XY". If redo restored to the pre-edit position
+  // (offset 9), we'd get "Item one.YX" instead.
   await page.keyboard.type("Y");
-  await dn.assertContent(["OneXY", "Two", "Three"]);
+  await dn.assertContent(["Item one.XY", "Item two.", "Item three."]);
 });
 
 // TODO: selection should not jump to the start when switching clients

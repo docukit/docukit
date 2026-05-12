@@ -92,9 +92,9 @@ function InitialContentPlugin({ clientId }: { clientId: string }) {
       const p1 = $createParagraphNode();
       const p2 = $createParagraphNode();
       const p3 = $createParagraphNode();
-      const text1 = $createTextNode("One");
-      const text2 = $createTextNode("Two");
-      const text3 = $createTextNode("Three");
+      const text1 = $createTextNode("Item one.");
+      const text2 = $createTextNode("Item two.");
+      const text3 = $createTextNode("Item three.");
       p1.append(text1);
       p2.append(text2);
       p3.append(text3);
