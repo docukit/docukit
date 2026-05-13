@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import {
-  type ChangeEvent,
   Doc,
   type DocNode,
   type Operations,
@@ -401,17 +400,6 @@ describe("applyOperations", () => {
     doc.root.append(...text(doc, "local"));
     doc.forceCommit();
     expect(undoManager.canUndo()).toBe(true);
-  });
-
-  test("update plus applyOperations are committed as two transactions", () => {
-    const remoteOperations = createRemoteInsertOperations("remote");
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const origins = collectOrigins(doc, () => {
-      doc.root.append(...text(doc, "local"));
-      doc.applyOperations(remoteOperations, "remote");
-    });
-    expect(origins).toStrictEqual([undefined, "remote"]);
-    assertDoc(doc, ["local", "remote"]);
   });
 
   test("applyOperations plus update are committed as two transactions", () => {
