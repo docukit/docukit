@@ -52,14 +52,7 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
     if (!cacheEntry) return;
     const doc = await cacheEntry.promisedDoc;
     if (!doc) return;
-    client["_shouldBroadcast"] = false;
-    client["_docBinding"].applyOperations(doc, operations);
-    client["_shouldBroadcast"] = true;
-    client["_events"].emit("change", {
-      docId,
-      origin: "broadcast",
-      operations: [operations],
-    });
+    client["_docBinding"].applyOperations(doc, operations, "broadcast");
   }
 
   broadcast(message: BroadcastMessage<O>): void {

@@ -94,7 +94,7 @@ describe("Client Events", () => {
       client["_events"].emit("change", {
         docId,
         origin: "remote",
-        operations: testOperations,
+        operation: testOperations[0],
       });
       await expect.poll(() => changeOrigin).toBe("remote");
     });
