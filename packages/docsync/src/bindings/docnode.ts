@@ -28,11 +28,12 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
       doc.forceCommit();
       return doc;
     },
-    onChange: (doc, cb: (ev: { operations: Operations }) => void) =>
-      doc.onChange(cb),
-    applyOperations: (doc, operations) => {
-      doc.applyOperations(operations);
-      doc.forceCommit();
+    onChange: (
+      doc,
+      cb: (ev: { operations: Operations; origin?: string | undefined }) => void,
+    ) => doc.onChange(cb),
+    applyOperations: (doc, operations, origin) => {
+      doc.applyOperations(operations, origin);
     },
     dispose: (doc) => doc.dispose(),
   });

@@ -22,8 +22,11 @@ export interface DocBinding<
   create(type: string, id?: string): { doc: D; docId: string };
   deserialize(serializedDoc: S): D;
   serialize(doc: D): S;
-  onChange(doc: D, cb: (ev: { operations: O }) => void): void;
-  applyOperations(doc: D, operations: O): void;
+  onChange(
+    doc: D,
+    cb: (ev: { operations: O; origin?: string | undefined }) => void,
+  ): void;
+  applyOperations(doc: D, operations: O, origin?: string): void;
   dispose(doc: D): void;
 }
 
