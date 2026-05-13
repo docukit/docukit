@@ -941,13 +941,27 @@ export class Doc {
   applyOperations(operations: ops.Operations, origin?: string) {
     const hasOperations =
       operations[0].length > 0 || !isObjectEmpty(operations[1]);
-    if (hasOperations && this._lifeCycleStage === "update") this.forceCommit();
+    if (!hasOperations) {
+      if (
+        this._lifeCycleStage === "change" ||
+        this._lifeCycleStage === "disposed"
+      )
+        throw new Error(
+          `You can't trigger an update inside a ${this._lifeCycleStage} stage`,
+        );
+      if (this._lifeCycleStage === "normalize2") {
+        throw new Error(
+          "Strict mode has caught an error: normalize listeners are not idempotent. I.e, they should not mutate the document on the second pass.",
+        );
+      }
+      return;
+    }
+    if (this._lifeCycleStage === "update") this.forceCommit();
     let didApplyOperations = false;
     this._changeOrigin = origin;
     withTransaction(
       this,
       () => {
-        if (!hasOperations) return;
         ops.onApplyOperations(this, operations);
         didApplyOperations = true;
       },
