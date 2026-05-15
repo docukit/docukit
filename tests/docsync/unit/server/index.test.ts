@@ -8,6 +8,8 @@ import { DocSyncServer, inMemoryServerProvider } from "@docukit/docsync/server";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { DocSyncClient } from "@docukit/docsync/client";
 import type { ClientProvider } from "@docukit/docsync/client";
+import { Doc, type Operations } from "@docukit/docnode";
+import { testDocConfig } from "../../int/utils.js";
 
 describe("authentication", () => {
   test("rejects without token", async () => {
@@ -247,6 +249,24 @@ function createMockDocSyncClient(port: number, token: string): DocSyncClient {
 }
 
 describe("sync", () => {
+  function createInsertOperation(): Operations {
+    const doc = new Doc(testDocConfig);
+    const childNodeDef = testDocConfig.extensions[0]?.nodes?.[0];
+    if (!childNodeDef) throw new Error("Missing child node definition");
+
+    let capturedOperations: Operations | undefined;
+    const unregister = doc.onChange((event) => {
+      capturedOperations = event.operations;
+    });
+
+    doc.root.append(doc.createNode(childNodeDef));
+    doc.forceCommit();
+    unregister();
+
+    if (!capturedOperations) throw new Error("Expected captured operations");
+    return capturedOperations;
+  }
+
   test("returns incremented clock", async () => {
     const auth = { getToken: () => "valid-user1" };
     await testWrapper({ auth }, async (T) => {
@@ -276,10 +296,11 @@ describe("sync", () => {
 
       // Send 100 operations individually
       for (let i = 0; i < 100; i++) {
+        const operation = createInsertOperation();
         const res = await T.sync({
           type: "test",
           docId,
-          operations: [{ type: "insert", data: `op-${i}` }],
+          operations: [operation],
           clock: i,
         });
 
