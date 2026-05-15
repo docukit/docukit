@@ -16,8 +16,6 @@ export class UndoManager {
   private readonly _maxUndoSteps: number;
   protected _undoStack: UndoStackItem[] = [];
   protected _redoStack: UndoStackItem[] = [];
-  // TODO: How are we going to handle remote changes from other users?
-  // maybe another flag in onChange args like "isRemote"? arbitrary ctx? sessionId?
   private _txType: "undo" | "redo" | "update" = "update";
   private _lastUpdate?: number; // TODO: threeshold to combine transactions of 500ms
   private _pushHandlers = new Set<Handler>();
@@ -42,9 +40,10 @@ export class UndoManager {
   ) {
     this._doc = doc;
     this._maxUndoSteps = options?.maxUndoSteps ?? 100;
-    this._doc.onChange(({ inverseOperations }) => {
+    this._doc.onChange((event) => {
+      if (event.origin?.startsWith("remote")) return;
       const item: UndoStackItem = {
-        operations: inverseOperations,
+        operations: event.inverseOperations,
         meta: new Map(),
       };
       if (this._txType === "update") {
@@ -72,7 +71,6 @@ export class UndoManager {
     const item = this._undoStack.pop();
     if (!item) return;
     this._doc.applyOperations(item.operations);
-    this._doc.forceCommit();
     this._popHandlers.forEach((h) => h({ item, type: "undo" }));
   }
 
@@ -82,7 +80,6 @@ export class UndoManager {
     const item = this._redoStack.pop();
     if (!item) return;
     this._doc.applyOperations(item.operations);
-    this._doc.forceCommit();
     this._popHandlers.forEach((h) => h({ item, type: "redo" }));
   }
 

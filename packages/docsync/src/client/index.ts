@@ -53,7 +53,6 @@ export class DocSyncClient<
   protected _deviceId: string;
   /** Client-generated id for presence (works offline; sent in auth so server uses same key) */
   protected _clientId: string;
-  private _shouldBroadcast = true;
   protected _bcHelper?: BCHelper<D, S, O>;
   protected _socket: ClientSocket<S, O>;
 
@@ -301,32 +300,33 @@ export class DocSyncClient<
   }
 
   private _setupChangeListener(doc: D, docId: string) {
-    this._docBinding.onChange(doc, ({ operations }) => {
-      if (this._shouldBroadcast) {
-        void this.onLocalOperations({ docId, operations: [operations] });
+    this._docBinding.onChange(doc, ({ operations, origin }) => {
+      const changeOrigin =
+        origin === "remote" || origin === "broadcast" ? origin : "local";
 
-        this._events.emit("change", {
-          docId,
-          origin: "local",
-          operations: [operations],
-        });
+      this._events.emit("change", {
+        docId,
+        origin: changeOrigin,
+        operation: operations,
+      });
 
-        // Defer BC send so Lexical can update selection first; then the presence we
-        // include is the new cursor. Two frames so setPresence (from selection change) has run.
+      if (changeOrigin !== "local") return;
+
+      void this.onLocalOperations({ docId, operations: [operations] });
+
+      // Defer BC send so Lexical can update selection first; then the presence we
+      // include is the new cursor. Two frames so setPresence (from selection change) has run.
+      requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            const presencePatch = getOwnPresencePatch(this, docId);
-            this._bcHelper?.broadcast({
-              type: "OPERATIONS",
-              operations,
-              docId,
-              ...(presencePatch && { presence: presencePatch }),
-            });
+          const presencePatch = getOwnPresencePatch(this, docId);
+          this._bcHelper?.broadcast({
+            type: "OPERATIONS",
+            operations,
+            docId,
+            ...(presencePatch && { presence: presencePatch }),
           });
         });
-      }
-      // Don't automatically reset _shouldBroadcast here!
-      // Let the caller explicitly control when to re-enable broadcasting
+      });
     });
   }
 
@@ -344,25 +344,21 @@ export class DocSyncClient<
 
       if (stored) {
         const doc = this._docBinding.deserialize(stored.serializedDoc);
-        this._shouldBroadcast = false;
         localOperations.forEach((operationsBatch) => {
           operationsBatch.forEach((operations) => {
             this._docBinding.applyOperations(doc, operations);
           });
         });
-        this._shouldBroadcast = true;
         return doc;
       }
 
       // Create new doc if type provided
       if (type) {
         const { doc } = this._docBinding.create(type, docId);
-        this._shouldBroadcast = false;
         if (localOperations.length)
           throw new Error(
             `Doc ${docId} has operations stored locally but no serialized doc found`,
           );
-        this._shouldBroadcast = true;
         // Save the new doc to IDB
         await ctx.saveSerializedDoc({
           serializedDoc: this._docBinding.serialize(doc),

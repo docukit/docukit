@@ -22,7 +22,7 @@ import {
   ULID_REGEX,
   defineNode,
 } from "./utils.js";
-import * as operations from "./operations.js";
+import * as ops from "./operations.js";
 import { nodeIdFactory } from "./idGenerator.js";
 import { decodeTime, ulid } from "ulid";
 
@@ -229,7 +229,7 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
         withTransaction(doc, () => {
           if (this === this.doc.root)
             throw new Error("Root node cannot be deleted");
-          operations.onDeleteRange(this.doc, this, laterSibling);
+          ops.onDeleteRange(this.doc, this, laterSibling);
           this.to(laterSibling).forEach((node) => {
             node.descendants({ includeSelf: true }).forEach((node) => {
               void this.doc["_nodeMap"].delete(node.id);
@@ -302,14 +302,7 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
           detachRange(this, laterSibling);
 
           // PART 3: Insert the range
-          operations.onMoveRange(
-            doc,
-            this,
-            laterSibling,
-            newParent,
-            newPrev,
-            newNext,
-          );
+          ops.onMoveRange(doc, this, laterSibling, newParent, newPrev, newNext);
 
           this["_set"]("prev", newPrev);
           if (newPrev) newPrev["_set"]("next", this);
@@ -335,12 +328,8 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
           const clone = (node: DocNode) => {
             const newNode = new DocNode(doc, node.type);
             for (const key in node["_state"]) {
-              const stringified = operations.stringifyStateKey(node, key);
-              const parsed = operations.parseStateKey(
-                newNode,
-                key,
-                stringified,
-              );
+              const stringified = ops.stringifyStateKey(node, key);
+              const parsed = ops.parseStateKey(newNode, key, stringified);
               (newNode as DocNode<UnsafeDefinition>)["_state"][key] = parsed;
             }
             return newNode;
@@ -532,7 +521,7 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     const resolvedNodeDef = this.doc["_resolvedNodeDefs"].get(this.type);
     const defaultString = resolvedNodeDef?.defaultStrings;
     for (const key in this._state) {
-      const stringifiedState = operations.stringifyStateKey(this, key);
+      const stringifiedState = ops.stringifyStateKey(this, key);
       if (stringifiedState === defaultString?.[key]) continue;
       const stateDefinition = resolvedNodeDef?.state[key];
       const json = stateDefinition?.toJSON
@@ -561,8 +550,9 @@ export class Doc {
     | "normalize2"
     | "change"
     | "disposed" = "idle";
-  protected _operations: operations.Operations = [[], {}];
-  protected _inverseOperations: operations.Operations = [[], {}];
+  protected _operations: ops.Operations = [[], {}];
+  protected _inverseOperations: ops.Operations = [[], {}];
+  protected _changeOrigin: string | undefined;
   protected _diff: Diff = {
     deleted: new Map(),
     inserted: new Set(),
@@ -675,9 +665,9 @@ export class Doc {
               // node or when inserting a node, but not when setting state for a node
               // that is not attached yet
               const isAttached = node.doc["_nodeMap"].has(node.id);
-              if (isAttached) operations.onSetState.inverseOps(node, key);
+              if (isAttached) ops.onSetState.inverseOps(node, key);
               _state[key] = value;
-              if (isAttached) operations.onSetState.operations(node, key);
+              if (isAttached) ops.onSetState.operations(node, key);
 
               // TODO: Subdocs. This is not implemented yet
               // if (valueOrUpdaterFn instanceof Doc) {
@@ -709,7 +699,7 @@ export class Doc {
             // @ts-expect-error - protected property
             const _state = node._state as Record<string, unknown>;
             return maybePrevState
-              ? [true, operations.parseStateKey(node, key, maybePrevState)]
+              ? [true, ops.parseStateKey(node, key, maybePrevState)]
               : [false, _state[key]];
           };
 
@@ -812,7 +802,7 @@ export class Doc {
         position === "before" ||
         (position === "append" && this._nodeMap.has(target.id))
       ) {
-        operations.onInsertRange(this, target, position, nodes);
+        ops.onInsertRange(this, target, position, nodes);
       }
       switch (position) {
         case "append": {
@@ -948,15 +938,38 @@ export class Doc {
     this._normalizeListeners.add(callback);
   }
 
-  applyOperations(_operations: operations.Operations) {
+  applyOperations(operations: ops.Operations, origin?: string) {
+    const hasOperations =
+      operations[0].length > 0 || !isObjectEmpty(operations[1]);
+    if (!hasOperations) {
+      if (
+        this._lifeCycleStage === "change" ||
+        this._lifeCycleStage === "disposed"
+      )
+        throw new Error(
+          `You can't trigger an update inside a ${this._lifeCycleStage} stage`,
+        );
+      if (this._lifeCycleStage === "normalize2") {
+        throw new Error(
+          "Strict mode has caught an error: normalize listeners are not idempotent. I.e, they should not mutate the document on the second pass.",
+        );
+      }
+      return;
+    }
+    if (this._lifeCycleStage === "update") this.forceCommit();
+    let didApplyOperations = false;
+    this._changeOrigin = origin;
     withTransaction(
       this,
       () => {
-        if (!_operations[0].length && isObjectEmpty(_operations[1])) return;
-        operations.onApplyOperations(this, _operations);
+        ops.onApplyOperations(this, operations);
+        didApplyOperations = true;
       },
       true,
     );
+    if (didApplyOperations && this._lifeCycleStage === "update") {
+      this.forceCommit();
+    }
   }
 
   /**
@@ -970,9 +983,10 @@ export class Doc {
     this._inverseOperations[0].reverse();
     // End update stage before normalization
     this._lifeCycleStage = "idle";
-    operations.maybeTriggerListeners(this, ignoreEmptyDiff);
+    ops.maybeTriggerListeners(this, ignoreEmptyDiff);
     this._operations = [[], {}];
     this._inverseOperations = [[], {}];
+    this._changeOrigin = undefined;
     this._diff = {
       deleted: new Map(),
       inserted: new Set(),
@@ -986,10 +1000,17 @@ export class Doc {
    * Aborts the current transaction and rolls back all changes.
    */
   abort() {
-    const inverseOps: operations.Operations = [...this["_inverseOperations"]];
-    this.applyOperations(inverseOps);
+    const inverseOps: ops.Operations = [...this["_inverseOperations"]];
+    withTransaction(
+      this,
+      () => {
+        ops.onApplyOperations(this, inverseOps);
+      },
+      true,
+    );
     this["_operations"] = [[], {}];
     this["_inverseOperations"] = [[], {}];
+    this["_changeOrigin"] = undefined;
     this["_diff"] = {
       deleted: new Map(),
       inserted: new Set(),
