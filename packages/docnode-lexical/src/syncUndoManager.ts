@@ -8,11 +8,14 @@ import {
   $isRangeSelection,
   $isTextNode,
   $setSelection,
+  BLUR_COMMAND,
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
   COLLABORATION_TAG,
+  COMMAND_PRIORITY_CRITICAL,
   COMMAND_PRIORITY_EDITOR,
   COMMAND_PRIORITY_HIGH,
+  KEY_DOWN_COMMAND,
   REDO_COMMAND,
   UNDO_COMMAND,
   type LexicalEditor,
@@ -81,13 +84,77 @@ export function syncUndoManager(
     | undefined;
 
   const offUpdate = editor.registerUpdateListener(
-    ({ prevEditorState, tags }) => {
+    ({ prevEditorState, dirtyElements, dirtyLeaves, tags }) => {
       if (tags.has(COLLABORATION_TAG)) return;
+      if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return;
       pending = {
         targetStack: "undo",
         selection: prevEditorState.read(() => captureSelection(keyBinding)),
       };
     },
+  );
+
+  const offBlur = editor.registerCommand(
+    BLUR_COMMAND,
+    () => {
+      pending = undefined;
+      return false;
+    },
+    COMMAND_PRIORITY_EDITOR,
+  );
+
+  const offKeyDown = editor.registerCommand(
+    KEY_DOWN_COMMAND,
+    (event) => {
+      if (
+        event.altKey ||
+        (!event.metaKey && !event.ctrlKey) ||
+        event.key.toLowerCase() !== "z"
+      ) {
+        return false;
+      }
+
+      if (event.shiftKey) {
+        if (!undoManager.canRedo()) {
+          const selection = captureSelection(keyBinding);
+          event.preventDefault();
+          if (selection) {
+            queueMicrotask(() => {
+              editor.update(
+                () => {
+                  restoreSelection(selection, keyBinding, doc);
+                },
+                { discrete: true, tag: COLLABORATION_TAG },
+              );
+            });
+          }
+          return true;
+        }
+      } else if (!undoManager.canUndo()) {
+        const selection = captureSelection(keyBinding);
+        event.preventDefault();
+        if (selection) {
+          queueMicrotask(() => {
+            editor.update(
+              () => {
+                restoreSelection(selection, keyBinding, doc);
+              },
+              { discrete: true, tag: COLLABORATION_TAG },
+            );
+          });
+        }
+        return true;
+      }
+
+      const handled = editor.dispatchCommand(
+        event.shiftKey ? REDO_COMMAND : UNDO_COMMAND,
+        undefined,
+      );
+      if (!handled) return false;
+      event.preventDefault();
+      return true;
+    },
+    COMMAND_PRIORITY_CRITICAL,
   );
 
   const offPush = undoManager.onPush(({ item, type }) => {
@@ -115,7 +182,7 @@ export function syncUndoManager(
   const offUndo = editor.registerCommand(
     UNDO_COMMAND,
     () => {
-      if (!undoManager.canUndo()) return true;
+      if (!undoManager.canUndo()) return false;
       pending = {
         targetStack: "redo",
         selection: captureSelection(keyBinding),
@@ -131,7 +198,7 @@ export function syncUndoManager(
   const offRedo = editor.registerCommand(
     REDO_COMMAND,
     () => {
-      if (!undoManager.canRedo()) return true;
+      if (!undoManager.canRedo()) return false;
       pending = {
         targetStack: "undo",
         selection: captureSelection(keyBinding),
@@ -151,6 +218,8 @@ export function syncUndoManager(
     offRedo();
     offChange();
     offUpdate();
+    offBlur();
+    offKeyDown();
     offPush();
     offPop();
   };
@@ -171,41 +240,93 @@ function captureSelection(
   };
 }
 
+type ResolvedPoint = { key: string; offset: number; type: "text" | "element" };
+
+/**
+ * Resolves a saved endpoint (`{ key, offset }` from `PresenceSelection`) to a
+ * live Lexical position. Returns `null` when nothing usable can be found.
+ *
+ * 1. Direct lookup: if the docNodeId is still mapped, use it (clamping the
+ *    offset for text nodes).
+ * 2. If the node was deleted, walk the DocNode tree `prev sibling → parent`
+ *    looking for the closest still-mapped neighbor (matches lexical-yjs's
+ *    `$moveSelectionToPreviousNode` strategy from
+ *    `lexical/packages/lexical-yjs/src/Utils.ts`, but on DocNode IDs because
+ *    the Lexical node is already gone by the time we restore).
+ * 3. Last resort: caller falls back to root.start.
+ */
+function $resolveEndpoint(
+  endpoint: { key: string; offset: number },
+  keyBinding: KeyBinding,
+  doc: Doc,
+): ResolvedPoint | undefined {
+  const lexicalKey = keyBinding.docNodeIdToLexicalKey.get(endpoint.key);
+  if (lexicalKey) {
+    const node = $getNodeByKey(lexicalKey);
+    if (node?.isAttached()) {
+      if ($isTextNode(node)) {
+        return {
+          key: lexicalKey,
+          offset: Math.min(endpoint.offset, node.getTextContentSize()),
+          type: "text",
+        };
+      }
+      return { key: lexicalKey, offset: endpoint.offset, type: "element" };
+    }
+  }
+
+  const tryNeighbor = (docNodeId: string): ResolvedPoint | undefined => {
+    const k = keyBinding.docNodeIdToLexicalKey.get(docNodeId);
+    if (!k) return undefined;
+    const n = $getNodeByKey(k);
+    if (!n?.isAttached() || !$isElementNode(n)) return undefined;
+    return { key: k, offset: n.getChildrenSize(), type: "element" };
+  };
+
+  const docNode = doc.getNodeById(endpoint.key);
+  if (docNode) {
+    let prev = docNode.prev;
+    while (prev) {
+      const r = tryNeighbor(prev.id);
+      if (r) return r;
+      prev = prev.prev;
+    }
+    if (docNode.parent) {
+      const r = tryNeighbor(docNode.parent.id);
+      if (r) return r;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Resolves DocNode IDs back to Lexical keys and applies the selection.
- * Clamps offsets that would overflow the current text length and silently
- * gives up if a referenced node no longer exists (deleted concurrently).
+ * Anchor and focus are resolved independently — when one endpoint's node was
+ * concurrently deleted but the other still exists, we collapse to the
+ * surviving side rather than dropping the entire selection. When both
+ * resolve, the original range is preserved (with whatever survived in
+ * between). When neither resolves, fall back to root.start.
  */
 function restoreSelection(
   presence: PresenceSelection,
   keyBinding: KeyBinding,
+  doc: Doc,
 ): void {
-  const anchorKey = keyBinding.docNodeIdToLexicalKey.get(presence.anchor.key);
-  const focusKey = keyBinding.docNodeIdToLexicalKey.get(presence.focus.key);
-  if (!anchorKey || !focusKey) return;
-  const anchorNode = $getNodeByKey(anchorKey);
-  const focusNode = $getNodeByKey(focusKey);
-  if (!anchorNode || !focusNode) return;
+  const anchorPoint = $resolveEndpoint(presence.anchor, keyBinding, doc);
+  const focusPoint = $resolveEndpoint(presence.focus, keyBinding, doc);
+
+  if (!anchorPoint && !focusPoint) {
+    $getRoot().selectStart();
+    return;
+  }
+
+  // Collapse to the surviving side if only one endpoint resolved.
+  const finalAnchor = anchorPoint ?? focusPoint!;
+  const finalFocus = focusPoint ?? anchorPoint!;
 
   const sel = $createRangeSelection();
-  if ($isTextNode(anchorNode)) {
-    sel.anchor.set(
-      anchorKey,
-      Math.min(presence.anchor.offset, anchorNode.getTextContentSize()),
-      "text",
-    );
-  } else {
-    sel.anchor.set(anchorKey, presence.anchor.offset, "element");
-  }
-  if ($isTextNode(focusNode)) {
-    sel.focus.set(
-      focusKey,
-      Math.min(presence.focus.offset, focusNode.getTextContentSize()),
-      "text",
-    );
-  } else {
-    sel.focus.set(focusKey, presence.focus.offset, "element");
-  }
+  sel.anchor.set(finalAnchor.key, finalAnchor.offset, finalAnchor.type);
+  sel.focus.set(finalFocus.key, finalFocus.offset, finalFocus.type);
   $setSelection(sel);
 }
 

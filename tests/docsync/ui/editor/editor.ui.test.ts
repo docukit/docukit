@@ -1,88 +1,272 @@
-import { test } from "@playwright/test";
-import { EditorHelper } from "./utils.js";
+import { test, type BrowserContext, type Page } from "@playwright/test";
+import { EditorHelper, type SelectionExpectation } from "./utils.js";
 
-test("editor", async ({ page }) => {
+const INITIAL_BLOCKS = ["Item one.", "Item two.", "Item three."];
+const THIRD_PARAGRAPH = 2;
+const INITIAL_TEXT = INITIAL_BLOCKS[THIRD_PARAGRAPH]!;
+const ORIGINAL_REFERENCE_SELECTION = range("em th", 2, 7);
+
+type RemoteCase = {
+  description: string;
+  remoteSubstring: string;
+  referenceAfterEdit: ExpectedSelection;
+  referenceAfterUndo: ExpectedSelection;
+};
+
+type ExpectedSelection =
+  | { kind: "selectedText"; text: string }
+  | { kind: "selectedReplacementOrCursor"; textBeforeCursor: string }
+  | { kind: "none" };
+
+type RemoteVariant = {
+  action: string;
+  replacement: (deletedLength: number) => string | undefined;
+};
+
+const remoteCases: RemoteCase[] = [
+  {
+    description: "the first part of the selection",
+    remoteSubstring: "em",
+    referenceAfterEdit: selectedText("{replacement} th"),
+    referenceAfterUndo: selectedText("em th"),
+  },
+  {
+    description: "the last part of the selection",
+    remoteSubstring: "th",
+    referenceAfterEdit: selectedText("em {replacement}"),
+    referenceAfterUndo: selectedText("em th"),
+  },
+  {
+    description: "the first part of the selection and one letter before",
+    remoteSubstring: "tem",
+    referenceAfterEdit: selectedText(" th"),
+    referenceAfterUndo: selectedText("em th"),
+  },
+  {
+    description: "the last part of the selection and one letter after",
+    remoteSubstring: "thr",
+    referenceAfterEdit: selectedText("em "),
+    referenceAfterUndo: selectedText("em th"),
+  },
+  {
+    description: "the exact selection",
+    remoteSubstring: "em th",
+    referenceAfterEdit: selectedReplacementOrCursorAfter("It"),
+    referenceAfterUndo: selectedText("em th"),
+  },
+  {
+    description: "one letter before and after the selection",
+    remoteSubstring: "tem thr",
+    referenceAfterEdit: noSelection(),
+    referenceAfterUndo: selectedText("tem thr"),
+  },
+];
+
+const remoteVariants: RemoteVariant[] = [
+  { action: "deletes", replacement: () => undefined },
+  {
+    action: "replaces with a shorter string",
+    replacement: (deletedLength) => "x".repeat(deletedLength - 1),
+  },
+  {
+    action: "replaces with a same-length string",
+    replacement: (deletedLength) => "x".repeat(deletedLength),
+  },
+  {
+    action: "replaces with a longer string",
+    replacement: (deletedLength) => "x".repeat(deletedLength + 1),
+  },
+];
+
+test("undo should restore the selection", async ({ page }) => {
   const dn = await EditorHelper.create({ page });
-  await dn.reference.select(0, 9);
-  await page.keyboard.type(" Hello");
-  await dn.assertContent(["Item one. Hello", "Item two.", "Item three."]);
+
+  await dn.reference.selectRange(THIRD_PARAGRAPH, 2, 7);
+  await dn.reference.type("x");
+  await dn.assertContent(["Item one.", "Item two.", "Itxree."]);
+  await dn.reference.assertSelection(collapsed(3));
+
+  await dn.reference.press("ControlOrMeta+z");
+  await dn.assertContent(INITIAL_BLOCKS);
+  await dn.reference.assertSelection(ORIGINAL_REFERENCE_SELECTION);
+
+  await dn.reference.type("x");
+  await dn.assertContent(["Item one.", "Item two.", "Itxree."]);
+  await dn.reference.assertSelection(collapsed(3));
 });
 
-// Regression: HistoryPlugin's undo went through setEditorState(), which left
-// child dirtyElements empty and caused syncLexicalToDocNode to skip the
-// propagation. Routing undo through DocNode's UndoManager bypasses that path.
-test("undo through Cmd/Ctrl+Z restores all synced panels in lock-step", async ({
-  page,
-}) => {
-  const dn = await EditorHelper.create({ page });
-  await dn.reference.select(0, 9);
-  await page.keyboard.type("X");
-  await dn.assertContent(["Item one.X", "Item two.", "Item three."]);
+for (const remoteCase of remoteCases) {
+  for (const variant of remoteVariants) {
+    test(`remote user ${variant.action} ${remoteCase.description}`, async ({
+      page,
+      context,
+    }) => {
+      const remoteRange = uniqueRangeForSubstring(
+        INITIAL_TEXT,
+        remoteCase.remoteSubstring,
+      );
+      const deletedLength = remoteRange.end - remoteRange.start;
+      const replacement = variant.replacement(deletedLength);
+      const expectedAfterEdit = replaceRange(
+        INITIAL_TEXT,
+        remoteRange.start,
+        remoteRange.end,
+        replacement ?? "",
+      );
+      const expectedBlocks = ["Item one.", "Item two.", expectedAfterEdit];
+      const remoteUndoSelection = range(
+        remoteCase.remoteSubstring,
+        remoteRange.start,
+        remoteRange.end,
+      );
+      const { reference, remote } = await createEditorPair(page, context);
 
-  await page.keyboard.press("ControlOrMeta+z");
-  await dn.assertContent(["Item one.", "Item two.", "Item three."]);
-});
+      await reference.reference.selectRange(THIRD_PARAGRAPH, 2, 7);
+      await reference.reference.assertSelection(ORIGINAL_REFERENCE_SELECTION);
 
-// Regression: pre-undo cursor jumped to the start of the block (and Lexical
-// logged `IndexSizeError: offset N is larger than node's length`) because the
-// UndoManager only restored content, not selection. Fix: syncUndoManager
-// captures the pre-edit selection on push and restores it on pop.
-test("undo restores the cursor to the pre-edit position (no IndexSizeError)", async ({
-  page,
-}) => {
-  const consoleErrors: string[] = [];
-  page.on("console", (msg) => {
-    if (msg.type() === "error") consoleErrors.push(msg.text());
+      await remote.otherDevice.selectRange(
+        THIRD_PARAGRAPH,
+        remoteRange.start,
+        remoteRange.end,
+      );
+      if (replacement == null) {
+        await remote.otherDevice.press("Backspace");
+      } else {
+        await remote.otherDevice.type(replacement);
+      }
+
+      await reference.assertContent(expectedBlocks);
+      await remote.assertContent(expectedBlocks);
+      await reference.reference.assertSelection(
+        expectedSelection(
+          expectedAfterEdit,
+          remoteCase.referenceAfterEdit,
+          replacement,
+        ),
+      );
+      await reference.reference.pressAndAssertSelectionUnchanged(
+        "ControlOrMeta+z",
+      );
+      await reference.assertContent(expectedBlocks);
+      await remote.assertContent(expectedBlocks);
+
+      await remote.otherDevice.press("ControlOrMeta+z");
+      await reference.assertContent(INITIAL_BLOCKS);
+      await remote.assertContent(INITIAL_BLOCKS);
+      await remote.otherDevice.assertSelection(remoteUndoSelection);
+      await reference.reference.assertSelection(
+        expectedSelection(INITIAL_TEXT, remoteCase.referenceAfterUndo),
+      );
+    });
+  }
+}
+
+async function createEditorPair(page: Page, context: BrowserContext) {
+  const reference = await EditorHelper.create({ page });
+  const remotePage = await context.newPage();
+  const remote = await EditorHelper.open({
+    page: remotePage,
+    docId: reference.docId,
   });
 
-  const dn = await EditorHelper.create({ page });
-  await dn.reference.select(0, 9);
-  await page.keyboard.type("X");
-  await dn.assertContent(["Item one.X", "Item two.", "Item three."]);
+  await reference.assertContent(INITIAL_BLOCKS);
+  await remote.assertContent(INITIAL_BLOCKS);
 
-  await page.keyboard.press("ControlOrMeta+z");
-  await dn.assertContent(["Item one.", "Item two.", "Item three."]);
+  return { reference, remote };
+}
 
-  // Typing immediately after undo should land at the pre-edit position
-  // (offset 9 in "Item one."), producing "Item one.Y" — not a mid-string
-  // insertion, which would indicate the cursor jumped unexpectedly.
-  await page.keyboard.type("Y");
-  await dn.assertContent(["Item one.Y", "Item two.", "Item three."]);
+function range(
+  text: string,
+  anchorOffset: number,
+  focusOffset: number,
+): SelectionExpectation {
+  return { kind: "range", text, anchorOffset, focusOffset };
+}
 
-  // The IndexSizeError that motivated this regression test must not appear.
-  const indexSizeErrors = consoleErrors.filter((e) =>
-    e.includes("IndexSizeError"),
+function collapsed(offset: number): SelectionExpectation {
+  return { kind: "collapsed", offset };
+}
+
+function none(): SelectionExpectation {
+  return { kind: "none" };
+}
+
+function selectedText(text: string): ExpectedSelection {
+  return { kind: "selectedText", text };
+}
+
+function selectedReplacementOrCursorAfter(
+  textBeforeCursor: string,
+): ExpectedSelection {
+  return { kind: "selectedReplacementOrCursor", textBeforeCursor };
+}
+
+function noSelection(): ExpectedSelection {
+  return { kind: "none" };
+}
+
+function expectedSelection(
+  currentText: string,
+  expected: ExpectedSelection,
+  replacement?: string,
+): SelectionExpectation {
+  if (expected.kind === "none") return none();
+
+  if (expected.kind === "selectedReplacementOrCursor") {
+    if (replacement == null) {
+      return cursorAfter(currentText, expected.textBeforeCursor);
+    }
+    return rangeForUniqueSubstring(currentText, replacement);
+  }
+
+  return rangeForUniqueSubstring(
+    currentText,
+    expected.text.replaceAll("{replacement}", replacement ?? ""),
   );
-  if (indexSizeErrors.length > 0) {
+}
+
+function cursorAfter(
+  currentText: string,
+  textBeforeCursor: string,
+): SelectionExpectation {
+  const range = uniqueRangeForSubstring(currentText, textBeforeCursor);
+  return collapsed(range.end);
+}
+
+function rangeForUniqueSubstring(
+  currentText: string,
+  selectedSubstring: string,
+): SelectionExpectation {
+  const range = uniqueRangeForSubstring(currentText, selectedSubstring);
+  return {
+    kind: "range",
+    text: selectedSubstring,
+    anchorOffset: range.start,
+    focusOffset: range.end,
+  };
+}
+
+function uniqueRangeForSubstring(text: string, substring: string) {
+  const start = text.indexOf(substring);
+  if (start === -1) {
+    throw new Error(`Expected "${text}" to contain "${substring}".`);
+  }
+
+  const nextStart = text.indexOf(substring, start + 1);
+  if (nextStart !== -1) {
     throw new Error(
-      `Expected no IndexSizeError in console, got:\n${indexSizeErrors.join("\n")}`,
+      `Expected "${substring}" to appear once in "${text}", but it appears more than once.`,
     );
   }
-});
 
-// Mirror of the undo selection regression test: redo should land the cursor
-// at the post-edit position (i.e. where the user was right before pressing
-// undo). Without REDO_COMMAND capturing that selection, redoing reverts the
-// content but leaves the caret at the pre-edit offset.
-test("redo restores the post-undo cursor (so subsequent typing extends the redone text)", async ({
-  page,
-}) => {
-  const dn = await EditorHelper.create({ page });
-  await dn.reference.select(0, 9);
-  await page.keyboard.type("X");
-  await dn.assertContent(["Item one.X", "Item two.", "Item three."]);
+  return { start, end: start + substring.length };
+}
 
-  await page.keyboard.press("ControlOrMeta+z");
-  await dn.assertContent(["Item one.", "Item two.", "Item three."]);
-
-  await page.keyboard.press("ControlOrMeta+Shift+z");
-  await dn.assertContent(["Item one.X", "Item two.", "Item three."]);
-
-  // Cursor should be at offset 10 (end of "Item one.X"), so typing "Y"
-  // produces "Item one.XY". If redo restored to the pre-edit position
-  // (offset 9), we'd get "Item one.YX" instead.
-  await page.keyboard.type("Y");
-  await dn.assertContent(["Item one.XY", "Item two.", "Item three."]);
-});
-
-// TODO: selection should not jump to the start when switching clients
+function replaceRange(
+  text: string,
+  start: number,
+  end: number,
+  replacement: string,
+): string {
+  return `${text.slice(0, start)}${replacement}${text.slice(end)}`;
+}

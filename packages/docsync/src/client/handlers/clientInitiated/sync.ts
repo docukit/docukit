@@ -164,9 +164,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     const serializedDoc = docBinding.serialize(doc);
 
     const recheckStored = await ctx.getSerializedDoc({ docId });
-    if (recheckStored?.clock !== stored.clock) {
-      return;
-    }
+    if (recheckStored?.clock !== stored.clock) return;
 
     await ctx.saveSerializedDoc({ serializedDoc, docId, clock: data.clock });
     didConsolidate = true;
@@ -183,6 +181,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     for (const op of persistedServerOperations) {
       client["_bcHelper"]?.broadcast({
         type: "OPERATIONS",
+        source: "remote",
         operations: op,
         docId,
         ...(presencePatch && { presence: presencePatch }),

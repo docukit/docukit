@@ -6,6 +6,7 @@ import { applyPresencePatch } from "./applyPresencePatch.js";
 type BroadcastMessage<O> =
   | {
       type: "OPERATIONS";
+      source: "local" | "remote";
       operations: O;
       docId: string;
       presence?: Record<string, unknown>;
@@ -21,12 +22,12 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
     this._channel.onmessage = (ev: MessageEvent<BroadcastMessage<O>>) => {
       const msg = ev.data;
       if (msg.type === "OPERATIONS") {
-        const { docId, operations, presence } = msg;
+        const { docId, operations, presence, source } = msg;
         const currentStatus = client["_pushStatusByDocId"].get(docId) ?? "idle";
         if (currentStatus === "pushing") {
           client["_pushStatusByDocId"].set(docId, "pushing-with-pending");
         }
-        void this._applyOperations(client, operations, docId);
+        void this._applyOperations(client, operations, docId, source);
         if (presence) {
           const cacheEntry = client["_docsCache"].get(docId);
           if (cacheEntry)
@@ -47,12 +48,17 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
     client: DocSyncClient<D, S, O>,
     operations: O,
     docId: string,
+    source: "local" | "remote",
   ): Promise<void> {
     const cacheEntry = client["_docsCache"].get(docId);
     if (!cacheEntry) return;
     const doc = await cacheEntry.promisedDoc;
     if (!doc) return;
-    client["_docBinding"].applyOperations(doc, operations, "broadcast");
+    client["_docBinding"].applyOperations(
+      doc,
+      operations,
+      source === "remote" ? "remote:broadcast" : "broadcast",
+    );
   }
 
   broadcast(message: BroadcastMessage<O>): void {

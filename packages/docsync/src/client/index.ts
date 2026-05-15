@@ -301,8 +301,11 @@ export class DocSyncClient<
 
   private _setupChangeListener(doc: D, docId: string) {
     this._docBinding.onChange(doc, ({ operations, origin }) => {
-      const changeOrigin =
-        origin === "remote" || origin === "broadcast" ? origin : "local";
+      const changeOrigin = origin?.startsWith("remote")
+        ? "remote"
+        : origin === "broadcast"
+          ? "broadcast"
+          : "local";
 
       this._events.emit("change", {
         docId,
@@ -321,6 +324,7 @@ export class DocSyncClient<
           const presencePatch = getOwnPresencePatch(this, docId);
           this._bcHelper?.broadcast({
             type: "OPERATIONS",
+            source: "local",
             operations,
             docId,
             ...(presencePatch && { presence: presencePatch }),

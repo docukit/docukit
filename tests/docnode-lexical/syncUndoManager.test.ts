@@ -11,6 +11,7 @@ import {
   COMMAND_PRIORITY_EDITOR,
   COMMAND_PRIORITY_LOW,
   createEditor,
+  REDO_COMMAND,
   UNDO_COMMAND,
 } from "lexical";
 
@@ -135,6 +136,36 @@ describe("syncUndoManager default cache (WeakMap)", () => {
     off();
     offCanUndo();
     offCanRedo();
+  });
+
+  it("does not consume undo/redo commands when there is no history entry", () => {
+    const doc = createLexicalDoc();
+    const editor = makeEditor();
+    const undoFallback = vi.fn(() => true);
+    const redoFallback = vi.fn(() => true);
+
+    const offUndoFallback = editor.registerCommand(
+      UNDO_COMMAND,
+      undoFallback,
+      COMMAND_PRIORITY_LOW,
+    );
+    const offRedoFallback = editor.registerCommand(
+      REDO_COMMAND,
+      redoFallback,
+      COMMAND_PRIORITY_LOW,
+    );
+
+    const off = syncUndoManager(editor, doc, emptyKeyBinding());
+
+    expect(editor.dispatchCommand(UNDO_COMMAND, undefined)).toBe(true);
+    expect(undoFallback).toHaveBeenCalledOnce();
+
+    expect(editor.dispatchCommand(REDO_COMMAND, undefined)).toBe(true);
+    expect(redoFallback).toHaveBeenCalledOnce();
+
+    off();
+    offUndoFallback();
+    offRedoFallback();
   });
 
   it("with a user-provided UndoManager: bypasses the cache, owns its lifecycle", () => {
