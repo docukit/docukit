@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { Doc, type DocNode, UndoManager } from "@docukit/docnode";
+import {
+  Doc,
+  type DocNode,
+  type Operations,
+  UndoManager,
+} from "@docukit/docnode";
 import {
   assertDoc,
   checkUndoManager,
@@ -112,6 +117,31 @@ describe("undoManager", () => {
     assertDoc(doc, []);
     undoManager.redo();
     assertDoc(doc, ["1", "2"]);
+  });
+
+  test("undo immediately after a pending local update still undoes that update", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    const origins: (string | undefined)[] = [];
+    doc.forceCommit();
+    const unregister = doc.onChange((event) => {
+      origins.push(event.origin);
+    });
+
+    doc.root.append(...text(doc, "a"));
+    doc.forceCommit();
+
+    doc.root.append(...text(doc, "b"));
+    assertDoc(doc, ["a", "b"]);
+
+    undoManager.undo();
+    assertDoc(doc, ["a"]);
+
+    undoManager.redo();
+    assertDoc(doc, ["a", "b"]);
+
+    unregister();
+    expect(origins).toStrictEqual([undefined, undefined, undefined, undefined]);
   });
 
   test("undo/redo - adding and deleting nodes", () => {
@@ -308,8 +338,80 @@ describe("undoManager", () => {
   });
 });
 
-describe.todo("applyOperations", () => {
-  // test.todo("move same item concurrently", () => {
+describe("applyOperations", () => {
+  function createRemoteInsertOperations(value: string): Operations {
+    const source = new Doc({ type: "root", extensions: [TextExtension] });
+    let remoteOperations: Operations | undefined;
+    updateAndListen(
+      source,
+      () => {
+        source.root.append(...text(source, value));
+      },
+      (event) => {
+        remoteOperations = event.operations;
+      },
+    );
+    if (!remoteOperations) throw new Error("Expected remote operations");
+    return remoteOperations;
+  }
+
+  function collectOrigins(
+    doc: Doc,
+    callback: () => void,
+  ): (string | undefined)[] {
+    const origins: (string | undefined)[] = [];
+    doc.forceCommit();
+    const unregister = doc.onChange((event) => {
+      origins.push(event.origin);
+    });
+    callback();
+    doc.forceCommit();
+    unregister();
+    return origins;
+  }
+
+  test("commits atomically and forwards its origin when called inside another update", () => {
+    const remoteOperations = createRemoteInsertOperations("remote");
+
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const origins = collectOrigins(doc, () => {
+      doc.root.append(...text(doc, "local"));
+      doc.applyOperations(remoteOperations, "remote");
+    });
+
+    expect(origins).toStrictEqual([undefined, "remote"]);
+    assertDoc(doc, ["local", "remote"]);
+  });
+
+  test("UndoManager ignores remote-origin transactions by default", () => {
+    const remoteOperations = createRemoteInsertOperations("remote");
+
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = new UndoManager(doc);
+
+    doc.applyOperations(remoteOperations, "remote");
+    doc.forceCommit();
+    expect(undoManager.canUndo()).toBe(false);
+
+    doc.applyOperations(remoteOperations, "remote:peer-2");
+    doc.forceCommit();
+    expect(undoManager.canUndo()).toBe(false);
+
+    doc.root.append(...text(doc, "local"));
+    doc.forceCommit();
+    expect(undoManager.canUndo()).toBe(true);
+  });
+
+  test("applyOperations plus update are committed as two transactions", () => {
+    const remoteOperations = createRemoteInsertOperations("remote");
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const origins = collectOrigins(doc, () => {
+      doc.applyOperations(remoteOperations, "remote");
+      doc.root.append(...text(doc, "local"));
+    });
+    expect(origins).toStrictEqual(["remote", undefined]);
+    assertDoc(doc, ["remote", "local"]);
+  });
 });
 
 describe("change", () => {

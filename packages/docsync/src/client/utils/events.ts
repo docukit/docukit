@@ -9,7 +9,7 @@ export type DisconnectEvent = { reason: string };
 export type ChangeEvent<O = unknown> = {
   docId: string;
   origin: "local" | "broadcast" | "remote";
-  operations: O[];
+  operation: O;
 };
 
 /** Emitted once after sync completes (success or error). */

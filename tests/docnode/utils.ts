@@ -407,20 +407,26 @@ export function checkUndoManager(
   expect(sizeDo).toBe(txCount);
 
   // 2. REPLAY IN A SINGLE UPDATE (doc2)
+  const orderedOperations: Operations[0] = changeEvents.flatMap(
+    (ev) => ev.operations[0],
+  );
+  const statePatch: Operations[1] = {};
+  for (const changeEvent of changeEvents) {
+    for (const nodeId in changeEvent.operations[1]) {
+      statePatch[nodeId] ??= {};
+      Object.assign(statePatch[nodeId], changeEvent.operations[1][nodeId]);
+    }
+  }
   updateAndListen(
     doc2,
     () => {
-      for (const changeEvent of changeEvents) {
-        doc2.applyOperations(changeEvent.operations);
-      }
+      doc2.applyOperations([orderedOperations, statePatch]);
     },
     (changeEvent) => {
       expect(changeEvent.operations.length).toBe(2); // A single op array + state patch
       // The array of operations is equal to the conjunction of all those that were in changeEvents
       // slice(0, -1) because the last operation is the state patch
-      expect(changeEvent.operations[0]).toStrictEqual(
-        changeEvents.map((ev) => ev.operations.slice(0, -1)).flat(2),
-      );
+      expect(changeEvent.operations[0]).toStrictEqual(orderedOperations);
       // Inverse operations can't be compared. The following isn't always true because if a node
       // is inserted in one update and its child is inserted in the next update, inverseOperations
       // will have only one delete op (the parent's) instead of the two I get when doing separate updates.

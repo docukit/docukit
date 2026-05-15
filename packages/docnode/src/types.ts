@@ -235,4 +235,5 @@ export type ChangeEvent = {
   operations: Operations;
   inverseOperations: Operations;
   diff: Diff;
+  origin?: string | undefined;
 };

@@ -4,7 +4,7 @@ import type { DocSyncClient } from "../../index.js";
 import { getOwnPresencePatch } from "../../utils/getOwnPresencePatch.js";
 import { request } from "../../utils/request.js";
 
-/** Applies server operations to the cached doc and emits change event (remote). */
+/** Applies server operations to the cached doc. */
 async function applyServerOperations<D extends {}, S extends {}, O extends {}>(
   client: DocSyncClient<D, S, O>,
   args: { docId: string; operations: O[] },
@@ -15,17 +15,9 @@ async function applyServerOperations<D extends {}, S extends {}, O extends {}>(
   const doc = await cacheEntry.promisedDoc;
   if (!doc) return;
 
-  client["_shouldBroadcast"] = false;
   for (const op of args.operations) {
-    client["_docBinding"].applyOperations(doc, op);
+    client["_docBinding"].applyOperations(doc, op, "remote");
   }
-  client["_shouldBroadcast"] = true;
-
-  client["_events"].emit("change", {
-    docId: args.docId,
-    origin: "remote",
-    operations: args.operations,
-  });
 }
 
 /**
