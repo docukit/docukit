@@ -17,8 +17,4 @@ export {
 export { defineNode } from "../utils.js";
 export { boolean, number, string, defineState } from "../stateDefinitions.js";
 export { type Operations } from "../operations.js";
-export {
-  UndoManager,
-  type UndoStackItem,
-  type UndoManagerEvent,
-} from "../undoManager.js";
+export { UndoManager } from "../undoManager.js";
