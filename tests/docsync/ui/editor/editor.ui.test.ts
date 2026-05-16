@@ -88,7 +88,7 @@ test("undo should restore the local selection", async ({ page }) => {
   await dn.reference.assertSelection(collapsed(3));
 });
 
-test("should not be able to undo remote operations", async ({
+test("should not undo remote operations, but should undo local operations on the originating device", async ({
   page,
   context,
 }) => {
@@ -103,6 +103,11 @@ test("should not be able to undo remote operations", async ({
   await reference.reference.pressAndAssertSelectionUnchanged("ControlOrMeta+z");
   await reference.assertContent(expectedBlocks);
   await remote.assertContent(expectedBlocks);
+
+  await remote.otherDevice.press("ControlOrMeta+z");
+  await reference.assertContent(INITIAL_BLOCKS);
+  await remote.assertContent(INITIAL_BLOCKS);
+  await remote.otherDevice.assertSelection(ORIGINAL_REFERENCE_SELECTION);
 });
 
 for (const remoteCase of remoteCases) {
