@@ -650,6 +650,7 @@ describe("DocSyncClient", () => {
         expect(postMessageSpy).toHaveBeenCalledWith({
           type: "OPERATIONS",
           docId,
+          source: "local",
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           operations: expect.anything(),
         });

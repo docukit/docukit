@@ -10,13 +10,12 @@ type RemoteCase = {
   description: string;
   remoteSubstring: string;
   referenceAfterEdit: ExpectedSelection;
-  referenceAfterUndo: ExpectedSelection;
 };
 
 type ExpectedSelection =
   | { kind: "selectedText"; text: string }
   | { kind: "selectedReplacementOrCursor"; textBeforeCursor: string }
-  | { kind: "none" };
+  | { kind: "collapsedAfter"; textBeforeCursor: string };
 
 type RemoteVariant = {
   action: string;
@@ -28,37 +27,31 @@ const remoteCases: RemoteCase[] = [
     description: "the first part of the selection",
     remoteSubstring: "em",
     referenceAfterEdit: selectedText("{replacement} th"),
-    referenceAfterUndo: selectedText("em th"),
   },
   {
     description: "the last part of the selection",
     remoteSubstring: "th",
     referenceAfterEdit: selectedText("em {replacement}"),
-    referenceAfterUndo: selectedText("em th"),
   },
   {
     description: "the first part of the selection and one letter before",
     remoteSubstring: "tem",
     referenceAfterEdit: selectedText(" th"),
-    referenceAfterUndo: selectedText("em th"),
   },
   {
     description: "the last part of the selection and one letter after",
     remoteSubstring: "thr",
     referenceAfterEdit: selectedText("em "),
-    referenceAfterUndo: selectedText("em th"),
   },
   {
     description: "the exact selection",
     remoteSubstring: "em th",
     referenceAfterEdit: selectedReplacementOrCursorAfter("It"),
-    referenceAfterUndo: selectedText("em th"),
   },
   {
     description: "one letter before and after the selection",
     remoteSubstring: "tem thr",
-    referenceAfterEdit: noSelection(),
-    referenceAfterUndo: selectedText("tem thr"),
+    referenceAfterEdit: collapsedAfter("I"),
   },
 ];
 
@@ -78,7 +71,7 @@ const remoteVariants: RemoteVariant[] = [
   },
 ];
 
-test("undo should restore the selection", async ({ page }) => {
+test("undo should restore the local selection", async ({ page }) => {
   const dn = await EditorHelper.create({ page });
 
   await dn.reference.selectRange(THIRD_PARAGRAPH, 2, 7);
@@ -93,6 +86,23 @@ test("undo should restore the selection", async ({ page }) => {
   await dn.reference.type("x");
   await dn.assertContent(["Item one.", "Item two.", "Itxree."]);
   await dn.reference.assertSelection(collapsed(3));
+});
+
+test("should not be able to undo remote operations", async ({
+  page,
+  context,
+}) => {
+  const { reference, remote } = await createEditorPair(page, context);
+  const expectedBlocks = ["Item one.", "Item two.", "Itxree."];
+
+  await remote.otherDevice.selectRange(THIRD_PARAGRAPH, 2, 7);
+  await remote.otherDevice.type("x");
+  await reference.assertContent(expectedBlocks);
+  await remote.assertContent(expectedBlocks);
+
+  await reference.reference.pressAndAssertSelectionUnchanged("ControlOrMeta+z");
+  await reference.assertContent(expectedBlocks);
+  await remote.assertContent(expectedBlocks);
 });
 
 for (const remoteCase of remoteCases) {
@@ -114,11 +124,6 @@ for (const remoteCase of remoteCases) {
         replacement ?? "",
       );
       const expectedBlocks = ["Item one.", "Item two.", expectedAfterEdit];
-      const remoteUndoSelection = range(
-        remoteCase.remoteSubstring,
-        remoteRange.start,
-        remoteRange.end,
-      );
       const { reference, remote } = await createEditorPair(page, context);
 
       await reference.reference.selectRange(THIRD_PARAGRAPH, 2, 7);
@@ -143,19 +148,6 @@ for (const remoteCase of remoteCases) {
           remoteCase.referenceAfterEdit,
           replacement,
         ),
-      );
-      await reference.reference.pressAndAssertSelectionUnchanged(
-        "ControlOrMeta+z",
-      );
-      await reference.assertContent(expectedBlocks);
-      await remote.assertContent(expectedBlocks);
-
-      await remote.otherDevice.press("ControlOrMeta+z");
-      await reference.assertContent(INITIAL_BLOCKS);
-      await remote.assertContent(INITIAL_BLOCKS);
-      await remote.otherDevice.assertSelection(remoteUndoSelection);
-      await reference.reference.assertSelection(
-        expectedSelection(INITIAL_TEXT, remoteCase.referenceAfterUndo),
       );
     });
   }
@@ -187,10 +179,6 @@ function collapsed(offset: number): SelectionExpectation {
   return { kind: "collapsed", offset };
 }
 
-function none(): SelectionExpectation {
-  return { kind: "none" };
-}
-
 function selectedText(text: string): ExpectedSelection {
   return { kind: "selectedText", text };
 }
@@ -201,8 +189,8 @@ function selectedReplacementOrCursorAfter(
   return { kind: "selectedReplacementOrCursor", textBeforeCursor };
 }
 
-function noSelection(): ExpectedSelection {
-  return { kind: "none" };
+function collapsedAfter(textBeforeCursor: string): ExpectedSelection {
+  return { kind: "collapsedAfter", textBeforeCursor };
 }
 
 function expectedSelection(
@@ -210,7 +198,9 @@ function expectedSelection(
   expected: ExpectedSelection,
   replacement?: string,
 ): SelectionExpectation {
-  if (expected.kind === "none") return none();
+  if (expected.kind === "collapsedAfter") {
+    return cursorAfter(currentText, expected.textBeforeCursor);
+  }
 
   if (expected.kind === "selectedReplacementOrCursor") {
     if (replacement == null) {
