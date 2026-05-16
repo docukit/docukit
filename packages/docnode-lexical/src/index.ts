@@ -1,7 +1,7 @@
 import { type Doc, type UndoManager } from "@docukit/docnode";
 import { type LexicalEditor } from "lexical";
 import { initializeEditorFromDoc } from "./initializeEditorFromDoc.js";
-import { syncDocNodeToLexical } from "./syncDocNodeToLexical.js";
+import { syncDocNodeToLexical } from "./syncDocNodeToLexical/syncDocNodeToLexical.js";
 import { syncLexicalToDocNode } from "./syncLexicalToDocNode.js";
 import { syncPresence } from "./presence/index.js";
 import { syncUndoManager } from "./syncUndoManager.js";
