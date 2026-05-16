@@ -355,8 +355,8 @@ function $transformTextSelectionForUpdate(
     $setSelection(null);
     return {
       nodeKey,
-      anchor: rememberEndpoint(oldText, selectionStart, replacement.start),
-      focus: rememberEndpoint(oldText, selectionEnd, replacement.newEnd),
+      anchor: rememberEndpoint(oldText, replacement.start, replacement.start),
+      focus: rememberEndpoint(oldText, replacement.oldEnd, replacement.newEnd),
     };
   }
 
