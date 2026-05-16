@@ -17,7 +17,7 @@ export class UndoManager {
   protected _undoStack: UndoStackItem[] = [];
   protected _redoStack: UndoStackItem[] = [];
   private _txType: "undo" | "redo" | "update" = "update";
-  private _lastUpdate?: number; // TODO: threeshold to combine transactions of 500ms
+  private _lastUpdate: number | undefined; // TODO: threeshold to combine transactions of 500ms
   private _pushHandlers = new Set<Handler>();
   private _popHandlers = new Set<Handler>();
 
@@ -89,6 +89,13 @@ export class UndoManager {
 
   canRedo() {
     return this._redoStack.length > 0;
+  }
+
+  clear() {
+    this._undoStack = [];
+    this._redoStack = [];
+    this._txType = "update";
+    this._lastUpdate = undefined;
   }
 
   /** Fires synchronously when an item is pushed to either stack. */
