@@ -12,10 +12,8 @@ import {
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
   COLLABORATION_TAG,
-  COMMAND_PRIORITY_CRITICAL,
   COMMAND_PRIORITY_EDITOR,
   COMMAND_PRIORITY_HIGH,
-  KEY_DOWN_COMMAND,
   REDO_COMMAND,
   UNDO_COMMAND,
   type LexicalEditor,
@@ -103,60 +101,6 @@ export function syncUndoManager(
     COMMAND_PRIORITY_EDITOR,
   );
 
-  const offKeyDown = editor.registerCommand(
-    KEY_DOWN_COMMAND,
-    (event) => {
-      if (
-        event.altKey ||
-        (!event.metaKey && !event.ctrlKey) ||
-        event.key.toLowerCase() !== "z"
-      ) {
-        return false;
-      }
-
-      if (event.shiftKey) {
-        if (!undoManager.canRedo()) {
-          const selection = captureSelection(keyBinding);
-          event.preventDefault();
-          if (selection) {
-            queueMicrotask(() => {
-              editor.update(
-                () => {
-                  restoreSelection(selection, keyBinding, doc);
-                },
-                { discrete: true, tag: COLLABORATION_TAG },
-              );
-            });
-          }
-          return true;
-        }
-      } else if (!undoManager.canUndo()) {
-        const selection = captureSelection(keyBinding);
-        event.preventDefault();
-        if (selection) {
-          queueMicrotask(() => {
-            editor.update(
-              () => {
-                restoreSelection(selection, keyBinding, doc);
-              },
-              { discrete: true, tag: COLLABORATION_TAG },
-            );
-          });
-        }
-        return true;
-      }
-
-      const handled = editor.dispatchCommand(
-        event.shiftKey ? REDO_COMMAND : UNDO_COMMAND,
-        undefined,
-      );
-      if (!handled) return false;
-      event.preventDefault();
-      return true;
-    },
-    COMMAND_PRIORITY_CRITICAL,
-  );
-
   const offPush = undoManager.onPush(({ item, type }) => {
     if (pending?.targetStack === type && pending.selection) {
       item.meta.set(META_SELECTION, pending.selection);
@@ -219,7 +163,6 @@ export function syncUndoManager(
     offChange();
     offUpdate();
     offBlur();
-    offKeyDown();
     offPush();
     offPop();
   };
