@@ -1,10 +1,10 @@
 import { type Doc, type UndoManager } from "@docukit/docnode";
 import { type LexicalEditor } from "lexical";
 import { initializeEditorFromDoc } from "./initializeEditorFromDoc.js";
+import { setupUndoManager } from "./setupUndoManager.js";
 import { syncDocNodeToLexical } from "./syncDocNodeToLexical/syncDocNodeToLexical.js";
 import { syncLexicalToDocNode } from "./syncLexicalToDocNode.js";
 import { syncPresence } from "./presence/index.js";
-import { syncUndoManager } from "./syncUndoManager.js";
 
 import type { syncLexicalWithDocPresenceOptions } from "./types.js";
 
@@ -25,7 +25,7 @@ export function syncLexicalWithDoc(
   // 2. Wire UNDO/REDO + selection capture. Registered FIRST so its update
   //    listener fires before syncLexicalToDocNode's — that way the pre-edit
   //    selection is captured before the doc is mutated and onPush fires.
-  const offUndoManager = syncUndoManager(
+  const offUndoManager = setupUndoManager(
     editor,
     doc,
     keyBinding,

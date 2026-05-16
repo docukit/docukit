@@ -3,7 +3,7 @@ import { type Doc, UndoManager } from "@docukit/docnode";
 import {
   createLexicalDoc,
   LexicalDocNode,
-  _INTERNAL_syncUndoManager as syncUndoManager,
+  _INTERNAL_setupUndoManager as setupUndoManager,
 } from "@docukit/docnode-lexical";
 import {
   CAN_REDO_COMMAND,
@@ -49,13 +49,13 @@ const forceGc = async (): Promise<void> => {
   }
 };
 
-describe("syncUndoManager default cache (WeakMap)", () => {
+describe("setupUndoManager default cache (WeakMap)", () => {
   it("reuses the cached default across remounts on the same Doc, preserving history without leaking listeners", () => {
     const doc = createLexicalDoc();
     const editor = makeEditor();
     expect(listenerCount(doc)).toBe(0);
 
-    const off1 = syncUndoManager(editor, doc, emptyKeyBinding());
+    const off1 = setupUndoManager(editor, doc, emptyKeyBinding());
     // +1 from the default UndoManager constructor, +1 from CAN_UNDO/REDO dispatcher.
     expect(listenerCount(doc)).toBe(2);
 
@@ -69,7 +69,7 @@ describe("syncUndoManager default cache (WeakMap)", () => {
     // (so the next mount finds the same instance and same history).
     expect(listenerCount(doc)).toBe(1);
 
-    const off2 = syncUndoManager(editor, doc, emptyKeyBinding());
+    const off2 = setupUndoManager(editor, doc, emptyKeyBinding());
     // Cache hit: only the CAN_* dispatcher is added. If the cache failed, we'd
     // see 3 listeners (a second UndoManager would have registered a duplicate).
     expect(listenerCount(doc)).toBe(2);
@@ -105,7 +105,7 @@ describe("syncUndoManager default cache (WeakMap)", () => {
       COMMAND_PRIORITY_LOW,
     );
 
-    const off = syncUndoManager(editor, doc, emptyKeyBinding());
+    const off = setupUndoManager(editor, doc, emptyKeyBinding());
     // Initial dispatch: both fire because previous values were undefined.
     expect(dispatches).toStrictEqual([
       { kind: "undo", value: false },
@@ -155,7 +155,7 @@ describe("syncUndoManager default cache (WeakMap)", () => {
       COMMAND_PRIORITY_LOW,
     );
 
-    const off = syncUndoManager(editor, doc, emptyKeyBinding());
+    const off = setupUndoManager(editor, doc, emptyKeyBinding());
 
     expect(editor.dispatchCommand(UNDO_COMMAND, undefined)).toBe(true);
     expect(undoFallback).toHaveBeenCalledOnce();
@@ -174,7 +174,7 @@ describe("syncUndoManager default cache (WeakMap)", () => {
     const userUm = new UndoManager(doc);
     const baseline = listenerCount(doc); // 1, from userUm's own constructor
 
-    const off = syncUndoManager(editor, doc, emptyKeyBinding(), userUm);
+    const off = setupUndoManager(editor, doc, emptyKeyBinding(), userUm);
     // +1 for the CAN_* dispatcher only — no default UndoManager is created.
     expect(listenerCount(doc)).toBe(baseline + 1);
 
@@ -207,7 +207,7 @@ describe("syncUndoManager default cache (WeakMap)", () => {
       COMMAND_PRIORITY_EDITOR,
     );
 
-    const off = syncUndoManager(editor, doc, emptyKeyBinding());
+    const off = setupUndoManager(editor, doc, emptyKeyBinding());
 
     // The check is deferred via queueMicrotask so sibling effects can register
     // first. Flush the microtask queue.
@@ -226,7 +226,7 @@ describe("syncUndoManager default cache (WeakMap)", () => {
     const editor = makeEditor();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
-    const off = syncUndoManager(editor, doc, emptyKeyBinding());
+    const off = setupUndoManager(editor, doc, emptyKeyBinding());
     await Promise.resolve();
 
     expect(warn).not.toHaveBeenCalled();
@@ -242,11 +242,11 @@ describe("syncUndoManager default cache (WeakMap)", () => {
     (() => {
       const doc = createLexicalDoc();
       const editor = makeEditor();
-      const off = syncUndoManager(editor, doc, emptyKeyBinding());
+      const off = setupUndoManager(editor, doc, emptyKeyBinding());
 
       // Snapshot the listener closure registered by the default UndoManager's
       // constructor. It's the first listener in `_changeListeners` because
-      // syncUndoManager evaluates `getDefaultUndoManager(doc)` (which calls
+      // setupUndoManager evaluates `getDefaultUndoManager(doc)` (which calls
       // `new UndoManager(doc)` → registers its listener) before registering
       // the CAN_*_COMMAND dispatcher. The closure captures `this` (the
       // UndoManager), so its collection implies the UndoManager's collection.

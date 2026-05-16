@@ -6,7 +6,7 @@ Working notes on the design problems we have to solve. Captures the discussion s
 
 The home-page demo had a bug: pressing Cmd/Ctrl+Z reverted only the active panel; the others stayed on the post-typing state. Root cause: Lexical's `HistoryPlugin.undo()` calls `editor.setEditorState(prev, { tag: HISTORIC_TAG })`, which sets `_dirtyType = FULL_RECONCILE` and only marks `'root'` in `_dirtyElements`. `syncLexicalToDocNode`'s dirty-skip optimization then walks into root, finds no dirty children, and never propagates the reverted content to DocNode. Other editors stay stale.
 
-We fixed that by routing UNDO/REDO through DocNode's UndoManager: `syncUndoManager` registers `UNDO_COMMAND`/`REDO_COMMAND` at `COMMAND_PRIORITY_HIGH` and calls `undoManager.undo()` / `.redo()`. DocNode's UndoManager applies inverse operations on the doc, which propagate via DocSync to all panels. `HistoryPlugin` is intercepted before it can run.
+We fixed that by routing UNDO/REDO through DocNode's UndoManager: `setupUndoManager` registers `UNDO_COMMAND`/`REDO_COMMAND` at `COMMAND_PRIORITY_HIGH` and calls `undoManager.undo()` / `.redo()`. DocNode's UndoManager applies inverse operations on the doc, which propagate via DocSync to all panels. `HistoryPlugin` is intercepted before it can run.
 
 Two follow-up problems surfaced from this fix.
 
@@ -65,5 +65,5 @@ When deciding "after this change, where should the cursor end up", three indepen
 
 1. Extend `Doc.applyOperations` and `doc.onChange` payload with optional `ctx`.
 2. Extend `UndoManager` constructor with `trackedOrigins` (or `shouldRecord`) predicate.
-3. In `docnode-lexical`: on `syncDocNodeToLexical` apply pass `ctx = { origin: "remote" }`; in `syncUndoManager` subscribe to `onPush` / `onPop`, capture `prevEditorState._selection` → `PresenceSelection` on push, restore on pop; implement deleted-node fallback (port `$moveSelectionToPreviousNode`).
+3. In `docnode-lexical`: on `syncDocNodeToLexical` apply pass `ctx = { origin: "remote" }`; in `setupUndoManager` subscribe to `onPush` / `onPop`, capture `prevEditorState._selection` → `PresenceSelection` on push, restore on pop; implement deleted-node fallback (port `$moveSelectionToPreviousNode`).
 4. Regression test: typing during a remote edit, undo, both editors revert AND the local cursor lands on a sensible position.

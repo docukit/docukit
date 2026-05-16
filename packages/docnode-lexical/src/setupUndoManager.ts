@@ -45,7 +45,7 @@ const META_SELECTION = "selection";
 /**
  * @internal - Do not use this function!
  */
-export function syncUndoManager(
+export function setupUndoManager(
   editor: LexicalEditor,
   doc: Doc,
   keyBinding: KeyBinding,
