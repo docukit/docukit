@@ -80,6 +80,7 @@ export const createClient = async () => {
 
   // Wait for lazy initialization
   await client["_localPromise"];
+  client.disconnect();
 
   return client;
 };

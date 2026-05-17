@@ -59,12 +59,18 @@ export function syncPresence(
   const { setPresence: rawSetPresence, user } = presenceOptions ?? {};
   if (!rawSetPresence) return undefined;
 
-  const setPresence = (selection: PresenceSelection | undefined) =>
-    rawSetPresence(
+  let lastSelection: PresenceSelection | undefined;
+
+  const setPresence = (selection: PresenceSelection | undefined) => {
+    const nextSelection =
       selection && user?.name != null && user?.color != null
         ? { ...selection, name: user.name, color: user.color }
-        : selection,
-    );
+        : selection;
+
+    if (areSelectionsEqual(lastSelection, nextSelection)) return;
+    lastSelection = nextSelection;
+    rawSetPresence(nextSelection);
+  };
 
   const rootElement = editor.getRootElement();
   let cursorsContainer: HTMLElement | undefined;
@@ -152,4 +158,20 @@ export function syncPresence(
 
   bindingByEditor.set(editor, { handle, lastPresence: undefined });
   return handle.cleanup;
+}
+
+function areSelectionsEqual(
+  a: PresenceSelection | undefined,
+  b: PresenceSelection | undefined,
+): boolean {
+  if (!a || !b) return a === b;
+
+  return (
+    a.anchor.key === b.anchor.key &&
+    a.anchor.offset === b.anchor.offset &&
+    a.focus.key === b.focus.key &&
+    a.focus.offset === b.focus.offset &&
+    a.name === b.name &&
+    a.color === b.color
+  );
 }
