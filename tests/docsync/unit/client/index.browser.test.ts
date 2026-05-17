@@ -1,10 +1,13 @@
 import { describe, test, expect, vi, expectTypeOf } from "vitest";
 import {
   DocSyncClient,
+  indexedDBProvider,
+  type ClientConfig,
   type DocData,
   type Identity,
   type QueryResult,
 } from "@docukit/docsync/client";
+import type { DocBinding } from "@docukit/docsync/shared";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import {
   defineNode,
@@ -95,6 +98,114 @@ describe("DocSyncClient", () => {
       } finally {
         globalThis.BroadcastChannel = originalBroadcastChannel;
       }
+    });
+  });
+
+  describe("presence debounce", () => {
+    test("remote changes flush only presence recalculated by that change", async () => {
+      type FakeDoc = { id: string };
+      type FakeSerializedDoc = { id: string };
+      type FakeOperation = { value: string };
+      type FakeChangeListener = (ev: {
+        operations: FakeOperation;
+        origin?: string | undefined;
+      }) => void;
+
+      const changeListeners = new Set<FakeChangeListener>();
+      const docBinding: DocBinding<FakeDoc, FakeSerializedDoc, FakeOperation> =
+        {
+          create: (_type, id) => {
+            const docId = id ?? ulid().toLowerCase();
+            return { doc: { id: docId }, docId };
+          },
+          deserialize: (serializedDoc) => ({ id: serializedDoc.id }),
+          serialize: (doc) => ({ id: doc.id }),
+          onChange: (_doc, cb) => {
+            changeListeners.add(cb);
+          },
+          applyOperations: (_doc, operations, origin) => {
+            changeListeners.forEach((listener) =>
+              listener({ operations, origin }),
+            );
+          },
+          dispose: vi.fn(),
+        };
+      const config: ClientConfig<FakeDoc, FakeSerializedDoc, FakeOperation> = {
+        server: {
+          url: "ws://localhost:8081",
+          auth: { getToken: () => "test-token" },
+        },
+        docBinding,
+        local: {
+          provider: indexedDBProvider,
+          getIdentity: () => ({
+            userId: `presence-flush-${ulid().toLowerCase()}`,
+            secret: "test-secret",
+          }),
+        },
+      };
+      const client = new DocSyncClient(config);
+      await client["_localPromise"];
+
+      const docId = ulid().toLowerCase();
+      let latestResult: QueryResult<DocData<FakeDoc>> | undefined;
+      client.getDoc(
+        { type: "test", id: docId, createIfMissing: true },
+        (result) => {
+          latestResult = result;
+        },
+      );
+      await expect.poll(() => latestResult?.status).toBe("success");
+      await expect.poll(() => changeListeners.size).toBe(1);
+      if (latestResult?.status !== "success") {
+        throw new Error("Expected fake document to load successfully");
+      }
+      const doc = latestResult.data.doc;
+
+      const bcHelper = client["_bcHelper"];
+      if (!bcHelper) {
+        throw new Error("Expected BroadcastChannel helper to be initialized");
+      }
+      const broadcastSpy = vi.spyOn(bcHelper, "broadcast");
+
+      client.setPresence({ docId, presence: { anchor: 1 } });
+      const firstTimeout = client["_presenceDebounceState"].get(docId)?.timeout;
+      expect(firstTimeout).toBeDefined();
+
+      docBinding.applyOperations(
+        doc,
+        { value: "unrelated-remote-change" },
+        "remote",
+      );
+      await Promise.resolve();
+
+      expect(client["_presenceDebounceState"].get(docId)?.timeout).toBe(
+        firstTimeout,
+      );
+      expect(broadcastSpy).not.toHaveBeenCalled();
+
+      changeListeners.add(() => {
+        client.setPresence({ docId, presence: { anchor: 2 } });
+      });
+
+      docBinding.applyOperations(
+        doc,
+        { value: "selection-changing-remote-change" },
+        "remote",
+      );
+      await Promise.resolve();
+
+      expect(client["_presenceDebounceState"].get(docId)?.timeout).toBe(
+        undefined,
+      );
+      expect(client["_presenceDebounceState"].get(docId)?.data).toStrictEqual({
+        anchor: 2,
+      });
+      expect(broadcastSpy).toHaveBeenCalledWith({
+        type: "PRESENCE",
+        docId,
+        presence: { [client["_clientId"]]: { anchor: 2 } },
+      });
     });
   });
 

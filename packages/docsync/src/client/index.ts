@@ -17,7 +17,10 @@ import { handleConnect } from "./handlers/connection/connect.js";
 import { handleDeleteDoc } from "./handlers/clientInitiated/deleteDoc.js";
 import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { handleDirty } from "./handlers/serverInitiated/dirty.js";
-import { handlePresence } from "./handlers/clientInitiated/presence.js";
+import {
+  flushPresenceDebounce,
+  handlePresence,
+} from "./handlers/clientInitiated/presence.js";
 import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
 import { handleSync } from "./handlers/clientInitiated/sync.js";
 import { handleUnsubscribe } from "./handlers/clientInitiated/unsubscribe.js";
@@ -313,7 +316,14 @@ export class DocSyncClient<
         operation: operations,
       });
 
-      if (changeOrigin !== "local") return;
+      if (changeOrigin !== "local") {
+        const timeoutBeforeChange =
+          this._presenceDebounceState.get(docId)?.timeout;
+        queueMicrotask(() =>
+          flushPresenceDebounce(this, docId, { timeoutBeforeChange }),
+        );
+        return;
+      }
 
       void this.onLocalOperations({ docId, operations: [operations] });
 
@@ -394,6 +404,9 @@ export class DocSyncClient<
       const currentEntry = this._docsCache.get(docId);
       if (currentEntry?.refCount === 0) {
         this._docsCache.delete(docId);
+        const presenceState = this._presenceDebounceState.get(docId);
+        clearTimeout(presenceState?.timeout);
+        this._presenceDebounceState.delete(docId);
         if (doc) {
           await handleUnsubscribe(this._socket, { docId });
           this._docBinding.dispose(doc);

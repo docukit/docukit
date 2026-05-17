@@ -89,3 +89,62 @@ test("createDocSyncClient", async () => {
     | { status: "error"; data?: never; error: Error }
   >();
 });
+
+test("client keeps own presence for debounced outgoing sync", async () => {
+  const { useDoc, usePresence, client } = createDocSyncClient({
+    server: {
+      url: "ws://localhost:8081",
+      auth: { getToken: () => "1234567890" as string },
+    },
+    local: {
+      provider: indexedDBProvider,
+      getIdentity: () => ({ userId: "John", secret: "asdasdasd" }),
+    },
+    docBinding: DocNodeBinding([docConfig]),
+  });
+
+  if (!client) {
+    throw new Error("Expected DocSyncClient to be available in browser tests");
+  }
+
+  const testId = id.ending("5");
+  const { result } = await renderHook(() => {
+    const doc = useDoc({ type: "test", id: testId, createIfMissing: true });
+    const docId = doc.status === "success" ? doc.data.docId : undefined;
+    const [presence, setPresence] = usePresence({ docId });
+    return { doc, docId, presence, setPresence };
+  });
+
+  await expect
+    .poll(() => result.current.doc.status, { interval: 100, timeout: 2000 })
+    .toBe("success");
+
+  const docId = result.current.docId;
+  if (!docId) {
+    throw new Error("Expected loaded document id");
+  }
+
+  result.current.setPresence({ anchor: 1, focus: 2 });
+  const pendingPresenceState = client["_presenceDebounceState"].get(docId);
+  expect(pendingPresenceState?.timeout).toBeDefined();
+  expect(pendingPresenceState?.data).toStrictEqual({ anchor: 1, focus: 2 });
+
+  const cacheEntry = client["_docsCache"].get(docId);
+  if (!cacheEntry) {
+    throw new Error("Expected loaded doc cache entry");
+  }
+  expect(cacheEntry.presence[client["_clientId"]]).toBeUndefined();
+
+  await expect
+    .poll(() => client["_presenceDebounceState"].get(docId)?.timeout, {
+      interval: 50,
+      timeout: 500,
+    })
+    .toBeUndefined();
+  expect(client["_presenceDebounceState"].get(docId)?.data).toStrictEqual({
+    anchor: 1,
+    focus: 2,
+  });
+  client.disconnect();
+  client["_bcHelper"]?.close();
+});
