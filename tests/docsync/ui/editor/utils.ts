@@ -14,8 +14,12 @@ export type SelectionExpectation =
 
 export const INITIAL_BLOCKS = ["Item one.", "Item two.", "Item three."];
 export const THIRD_PARAGRAPH = 2;
-export const INITIAL_TEXT = INITIAL_BLOCKS[THIRD_PARAGRAPH]!;
-export const ORIGINAL_REFERENCE_SELECTION = range("em th", 2, 7);
+export const ORIGINAL_REFERENCE_SELECTION: SelectionExpectation = {
+  kind: "range",
+  text: "em th",
+  anchorOffset: 2,
+  focusOffset: 7,
+};
 
 type SelectionInfo = {
   text: string;
@@ -45,12 +49,14 @@ export class EditorHelper extends HelperBase {
     this.otherDevice = this._createClientUtils(this._otherDevice);
   }
 
-  static override async create<T extends EditorHelper>(
+  static override async create<T extends HelperBase>(
     this: new (page: Page, docId: string) => T,
     { page }: { page: Page },
   ): Promise<T> {
     const helper = new this(page, ulid().toLowerCase());
-    await helper._gotoEditor();
+    await page.goto(`editor?docId=${helper.docId}`);
+    await page.waitForLoadState("networkidle");
+    await page.locator("#reference").first().waitFor({ state: "visible" });
     return helper;
   }
 
@@ -205,14 +211,6 @@ export async function createEditorPair(page: Page, context: BrowserContext) {
   await remote.assertContent(INITIAL_BLOCKS);
 
   return { reference, remote };
-}
-
-export function range(
-  text: string,
-  anchorOffset: number,
-  focusOffset: number,
-): SelectionExpectation {
-  return { kind: "range", text, anchorOffset, focusOffset };
 }
 
 export function collapsed(offset: number): SelectionExpectation {

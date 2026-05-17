@@ -1,4 +1,10 @@
-import type { SelectionExpectation } from "../utils.js";
+import {
+  INITIAL_BLOCKS,
+  THIRD_PARAGRAPH,
+  type SelectionExpectation,
+} from "../utils.js";
+
+export const INITIAL_TEXT = INITIAL_BLOCKS[THIRD_PARAGRAPH]!;
 
 export type ExpectedSelection =
   | { kind: "selectedText"; text: string }

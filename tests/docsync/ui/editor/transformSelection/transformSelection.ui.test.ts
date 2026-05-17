@@ -2,13 +2,13 @@ import { test } from "@playwright/test";
 
 import {
   createEditorPair,
-  INITIAL_TEXT,
   ORIGINAL_REFERENCE_SELECTION,
   THIRD_PARAGRAPH,
 } from "../utils.js";
 import {
   collapsedAfter,
   expectedSelection,
+  INITIAL_TEXT,
   replaceRange,
   selectedReplacementOrCursorAfter,
   selectedText,
