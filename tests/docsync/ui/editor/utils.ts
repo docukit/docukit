@@ -1,4 +1,9 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  type BrowserContext,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 import { ulid } from "ulid";
 import { HelperBase } from "../utils.js";
 
@@ -6,6 +11,11 @@ export type SelectionExpectation =
   | { kind: "range"; text: string; anchorOffset: number; focusOffset: number }
   | { kind: "collapsed"; offset: number }
   | { kind: "none" };
+
+export const INITIAL_BLOCKS = ["Item one.", "Item two.", "Item three."];
+export const THIRD_PARAGRAPH = 2;
+export const INITIAL_TEXT = INITIAL_BLOCKS[THIRD_PARAGRAPH]!;
+export const ORIGINAL_REFERENCE_SELECTION = range("em th", 2, 7);
 
 type SelectionInfo = {
   text: string;
@@ -181,4 +191,30 @@ export class EditorHelper extends HelperBase {
       this._otherDevice.locator("[data-lexical-editor] p"),
     ).toHaveText(blocks, { timeout: 1_000 });
   }
+}
+
+export async function createEditorPair(page: Page, context: BrowserContext) {
+  const reference = await EditorHelper.create({ page });
+  const remotePage = await context.newPage();
+  const remote = await EditorHelper.open({
+    page: remotePage,
+    docId: reference.docId,
+  });
+
+  await reference.assertContent(INITIAL_BLOCKS);
+  await remote.assertContent(INITIAL_BLOCKS);
+
+  return { reference, remote };
+}
+
+export function range(
+  text: string,
+  anchorOffset: number,
+  focusOffset: number,
+): SelectionExpectation {
+  return { kind: "range", text, anchorOffset, focusOffset };
+}
+
+export function collapsed(offset: number): SelectionExpectation {
+  return { kind: "collapsed", offset };
 }

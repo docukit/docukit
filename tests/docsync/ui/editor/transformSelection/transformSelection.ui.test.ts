@@ -1,18 +1,20 @@
 import { test } from "@playwright/test";
 
 import {
-  collapsedAfter,
   createEditorPair,
-  expectedSelection,
   INITIAL_TEXT,
   ORIGINAL_REFERENCE_SELECTION,
+  THIRD_PARAGRAPH,
+} from "../utils.js";
+import {
+  collapsedAfter,
+  expectedSelection,
   replaceRange,
   selectedReplacementOrCursorAfter,
   selectedText,
-  THIRD_PARAGRAPH,
   uniqueRangeForSubstring,
   type ExpectedSelection,
-} from "./editorTestUtils.js";
+} from "./utils.js";
 
 type RemoteCase = {
   description: string;

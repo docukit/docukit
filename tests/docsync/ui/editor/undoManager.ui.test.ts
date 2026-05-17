@@ -1,13 +1,13 @@
 import { test } from "@playwright/test";
 
 import {
-  createEditorPair,
   collapsed,
   INITIAL_BLOCKS,
   ORIGINAL_REFERENCE_SELECTION,
   THIRD_PARAGRAPH,
-} from "./editorTestUtils.js";
-import { EditorHelper } from "./utils.js";
+  createEditorPair,
+  EditorHelper,
+} from "./utils.js";
 
 test("undo should restore the local selection", async ({ page }) => {
   const dn = await EditorHelper.create({ page });

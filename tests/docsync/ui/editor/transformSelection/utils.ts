@@ -1,42 +1,9 @@
-import type { BrowserContext, Page } from "@playwright/test";
-
-import { EditorHelper, type SelectionExpectation } from "./utils.js";
-
-export const INITIAL_BLOCKS = ["Item one.", "Item two.", "Item three."];
-export const THIRD_PARAGRAPH = 2;
-export const INITIAL_TEXT = INITIAL_BLOCKS[THIRD_PARAGRAPH]!;
-export const ORIGINAL_REFERENCE_SELECTION = range("em th", 2, 7);
+import type { SelectionExpectation } from "../utils.js";
 
 export type ExpectedSelection =
   | { kind: "selectedText"; text: string }
   | { kind: "selectedReplacementOrCursor"; textBeforeCursor: string }
   | { kind: "collapsedAfter"; textBeforeCursor: string };
-
-export async function createEditorPair(page: Page, context: BrowserContext) {
-  const reference = await EditorHelper.create({ page });
-  const remotePage = await context.newPage();
-  const remote = await EditorHelper.open({
-    page: remotePage,
-    docId: reference.docId,
-  });
-
-  await reference.assertContent(INITIAL_BLOCKS);
-  await remote.assertContent(INITIAL_BLOCKS);
-
-  return { reference, remote };
-}
-
-export function range(
-  text: string,
-  anchorOffset: number,
-  focusOffset: number,
-): SelectionExpectation {
-  return { kind: "range", text, anchorOffset, focusOffset };
-}
-
-export function collapsed(offset: number): SelectionExpectation {
-  return { kind: "collapsed", offset };
-}
 
 export function selectedText(text: string): ExpectedSelection {
   return { kind: "selectedText", text };
@@ -104,7 +71,7 @@ function cursorAfter(
   textBeforeCursor: string,
 ): SelectionExpectation {
   const range = uniqueRangeForSubstring(currentText, textBeforeCursor);
-  return collapsed(range.end);
+  return { kind: "collapsed", offset: range.end };
 }
 
 function rangeForUniqueSubstring(
