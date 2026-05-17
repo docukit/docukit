@@ -99,6 +99,53 @@ describe("DocSyncClient", () => {
         globalThis.BroadcastChannel = originalBroadcastChannel;
       }
     });
+
+    test("should not post to BroadcastChannel after helper is closed", async () => {
+      const originalBroadcastChannel = globalThis.BroadcastChannel;
+      const postMessageSpy = vi.fn();
+      const closeSpy = vi.fn();
+
+      class MockBroadcastChannel {
+        onmessage: ((ev: MessageEvent) => void) | null = null;
+        constructor(_name: string) {
+          // no-op
+        }
+        postMessage(message: unknown) {
+          postMessageSpy(message);
+        }
+        close() {
+          closeSpy();
+        }
+      }
+
+      globalThis.BroadcastChannel =
+        MockBroadcastChannel as unknown as typeof BroadcastChannel;
+
+      try {
+        const client = createClient();
+        const callback = createCallback();
+
+        client.getDoc({ type: "test", createIfMissing: true }, callback);
+        await expect.poll(() => client["_bcHelper"]).toBeDefined();
+
+        const bcHelper = client["_bcHelper"];
+        if (!bcHelper) {
+          throw new Error("Expected BroadcastChannel helper to be initialized");
+        }
+
+        bcHelper.close();
+        bcHelper.broadcast({
+          type: "PRESENCE",
+          docId: "doc-id",
+          presence: { test: true },
+        });
+
+        expect(closeSpy).toHaveBeenCalledTimes(1);
+        expect(postMessageSpy).not.toHaveBeenCalled();
+      } finally {
+        globalThis.BroadcastChannel = originalBroadcastChannel;
+      }
+    });
   });
 
   describe("presence debounce", () => {

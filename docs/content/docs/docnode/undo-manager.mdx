@@ -7,14 +7,6 @@ import { TypeTable } from "fumadocs-ui/components/type-table";
 
 DocNode provides a built-in undo manager that can be used to undo and redo transactions. It has a modular design and is completely opt-in.
 
-<Callout type="info">
-  The implementation is very simple (less than 80 lines), making it easy to
-  customize or use as inspiration for your own UndoManager. For example, you
-  could store operations in IndexedDB instead of memory, enabling persistent
-  undo/redo when reopening documents—similar to how VS Code preserves your
-  editing history when switching between files.
-</Callout>
-
 ```ts
 import { UndoManager } from "@docukit/docnode";
 

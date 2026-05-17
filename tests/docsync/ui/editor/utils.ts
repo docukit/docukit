@@ -35,6 +35,10 @@ type ClientUtils = {
   press: (key: string) => Promise<void>;
   pressAndAssertSelectionUnchanged: (key: string) => Promise<void>;
   assertSelection: (selection: SelectionExpectation) => Promise<void>;
+  assertRemoteSelection: (
+    userName: string,
+    selection: SelectionExpectation,
+  ) => Promise<void>;
 };
 
 export class EditorHelper extends HelperBase {
@@ -104,6 +108,16 @@ export class EditorHelper extends HelperBase {
           .poll(() => this._readSelection(clientLocator), { timeout: 1_000 })
           .toStrictEqual(this._selectionInfo(selection));
       },
+      assertRemoteSelection: async (
+        userName: string,
+        selection: SelectionExpectation,
+      ) => {
+        await expect
+          .poll(() => this._readRemoteSelection(clientLocator, userName), {
+            timeout: 1_000,
+          })
+          .toStrictEqual(this._selectionInfo(selection));
+      },
     };
   }
 
@@ -162,6 +176,96 @@ export class EditorHelper extends HelperBase {
         isCollapsed: selection.isCollapsed,
       };
     });
+  }
+
+  private async _readRemoteSelection(
+    clientLocator: Locator,
+    userName: string,
+  ): Promise<SelectionInfo | undefined> {
+    return clientLocator.evaluate((element, expectedUserName) => {
+      function getOffsetFromPoint(
+        paragraph: HTMLParagraphElement,
+        x: number,
+        y: number,
+      ): number | undefined {
+        const doc = document as Document & {
+          caretRangeFromPoint?: (x: number, y: number) => Range | undefined;
+        };
+
+        const position = doc.caretPositionFromPoint?.(x, y);
+        if (position) {
+          return getOffsetInParagraph(
+            paragraph,
+            position.offsetNode,
+            position.offset,
+          );
+        }
+
+        const range = doc.caretRangeFromPoint?.(x, y);
+        if (!range) return undefined;
+        return getOffsetInParagraph(
+          paragraph,
+          range.startContainer,
+          range.startOffset,
+        );
+      }
+
+      function getOffsetInParagraph(
+        paragraph: HTMLParagraphElement,
+        node: Node,
+        offset: number,
+      ): number | undefined {
+        if (!paragraph.contains(node)) return undefined;
+
+        const range = document.createRange();
+        range.selectNodeContents(paragraph);
+        range.setEnd(node, offset);
+        return range.toString().length;
+      }
+
+      const editor = element.querySelector("[data-lexical-editor]");
+      if (!(editor instanceof HTMLElement)) return undefined;
+
+      const overlay = Array.from(editor.parentElement?.children ?? []).find(
+        (child) =>
+          child !== editor &&
+          child instanceof HTMLDivElement &&
+          child.style.pointerEvents === "none",
+      );
+      if (!(overlay instanceof HTMLDivElement)) return undefined;
+
+      const selectionElement = Array.from(overlay.children).find(
+        (child) =>
+          child instanceof HTMLSpanElement &&
+          child.textContent?.includes(expectedUserName),
+      );
+      if (!(selectionElement instanceof HTMLSpanElement)) return undefined;
+
+      const paragraphs = editor.querySelectorAll("p");
+      const paragraph = paragraphs[THIRD_PARAGRAPH];
+      if (!(paragraph instanceof HTMLParagraphElement)) return undefined;
+
+      const rect = selectionElement.getBoundingClientRect();
+      const middleY = rect.top + rect.height / 2;
+      const startX = rect.width > 2 ? rect.left + 1 : rect.left;
+      const endX = rect.width > 2 ? rect.right - 1 : rect.right;
+
+      const startOffset = getOffsetFromPoint(paragraph, startX, middleY);
+      const endOffset = getOffsetFromPoint(paragraph, endX, middleY);
+      if (startOffset === undefined || endOffset === undefined)
+        return undefined;
+
+      const anchorOffset = Math.min(startOffset, endOffset);
+      const focusOffset = Math.max(startOffset, endOffset);
+      const text = paragraph.textContent ?? "";
+
+      return {
+        text: text.slice(anchorOffset, focusOffset),
+        anchorOffset,
+        focusOffset,
+        isCollapsed: anchorOffset === focusOffset,
+      };
+    }, userName);
   }
 
   private _selectionInfo(

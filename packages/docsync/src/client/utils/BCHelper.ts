@@ -15,6 +15,7 @@ type BroadcastMessage<O> =
 
 export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
   private _channel: BroadcastChannel;
+  private _closed = false;
 
   constructor(client: DocSyncClient<D, S, O>, userId: string) {
     const channelName = `docsync:${userId}`;
@@ -62,11 +63,13 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
   }
 
   broadcast(message: BroadcastMessage<O>): void {
+    if (this._closed) return;
     this._channel.postMessage(message);
   }
 
   /** Close the underlying channel (e.g. for test cleanup). */
   close(): void {
+    this._closed = true;
     this._channel.close();
   }
 }

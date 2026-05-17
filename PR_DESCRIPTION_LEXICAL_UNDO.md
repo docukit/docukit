@@ -58,6 +58,44 @@ That is why the remote-selection tests were simplified:
 - they now verify how the selection changes immediately after the remote edit
 - local selection restoration is tested separately in the undo tests
 
+## 3. DocSync presence should debounce only outbound local traffic
+
+This is a separate DocSync fix.
+
+Presence debounce exists to avoid sending local selection updates on every
+cursor move through BroadcastChannel and WebSocket.
+
+That debounce must **not** delay the selection update that is caused by an
+incoming remote operation:
+
+- when a remote edit changes text, the local editor may remap the current
+  selection immediately
+- once that happens, the updated own presence must be emitted immediately too
+- otherwise the remote cursor can appear to "jump" because text updates first
+  and presence catches up later
+
+The fix keeps the solution encapsulated in DocSync:
+
+- `_presenceDebounceState` remains the place where DocSync keeps the latest own
+  presence for a document, but now that state is preserved after the debounce
+  fires instead of being deleted immediately
+- on remote or broadcast-originated document changes, DocSync schedules a
+  microtask flush of presence
+- that flush is guarded with the timeout value that existed before the remote
+  change, so an unrelated older debounce is not emitted early by mistake
+
+That last guard matters.
+
+Without it, this sequence would be wrong:
+
+1. local cursor move schedules a debounced presence update
+2. an unrelated remote operation arrives
+3. DocSync flushes the old debounce even though that remote operation did not
+   produce a new local selection remap
+
+With the guard, DocSync only flushes if the remote change actually caused the
+binding to schedule a fresh presence update during that change cycle.
+
 ## Result
 
 After this PR:
@@ -76,6 +114,13 @@ After this PR:
 - Remote edits still transform the current local selection immediately.
 - Remote undo is still treated as remote, so it does not try to restore local
   selection history in another editor.
+- DocSync now keeps using `_presenceDebounceState` as the source of truth for
+  the latest own presence, even after the debounce has already fired.
+- Remote and broadcast-originated document changes flush recalculated own
+  presence in a microtask, so remote cursor updates do not wait for the normal
+  200ms outbound debounce.
+- That flush is guarded so unrelated older debounced presence updates are not
+  emitted early.
 - The remote-selection behavior now lives in `transformSelection.ts`, separated
   from local undo/redo selection restoration in `setupUndoManager.ts`.
 - The docs now cover `origin`, `doc.applyOperations(operations, origin)`, and

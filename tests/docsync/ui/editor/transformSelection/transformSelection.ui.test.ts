@@ -123,3 +123,56 @@ for (const remoteCase of remoteCases) {
     });
   }
 }
+
+test("otherDevice updates the rendered remote cursor after an overlapping edit", async ({
+  page,
+  context,
+}) => {
+  const remoteSubstring = "em";
+  const replacement = "xx";
+  const remoteRange = uniqueRangeForSubstring(INITIAL_TEXT, remoteSubstring);
+  const expectedAfterEdit = replaceRange(
+    INITIAL_TEXT,
+    remoteRange.start,
+    remoteRange.end,
+    replacement,
+  );
+  const expectedBlocks = ["Item one.", "Item two.", expectedAfterEdit];
+  const { reference, remote } = await createEditorPair(page, context);
+
+  // Existing tests in this file already prove that the local selection inside
+  // `reference` is remapped correctly after a remote overlapping edit.
+  //
+  // This test covers the extra end-to-end piece: the remapped selection must
+  // also be re-published through DocSync presence, so `otherDevice` redraws
+  // the remote cursor/range in the right place instead of showing a stale one.
+  await reference.reference.selectRange(THIRD_PARAGRAPH, 2, 7);
+  await reference.reference.assertSelection(ORIGINAL_REFERENCE_SELECTION);
+  await remote.otherDevice.assertRemoteSelection(
+    "user1",
+    ORIGINAL_REFERENCE_SELECTION,
+  );
+
+  // `otherDevice` changes text that overlaps `reference`'s selection. That
+  // forces `reference` to remap its local selection immediately.
+  await remote.otherDevice.selectRange(
+    THIRD_PARAGRAPH,
+    remoteRange.start,
+    remoteRange.end,
+  );
+  await remote.otherDevice.type(replacement);
+
+  await reference.assertContent(expectedBlocks);
+  await remote.assertContent(expectedBlocks);
+
+  // The important assertion here is on the rendered remote selection in
+  // `otherDevice`, not on `reference`'s local selection state.
+  await remote.otherDevice.assertRemoteSelection(
+    "user1",
+    expectedSelection(
+      expectedAfterEdit,
+      selectedText(`${replacement} th`),
+      replacement,
+    ),
+  );
+});

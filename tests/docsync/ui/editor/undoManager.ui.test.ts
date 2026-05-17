@@ -48,7 +48,10 @@ test("immediate undo and redo should keep the correct local selections", async (
   await dn.reference.assertSelection(collapsed(3));
 });
 
-test("should not undo remote operations", async ({ page, context }) => {
+test("should not undo remote operations, including remote rebroadcasts to other tabs", async ({
+  page,
+  context,
+}) => {
   const { reference, remote } = await createEditorPair(page, context);
   const expectedBlocks = ["Item one.", "Item two.", "Itxree."];
 
@@ -58,6 +61,10 @@ test("should not undo remote operations", async ({ page, context }) => {
   await remote.assertContent(expectedBlocks);
 
   await reference.reference.pressAndAssertSelectionUnchanged("ControlOrMeta+z");
+  await reference.assertContent(expectedBlocks);
+  await remote.assertContent(expectedBlocks);
+
+  await reference.otherTab.pressAndAssertSelectionUnchanged("ControlOrMeta+z");
   await reference.assertContent(expectedBlocks);
   await remote.assertContent(expectedBlocks);
 
