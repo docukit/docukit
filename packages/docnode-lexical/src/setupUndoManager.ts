@@ -101,17 +101,15 @@ export function setupUndoManager(
     COMMAND_PRIORITY_EDITOR,
   );
 
-  const offPush = undoManager.onPush(({ item, type }) => {
+  const offPush = undoManager.onPush(({ meta, type }) => {
     if (pending?.targetStack === type && pending.selection) {
-      item.meta.set(META_SELECTION, pending.selection);
+      meta.set(META_SELECTION, pending.selection);
     }
     pending = undefined;
   });
 
-  const offPop = undoManager.onPop(({ item }) => {
-    const selection = item.meta.get(META_SELECTION) as
-      | PresenceSelection
-      | undefined;
+  const offPop = undoManager.onPop(({ meta }) => {
+    const selection = meta.get(META_SELECTION) as PresenceSelection | undefined;
     if (!selection) return;
     editor.update(
       () => {

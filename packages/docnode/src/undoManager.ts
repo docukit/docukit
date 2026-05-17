@@ -4,10 +4,13 @@ import type { Operations } from "./operations.js";
 /** `meta` is opaque — consumers attach arbitrary data (e.g. selection). */
 export type UndoStackItem = {
   operations: Operations;
-  meta: Map<unknown, unknown>;
+  meta: Map<string, unknown>;
 };
 
-export type UndoManagerEvent = { item: UndoStackItem; type: "undo" | "redo" };
+export type UndoManagerEvent = {
+  meta: UndoStackItem["meta"];
+  type: "undo" | "redo";
+};
 
 type Handler = (event: UndoManagerEvent) => void;
 
@@ -49,18 +52,20 @@ export class UndoManager {
       if (this._txType === "update") {
         if (this._maxUndoSteps > this._undoStack.length) {
           this._undoStack.push(item);
-          this._pushHandlers.forEach((h) => h({ item, type: "undo" }));
+          this._pushHandlers.forEach((h) =>
+            h({ meta: item.meta, type: "undo" }),
+          );
         }
         this._redoStack = [];
         this._lastUpdate = Date.now();
       } else if (this._txType === "undo") {
         this._redoStack.push(item);
         this._txType = "update";
-        this._pushHandlers.forEach((h) => h({ item, type: "redo" }));
+        this._pushHandlers.forEach((h) => h({ meta: item.meta, type: "redo" }));
       } else {
         this._undoStack.push(item);
         this._txType = "update";
-        this._pushHandlers.forEach((h) => h({ item, type: "undo" }));
+        this._pushHandlers.forEach((h) => h({ meta: item.meta, type: "undo" }));
       }
     });
   }
@@ -71,7 +76,7 @@ export class UndoManager {
     const item = this._undoStack.pop();
     if (!item) return;
     this._doc.applyOperations(item.operations);
-    this._popHandlers.forEach((h) => h({ item, type: "undo" }));
+    this._popHandlers.forEach((h) => h({ meta: item.meta, type: "undo" }));
   }
 
   redo() {
@@ -80,7 +85,7 @@ export class UndoManager {
     const item = this._redoStack.pop();
     if (!item) return;
     this._doc.applyOperations(item.operations);
-    this._popHandlers.forEach((h) => h({ item, type: "redo" }));
+    this._popHandlers.forEach((h) => h({ meta: item.meta, type: "redo" }));
   }
 
   canUndo() {
@@ -98,7 +103,10 @@ export class UndoManager {
     this._lastUpdate = undefined;
   }
 
-  /** Fires synchronously when an item is pushed to either stack. */
+  /**
+   * Fires synchronously when an item is pushed to either stack.
+   * Text editor bindings will often store selection state here.
+   */
   onPush(handler: Handler): () => void {
     this._pushHandlers.add(handler);
     return () => {
@@ -106,7 +114,10 @@ export class UndoManager {
     };
   }
 
-  /** Fires synchronously after `applyOperations` returns on undo/redo. */
+  /**
+   * Fires synchronously after `applyOperations` returns on undo/redo.
+   * Text editor bindings will often restore selection state here.
+   */
   onPop(handler: Handler): () => void {
     this._popHandlers.add(handler);
     return () => {

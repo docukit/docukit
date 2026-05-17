@@ -359,8 +359,8 @@ describe("undoManager events", () => {
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
     const events: { type: "undo" | "redo"; meta: Map<unknown, unknown> }[] = [];
-    undoManager.onPush(({ item, type }) => {
-      events.push({ type, meta: item.meta });
+    undoManager.onPush(({ meta, type }) => {
+      events.push({ type, meta });
     });
 
     doc.root.append(...text(doc, "1"));
@@ -387,15 +387,15 @@ describe("undoManager events", () => {
     expect(types).toStrictEqual(["redo"]);
   });
 
-  test("onPop fires after undo/redo applies, with the popped item", () => {
+  test("onPop fires after undo/redo applies, with the popped meta", () => {
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
     doc.root.append(...text(doc, "1"));
     doc.forceCommit();
 
     const popped: { type: "undo" | "redo"; meta: Map<unknown, unknown> }[] = [];
-    undoManager.onPop(({ item, type }) => {
-      popped.push({ type, meta: item.meta });
+    undoManager.onPop(({ meta, type }) => {
+      popped.push({ type, meta });
     });
 
     undoManager.undo();
@@ -412,13 +412,13 @@ describe("undoManager events", () => {
     const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
 
     let counter = 0;
-    undoManager.onPush(({ item }) => {
-      item.meta.set("token", `token-${counter++}`);
+    undoManager.onPush(({ meta }) => {
+      meta.set("token", `token-${counter++}`);
     });
 
     const seenTokens: unknown[] = [];
-    undoManager.onPop(({ item }) => {
-      seenTokens.push(item.meta.get("token"));
+    undoManager.onPop(({ meta }) => {
+      seenTokens.push(meta.get("token"));
     });
 
     doc.root.append(...text(doc, "1"));
