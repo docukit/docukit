@@ -35,14 +35,11 @@ export class EditorHelper extends HelperBase {
     this.otherDevice = this._createClientUtils(this._otherDevice);
   }
 
-  static override async create<T extends HelperBase>(
+  static override async create<T extends EditorHelper>(
     this: new (page: Page, docId: string) => T,
     { page }: { page: Page },
   ): Promise<T> {
     const helper = new this(page, ulid().toLowerCase());
-    if (!(helper instanceof EditorHelper)) {
-      throw new Error("EditorHelper.create must construct an EditorHelper");
-    }
     await helper._gotoEditor();
     return helper;
   }
