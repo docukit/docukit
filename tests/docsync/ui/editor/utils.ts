@@ -12,7 +12,15 @@ export type SelectionExpectation =
   | { kind: "collapsed"; offset: number }
   | { kind: "none" };
 
+export type BlockPoint = { block: number; offset: number };
+
+export type CrossBlockSelectionExpectation =
+  | { kind: "range"; text?: string; anchor: BlockPoint; focus: BlockPoint }
+  | { kind: "collapsed"; point: BlockPoint }
+  | { kind: "none" };
+
 export const INITIAL_BLOCKS = ["Item one.", "Item two.", "Item three."];
+export const SECOND_PARAGRAPH = 1;
 export const THIRD_PARAGRAPH = 2;
 export const ORIGINAL_REFERENCE_SELECTION: SelectionExpectation = {
   kind: "range",
@@ -28,13 +36,27 @@ type SelectionInfo = {
   isCollapsed: boolean;
 };
 
+type CrossBlockSelectionInfo = {
+  text?: string;
+  anchor: BlockPoint;
+  focus: BlockPoint;
+  isCollapsed: boolean;
+};
+
 type ClientUtils = {
   select: (block: number, offset: number) => Promise<void>;
   selectRange: (block: number, start: number, end: number) => Promise<void>;
+  selectRangeAcrossBlocks: (
+    start: BlockPoint,
+    end: BlockPoint,
+  ) => Promise<void>;
   type: (text: string) => Promise<void>;
   press: (key: string) => Promise<void>;
   pressAndAssertSelectionUnchanged: (key: string) => Promise<void>;
   assertSelection: (selection: SelectionExpectation) => Promise<void>;
+  assertSelectionAcrossBlocks: (
+    selection: CrossBlockSelectionExpectation,
+  ) => Promise<void>;
   assertRemoteSelection: (
     userName: string,
     selection: SelectionExpectation,
@@ -58,9 +80,10 @@ export class EditorHelper extends HelperBase {
     { page }: { page: Page },
   ): Promise<T> {
     const helper = new this(page, ulid().toLowerCase());
-    await page.goto(`editor?docId=${helper.docId}`);
-    await page.waitForLoadState("networkidle");
-    await page.locator("#reference").first().waitFor({ state: "visible" });
+    await page.goto(`editor?docId=${helper.docId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await waitForEditorReady(page);
     return helper;
   }
 
@@ -80,6 +103,9 @@ export class EditorHelper extends HelperBase {
       },
       selectRange: async (block: number, start: number, end: number) => {
         await this._selectRange(clientLocator, block, start, end);
+      },
+      selectRangeAcrossBlocks: async (start: BlockPoint, end: BlockPoint) => {
+        await this._selectRangeAcrossBlocks(clientLocator, start, end);
       },
       type: async (text: string) => {
         await this._page.bringToFront();
@@ -108,6 +134,25 @@ export class EditorHelper extends HelperBase {
           .poll(() => this._readSelection(clientLocator), { timeout: 1_000 })
           .toStrictEqual(this._selectionInfo(selection));
       },
+      assertSelectionAcrossBlocks: async (
+        selection: CrossBlockSelectionExpectation,
+      ) => {
+        const expected = this._crossBlockSelectionInfo(selection);
+        if (!expected) {
+          await expect
+            .poll(() => this._readSelectionAcrossBlocks(clientLocator), {
+              timeout: 1_000,
+            })
+            .toBeUndefined();
+          return;
+        }
+
+        await expect
+          .poll(() => this._readSelectionAcrossBlocks(clientLocator), {
+            timeout: 1_000,
+          })
+          .toMatchObject(expected);
+      },
       assertRemoteSelection: async (
         userName: string,
         selection: SelectionExpectation,
@@ -122,12 +167,10 @@ export class EditorHelper extends HelperBase {
   }
 
   private async _gotoEditor() {
-    await this._page.goto(`editor?docId=${this.docId}`);
-    await this._page.waitForLoadState("networkidle");
-    await this._page
-      .locator("#reference")
-      .first()
-      .waitFor({ state: "visible" });
+    await this._page.goto(`editor?docId=${this.docId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await waitForEditorReady(this._page);
   }
 
   private async _selectRange(
@@ -148,6 +191,71 @@ export class EditorHelper extends HelperBase {
       await this._page.keyboard.press("ArrowRight");
     }
     for (let i = start; i < end; i++) {
+      await this._page.keyboard.press("Shift+ArrowRight");
+    }
+    await this._page.waitForTimeout(10);
+  }
+
+  private async _selectRangeAcrossBlocks(
+    clientLocator: Locator,
+    start: BlockPoint,
+    end: BlockPoint,
+  ) {
+    await this._page.bringToFront();
+    await clientLocator.click();
+    for (let i = 0; i < 3; i++) {
+      await this._page.keyboard.press("ControlOrMeta+ArrowUp");
+    }
+    for (let i = 0; i < start.block; i++) {
+      await this._page.keyboard.press("ArrowDown");
+    }
+    for (let i = 0; i < start.offset; i++) {
+      await this._page.keyboard.press("ArrowRight");
+    }
+
+    const totalSteps = await clientLocator.evaluate(
+      (element, args) => {
+        const paragraphs = Array.from(
+          element.querySelectorAll("[data-lexical-editor] p"),
+        );
+
+        const startParagraph = paragraphs[args.start.block];
+        const endParagraph = paragraphs[args.end.block];
+        if (
+          !(startParagraph instanceof HTMLParagraphElement) ||
+          !(endParagraph instanceof HTMLParagraphElement)
+        ) {
+          throw new Error("Expected paragraph elements");
+        }
+
+        if (args.start.block === args.end.block) {
+          return args.end.offset - args.start.offset;
+        }
+
+        let steps =
+          (startParagraph.textContent ?? "").length -
+          args.start.offset +
+          args.end.offset +
+          (args.end.block - args.start.block);
+
+        for (
+          let block = args.start.block + 1;
+          block < args.end.block;
+          block++
+        ) {
+          const paragraph = paragraphs[block];
+          if (!(paragraph instanceof HTMLParagraphElement)) {
+            throw new Error(`Expected paragraph ${block}`);
+          }
+          steps += (paragraph.textContent ?? "").length;
+        }
+
+        return steps;
+      },
+      { start, end },
+    );
+
+    for (let i = 0; i < totalSteps; i++) {
       await this._page.keyboard.press("Shift+ArrowRight");
     }
     await this._page.waitForTimeout(10);
@@ -178,38 +286,10 @@ export class EditorHelper extends HelperBase {
     });
   }
 
-  private async _readRemoteSelection(
+  private async _readSelectionAcrossBlocks(
     clientLocator: Locator,
-    userName: string,
-  ): Promise<SelectionInfo | undefined> {
-    return clientLocator.evaluate((element, expectedUserName) => {
-      function getOffsetFromPoint(
-        paragraph: HTMLParagraphElement,
-        x: number,
-        y: number,
-      ): number | undefined {
-        const doc = document as Document & {
-          caretRangeFromPoint?: (x: number, y: number) => Range | undefined;
-        };
-
-        const position = doc.caretPositionFromPoint?.(x, y);
-        if (position) {
-          return getOffsetInParagraph(
-            paragraph,
-            position.offsetNode,
-            position.offset,
-          );
-        }
-
-        const range = doc.caretRangeFromPoint?.(x, y);
-        if (!range) return undefined;
-        return getOffsetInParagraph(
-          paragraph,
-          range.startContainer,
-          range.startOffset,
-        );
-      }
-
+  ): Promise<CrossBlockSelectionInfo | undefined> {
+    return clientLocator.evaluate((element) => {
       function getOffsetInParagraph(
         paragraph: HTMLParagraphElement,
         node: Node,
@@ -223,49 +303,145 @@ export class EditorHelper extends HelperBase {
         return range.toString().length;
       }
 
-      const editor = element.querySelector("[data-lexical-editor]");
-      if (!(editor instanceof HTMLElement)) return undefined;
+      function getPoint(
+        editorElement: Element,
+        node: Node,
+        offset: number,
+      ): BlockPoint | undefined {
+        const paragraphs = Array.from(editorElement.querySelectorAll("p"));
 
-      const overlay = Array.from(editor.parentElement?.children ?? []).find(
-        (child) =>
-          child !== editor &&
-          child instanceof HTMLDivElement &&
-          child.style.pointerEvents === "none",
-      );
-      if (!(overlay instanceof HTMLDivElement)) return undefined;
+        for (const [block, paragraph] of paragraphs.entries()) {
+          if (!(paragraph instanceof HTMLParagraphElement)) continue;
+          const pointOffset = getOffsetInParagraph(paragraph, node, offset);
+          if (pointOffset !== undefined) {
+            return { block, offset: pointOffset };
+          }
+        }
 
-      const selectionElement = Array.from(overlay.children).find(
-        (child) =>
-          child instanceof HTMLSpanElement &&
-          child.textContent?.includes(expectedUserName),
-      );
-      if (!(selectionElement instanceof HTMLSpanElement)) return undefined;
-
-      const paragraphs = editor.querySelectorAll("p");
-      const paragraph = paragraphs[THIRD_PARAGRAPH];
-      if (!(paragraph instanceof HTMLParagraphElement)) return undefined;
-
-      const rect = selectionElement.getBoundingClientRect();
-      const middleY = rect.top + rect.height / 2;
-      const startX = rect.width > 2 ? rect.left + 1 : rect.left;
-      const endX = rect.width > 2 ? rect.right - 1 : rect.right;
-
-      const startOffset = getOffsetFromPoint(paragraph, startX, middleY);
-      const endOffset = getOffsetFromPoint(paragraph, endX, middleY);
-      if (startOffset === undefined || endOffset === undefined)
         return undefined;
+      }
 
-      const anchorOffset = Math.min(startOffset, endOffset);
-      const focusOffset = Math.max(startOffset, endOffset);
-      const text = paragraph.textContent ?? "";
+      const selection = window.getSelection();
+      if (
+        !selection ||
+        selection.rangeCount === 0 ||
+        !selection.anchorNode ||
+        !selection.focusNode ||
+        !element.contains(selection.anchorNode) ||
+        !element.contains(selection.focusNode)
+      ) {
+        return undefined;
+      }
+
+      const anchor = getPoint(
+        element,
+        selection.anchorNode,
+        selection.anchorOffset,
+      );
+      const focus = getPoint(
+        element,
+        selection.focusNode,
+        selection.focusOffset,
+      );
+      if (!anchor || !focus) {
+        return undefined;
+      }
 
       return {
-        text: text.slice(anchorOffset, focusOffset),
-        anchorOffset,
-        focusOffset,
-        isCollapsed: anchorOffset === focusOffset,
+        text: selection.toString(),
+        anchor,
+        focus,
+        isCollapsed: selection.isCollapsed,
       };
-    }, userName);
+    });
+  }
+
+  private async _readRemoteSelection(
+    clientLocator: Locator,
+    userName: string,
+  ): Promise<SelectionInfo | undefined> {
+    return clientLocator.evaluate(
+      (element, args) => {
+        function getOffsetFromPoint(
+          paragraph: HTMLParagraphElement,
+          x: number,
+          y: number,
+        ): number | undefined {
+          const position = document.caretPositionFromPoint(x, y);
+          if (position) {
+            return getOffsetInParagraph(
+              paragraph,
+              position.offsetNode,
+              position.offset,
+            );
+          }
+
+          const range = document.caretRangeFromPoint(x, y);
+          if (!range) return undefined;
+          return getOffsetInParagraph(
+            paragraph,
+            range.startContainer,
+            range.startOffset,
+          );
+        }
+
+        function getOffsetInParagraph(
+          paragraph: HTMLParagraphElement,
+          node: Node,
+          offset: number,
+        ): number | undefined {
+          if (!paragraph.contains(node)) return undefined;
+
+          const range = document.createRange();
+          range.selectNodeContents(paragraph);
+          range.setEnd(node, offset);
+          return range.toString().length;
+        }
+
+        const editor = element.querySelector("[data-lexical-editor]");
+        if (!(editor instanceof HTMLElement)) return undefined;
+
+        const overlay = Array.from(editor.parentElement?.children ?? []).find(
+          (child) =>
+            child !== editor &&
+            child instanceof HTMLDivElement &&
+            child.style.pointerEvents === "none",
+        );
+        if (!(overlay instanceof HTMLDivElement)) return undefined;
+
+        const selectionElement = Array.from(overlay.children).find(
+          (child) =>
+            child instanceof HTMLSpanElement &&
+            child.textContent?.includes(args.userName),
+        );
+        if (!(selectionElement instanceof HTMLSpanElement)) return undefined;
+
+        const paragraphs = editor.querySelectorAll("p");
+        const paragraph = paragraphs[args.paragraphIndex];
+        if (!(paragraph instanceof HTMLParagraphElement)) return undefined;
+
+        const rect = selectionElement.getBoundingClientRect();
+        const middleY = rect.top + rect.height / 2;
+        const startX = rect.width > 2 ? rect.left + 1 : rect.left;
+        const endX = rect.width > 2 ? rect.right - 1 : rect.right;
+
+        const startOffset = getOffsetFromPoint(paragraph, startX, middleY);
+        const endOffset = getOffsetFromPoint(paragraph, endX, middleY);
+        if (startOffset === undefined || endOffset === undefined)
+          return undefined;
+
+        const anchorOffset = Math.min(startOffset, endOffset);
+        const focusOffset = Math.max(startOffset, endOffset);
+        const text = paragraph.textContent ?? "";
+        return {
+          text: text.slice(anchorOffset, focusOffset),
+          anchorOffset,
+          focusOffset,
+          isCollapsed: anchorOffset === focusOffset,
+        };
+      },
+      { userName, paragraphIndex: THIRD_PARAGRAPH },
+    );
   }
 
   private _selectionInfo(
@@ -285,6 +461,27 @@ export class EditorHelper extends HelperBase {
       anchorOffset: selection.anchorOffset,
       focusOffset: selection.focusOffset,
       isCollapsed: false,
+    };
+  }
+
+  private _crossBlockSelectionInfo(
+    selection: CrossBlockSelectionExpectation,
+  ): CrossBlockSelectionInfo | undefined {
+    if (selection.kind === "none") return undefined;
+    if (selection.kind === "collapsed") {
+      return {
+        text: "",
+        anchor: selection.point,
+        focus: selection.point,
+        isCollapsed: true,
+      };
+    }
+
+    return {
+      anchor: selection.anchor,
+      focus: selection.focus,
+      isCollapsed: false,
+      ...(selection.text !== undefined ? { text: selection.text } : {}),
     };
   }
 
@@ -315,6 +512,15 @@ export async function createEditorPair(page: Page, context: BrowserContext) {
   await remote.assertContent(INITIAL_BLOCKS);
 
   return { reference, remote };
+}
+
+async function waitForEditorReady(page: Page) {
+  const reference = page.locator("#reference").first();
+  await reference.waitFor({ state: "visible" });
+  await reference
+    .locator("[data-lexical-editor] p")
+    .first()
+    .waitFor({ state: "visible" });
 }
 
 export function collapsed(offset: number): SelectionExpectation {

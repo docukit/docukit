@@ -106,7 +106,16 @@ export function syncPresence(
   };
 
   const unregisterUpdateListener = editor.registerUpdateListener(
-    ({ editorState }) => {
+    ({ dirtyElements, dirtyLeaves, editorState }) => {
+      if (dirtyElements.size > 0 || dirtyLeaves.size > 0) {
+        // Existing remote selections need fresh DOM ranges after document changes,
+        // even when their presence payload is unchanged.
+        const currentBinding = bindingByEditor.get(editor);
+        if (currentBinding?.lastPresence) {
+          syncPresenceToSelection(binding, currentBinding.lastPresence);
+        }
+      }
+
       if (!editorHasFocus()) return;
       // Note: We have to re-render selections even if the Lexical
       // selection hasn't changed. For example, when pressing enter

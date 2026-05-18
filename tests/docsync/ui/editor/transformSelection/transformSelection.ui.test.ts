@@ -3,12 +3,18 @@ import { test } from "@playwright/test";
 import {
   createEditorPair,
   ORIGINAL_REFERENCE_SELECTION,
+  SECOND_PARAGRAPH,
   THIRD_PARAGRAPH,
 } from "../utils.js";
 import {
   collapsedAfter,
   expectedSelection,
+  expectedSelectionAcrossBlocks,
+  FLAT_INITIAL_TEXT,
+  INITIAL_BLOCKS,
   INITIAL_TEXT,
+  globalOffsetToPoint,
+  replaceRangeAcrossBlocks,
   replaceRange,
   selectedReplacementOrCursorAfter,
   selectedText,
@@ -76,6 +82,45 @@ const remoteVariants: RemoteVariant[] = [
   },
 ];
 
+const CROSS_PARAGRAPH_REFERENCE_SELECTION = {
+  kind: "range" as const,
+  anchor: { block: SECOND_PARAGRAPH, offset: 5 },
+  focus: { block: THIRD_PARAGRAPH, offset: 7 },
+};
+
+const crossParagraphRemoteCases: RemoteCase[] = [
+  {
+    description: "the first part of the selection",
+    remoteSubstring: "two.",
+    referenceAfterEdit: selectedText("{replacement}\n\nItem th"),
+  },
+  {
+    description: "the last part of the selection",
+    remoteSubstring: "Item th",
+    referenceAfterEdit: selectedText("two.\n\n{replacement}"),
+  },
+  {
+    description: "the first part of the selection and one letter before",
+    remoteSubstring: " two.",
+    referenceAfterEdit: selectedText("\n\nItem th"),
+  },
+  {
+    description: "the last part of the selection and one letter after",
+    remoteSubstring: "Item thr",
+    referenceAfterEdit: selectedText("two.\n\n"),
+  },
+  {
+    description: "the exact selection",
+    remoteSubstring: "two.\n\nItem th",
+    referenceAfterEdit: selectedReplacementOrCursorAfter("Item one.\n\nItem "),
+  },
+  {
+    description: "one letter before and after the selection",
+    remoteSubstring: " two.\n\nItem thr",
+    referenceAfterEdit: collapsedAfter("Item one.\n\nItem"),
+  },
+];
+
 for (const remoteCase of remoteCases) {
   for (const variant of remoteVariants) {
     test(`remote user ${variant.action} ${remoteCase.description}`, async ({
@@ -124,6 +169,60 @@ for (const remoteCase of remoteCases) {
   }
 }
 
+for (const remoteCase of crossParagraphRemoteCases) {
+  for (const variant of remoteVariants) {
+    test(`cross-paragraph remote user ${variant.action} ${remoteCase.description}`, async ({
+      page,
+      context,
+    }) => {
+      const remoteRange = uniqueRangeForSubstring(
+        FLAT_INITIAL_TEXT,
+        remoteCase.remoteSubstring,
+      );
+      const deletedLength = remoteRange.end - remoteRange.start;
+      const replacement = variant.replacement(deletedLength);
+      const remoteStart = globalOffsetToPoint(
+        INITIAL_BLOCKS,
+        remoteRange.start,
+      );
+      const remoteEnd = globalOffsetToPoint(INITIAL_BLOCKS, remoteRange.end);
+      const expectedBlocks = replaceRangeAcrossBlocks(
+        INITIAL_BLOCKS,
+        remoteStart,
+        remoteEnd,
+        replacement ?? "",
+      );
+      const { reference, remote } = await createEditorPair(page, context);
+
+      await reference.reference.selectRangeAcrossBlocks(
+        CROSS_PARAGRAPH_REFERENCE_SELECTION.anchor,
+        CROSS_PARAGRAPH_REFERENCE_SELECTION.focus,
+      );
+      await reference.reference.assertSelectionAcrossBlocks(
+        CROSS_PARAGRAPH_REFERENCE_SELECTION,
+      );
+
+      await remote.otherDevice.selectRangeAcrossBlocks(remoteStart, remoteEnd);
+      if (replacement == null) {
+        await remote.otherDevice.press("Backspace");
+      } else {
+        await remote.otherDevice.type(replacement);
+      }
+
+      await reference.assertContent(expectedBlocks);
+      await remote.assertContent(expectedBlocks);
+      await reference.reference.assertSelectionAcrossBlocks(
+        expectedSelectionAcrossBlocks(
+          expectedBlocks,
+          remoteCase.referenceAfterEdit,
+          replacement,
+          false,
+        ),
+      );
+    });
+  }
+}
+
 test("otherDevice updates the rendered remote cursor after an overlapping edit", async ({
   page,
   context,
@@ -143,9 +242,9 @@ test("otherDevice updates the rendered remote cursor after an overlapping edit",
   // Existing tests in this file already prove that the local selection inside
   // `reference` is remapped correctly after a remote overlapping edit.
   //
-  // This test covers the extra end-to-end piece: the remapped selection must
-  // also be re-published through DocSync presence, so `otherDevice` redraws
-  // the remote cursor/range in the right place instead of showing a stale one.
+  // This test covers the extra end-to-end piece: `otherDevice` must redraw the
+  // remote cursor/range against the new text, even when the presence payload is
+  // unchanged because a same-length replacement keeps the offsets stable.
   await reference.reference.selectRange(THIRD_PARAGRAPH, 2, 7);
   await reference.reference.assertSelection(ORIGINAL_REFERENCE_SELECTION);
   await remote.otherDevice.assertRemoteSelection(
@@ -164,9 +263,16 @@ test("otherDevice updates the rendered remote cursor after an overlapping edit",
 
   await reference.assertContent(expectedBlocks);
   await remote.assertContent(expectedBlocks);
+  await reference.reference.assertSelection(
+    expectedSelection(
+      expectedAfterEdit,
+      selectedText(`${replacement} th`),
+      replacement,
+    ),
+  );
 
   // The important assertion here is on the rendered remote selection in
-  // `otherDevice`, not on `reference`'s local selection state.
+  // `otherDevice`; the local assertion above only proves the source selection.
   await remote.otherDevice.assertRemoteSelection(
     "user1",
     expectedSelection(
@@ -175,4 +281,27 @@ test("otherDevice updates the rendered remote cursor after an overlapping edit",
       replacement,
     ),
   );
+});
+
+test("remote user splits a paragraph in the middle of the selection", async ({
+  page,
+  context,
+}) => {
+  const { reference, remote } = await createEditorPair(page, context);
+  const expectedBlocks = ["Item one.", "Item two.", "Item", " three."];
+
+  await reference.reference.selectRange(THIRD_PARAGRAPH, 2, 7);
+  await reference.reference.assertSelection(ORIGINAL_REFERENCE_SELECTION);
+
+  await remote.otherDevice.select(THIRD_PARAGRAPH, 4);
+  await remote.otherDevice.press("Enter");
+
+  await reference.assertContent(expectedBlocks);
+  await remote.assertContent(expectedBlocks);
+  await reference.reference.assertSelectionAcrossBlocks({
+    kind: "range",
+    text: "em\n\n th",
+    anchor: { block: THIRD_PARAGRAPH, offset: 2 },
+    focus: { block: THIRD_PARAGRAPH + 1, offset: 3 },
+  });
 });

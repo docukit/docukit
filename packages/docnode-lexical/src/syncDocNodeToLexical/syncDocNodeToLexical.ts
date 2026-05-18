@@ -17,7 +17,10 @@ import {
   setIsApplyingOwnChanges,
 } from "../syncLexicalToDocNode.js";
 import type { KeyBinding } from "../types.js";
-import { transformSelection } from "./transformSelection.js";
+import {
+  captureSelectionTransformState,
+  transformSelection,
+} from "./transformSelection.js";
 
 export function syncDocNodeToLexical(
   doc: Doc,
@@ -68,6 +71,7 @@ function $applyDocNodeOperations(
   const { lexicalKeyToDocNodeId, docNodeIdToLexicalKey } = keyBinding;
   const [orderedOps, statePatch] = operations;
   const lexicalRoot = $getRoot();
+  const selectionState = captureSelectionTransformState();
 
   // Helper: Get Lexical node by DocNode ID
   const getLexicalNode = (docNodeId: string | 0) => {
@@ -273,7 +277,8 @@ function $applyDocNodeOperations(
       continue;
     }
     const serialized = docNode.state.j.get() as SerializedLexicalNode;
-    transformSelection(lexicalNode, serialized);
     lexicalNode.getWritable().updateFromJSON(serialized);
   }
+
+  transformSelection(selectionState);
 }
