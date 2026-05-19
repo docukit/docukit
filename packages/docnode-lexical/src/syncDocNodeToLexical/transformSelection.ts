@@ -1,6 +1,7 @@
 import {
   $createRangeSelection,
   $getNodeByKey,
+  $getRoot,
   $getSelection,
   $isElementNode,
   $isRangeSelection,
@@ -40,6 +41,8 @@ type CombinedEndpointText = {
   otherOffset: number;
 };
 
+type TextMatch = { node: TextNode; startOffset: number };
+
 export function captureSelectionTransformState():
   | SelectionTransformState
   | undefined {
@@ -64,10 +67,26 @@ export function transformSelection(
     return;
   }
 
-  const nextAnchor = resolveEndpoint(state.anchor, "anchor", state);
-  const nextFocus = resolveEndpoint(state.focus, "focus", state);
+  let nextAnchor = resolveEndpoint(state.anchor, "anchor", state);
+  let nextFocus = resolveEndpoint(state.focus, "focus", state);
   if (!nextAnchor || !nextFocus) {
-    return;
+    const recoveredRange = resolveSameTextSelectionTailFromDocument(state);
+    if (!recoveredRange) {
+      return;
+    }
+
+    nextAnchor = recoveredRange.anchor;
+    nextFocus = recoveredRange.focus;
+  }
+
+  const recoveredRange = resolveCollapsedSameTextSelectionTail(
+    state,
+    nextAnchor,
+    nextFocus,
+  );
+  if (recoveredRange) {
+    nextAnchor = recoveredRange.anchor;
+    nextFocus = recoveredRange.focus;
   }
 
   const nextSelection = $createRangeSelection();
@@ -120,6 +139,11 @@ function resolveEndpoint(
   );
   if (bridged) {
     return bridged;
+  }
+
+  const recreated = resolveRemovedEndpointByTextPosition(endpoint, role, state);
+  if (recreated) {
+    return recreated;
   }
 
   return resolveRemovedEndpoint(endpoint);
@@ -192,11 +216,13 @@ function resolveEndpointMovedToSplitSuffix(
   }
 
   const movedText = endpoint.text.slice(replacement.start);
-  const nextTextNode = getNextTextNode(node);
+  const nextTextNode = getNextTextNodeMatching(node, (textNode) =>
+    textNode.getTextContent().startsWith(movedText),
+  );
   if (nextTextNode?.getKey() === endpoint.nextTextKey) {
     return;
   }
-  if (!nextTextNode?.getTextContent().startsWith(movedText)) {
+  if (!nextTextNode) {
     return;
   }
 
@@ -222,6 +248,122 @@ function getEndpointSelectionRange(
   };
 }
 
+function resolveCollapsedSameTextSelectionTail(
+  state: SelectionTransformState,
+  anchor: SelectionPoint,
+  focus: SelectionPoint,
+): { anchor: SelectionPoint; focus: SelectionPoint } | undefined {
+  if (state.anchor.key !== state.focus.key) {
+    return;
+  }
+  if (state.anchor.offset === state.focus.offset) {
+    return;
+  }
+  if (anchor.key !== focus.key || anchor.offset !== focus.offset) {
+    return;
+  }
+
+  const match =
+    getSelectedTailMatch(anchor, state) ?? getSelectedTailMatch(focus, state);
+  if (!match) {
+    return;
+  }
+
+  const endOffset = match.startOffset + match.text.length;
+  if (state.anchor.offset <= state.focus.offset) {
+    return {
+      anchor: { key: match.node.getKey(), offset: match.startOffset },
+      focus: { key: match.node.getKey(), offset: endOffset },
+    };
+  }
+
+  return {
+    anchor: { key: match.node.getKey(), offset: endOffset },
+    focus: { key: match.node.getKey(), offset: match.startOffset },
+  };
+}
+
+function resolveSameTextSelectionTailFromDocument(
+  state: SelectionTransformState,
+): { anchor: SelectionPoint; focus: SelectionPoint } | undefined {
+  if (state.anchor.key !== state.focus.key) {
+    return;
+  }
+  if (state.anchor.offset === state.focus.offset) {
+    return;
+  }
+
+  const match = getSelectedTailMatchNearPath(state);
+  if (!match) {
+    return;
+  }
+
+  const endOffset = match.startOffset + match.text.length;
+  if (state.anchor.offset <= state.focus.offset) {
+    return {
+      anchor: { key: match.node.getKey(), offset: match.startOffset },
+      focus: { key: match.node.getKey(), offset: endOffset },
+    };
+  }
+
+  return {
+    anchor: { key: match.node.getKey(), offset: endOffset },
+    focus: { key: match.node.getKey(), offset: match.startOffset },
+  };
+}
+
+function getSelectedTailMatch(
+  point: SelectionPoint,
+  state: SelectionTransformState,
+): (TextMatch & { text: string }) | undefined {
+  const node = getAttachedTextNode(point.key);
+  if (!node) {
+    return;
+  }
+
+  const selectionStart = Math.min(state.anchor.offset, state.focus.offset);
+  const selectionEnd = Math.max(state.anchor.offset, state.focus.offset);
+  const selectedText = state.anchor.text.slice(selectionStart, selectionEnd);
+  const nodeText = node.getTextContent();
+  const minimumLength = Math.min(2, selectedText.length);
+  const searchOffset = Math.min(point.offset, nodeText.length);
+
+  for (
+    let prefixLength = 0;
+    prefixLength <= selectedText.length - minimumLength;
+    prefixLength++
+  ) {
+    const text = selectedText.slice(prefixLength);
+    const startOffset = nodeText.lastIndexOf(text, searchOffset);
+    if (startOffset !== -1) {
+      return { node, startOffset, text };
+    }
+  }
+}
+
+function getSelectedTailMatchNearPath(
+  state: SelectionTransformState,
+): (TextMatch & { text: string }) | undefined {
+  const selectionStart = Math.min(state.anchor.offset, state.focus.offset);
+  const selectionEnd = Math.max(state.anchor.offset, state.focus.offset);
+  const selectedText = state.anchor.text.slice(selectionStart, selectionEnd);
+  const minimumLength = Math.min(2, selectedText.length);
+
+  for (
+    let prefixLength = 0;
+    prefixLength <= selectedText.length - minimumLength;
+    prefixLength++
+  ) {
+    const text = selectedText.slice(prefixLength);
+    const match =
+      getTextMatchAtOrBeforePath(state.focus.path, text, state.focus.key) ??
+      getTextMatchAtOrAfterPath(state.focus.path, text, state.focus.key);
+    if (match) {
+      return { ...match, text };
+    }
+  }
+}
+
 function resolveRemovedEndpoint(
   endpoint: EndpointBookmark,
 ): SelectionPoint | undefined {
@@ -245,6 +387,31 @@ function resolveRemovedEndpoint(
   }
 }
 
+function resolveRemovedEndpointByTextPosition(
+  endpoint: EndpointBookmark,
+  role: "anchor" | "focus",
+  state: SelectionTransformState,
+): SelectionPoint | undefined {
+  if (endpoint.text.length === 0) {
+    return;
+  }
+
+  const other = role === "anchor" ? state.focus : state.anchor;
+  const endpointIsAfterOther = comparePaths(other.path, endpoint.path) < 0;
+  const otherNode = getAttachedTextNode(other.key);
+  const searchPath = otherNode ? getPathFromRoot(otherNode) : other.path;
+  const match = endpointIsAfterOther
+    ? getTextMatchAtOrAfterPath(searchPath, endpoint.text, other.key)
+    : getTextMatchAtOrBeforePath(searchPath, endpoint.text, other.key);
+
+  const nextOffset = match ? match.startOffset + endpoint.offset : 0;
+  if (!match || nextOffset > match.node.getTextContentSize()) {
+    return;
+  }
+
+  return { key: match.node.getKey(), offset: nextOffset };
+}
+
 function resolveRemovedEndpointFromSurvivingEndpoint(
   endpoint: EndpointBookmark,
   role: "anchor" | "focus",
@@ -256,7 +423,71 @@ function resolveRemovedEndpointFromSurvivingEndpoint(
     return;
   }
 
+  const movedAfterOther = resolveRemovedEndpointMovedAfterSurvivingEndpoint(
+    endpoint,
+    other,
+    otherNode,
+  );
+  if (movedAfterOther) {
+    return movedAfterOther;
+  }
+
+  const recreated = resolveRemovedEndpointByTextPosition(endpoint, role, state);
+  if (recreated) {
+    return recreated;
+  }
+
   return resolveEndpointAgainstCombinedText(endpoint, role, other, otherNode);
+}
+
+function resolveRemovedEndpointMovedAfterSurvivingEndpoint(
+  endpoint: EndpointBookmark,
+  other: EndpointBookmark,
+  otherNode: TextNode,
+): SelectionPoint | undefined {
+  if (endpoint.text.length === 0) {
+    return;
+  }
+  if (comparePaths(other.path, endpoint.path) >= 0) {
+    return;
+  }
+
+  const otherMovedSuffix = getMovedSuffix(other, otherNode);
+  if (other.nextTextKey !== endpoint.key && !otherMovedSuffix) {
+    return;
+  }
+
+  if (otherMovedSuffix) {
+    const nextTextNode = getNextTextNode(otherNode);
+    if (!nextTextNode?.getTextContent().startsWith(otherMovedSuffix)) {
+      return;
+    }
+  }
+
+  const nextTextNode = getNextTextNodeMatching(otherNode, (textNode) =>
+    textNode.getTextContent().startsWith(endpoint.text),
+  );
+  if (!nextTextNode || endpoint.offset > nextTextNode.getTextContentSize()) {
+    return;
+  }
+
+  return { key: nextTextNode.getKey(), offset: endpoint.offset };
+}
+
+function getMovedSuffix(
+  endpoint: EndpointBookmark,
+  node: TextNode,
+): string | undefined {
+  const replacement = getTextReplacement(endpoint.text, node.getTextContent());
+  if (replacement.start !== replacement.newEnd) {
+    return;
+  }
+  if (replacement.oldEnd !== endpoint.text.length) {
+    return;
+  }
+
+  const suffix = endpoint.text.slice(replacement.start);
+  return suffix.length > 0 ? suffix : undefined;
 }
 
 function resolveSurvivingEndpointFromRemovedEndpoint(
@@ -398,23 +629,69 @@ function getLastTextDescendant(node: ElementNode): TextNode | undefined {
 }
 
 function getNextTextNode(node: LexicalNode): TextNode | undefined {
+  return getNextTextNodeMatching(node, () => true);
+}
+
+function getNextTextNodeMatching(
+  node: LexicalNode,
+  predicate: (node: TextNode) => boolean,
+): TextNode | undefined {
   let current: LexicalNode | undefined = node;
 
   while (current) {
     const nextSibling = current.getNextSibling();
     if (nextSibling) {
-      return firstTextInNode(nextSibling);
+      const nextText = firstTextInNodeOrFollowingSiblings(
+        nextSibling,
+        predicate,
+      );
+      if (nextText) {
+        return nextText;
+      }
     }
     current = current.getParent() ?? undefined;
   }
 }
 
-function firstTextInNode(node: LexicalNode): TextNode | undefined {
+function firstTextInNodeOrFollowingSiblings(
+  node: LexicalNode,
+  predicate: (node: TextNode) => boolean,
+): TextNode | undefined {
+  let current: LexicalNode | undefined = node;
+
+  while (current) {
+    const text = firstTextInNode(current, predicate);
+    if (text) {
+      return text;
+    }
+    current = current.getNextSibling() ?? undefined;
+  }
+}
+
+function firstTextInNode(
+  node: LexicalNode,
+  predicate: (node: TextNode) => boolean,
+): TextNode | undefined {
   if ($isTextNode(node)) {
-    return node;
+    return predicate(node) ? node : undefined;
   }
   if ($isElementNode(node)) {
-    return getFirstTextDescendant(node);
+    return getFirstTextDescendantMatching(node, predicate);
+  }
+}
+
+function getFirstTextDescendantMatching(
+  node: ElementNode,
+  predicate: (node: TextNode) => boolean,
+): TextNode | undefined {
+  for (const child of node.getChildren()) {
+    if ($isTextNode(child) && predicate(child)) {
+      return child;
+    }
+    if ($isElementNode(child)) {
+      const text = getFirstTextDescendantMatching(child, predicate);
+      if (text) return text;
+    }
   }
 }
 
@@ -445,6 +722,97 @@ function getPathFromRoot(node: LexicalNode): number[] {
   }
 
   return path;
+}
+
+function getTextMatchAtOrAfterPath(
+  path: number[],
+  text: string,
+  excludeKey: string,
+): TextMatch | undefined {
+  return getTextDescendantMatchAtPath(
+    $getRoot(),
+    path,
+    text,
+    "after",
+    excludeKey,
+  );
+}
+
+function getTextMatchAtOrBeforePath(
+  path: number[],
+  text: string,
+  excludeKey: string,
+): TextMatch | undefined {
+  return getTextDescendantMatchAtPath(
+    $getRoot(),
+    path,
+    text,
+    "before",
+    excludeKey,
+  );
+}
+
+function getTextDescendantMatchAtPath(
+  node: LexicalNode,
+  path: number[],
+  text: string,
+  direction: "after" | "before",
+  excludeKey: string,
+): TextMatch | undefined {
+  if ($isTextNode(node)) {
+    const comparison = comparePaths(getPathFromRoot(node), path);
+    const isCandidate =
+      direction === "after" ? comparison >= 0 : comparison <= 0;
+    if (!isCandidate || node.getKey() === excludeKey) {
+      return;
+    }
+
+    const nodeText = node.getTextContent();
+    const startOffset =
+      direction === "after"
+        ? nodeText.indexOf(text)
+        : nodeText.lastIndexOf(text);
+    return startOffset === -1 ? undefined : { node, startOffset };
+  }
+
+  if (!$isElementNode(node)) {
+    return;
+  }
+
+  const children = node.getChildren();
+  if (direction === "after") {
+    for (const child of children) {
+      const textNode = getTextDescendantMatchAtPath(
+        child,
+        path,
+        text,
+        direction,
+        excludeKey,
+      );
+      if (textNode) {
+        return textNode;
+      }
+    }
+    return;
+  }
+
+  for (let index = children.length - 1; index >= 0; index--) {
+    const child = children[index];
+    if (!child) {
+      continue;
+    }
+
+    const textNode = getTextDescendantMatchAtPath(
+      child,
+      path,
+      text,
+      direction,
+      excludeKey,
+    );
+    if (textNode) {
+      return textNode;
+    }
+  }
 }
 
 function comparePaths(left: number[], right: number[]): number {

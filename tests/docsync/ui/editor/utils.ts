@@ -50,6 +50,7 @@ type ClientUtils = {
     start: BlockPoint,
     end: BlockPoint,
   ) => Promise<void>;
+  formatBold: () => Promise<void>;
   type: (text: string) => Promise<void>;
   press: (key: string) => Promise<void>;
   pressAndAssertSelectionUnchanged: (key: string) => Promise<void>;
@@ -57,9 +58,14 @@ type ClientUtils = {
   assertSelectionAcrossBlocks: (
     selection: CrossBlockSelectionExpectation,
   ) => Promise<void>;
+  assertBoldText: (block: number, text: string) => Promise<void>;
   assertRemoteSelection: (
     userName: string,
     selection: SelectionExpectation,
+  ) => Promise<void>;
+  assertRemoteSelectionAcrossBlocks: (
+    userName: string,
+    selection: CrossBlockSelectionExpectation,
   ) => Promise<void>;
 };
 
@@ -107,6 +113,11 @@ export class EditorHelper extends HelperBase {
       selectRangeAcrossBlocks: async (start: BlockPoint, end: BlockPoint) => {
         await this._selectRangeAcrossBlocks(clientLocator, start, end);
       },
+      formatBold: async () => {
+        await this._page.bringToFront();
+        await this._page.keyboard.press("ControlOrMeta+B");
+        await this._page.waitForTimeout(10);
+      },
       type: async (text: string) => {
         await this._page.bringToFront();
         await this._page.keyboard.insertText(text);
@@ -153,6 +164,13 @@ export class EditorHelper extends HelperBase {
           })
           .toMatchObject(expected);
       },
+      assertBoldText: async (block: number, text: string) => {
+        await expect
+          .poll(() => this._hasBoldText(clientLocator, block, text), {
+            timeout: 1_000,
+          })
+          .toBe(true);
+      },
       assertRemoteSelection: async (
         userName: string,
         selection: SelectionExpectation,
@@ -162,6 +180,30 @@ export class EditorHelper extends HelperBase {
             timeout: 1_000,
           })
           .toStrictEqual(this._selectionInfo(selection));
+      },
+      assertRemoteSelectionAcrossBlocks: async (
+        userName: string,
+        selection: CrossBlockSelectionExpectation,
+      ) => {
+        const expected = this._crossBlockSelectionInfo(selection);
+        if (!expected) {
+          await expect
+            .poll(
+              () =>
+                this._readRemoteSelectionAcrossBlocks(clientLocator, userName),
+              { timeout: 1_000 },
+            )
+            .toBeUndefined();
+          return;
+        }
+
+        await expect
+          .poll(
+            () =>
+              this._readRemoteSelectionAcrossBlocks(clientLocator, userName),
+            { timeout: 1_000 },
+          )
+          .toMatchObject(expected);
       },
     };
   }
@@ -441,6 +483,213 @@ export class EditorHelper extends HelperBase {
         };
       },
       { userName, paragraphIndex: THIRD_PARAGRAPH },
+    );
+  }
+
+  private async _readRemoteSelectionAcrossBlocks(
+    clientLocator: Locator,
+    userName: string,
+  ): Promise<CrossBlockSelectionInfo | undefined> {
+    return clientLocator.evaluate(
+      (element, args) => {
+        function getOffsetInParagraph(
+          paragraph: HTMLParagraphElement,
+          node: Node,
+          offset: number,
+        ): number | undefined {
+          if (!paragraph.contains(node)) return undefined;
+
+          const range = document.createRange();
+          range.selectNodeContents(paragraph);
+          range.setEnd(node, offset);
+          return range.toString().length;
+        }
+
+        function getPointFromNode(
+          editorElement: Element,
+          node: Node,
+          offset: number,
+        ): BlockPoint | undefined {
+          const paragraphs = Array.from(editorElement.querySelectorAll("p"));
+
+          for (const [block, paragraph] of paragraphs.entries()) {
+            if (!(paragraph instanceof HTMLParagraphElement)) continue;
+            const pointOffset = getOffsetInParagraph(paragraph, node, offset);
+            if (pointOffset !== undefined) {
+              return { block, offset: pointOffset };
+            }
+          }
+        }
+
+        function getPointFromCoordinates(
+          editorElement: Element,
+          x: number,
+          y: number,
+        ): BlockPoint | undefined {
+          const position = document.caretPositionFromPoint(x, y);
+          if (position) {
+            return getPointFromNode(
+              editorElement,
+              position.offsetNode,
+              position.offset,
+            );
+          }
+
+          const range = document.caretRangeFromPoint(x, y);
+          if (!range) return undefined;
+          return getPointFromNode(
+            editorElement,
+            range.startContainer,
+            range.startOffset,
+          );
+        }
+
+        function comparePoints(left: BlockPoint, right: BlockPoint): number {
+          if (left.block !== right.block) {
+            return left.block - right.block;
+          }
+          return left.offset - right.offset;
+        }
+
+        function sortRange(start: BlockPoint, end: BlockPoint) {
+          return comparePoints(start, end) <= 0
+            ? { start, end }
+            : { start: end, end: start };
+        }
+
+        function getTextAcrossBlocks(
+          editorElement: Element,
+          anchor: BlockPoint,
+          focus: BlockPoint,
+        ): string {
+          const paragraphs = Array.from(editorElement.querySelectorAll("p"));
+          const start = comparePoints(anchor, focus) <= 0 ? anchor : focus;
+          const end = start === anchor ? focus : anchor;
+          const parts: string[] = [];
+
+          for (let block = start.block; block <= end.block; block++) {
+            const paragraph = paragraphs[block];
+            if (!(paragraph instanceof HTMLParagraphElement)) continue;
+            const text = paragraph.textContent ?? "";
+
+            if (block === start.block && block === end.block) {
+              parts.push(text.slice(start.offset, end.offset));
+            } else if (block === start.block) {
+              parts.push(text.slice(start.offset));
+            } else if (block === end.block) {
+              parts.push(text.slice(0, end.offset));
+            } else {
+              parts.push(text);
+            }
+          }
+
+          return parts.join("\n\n");
+        }
+
+        const editor = element.querySelector("[data-lexical-editor]");
+        if (!(editor instanceof HTMLElement)) return undefined;
+
+        const overlay = Array.from(editor.parentElement?.children ?? []).find(
+          (child) =>
+            child !== editor &&
+            child instanceof HTMLDivElement &&
+            child.style.pointerEvents === "none",
+        );
+        if (!(overlay instanceof HTMLDivElement)) return undefined;
+
+        const selectionElements: HTMLSpanElement[] = [];
+        let hasUserName = false;
+
+        for (const child of overlay.children) {
+          if (!(child instanceof HTMLSpanElement)) continue;
+          selectionElements.push(child);
+          if (child.textContent?.includes(args.userName)) {
+            hasUserName = true;
+          }
+        }
+
+        if (!hasUserName) return undefined;
+
+        const ranges: { start: BlockPoint; end: BlockPoint }[] = [];
+
+        for (const selectionElement of selectionElements) {
+          const rect = selectionElement.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0) continue;
+
+          const middleY = rect.top + rect.height / 2;
+          const startX = rect.width > 2 ? rect.left + 1 : rect.left;
+          const endX = rect.width > 2 ? rect.right - 1 : rect.right;
+          const start = getPointFromCoordinates(editor, startX, middleY);
+          const end = getPointFromCoordinates(editor, endX, middleY);
+
+          if (start && end) {
+            ranges.push(sortRange(start, end));
+          }
+        }
+
+        ranges.sort((left, right) => comparePoints(left.start, right.start));
+
+        const first = ranges[0];
+        const last = ranges[ranges.length - 1];
+        if (!first || !last) return undefined;
+
+        return {
+          anchor: first.start,
+          focus: last.end,
+          isCollapsed: comparePoints(first.start, last.end) === 0,
+          text: getTextAcrossBlocks(editor, first.start, last.end),
+        };
+      },
+      { userName },
+    );
+  }
+
+  private async _hasBoldText(
+    clientLocator: Locator,
+    block: number,
+    text: string,
+  ): Promise<boolean> {
+    return clientLocator.evaluate(
+      (element, args) => {
+        function isBoldElement(element: HTMLElement): boolean {
+          const fontWeight = getComputedStyle(element).fontWeight;
+          return (
+            element.tagName === "B" ||
+            element.tagName === "STRONG" ||
+            element.classList.contains("font-bold") ||
+            fontWeight === "bold" ||
+            Number(fontWeight) >= 600
+          );
+        }
+
+        const editor = element.querySelector("[data-lexical-editor]");
+        if (!(editor instanceof HTMLElement)) return false;
+
+        const paragraph = editor.querySelectorAll("p")[args.block];
+        if (!(paragraph instanceof HTMLParagraphElement)) return false;
+
+        const walker = document.createTreeWalker(
+          paragraph,
+          NodeFilter.SHOW_TEXT,
+        );
+
+        for (
+          let current = walker.nextNode();
+          current;
+          current = walker.nextNode()
+        ) {
+          if (!(current instanceof Text) || current.data !== args.text) {
+            continue;
+          }
+
+          return current.parentElement
+            ? isBoldElement(current.parentElement)
+            : false;
+        }
+
+        return false;
+      },
+      { block, text },
     );
   }
 

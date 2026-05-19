@@ -5,6 +5,7 @@ import {
   ORIGINAL_REFERENCE_SELECTION,
   SECOND_PARAGRAPH,
   THIRD_PARAGRAPH,
+  type CrossBlockSelectionExpectation,
 } from "../utils.js";
 import {
   collapsedAfter,
@@ -121,6 +122,51 @@ const crossParagraphRemoteCases: RemoteCase[] = [
   },
 ];
 
+type CrossParagraphOverlapAction = {
+  action: string;
+  input:
+    | { kind: "key"; value: "Backspace" | "Enter" }
+    | { kind: "text"; value: string };
+  expectedBlocks: string[];
+  expectedSelection: CrossBlockSelectionExpectation;
+};
+
+const crossParagraphOverlapActions: CrossParagraphOverlapAction[] = [
+  {
+    action: "deletes",
+    input: { kind: "key", value: "Backspace" },
+    expectedBlocks: ["Item one.", "Item  three."],
+    expectedSelection: {
+      kind: "range",
+      text: " th",
+      anchor: { block: SECOND_PARAGRAPH, offset: 5 },
+      focus: { block: SECOND_PARAGRAPH, offset: 8 },
+    },
+  },
+  {
+    action: "splits",
+    input: { kind: "key", value: "Enter" },
+    expectedBlocks: ["Item one.", "Item ", " three."],
+    expectedSelection: {
+      kind: "range",
+      text: " th",
+      anchor: { block: THIRD_PARAGRAPH, offset: 0 },
+      focus: { block: THIRD_PARAGRAPH, offset: 3 },
+    },
+  },
+  {
+    action: "replaces",
+    input: { kind: "text", value: "x" },
+    expectedBlocks: ["Item one.", "Item x three."],
+    expectedSelection: {
+      kind: "range",
+      text: " th",
+      anchor: { block: SECOND_PARAGRAPH, offset: 6 },
+      focus: { block: SECOND_PARAGRAPH, offset: 9 },
+    },
+  },
+];
+
 for (const remoteCase of remoteCases) {
   for (const variant of remoteVariants) {
     test(`remote user ${variant.action} ${remoteCase.description}`, async ({
@@ -223,6 +269,41 @@ for (const remoteCase of crossParagraphRemoteCases) {
   }
 }
 
+for (const remoteAction of crossParagraphOverlapActions) {
+  test(`cross-paragraph remote user ${remoteAction.action} from the previous paragraph into the selection`, async ({
+    page,
+    context,
+  }) => {
+    const { reference, remote } = await createEditorPair(page, context);
+    const remoteStart = { block: SECOND_PARAGRAPH, offset: 5 };
+    const remoteEnd = { block: THIRD_PARAGRAPH, offset: 4 };
+
+    await reference.reference.selectRange(THIRD_PARAGRAPH, 2, 7);
+    await reference.reference.assertSelection(ORIGINAL_REFERENCE_SELECTION);
+    await remote.otherDevice.assertRemoteSelection(
+      "user1",
+      ORIGINAL_REFERENCE_SELECTION,
+    );
+
+    await remote.otherDevice.selectRangeAcrossBlocks(remoteStart, remoteEnd);
+    if (remoteAction.input.kind === "key") {
+      await remote.otherDevice.press(remoteAction.input.value);
+    } else {
+      await remote.otherDevice.type(remoteAction.input.value);
+    }
+
+    await reference.assertContent(remoteAction.expectedBlocks);
+    await remote.assertContent(remoteAction.expectedBlocks);
+    await reference.reference.assertSelectionAcrossBlocks(
+      remoteAction.expectedSelection,
+    );
+    await remote.otherDevice.assertRemoteSelectionAcrossBlocks(
+      "user1",
+      remoteAction.expectedSelection,
+    );
+  });
+}
+
 test("otherDevice updates the rendered remote cursor after an overlapping edit", async ({
   page,
   context,
@@ -283,25 +364,192 @@ test("otherDevice updates the rendered remote cursor after an overlapping edit",
   );
 });
 
-test("remote user splits a paragraph in the middle of the selection", async ({
+test("remote user splits a paragraph twice in the middle of the selection", async ({
   page,
   context,
 }) => {
   const { reference, remote } = await createEditorPair(page, context);
-  const expectedBlocks = ["Item one.", "Item two.", "Item", " three."];
+  const splitBlocks = ["Item one.", "Item two.", "Item", "", " three."];
 
   await reference.reference.selectRange(THIRD_PARAGRAPH, 2, 7);
   await reference.reference.assertSelection(ORIGINAL_REFERENCE_SELECTION);
 
   await remote.otherDevice.select(THIRD_PARAGRAPH, 4);
   await remote.otherDevice.press("Enter");
+  await remote.otherDevice.press("Enter");
 
-  await reference.assertContent(expectedBlocks);
-  await remote.assertContent(expectedBlocks);
+  await reference.assertContent(splitBlocks);
+  await remote.assertContent(splitBlocks);
   await reference.reference.assertSelectionAcrossBlocks({
     kind: "range",
-    text: "em\n\n th",
+    text: "em\n\n\n\n th",
     anchor: { block: THIRD_PARAGRAPH, offset: 2 },
-    focus: { block: THIRD_PARAGRAPH + 1, offset: 3 },
+    focus: { block: THIRD_PARAGRAPH + 2, offset: 3 },
+  });
+});
+
+test("remote user splits and rejoins the normal text before selected bold text", async ({
+  page,
+  context,
+}) => {
+  const { reference, remote } = await createEditorPair(page, context);
+  const assertSelection = async (selection: {
+    kind: "range";
+    text: string;
+    anchor: { block: number; offset: number };
+    focus: { block: number; offset: number };
+  }) => {
+    await reference.reference.assertSelectionAcrossBlocks(selection);
+    await remote.otherDevice.assertRemoteSelectionAcrossBlocks(
+      "user1",
+      selection,
+    );
+  };
+
+  await reference.reference.selectRange(THIRD_PARAGRAPH, 5, 7);
+  await reference.reference.formatBold();
+  await reference.reference.select(THIRD_PARAGRAPH, 0);
+  await reference.reference.selectRange(THIRD_PARAGRAPH, 2, 9);
+  await assertSelection({
+    kind: "range",
+    text: "em thre",
+    anchor: { block: THIRD_PARAGRAPH, offset: 2 },
+    focus: { block: THIRD_PARAGRAPH, offset: 9 },
+  });
+  await reference.reference.assertBoldText(THIRD_PARAGRAPH, "th");
+  await remote.otherDevice.assertBoldText(THIRD_PARAGRAPH, "th");
+
+  await remote.otherDevice.select(THIRD_PARAGRAPH, 3);
+  await remote.otherDevice.press("Enter");
+
+  await reference.assertContent(["Item one.", "Item two.", "Ite", "m three."]);
+  await remote.assertContent(["Item one.", "Item two.", "Ite", "m three."]);
+  await assertSelection({
+    kind: "range",
+    text: "e\n\nm thre",
+    anchor: { block: THIRD_PARAGRAPH, offset: 2 },
+    focus: { block: THIRD_PARAGRAPH + 1, offset: 6 },
+  });
+
+  await remote.otherDevice.press("Enter");
+
+  await reference.assertContent([
+    "Item one.",
+    "Item two.",
+    "Ite",
+    "",
+    "m three.",
+  ]);
+  await remote.assertContent(["Item one.", "Item two.", "Ite", "", "m three."]);
+  await assertSelection({
+    kind: "range",
+    text: "e\n\n\n\nm thre",
+    anchor: { block: THIRD_PARAGRAPH, offset: 2 },
+    focus: { block: THIRD_PARAGRAPH + 2, offset: 6 },
+  });
+
+  await remote.otherDevice.press("Backspace");
+
+  await reference.assertContent(["Item one.", "Item two.", "Ite", "m three."]);
+  await remote.assertContent(["Item one.", "Item two.", "Ite", "m three."]);
+  await assertSelection({
+    kind: "range",
+    text: "e\n\nm thre",
+    anchor: { block: THIRD_PARAGRAPH, offset: 2 },
+    focus: { block: THIRD_PARAGRAPH + 1, offset: 6 },
+  });
+
+  await remote.otherDevice.press("Backspace");
+
+  await reference.assertContent(INITIAL_BLOCKS);
+  await remote.assertContent(INITIAL_BLOCKS);
+  await assertSelection({
+    kind: "range",
+    text: "em thre",
+    anchor: { block: THIRD_PARAGRAPH, offset: 2 },
+    focus: { block: THIRD_PARAGRAPH, offset: 9 },
+  });
+});
+
+test("remote user splits and rejoins the normal text after selected bold text", async ({
+  page,
+  context,
+}) => {
+  const { reference, remote } = await createEditorPair(page, context);
+  const assertSelection = async (selection: {
+    kind: "range";
+    text: string;
+    anchor: { block: number; offset: number };
+    focus: { block: number; offset: number };
+  }) => {
+    await reference.reference.assertSelectionAcrossBlocks(selection);
+    await remote.otherDevice.assertRemoteSelectionAcrossBlocks(
+      "user1",
+      selection,
+    );
+  };
+
+  await reference.reference.selectRange(THIRD_PARAGRAPH, 5, 7);
+  await reference.reference.formatBold();
+  await reference.reference.select(THIRD_PARAGRAPH, 0);
+  await reference.reference.selectRange(THIRD_PARAGRAPH, 2, 9);
+  await assertSelection({
+    kind: "range",
+    text: "em thre",
+    anchor: { block: THIRD_PARAGRAPH, offset: 2 },
+    focus: { block: THIRD_PARAGRAPH, offset: 9 },
+  });
+  await reference.reference.assertBoldText(THIRD_PARAGRAPH, "th");
+  await remote.otherDevice.assertBoldText(THIRD_PARAGRAPH, "th");
+
+  await remote.otherDevice.select(THIRD_PARAGRAPH, 8);
+  await remote.otherDevice.press("Enter");
+
+  await reference.assertContent(["Item one.", "Item two.", "Item thr", "ee."]);
+  await remote.assertContent(["Item one.", "Item two.", "Item thr", "ee."]);
+  await assertSelection({
+    kind: "range",
+    text: "em thr\n\ne",
+    anchor: { block: THIRD_PARAGRAPH, offset: 2 },
+    focus: { block: THIRD_PARAGRAPH + 1, offset: 1 },
+  });
+
+  await remote.otherDevice.press("Enter");
+
+  await reference.assertContent([
+    "Item one.",
+    "Item two.",
+    "Item thr",
+    "",
+    "ee.",
+  ]);
+  await remote.assertContent(["Item one.", "Item two.", "Item thr", "", "ee."]);
+  await assertSelection({
+    kind: "range",
+    text: "em thr\n\n\n\ne",
+    anchor: { block: THIRD_PARAGRAPH, offset: 2 },
+    focus: { block: THIRD_PARAGRAPH + 2, offset: 1 },
+  });
+
+  await remote.otherDevice.press("Backspace");
+
+  await reference.assertContent(["Item one.", "Item two.", "Item thr", "ee."]);
+  await remote.assertContent(["Item one.", "Item two.", "Item thr", "ee."]);
+  await assertSelection({
+    kind: "range",
+    text: "em thr\n\ne",
+    anchor: { block: THIRD_PARAGRAPH, offset: 2 },
+    focus: { block: THIRD_PARAGRAPH + 1, offset: 1 },
+  });
+
+  await remote.otherDevice.press("Backspace");
+
+  await reference.assertContent(INITIAL_BLOCKS);
+  await remote.assertContent(INITIAL_BLOCKS);
+  await assertSelection({
+    kind: "range",
+    text: "em thre",
+    anchor: { block: THIRD_PARAGRAPH, offset: 2 },
+    focus: { block: THIRD_PARAGRAPH, offset: 9 },
   });
 });

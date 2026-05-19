@@ -39,9 +39,13 @@ export function syncDocNodeToLexical(
     setIsApplyingOwnChanges(editor, true);
 
     try {
+      const selectionState = editor
+        .getEditorState()
+        .read(() => captureSelectionTransformState());
+
       editor.update(
         () => {
-          $applyDocNodeOperations(doc, operations, keyBinding);
+          $applyDocNodeOperations(doc, operations, keyBinding, selectionState);
         },
         {
           discrete: true,
@@ -67,11 +71,11 @@ function $applyDocNodeOperations(
   doc: Doc,
   operations: Operations,
   keyBinding: KeyBinding,
+  selectionState: ReturnType<typeof captureSelectionTransformState>,
 ): void {
   const { lexicalKeyToDocNodeId, docNodeIdToLexicalKey } = keyBinding;
   const [orderedOps, statePatch] = operations;
   const lexicalRoot = $getRoot();
-  const selectionState = captureSelectionTransformState();
 
   // Helper: Get Lexical node by DocNode ID
   const getLexicalNode = (docNodeId: string | 0) => {
