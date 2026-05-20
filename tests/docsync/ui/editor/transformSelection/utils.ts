@@ -7,7 +7,7 @@ import {
 } from "../utils.js";
 
 export const INITIAL_TEXT = INITIAL_BLOCKS[THIRD_PARAGRAPH]!;
-export const BLOCK_SEPARATOR = "\n\n";
+const BLOCK_SEPARATOR = "\n\n";
 export const FLAT_INITIAL_TEXT = INITIAL_BLOCKS.join(BLOCK_SEPARATOR);
 export { INITIAL_BLOCKS };
 

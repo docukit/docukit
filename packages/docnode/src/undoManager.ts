@@ -2,15 +2,9 @@ import { type Doc } from "./main.js";
 import type { Operations } from "./operations.js";
 
 /** `meta` is opaque — consumers attach arbitrary data (e.g. selection). */
-export type UndoStackItem = {
-  operations: Operations;
-  meta: Map<string, unknown>;
-};
+type UndoStackItem = { operations: Operations; meta: Map<string, unknown> };
 
-export type UndoManagerEvent = {
-  meta: UndoStackItem["meta"];
-  type: "undo" | "redo";
-};
+type UndoManagerEvent = { meta: UndoStackItem["meta"]; type: "undo" | "redo" };
 
 type Handler = (event: UndoManagerEvent) => void;
 

@@ -7,7 +7,13 @@ import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import ToolbarPlugin from "./ToolbarPlugin";
-import { $createParagraphNode, $createTextNode, $getRoot } from "lexical";
+import {
+  $createParagraphNode,
+  $createTextNode,
+  $getRoot,
+  CAN_REDO_COMMAND,
+  CAN_UNDO_COMMAND,
+} from "lexical";
 import type { PresenceSelection } from "@docukit/docnode-lexical";
 import {
   DocNodePlugin,
@@ -126,6 +132,8 @@ function InitialContentPlugin({
     if (!seeded) return;
     // Clear the initial seed so it does not enter the UndoManager.
     undoManager.clear();
+    editor.dispatchCommand(CAN_UNDO_COMMAND, false);
+    editor.dispatchCommand(CAN_REDO_COMMAND, false);
   }, [editor, clientId, undoManager]);
 
   return null;

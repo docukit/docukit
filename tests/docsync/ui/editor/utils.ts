@@ -222,19 +222,11 @@ export class EditorHelper extends HelperBase {
     end: number,
   ) {
     await this._page.bringToFront();
-    await clientLocator.click();
-    for (let i = 0; i < 3; i++) {
-      await this._page.keyboard.press("ControlOrMeta+ArrowUp");
-    }
-    for (let i = 0; i < block; i++) {
-      await this._page.keyboard.press("ArrowDown");
-    }
-    for (let i = 0; i < start; i++) {
-      await this._page.keyboard.press("ArrowRight");
-    }
-    for (let i = start; i < end; i++) {
-      await this._page.keyboard.press("Shift+ArrowRight");
-    }
+    await this._setSelectionAcrossBlocks(
+      clientLocator,
+      { block, offset: start },
+      { block, offset: end },
+    );
     await this._page.waitForTimeout(10);
   }
 
@@ -244,23 +236,55 @@ export class EditorHelper extends HelperBase {
     end: BlockPoint,
   ) {
     await this._page.bringToFront();
-    await clientLocator.click();
-    for (let i = 0; i < 3; i++) {
-      await this._page.keyboard.press("ControlOrMeta+ArrowUp");
-    }
-    for (let i = 0; i < start.block; i++) {
-      await this._page.keyboard.press("ArrowDown");
-    }
-    for (let i = 0; i < start.offset; i++) {
-      await this._page.keyboard.press("ArrowRight");
-    }
+    await this._setSelectionAcrossBlocks(clientLocator, start, end);
+    await this._page.waitForTimeout(10);
+  }
 
-    const totalSteps = await clientLocator.evaluate(
+  private async _setSelectionAcrossBlocks(
+    clientLocator: Locator,
+    start: BlockPoint,
+    end: BlockPoint,
+  ) {
+    await clientLocator.evaluate(
       (element, args) => {
-        const paragraphs = Array.from(
-          element.querySelectorAll("[data-lexical-editor] p"),
-        );
+        function pointAtOffset(
+          paragraph: HTMLParagraphElement,
+          targetOffset: number,
+        ): { node: Node; offset: number } {
+          const walker = document.createTreeWalker(
+            paragraph,
+            NodeFilter.SHOW_TEXT,
+          );
+          let traversed = 0;
+          let lastText: Text | undefined;
 
+          for (
+            let current = walker.nextNode();
+            current;
+            current = walker.nextNode()
+          ) {
+            if (!(current instanceof Text)) continue;
+            const nextTraversed = traversed + current.data.length;
+            if (targetOffset <= nextTraversed) {
+              return { node: current, offset: targetOffset - traversed };
+            }
+            traversed = nextTraversed;
+            lastText = current;
+          }
+
+          if (lastText) {
+            return { node: lastText, offset: lastText.data.length };
+          }
+
+          return { node: paragraph, offset: 0 };
+        }
+
+        const editor = element.querySelector("[data-lexical-editor]");
+        if (!(editor instanceof HTMLElement)) {
+          throw new Error("Expected Lexical editor element");
+        }
+
+        const paragraphs = Array.from(editor.querySelectorAll("p"));
         const startParagraph = paragraphs[args.start.block];
         const endParagraph = paragraphs[args.end.block];
         if (
@@ -270,37 +294,21 @@ export class EditorHelper extends HelperBase {
           throw new Error("Expected paragraph elements");
         }
 
-        if (args.start.block === args.end.block) {
-          return args.end.offset - args.start.offset;
-        }
+        const startPoint = pointAtOffset(startParagraph, args.start.offset);
+        const endPoint = pointAtOffset(endParagraph, args.end.offset);
+        const range = document.createRange();
+        range.setStart(startPoint.node, startPoint.offset);
+        range.setEnd(endPoint.node, endPoint.offset);
 
-        let steps =
-          (startParagraph.textContent ?? "").length -
-          args.start.offset +
-          args.end.offset +
-          (args.end.block - args.start.block);
-
-        for (
-          let block = args.start.block + 1;
-          block < args.end.block;
-          block++
-        ) {
-          const paragraph = paragraphs[block];
-          if (!(paragraph instanceof HTMLParagraphElement)) {
-            throw new Error(`Expected paragraph ${block}`);
-          }
-          steps += (paragraph.textContent ?? "").length;
-        }
-
-        return steps;
+        const selection = window.getSelection();
+        if (!selection) throw new Error("Expected window selection");
+        selection.removeAllRanges();
+        selection.addRange(range);
+        editor.focus({ preventScroll: true });
+        document.dispatchEvent(new Event("selectionchange"));
       },
       { start, end },
     );
-
-    for (let i = 0; i < totalSteps; i++) {
-      await this._page.keyboard.press("Shift+ArrowRight");
-    }
-    await this._page.waitForTimeout(10);
   }
 
   private async _readSelection(
