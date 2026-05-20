@@ -25,6 +25,7 @@
 - Do your best to ensure that `await tick()` uses the default value of 3ms, or 10ms in some suites. If a longer wait time is required anywhere, it's a sign that there's something that needs optimization.
 - The pattern for exporting private APIs is to use class methods and properties prefixed with `private`. TypeScript allows access to these from outside the class using bracket notation. If you don't recognize the method, you may need to change it to `protected` in your source code. Never export top-level internal modules, nor use assertions to cast an internal property.
   - **IMPORTANT**: When writing tests that need to access internal class properties, ALWAYS change those properties from `private` to `protected` in the source code. Then use bracket notation (e.g., `instance["_property"]`) in tests WITHOUT any type assertions (`as`, `as any`, `as unknown as`). Never use type assertions to access private/internal properties - change them to `protected` instead.
+  - **Accepted exception:** `@docukit/docnode-lexical` may export `_INTERNAL_setupUndoManager` for tests that need to validate the undo binding without mounting React.
 
 ## TypeScript Rules
 

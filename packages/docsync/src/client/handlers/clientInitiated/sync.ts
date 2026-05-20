@@ -78,17 +78,20 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   const clientClock = stored?.clock ?? 0;
 
   const presenceState = client["_presenceDebounceState"].get(docId);
-  if (presenceState) {
+  let hasPendingPresence = false;
+  let presence: unknown;
+  if (presenceState?.timeout !== undefined) {
+    hasPendingPresence = true;
+    presence = presenceState.data;
     clearTimeout(presenceState.timeout);
-    client["_presenceDebounceState"].delete(docId);
+    delete presenceState.timeout;
     client["_bcHelper"]?.broadcast({
       type: "PRESENCE",
       docId,
-      presence: { [client["_clientId"]]: presenceState.data },
+      presence: { [client["_clientId"]]: presence },
     });
   }
 
-  const presence = presenceState?.data;
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) {
     // Doc was unloaded while this sync was in-flight — abort.
@@ -101,7 +104,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     clock: clientClock,
     docId,
     operations,
-    ...(presence !== undefined ? { presence } : {}),
+    ...(hasPendingPresence ? { presence } : {}),
   };
   const req = { type, docId, operations, clock: clientClock };
 
@@ -164,9 +167,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     const serializedDoc = docBinding.serialize(doc);
 
     const recheckStored = await ctx.getSerializedDoc({ docId });
-    if (recheckStored?.clock !== stored.clock) {
-      return;
-    }
+    if (recheckStored?.clock !== stored.clock) return;
 
     await ctx.saveSerializedDoc({ serializedDoc, docId, clock: data.clock });
     didConsolidate = true;
@@ -183,6 +184,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     for (const op of persistedServerOperations) {
       client["_bcHelper"]?.broadcast({
         type: "OPERATIONS",
+        source: "remote",
         operations: op,
         docId,
         ...(presencePatch && { presence: presencePatch }),

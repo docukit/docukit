@@ -7,23 +7,16 @@ import { TypeTable } from "fumadocs-ui/components/type-table";
 
 DocNode provides a built-in undo manager that can be used to undo and redo transactions. It has a modular design and is completely opt-in.
 
-<Callout type="info">
-  The implementation is very simple (less than 80 lines), making it easy to
-  customize or use as inspiration for your own UndoManager. For example, you
-  could store operations in IndexedDB instead of memory, enabling persistent
-  undo/redo when reopening documents—similar to how VS Code preserves your
-  editing history when switching between files.
-</Callout>
-
 ```ts
 import { UndoManager } from "@docukit/docnode";
 
 const undoManager = new UndoManager(doc, { maxUndoSteps: 100 });
 
-doc.undoManager.undo(); // undo the last transaction
-doc.undoManager.redo(); // redo the last undone transaction
-doc.undoManager.canUndo(); // true if there are undo steps available
-doc.undoManager.canRedo(); // true if there are redo steps available
+undoManager.undo(); // undo the last transaction
+undoManager.redo(); // redo the last undone transaction
+undoManager.canUndo(); // true if there are undo steps available
+undoManager.canRedo(); // true if there are redo steps available
+undoManager.clear(); // clears both stacks
 ```
 
 ## Options
@@ -43,3 +36,26 @@ doc.undoManager.canRedo(); // true if there are redo steps available
     },
   }}
 />
+
+## Advanced: onPush and onPop
+
+Most apps will not need these methods. They’re useful when binding data structures that need to restore external state, like selections in a rich text editor.
+
+```ts
+const offPush = undoManager.onPush(({ meta }) => {
+  meta.set("selection", currentSelection);
+});
+
+const offPop = undoManager.onPop(({ meta }) => {
+  const selection = meta.get("selection");
+  restoreSelection(selection);
+});
+```
+
+`meta` is an opaque `Map` owned by that stack item.
+
+- `onPush(...)`: capture extra state before the step is finalized.
+- `onPop(...)`: restore that state after undo or redo applies.
+
+Both events also receive a type field with either "undo" or "redo".
+This helps avoid attaching metadata at the wrong moment. See our bindings source code for real examples.

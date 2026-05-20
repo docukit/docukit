@@ -5,7 +5,6 @@ import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
-import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $createParagraphNode, $createTextNode, $getRoot } from "lexical";
 import {
@@ -82,7 +81,6 @@ export function SyncedEditorPanel({
               }
             />
           </div>
-          <HistoryPlugin />
         </LexicalComposer>
       </div>
     </div>

@@ -5,6 +5,8 @@ export {
   createLexicalDoc,
 } from "../lexicalDocNode.js";
 export { syncPresence, updatePresence } from "../presence/index.js";
+// Accepted internal-test exception: See AGENTS.md
+export { setupUndoManager as _INTERNAL_setupUndoManager } from "../setupUndoManager.js";
 export type {
   syncLexicalWithDocPresenceOptions,
   KeyBinding,

@@ -5,18 +5,25 @@ import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
-import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import ToolbarPlugin from "./ToolbarPlugin";
-import { $createParagraphNode, $createTextNode, $getRoot } from "lexical";
+import {
+  $createParagraphNode,
+  $createTextNode,
+  $getRoot,
+  CAN_REDO_COMMAND,
+  CAN_UNDO_COMMAND,
+} from "lexical";
 import type { PresenceSelection } from "@docukit/docnode-lexical";
 import {
   DocNodePlugin,
   type Presence,
   type PresenceUser,
 } from "@docukit/docnode-lexical/react";
-import type { Doc } from "@docukit/docnode";
-import { useEffect } from "react";
+import { UndoManager, type Doc } from "@docukit/docnode";
+import { useEffect, useMemo } from "react";
+
+const undoManagers = new WeakMap<Doc, UndoManager>();
 
 export function EditorPanel({
   doc,
@@ -31,6 +38,15 @@ export function EditorPanel({
   setPresence?: (selection: PresenceSelection | undefined) => void;
   user?: PresenceUser;
 }) {
+  const undoManager = useMemo(() => {
+    let manager = undoManagers.get(doc);
+    if (!manager) {
+      manager = new UndoManager(doc);
+      undoManagers.set(doc, manager);
+    }
+    return manager;
+  }, [doc]);
+
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-700/50 bg-zinc-900/50 shadow-2xl shadow-black/50 backdrop-blur-sm">
       <LexicalComposer
@@ -61,8 +77,9 @@ export function EditorPanel({
           presence={presence}
           setPresence={setPresence}
           user={user}
+          undoManager={undoManager}
         />
-        <InitialContentPlugin clientId={clientId} />
+        <InitialContentPlugin clientId={clientId} undoManager={undoManager} />
         <ToolbarPlugin />
         <div className="relative">
           <RichTextPlugin
@@ -77,32 +94,47 @@ export function EditorPanel({
             }
           />
         </div>
-        <HistoryPlugin />
       </LexicalComposer>
     </div>
   );
 }
 
-function InitialContentPlugin({ clientId }: { clientId: string }) {
+function InitialContentPlugin({
+  clientId,
+  undoManager,
+}: {
+  clientId: string;
+  undoManager: UndoManager;
+}) {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
     if (!editor) return;
-    editor.update(() => {
-      const root = $getRoot();
-      if (clientId !== "reference" || root.getChildrenSize() !== 0) return;
-      const p1 = $createParagraphNode();
-      const p2 = $createParagraphNode();
-      const p3 = $createParagraphNode();
-      const text1 = $createTextNode("One");
-      const text2 = $createTextNode("Two");
-      const text3 = $createTextNode("Three");
-      p1.append(text1);
-      p2.append(text2);
-      p3.append(text3);
-      root.append(p1, p2, p3);
-    });
-  }, [editor, clientId]);
+    let seeded = false;
+    editor.update(
+      () => {
+        const root = $getRoot();
+        if (clientId !== "reference" || root.getChildrenSize() !== 0) return;
+        const p1 = $createParagraphNode();
+        const p2 = $createParagraphNode();
+        const p3 = $createParagraphNode();
+        const text1 = $createTextNode("Item one.");
+        const text2 = $createTextNode("Item two.");
+        const text3 = $createTextNode("Item three.");
+        p1.append(text1);
+        p2.append(text2);
+        p3.append(text3);
+        root.append(p1, p2, p3);
+        seeded = true;
+      },
+      { discrete: true },
+    );
+    if (!seeded) return;
+    // Clear the initial seed so it does not enter the UndoManager.
+    undoManager.clear();
+    editor.dispatchCommand(CAN_UNDO_COMMAND, false);
+    editor.dispatchCommand(CAN_REDO_COMMAND, false);
+  }, [editor, clientId, undoManager]);
 
   return null;
 }

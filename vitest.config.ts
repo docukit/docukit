@@ -7,6 +7,11 @@ import react from "@vitejs/plugin-react";
 // see https://nx.dev/docs/technologies/test-tools/vitest/guides/testing-without-building-dependencies
 const resolveConfig = !process.env.CI ? { conditions: ["vitest"] } : {};
 
+// Expose globalThis.gc() in node test workers.
+process.env.NODE_OPTIONS = [process.env.NODE_OPTIONS, "--expose-gc"]
+  .filter(Boolean)
+  .join(" ");
+
 const project = (name: string, browser: boolean): TestProjectConfiguration => ({
   extends: true, // Extends root config to include resolve.conditions
   plugins: [react()],

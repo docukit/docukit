@@ -59,12 +59,18 @@ export function syncPresence(
   const { setPresence: rawSetPresence, user } = presenceOptions ?? {};
   if (!rawSetPresence) return undefined;
 
-  const setPresence = (selection: PresenceSelection | undefined) =>
-    rawSetPresence(
+  let lastSelection: PresenceSelection | undefined;
+
+  const setPresence = (selection: PresenceSelection | undefined) => {
+    const nextSelection =
       selection && user?.name != null && user?.color != null
         ? { ...selection, name: user.name, color: user.color }
-        : selection,
-    );
+        : selection;
+
+    if (areSelectionsEqual(lastSelection, nextSelection)) return;
+    lastSelection = nextSelection;
+    rawSetPresence(nextSelection);
+  };
 
   const rootElement = editor.getRootElement();
   let cursorsContainer: HTMLElement | undefined;
@@ -100,7 +106,16 @@ export function syncPresence(
   };
 
   const unregisterUpdateListener = editor.registerUpdateListener(
-    ({ editorState }) => {
+    ({ dirtyElements, dirtyLeaves, editorState }) => {
+      if (dirtyElements.size > 0 || dirtyLeaves.size > 0) {
+        // Existing remote selections need fresh DOM ranges after document changes,
+        // even when their presence payload is unchanged.
+        const currentBinding = bindingByEditor.get(editor);
+        if (currentBinding?.lastPresence) {
+          syncPresenceToSelection(binding, currentBinding.lastPresence);
+        }
+      }
+
       if (!editorHasFocus()) return;
       // Note: We have to re-render selections even if the Lexical
       // selection hasn't changed. For example, when pressing enter
@@ -152,4 +167,20 @@ export function syncPresence(
 
   bindingByEditor.set(editor, { handle, lastPresence: undefined });
   return handle.cleanup;
+}
+
+function areSelectionsEqual(
+  a: PresenceSelection | undefined,
+  b: PresenceSelection | undefined,
+): boolean {
+  if (!a || !b) return a === b;
+
+  return (
+    a.anchor.key === b.anchor.key &&
+    a.anchor.offset === b.anchor.offset &&
+    a.focus.key === b.focus.key &&
+    a.focus.offset === b.focus.offset &&
+    a.name === b.name &&
+    a.color === b.color
+  );
 }

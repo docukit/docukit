@@ -11,12 +11,16 @@ import {
   type SerializedLexicalNode,
 } from "lexical";
 
-import { LexicalDocNode } from "./lexicalDocNode.js";
+import { LexicalDocNode } from "../lexicalDocNode.js";
 import {
   getIsApplyingOwnChanges,
   setIsApplyingOwnChanges,
-} from "./syncLexicalToDocNode.js";
-import type { KeyBinding } from "./types.js";
+} from "../syncLexicalToDocNode.js";
+import type { KeyBinding } from "../types.js";
+import {
+  captureSelectionTransformState,
+  transformSelection,
+} from "./transformSelection.js";
 
 export function syncDocNodeToLexical(
   doc: Doc,
@@ -35,9 +39,13 @@ export function syncDocNodeToLexical(
     setIsApplyingOwnChanges(editor, true);
 
     try {
+      const selectionState = editor
+        .getEditorState()
+        .read(() => captureSelectionTransformState());
+
       editor.update(
         () => {
-          $applyDocNodeOperations(doc, operations, keyBinding);
+          $applyDocNodeOperations(doc, operations, keyBinding, selectionState);
         },
         {
           discrete: true,
@@ -63,6 +71,7 @@ function $applyDocNodeOperations(
   doc: Doc,
   operations: Operations,
   keyBinding: KeyBinding,
+  selectionState: ReturnType<typeof captureSelectionTransformState>,
 ): void {
   const { lexicalKeyToDocNodeId, docNodeIdToLexicalKey } = keyBinding;
   const [orderedOps, statePatch] = operations;
@@ -274,4 +283,6 @@ function $applyDocNodeOperations(
     const serialized = docNode.state.j.get() as SerializedLexicalNode;
     lexicalNode.getWritable().updateFromJSON(serialized);
   }
+
+  transformSelection(selectionState);
 }

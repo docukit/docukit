@@ -6,6 +6,7 @@ import { applyPresencePatch } from "./applyPresencePatch.js";
 type BroadcastMessage<O> =
   | {
       type: "OPERATIONS";
+      source: "local" | "remote";
       operations: O;
       docId: string;
       presence?: Record<string, unknown>;
@@ -14,6 +15,7 @@ type BroadcastMessage<O> =
 
 export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
   private _channel: BroadcastChannel;
+  private _closed = false;
 
   constructor(client: DocSyncClient<D, S, O>, userId: string) {
     const channelName = `docsync:${userId}`;
@@ -21,12 +23,12 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
     this._channel.onmessage = (ev: MessageEvent<BroadcastMessage<O>>) => {
       const msg = ev.data;
       if (msg.type === "OPERATIONS") {
-        const { docId, operations, presence } = msg;
+        const { docId, operations, presence, source } = msg;
         const currentStatus = client["_pushStatusByDocId"].get(docId) ?? "idle";
         if (currentStatus === "pushing") {
           client["_pushStatusByDocId"].set(docId, "pushing-with-pending");
         }
-        void this._applyOperations(client, operations, docId);
+        void this._applyOperations(client, operations, docId, source);
         if (presence) {
           const cacheEntry = client["_docsCache"].get(docId);
           if (cacheEntry)
@@ -47,20 +49,27 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
     client: DocSyncClient<D, S, O>,
     operations: O,
     docId: string,
+    source: "local" | "remote",
   ): Promise<void> {
     const cacheEntry = client["_docsCache"].get(docId);
     if (!cacheEntry) return;
     const doc = await cacheEntry.promisedDoc;
     if (!doc) return;
-    client["_docBinding"].applyOperations(doc, operations, "broadcast");
+    client["_docBinding"].applyOperations(
+      doc,
+      operations,
+      source === "remote" ? "remote:broadcast" : "broadcast",
+    );
   }
 
   broadcast(message: BroadcastMessage<O>): void {
+    if (this._closed) return;
     this._channel.postMessage(message);
   }
 
   /** Close the underlying channel (e.g. for test cleanup). */
   close(): void {
+    this._closed = true;
     this._channel.close();
   }
 }

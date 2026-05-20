@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import type { Doc } from "@docukit/docnode";
+import type { Doc, UndoManager } from "@docukit/docnode";
 import { syncLexicalWithDoc } from "../index.js";
 import { updatePresence } from "../presence/index.js";
 import type { PresenceSelection } from "../types.js";
@@ -22,6 +22,12 @@ export type DocNodePluginProps = {
    * with the user's name and color.
    */
   user?: PresenceUser | undefined;
+  /**
+   * UndoManager wired to UNDO_COMMAND/REDO_COMMAND. If omitted, a default
+   * one is created. Pass your own to share an UndoManager across editors or
+   * to customize options like `maxUndoSteps`.
+   */
+  undoManager?: UndoManager | undefined;
 };
 
 /**
@@ -51,11 +57,15 @@ export function DocNodePlugin({
   presence,
   setPresence,
   user,
+  undoManager,
 }: DocNodePluginProps) {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
-    return syncLexicalWithDoc(editor, doc, { setPresence, user });
+    return syncLexicalWithDoc(editor, doc, {
+      presence: { setPresence, user },
+      undoManager,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, doc]);
 

@@ -144,6 +144,22 @@ describe("undoManager", () => {
     expect(origins).toStrictEqual([undefined, undefined, undefined, undefined]);
   });
 
+  test("clear removes both undo and redo history", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+
+    doc.root.append(...text(doc, "a"));
+    doc.forceCommit();
+    expect(undoManager.canUndo()).toBe(true);
+
+    undoManager.undo();
+    expect(undoManager.canRedo()).toBe(true);
+
+    undoManager.clear();
+    expect(undoManager.canUndo()).toBe(false);
+    expect(undoManager.canRedo()).toBe(false);
+  });
+
   test("undo/redo - adding and deleting nodes", () => {
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
@@ -335,6 +351,102 @@ describe("undoManager", () => {
     assertDoc(doc, ["1", "1.1", "1.2", "2"]);
     undoManager.undo();
     assertDoc(doc, ["1", "2"]);
+  });
+});
+
+describe("undoManager events", () => {
+  test("onPush fires synchronously when an item is added to the undo stack", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    const events: { type: "undo" | "redo"; meta: Map<unknown, unknown> }[] = [];
+    undoManager.onPush(({ meta, type }) => {
+      events.push({ type, meta });
+    });
+
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toStrictEqual("undo");
+    expect(events[0]?.meta).toBeInstanceOf(Map);
+    expect(events[0]?.meta.size).toStrictEqual(0);
+  });
+
+  test("onPush fires with type:'redo' when undo pushes to the redo stack", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+
+    const types: ("undo" | "redo")[] = [];
+    undoManager.onPush(({ type }) => {
+      types.push(type);
+    });
+
+    undoManager.undo();
+    expect(types).toStrictEqual(["redo"]);
+  });
+
+  test("onPop fires after undo/redo applies, with the popped meta", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+
+    const popped: { type: "undo" | "redo"; meta: Map<unknown, unknown> }[] = [];
+    undoManager.onPop(({ meta, type }) => {
+      popped.push({ type, meta });
+    });
+
+    undoManager.undo();
+    expect(popped).toHaveLength(1);
+    expect(popped[0]?.type).toStrictEqual("undo");
+
+    undoManager.redo();
+    expect(popped).toHaveLength(2);
+    expect(popped[1]?.type).toStrictEqual("redo");
+  });
+
+  test("binding can attach metadata via meta and read it back on pop", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+
+    let counter = 0;
+    undoManager.onPush(({ meta }) => {
+      meta.set("token", `token-${counter++}`);
+    });
+
+    const seenTokens: unknown[] = [];
+    undoManager.onPop(({ meta }) => {
+      seenTokens.push(meta.get("token"));
+    });
+
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+    doc.root.append(...text(doc, "2"));
+    doc.forceCommit();
+
+    undoManager.undo();
+    undoManager.undo();
+    expect(seenTokens).toStrictEqual(["token-1", "token-0"]);
+  });
+
+  test("the unsubscribe function returned from onPush/onPop removes the handler", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    let pushCount = 0;
+    const off = undoManager.onPush(() => {
+      pushCount++;
+    });
+
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+    expect(pushCount).toStrictEqual(1);
+
+    off();
+    doc.root.append(...text(doc, "2"));
+    doc.forceCommit();
+    expect(pushCount).toStrictEqual(1);
   });
 });
 
