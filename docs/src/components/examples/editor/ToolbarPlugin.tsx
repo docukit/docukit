@@ -31,6 +31,7 @@ import {
   Underline,
   Undo2,
 } from "lucide-react";
+import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 
 type HeadingTag = "h1" | "h2" | "h3";

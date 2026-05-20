@@ -6,7 +6,7 @@ test.describe("main", () => {
     const dn = await DocNodeHelper.create({ page });
     const page2 = await context.newPage();
     const dn2 = await DocNodeHelper.create({ page: page2 });
-    await page2.goto(`subdocs?docId=${dn.docId}`);
+    await page2.goto(`examples/subdocs?docId=${dn.docId}`);
     await page2.waitForLoadState("networkidle");
 
     await dn.assertPanel("main", ["1", "2", "__2.1", "__2.2", "3", "4"]);

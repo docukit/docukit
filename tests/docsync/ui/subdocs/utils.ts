@@ -33,7 +33,7 @@ export class DocNodeHelper extends HelperBase {
     { page }: { page: Page },
   ): Promise<T> {
     const helper = await super.create({ page });
-    await page.goto(`subdocs?docId=${helper.docId}`);
+    await page.goto(`examples/subdocs?docId=${helper.docId}`);
     await page.waitForLoadState("networkidle");
     await page.locator("#reference").first().waitFor({ state: "visible" });
     return helper as T;

@@ -1,5 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { Doc, defineNode, UndoManager } from "@docukit/docnode";
+import {
+  Doc,
+  defineNode,
+  type Extension,
+  type Operations,
+  UndoManager,
+} from "@docukit/docnode";
 import {
   TextExtension,
   Text,
@@ -69,6 +75,24 @@ describe("main.ts coverage", () => {
     doc.forceCommit();
     expect(changeCount).toBe(0);
   });
+
+  test("empty applyOperations throws during strict mode second normalize pass", () => {
+    const emptyOperations: Operations = [[], {}];
+    const TestExtension: Extension = {
+      nodes: [Text],
+      register: (doc) => {
+        doc.onNormalize(() => {
+          doc.applyOperations(emptyOperations);
+        });
+      },
+    };
+
+    expect(() => {
+      new Doc({ type: "root", extensions: [TestExtension], strictMode: true });
+    }).toThrowError(
+      "Strict mode has caught an error: normalize listeners are not idempotent. I.e, they should not mutate the document on the second pass.",
+    );
+  });
 });
 
 describe("stateDefinitions.ts coverage", () => {
@@ -127,6 +151,55 @@ describe("undoManager.ts coverage", () => {
     undoManager.redo(); // Line 61: early return
     expect(doc.root.first).toBeDefined(); // Document unchanged
   });
+
+  test("undoManager event listeners can be removed", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = new UndoManager(doc);
+    let pushCount = 0;
+    let popCount = 0;
+
+    const removePushListener = undoManager.onPush(() => {
+      pushCount++;
+    });
+    const removePopListener = undoManager.onPop(() => {
+      popCount++;
+    });
+    removePushListener();
+    removePopListener();
+
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+    undoManager.undo();
+
+    expect(pushCount).toBe(0);
+    expect(popCount).toBe(0);
+  });
+
+  test("undoManager emits push and pop listener events", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = new UndoManager(doc);
+    const events: string[] = [];
+
+    undoManager.onPush(({ type }) => {
+      events.push(`push:${type}`);
+    });
+    undoManager.onPop(({ type }) => {
+      events.push(`pop:${type}`);
+    });
+
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+    undoManager.undo();
+    undoManager.redo();
+
+    expect(events).toStrictEqual([
+      "push:undo",
+      "push:redo",
+      "pop:undo",
+      "push:undo",
+      "pop:redo",
+    ]);
+  });
 });
 
 describe("operations.ts coverage", () => {
@@ -144,6 +217,54 @@ describe("operations.ts coverage", () => {
     parent.delete();
     doc.root.append(parent);
     expect(doc.root.first).toBe(parent);
+  });
+
+  test("move operation with missing range endpoints is ignored", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const operations: Operations = [[[2, "missing-start", 0, 0, 0, 0]], {}];
+
+    expect(() => doc.applyOperations(operations)).not.toThrow();
+  });
+});
+
+describe("idGenerator.ts coverage", () => {
+  test("custom timestamp id generator includes extractTime errors", () => {
+    const thrownValue = { toString: () => "invalid timestamp" };
+
+    expect(() => {
+      new Doc({
+        type: "root",
+        id: "root-id",
+        extensions: [TextExtension],
+        nodeIdGenerator: {
+          generate: () => "root-id",
+          validate: () => true,
+          extractTime: () => {
+            throw new Error("invalid timestamp");
+          },
+        },
+      });
+    }).toThrowError(
+      "Failed to extract time from root id 'root-id'. invalid timestamp",
+    );
+
+    expect(() => {
+      new Doc({
+        type: "root",
+        id: "root-id",
+        extensions: [TextExtension],
+        nodeIdGenerator: {
+          generate: () => "root-id",
+          validate: () => true,
+          extractTime: () => {
+            // eslint-disable-next-line @typescript-eslint/only-throw-error -- Covers defensive handling for non-Error throws.
+            throw thrownValue;
+          },
+        },
+      });
+    }).toThrowError(
+      "Failed to extract time from root id 'root-id'. invalid timestamp",
+    );
   });
 });
 

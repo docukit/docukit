@@ -66,7 +66,7 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
               .insert(schema.operations)
               .values({ docId, operations: JSON.stringify(operations) })
               .returning({ clock: schema.operations.clock });
-            return inserted[0]!.clock;
+            return inserted[0].clock;
           },
 
           saveSerializedDoc: async ({ docId, serializedDoc, clock }) => {

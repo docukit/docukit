@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import DocNodeLogo from "@/icons/DocNodeLogo";
 import DocSyncLogo from "@/icons/DocSyncLogo";
-import { SyncedEditorsDemo } from "@/components/SyncedEditorsDemo";
+import { HomeSyncedEditorsDemo } from "@/components/examples/editor/HomeSyncedEditorsDemo";
 // import DocEditorLogo from "@/icons/DocEditorLogo";
 // import DocGridLogo from "@/icons/DocGridLogo";
 
@@ -105,8 +105,8 @@ const Index = () => {
           ))}
         </div>
 
-        <div className="mx-auto mt-28 max-w-6xl md:mt-36">
-          <SyncedEditorsDemo />
+        <div className="mx-auto mt-28 max-w-7xl md:mt-36">
+          <HomeSyncedEditorsDemo />
         </div>
       </main>
     </div>

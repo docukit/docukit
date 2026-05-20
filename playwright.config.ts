@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 const baseURLExamples =
   process.env.VERCEL_URL != null
     ? `https://${process.env.VERCEL_URL}/`
-    : `http://localhost:${process.env.PORT ?? 4000}/`;
+    : `http://localhost:${process.env.PORT ?? 3000}/`;
 const baseURLDocs =
   process.env.VERCEL_URL != null
     ? `https://${process.env.VERCEL_URL}/`

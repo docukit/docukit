@@ -1,6 +1,7 @@
-import { IndexNode } from "./ClientProviders";
 import { type DocNode, type Doc } from "@docukit/docnode";
-import { DocRenderer } from "../../components/Renderers";
+import type React from "react";
+import { DocRenderer } from "../Renderers";
+import { IndexNode } from "../shared-config";
 
 export function IndexDoc({
   doc,

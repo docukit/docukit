@@ -7,6 +7,9 @@ import {
 } from "@docukit/docsync-react/client";
 import type { DocConfig } from "@docukit/docnode";
 
+const DOCSYNC_SERVER_URL =
+  process.env.NEXT_PUBLIC_DOCSYNC_SERVER_URL ?? "ws://localhost:8081";
+
 // Create 3 separate DocSyncClient instances with different deviceIds
 const createClientForUser = (
   userId: string,
@@ -20,14 +23,14 @@ const createClientForUser = (
 
   return createDocSyncClient({
     server: {
-      url: "ws://localhost:8081",
+      url: DOCSYNC_SERVER_URL,
       auth: {
         getToken: () => userId, // Use userId as token
       },
     },
     local: {
       provider: indexedDBProvider,
-      getIdentity: () => ({ userId, secret: "asdasdasd" }),
+      getIdentity: () => ({ userId, secret: "docs-demo" }),
     },
     docBinding: DocNodeBinding(docConfigs),
   });

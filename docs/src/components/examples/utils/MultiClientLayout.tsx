@@ -10,9 +10,9 @@ export function MultiClientLayout({
   otherDeviceClient,
 }: {
   children: (clientId: string, userId: string) => ReactNode;
-  referenceClient: DocSyncClient;
-  otherTabClient: DocSyncClient;
-  otherDeviceClient: DocSyncClient;
+  referenceClient: DocSyncClient | undefined;
+  otherTabClient: DocSyncClient | undefined;
+  otherDeviceClient: DocSyncClient | undefined;
 }) {
   const [referenceConnected, setReferenceConnected] = useState(true);
   const [otherTabConnected, setOtherTabConnected] = useState(true);
