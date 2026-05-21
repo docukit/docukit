@@ -112,6 +112,27 @@ function EditorSkeletonBody() {
   );
 }
 
+function EditorSkeletonOverlay() {
+  return (
+    <div
+      className="docs-editor-skeleton-overlay bg-fd-background pointer-events-none absolute inset-x-0 top-10 bottom-0 z-10"
+      aria-hidden="true"
+    >
+      <EditorSkeletonBody />
+    </div>
+  );
+}
+
+function EditorLoadingPanel() {
+  return (
+    <EditorPanelFrame ariaLabel="Loading editor" isLoading>
+      <EditorSkeletonToolbar />
+      <div className="min-h-100" />
+      <EditorSkeletonOverlay />
+    </EditorPanelFrame>
+  );
+}
+
 function EditorPanelFrame({
   children,
   ariaLabel,
@@ -236,13 +257,22 @@ function EditorContent({
           <div className="min-h-100" />
         </>
       )}
-      <div
-        className="docs-editor-skeleton-overlay bg-fd-background pointer-events-none absolute inset-x-0 top-10 bottom-0 z-10"
-        aria-hidden="true"
-      >
-        <EditorSkeletonBody />
-      </div>
+      <EditorSkeletonOverlay />
     </EditorPanelFrame>
+  );
+}
+
+export function EditorExampleLoading({ className }: { className?: string }) {
+  return (
+    <div className={cn("w-full", className)}>
+      <MultiClientLayout
+        referenceClient={clients.referenceClient}
+        otherTabClient={clients.otherTabClient}
+        otherDeviceClient={clients.otherDeviceClient}
+      >
+        {() => <EditorLoadingPanel />}
+      </MultiClientLayout>
+    </div>
   );
 }
 

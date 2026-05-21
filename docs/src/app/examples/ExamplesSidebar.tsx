@@ -1,16 +1,31 @@
 "use client";
 
+import type React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/cn";
+import { createDocId } from "@/components/examples/utils/docId";
 
 const examples = [
-  { name: "Editor", path: "/examples/editor" },
-  { name: "Subdocs", path: "/examples/subdocs" },
+  { name: "Editor", path: "/examples/editor", usesDocId: true },
+  { name: "Subdocs", path: "/examples/subdocs", usesDocId: true },
 ];
 
 export function ExamplesSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  function openExample(
+    event: React.MouseEvent<HTMLAnchorElement>,
+    example: (typeof examples)[number],
+  ) {
+    if (!example.usesDocId) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    event.preventDefault();
+    router.push(`${example.path}?docId=${createDocId()}`);
+  }
 
   return (
     <aside className="border-fd-border bg-fd-background/80 shrink-0 border-b p-4 md:w-64 md:border-r md:border-b-0 md:p-6">
@@ -27,6 +42,7 @@ export function ExamplesSidebar() {
             <Link
               key={example.path}
               href={example.path}
+              onClick={(event) => openExample(event, example)}
               className={cn(
                 "block rounded-md px-3 py-2 text-sm transition-colors",
                 isActive
