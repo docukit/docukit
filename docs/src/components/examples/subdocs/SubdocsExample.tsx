@@ -35,7 +35,7 @@ function SubdocsLoadingNode({
 }) {
   return (
     <div className="relative" style={{ paddingLeft: isRoot ? "0px" : "20px" }}>
-      <div className="docnode flex items-center rounded px-2 py-0.5">
+      <div className="flex items-center rounded px-2 py-0.5">
         <span className="text-fd-foreground min-w-0 flex-1 truncate font-mono text-xs">
           {node.value}
           <span className="node-id ml-1 inline-flex h-[1em] w-[4ch] items-center align-middle">
@@ -60,7 +60,7 @@ function SubdocsLoadingNode({
 
 function SubdocsLoadingTree() {
   return (
-    <div className="docnode-doc text-sm">
+    <div className="text-sm">
       {seedSkeletonNodes.map((node) => (
         <SubdocsLoadingNode key={node.value} isRoot node={node} />
       ))}
@@ -71,8 +71,8 @@ function SubdocsLoadingTree() {
 function SecondaryDocLoading() {
   return (
     <div className="secondary-doc flex-1">
-      <div className="docnode-doc text-sm">
-        <div className="docnode rounded px-2 py-0.5">
+      <div className="text-sm">
+        <div className="rounded px-2 py-0.5">
           <span className="text-fd-muted-foreground font-mono text-xs">
             Loading...
           </span>
@@ -85,12 +85,16 @@ function SecondaryDocLoading() {
 function SubdocsLoadingPanel() {
   return (
     <div className="flex min-h-40 gap-3">
-      <div className="main-doc flex-1">
+      <div className="flex-1">
         <SubdocsLoadingTree />
       </div>
       <div className="bg-fd-border w-px" />
-      <div className="flex flex-1 items-start justify-center pt-8">
-        <p className="text-fd-muted-foreground text-xs">Select a document</p>
+      <div className="flex-1">
+        <div className="rounded px-2 py-0.5">
+          <span className="text-fd-muted-foreground font-mono text-xs">
+            Loading...
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -128,10 +132,12 @@ function SubdocsPanelFrame({
 function SubDocContent({
   clientId,
   docId,
+  shouldInitialize,
   useDocHook,
 }: {
   clientId: string;
   docId: string;
+  shouldInitialize?: boolean;
   useDocHook: typeof clients.useReferenceDoc;
 }) {
   const { status, data, error } = useDocHook({
@@ -158,7 +164,7 @@ function SubDocContent({
   const secondaryDoc = secondaryDocReady ? secondaryResult.data.doc : undefined;
 
   useEffect(() => {
-    if (clientId !== "reference") return;
+    if (!shouldInitialize) return;
     const indexDoc = data?.doc;
     if (!indexDoc || indexDoc.root.first) return;
 
@@ -172,21 +178,22 @@ function SubDocContent({
       createIndexNode(indexDoc, { value: "2.1" }),
       createIndexNode(indexDoc, { value: "2.2" }),
     );
-  }, [data, clientId]);
+  }, [data, shouldInitialize]);
+
+  const isReady = status === "success" && data.docId === docId;
+  const indexDoc = isReady ? data.doc : undefined;
 
   if (status === "error") {
     return <div className="text-destructive">Error: {error.message}</div>;
   }
 
-  const isReady = status === "success" && data.docId === docId;
-
   return (
     <SubdocsPanelFrame isLoading={!isReady}>
-      {isReady ? (
+      {indexDoc ? (
         <div className="flex gap-3" id={clientId} key={`${clientId}:${docId}`}>
           <div className="main-doc flex-1">
             <IndexDoc
-              doc={data.doc}
+              doc={indexDoc}
               selectedDoc={activeDoc}
               setActiveDoc={setActiveDoc}
             />
@@ -213,19 +220,26 @@ function SubDocContent({
   );
 }
 
-export function SubdocsExample({ docId }: { docId: string }) {
+export function SubdocsExample({
+  docId,
+  shouldInitialize = true,
+}: {
+  docId: string;
+  shouldInitialize?: boolean;
+}) {
   return (
     <MultiClientLayout
       referenceClient={clients.referenceClient}
       otherTabClient={clients.otherTabClient}
       otherDeviceClient={clients.otherDeviceClient}
     >
-      {(clientId) => {
+      {(clientId, _userId, meta) => {
         if (clientId === "reference") {
           return (
             <SubDocContent
               clientId={clientId}
               docId={docId}
+              shouldInitialize={shouldInitialize && meta.instance === "primary"}
               useDocHook={clients.useReferenceDoc}
             />
           );

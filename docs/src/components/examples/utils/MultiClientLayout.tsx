@@ -4,6 +4,10 @@ import { type ReactNode, useState } from "react";
 import type { DocSyncClient } from "@docukit/docsync-react/client";
 import { cn } from "@/lib/cn";
 
+export type MultiClientInstance = "primary" | "duplicate";
+
+export type MultiClientRenderMeta = { instance: MultiClientInstance };
+
 function ConnectionToggle({
   connected,
   onClick,
@@ -41,7 +45,11 @@ export function MultiClientLayout({
   otherTabClient,
   otherDeviceClient,
 }: {
-  children: (clientId: string, userId: string) => ReactNode;
+  children: (
+    clientId: string,
+    userId: string,
+    meta: MultiClientRenderMeta,
+  ) => ReactNode;
   referenceClient: DocSyncClient | undefined;
   otherTabClient: DocSyncClient | undefined;
   otherDeviceClient: DocSyncClient | undefined;
@@ -98,10 +106,12 @@ export function MultiClientLayout({
             User 1 • Device A
           </span>
         </div>
-        <div id="reference">{children("reference", "user1")}</div>
+        <div id="reference">
+          {children("reference", "user1", { instance: "primary" })}
+        </div>
         {/* Hidden duplicate for testing multiple useDoc calls */}
         <div id="reference-hidden" className="hidden">
-          {children("reference", "user1")}
+          {children("reference", "user1", { instance: "duplicate" })}
         </div>
       </div>
 
@@ -122,10 +132,12 @@ export function MultiClientLayout({
             User 1 • Device A
           </span>
         </div>
-        <div id="otherTab">{children("otherTab", "user1")}</div>
+        <div id="otherTab">
+          {children("otherTab", "user1", { instance: "primary" })}
+        </div>
         {/* Hidden duplicate for testing multiple useDoc calls */}
         <div id="otherTab-hidden" className="hidden">
-          {children("otherTab", "user1")}
+          {children("otherTab", "user1", { instance: "duplicate" })}
         </div>
       </div>
 
@@ -146,10 +158,12 @@ export function MultiClientLayout({
             User 2 • Device B
           </span>
         </div>
-        <div id="otherDevice">{children("otherDevice", "user2")}</div>
+        <div id="otherDevice">
+          {children("otherDevice", "user2", { instance: "primary" })}
+        </div>
         {/* Hidden duplicate for testing multiple useDoc calls */}
         <div id="otherDevice-hidden" className="hidden">
-          {children("otherDevice", "user2")}
+          {children("otherDevice", "user2", { instance: "duplicate" })}
         </div>
       </div>
     </div>

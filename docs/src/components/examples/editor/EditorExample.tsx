@@ -302,12 +302,14 @@ export function EditorExample({
         otherTabClient={clients.otherTabClient}
         otherDeviceClient={clients.otherDeviceClient}
       >
-        {(clientId, userId) => {
+        {(clientId, userId, meta) => {
           if (clientId === "reference") {
             return (
               <EditorContent
                 clientId={clientId}
-                initializeEditor={initializeEditor}
+                initializeEditor={
+                  meta.instance === "primary" ? initializeEditor : undefined
+                }
                 userId={userId}
                 docId={docId}
                 useDocHook={clients.useReferenceDoc}
