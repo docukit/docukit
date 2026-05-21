@@ -180,7 +180,7 @@ function DocIdControl({
   }
 
   return (
-    <div className="mx-auto mb-4 flex max-w-3xl flex-col items-center justify-center gap-2 px-4 md:flex-row">
+    <div className="mx-auto mb-4 flex max-w-3xl items-center justify-center gap-2 px-2 sm:px-4">
       <label
         htmlFor="docsync-demo-doc-id"
         className="text-fd-muted-foreground text-xs font-medium tracking-wide uppercase"
@@ -193,7 +193,7 @@ function DocIdControl({
         value={draftDocId}
         onChange={(event) => updateDraft(event.target.value)}
         aria-invalid={!draftIsValid}
-        className="border-fd-border bg-fd-background text-fd-foreground focus:border-fd-primary aria-invalid:border-destructive h-8 w-full max-w-[32ch] rounded-md border px-2.5 font-mono text-sm transition outline-none md:w-[32ch]"
+        className="border-fd-border bg-fd-background text-fd-foreground focus:border-fd-primary aria-invalid:border-destructive h-8 max-w-[32ch] min-w-0 flex-1 rounded-md border px-2.5 font-mono text-sm transition outline-none sm:w-[32ch] sm:flex-none"
       />
       <button
         type="button"

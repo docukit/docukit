@@ -80,7 +80,7 @@ export function MultiClientLayout({
     setOtherDeviceConnected(!otherDeviceConnected);
   };
   return (
-    <div className="grid w-full grid-cols-1 gap-4 px-4 pb-6 lg:grid-cols-3">
+    <div className="grid w-full grid-cols-1 gap-4 pb-6 lg:grid-cols-3">
       {/* Reference Client - User 1 */}
       <div className="border-fd-border bg-fd-card min-w-0 rounded-lg border p-4">
         <div className="border-fd-border mb-4 flex items-center justify-between gap-3 border-b pb-2">
