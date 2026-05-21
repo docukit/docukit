@@ -17,17 +17,12 @@ import {
 } from "lexical";
 import {
   AlignCenter,
-  AlignJustify,
   AlignLeft,
   AlignRight,
   Bold,
   Heading1,
-  Heading2,
-  Heading3,
   Italic,
-  Pilcrow,
   Redo2,
-  Strikethrough,
   Underline,
   Undo2,
 } from "lucide-react";
@@ -35,11 +30,8 @@ import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
 
-type HeadingTag = "h1" | "h2" | "h3";
-type BlockType = "paragraph" | HeadingTag;
-
 function Divider() {
-  return <div className="bg-fd-border mx-1 h-6 w-px" />;
+  return <div className="bg-fd-border mx-0.5 h-5 w-px shrink-0" />;
 }
 
 function ToolbarButton({
@@ -57,11 +49,12 @@ function ToolbarButton({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       aria-label={ariaLabel}
       className={cn(
-        "flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150",
+        "flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
         disabled
           ? "text-fd-muted-foreground/50 cursor-not-allowed"
           : isActive
@@ -81,8 +74,7 @@ export default function ToolbarPlugin() {
   const [isBold, setIsBold] = useState(false);
   const [isItalic, setIsItalic] = useState(false);
   const [isUnderline, setIsUnderline] = useState(false);
-  const [isStrikethrough, setIsStrikethrough] = useState(false);
-  const [blockType, setBlockType] = useState<BlockType>("paragraph");
+  const [isHeading1, setIsHeading1] = useState(false);
 
   const $updateToolbar = useCallback(() => {
     const selection = $getSelection();
@@ -90,33 +82,21 @@ export default function ToolbarPlugin() {
       setIsBold(selection.hasFormat("bold"));
       setIsItalic(selection.hasFormat("italic"));
       setIsUnderline(selection.hasFormat("underline"));
-      setIsStrikethrough(selection.hasFormat("strikethrough"));
 
       const anchorNode = selection.anchor.getNode();
       const headingNode = $getNearestNodeOfType(anchorNode, HeadingNode);
 
-      if (headingNode) {
-        setBlockType(headingNode.getTag() as HeadingTag);
-      } else {
-        setBlockType("paragraph");
-      }
+      setIsHeading1(headingNode?.getTag() === "h1");
     }
   }, []);
 
-  const formatParagraph = () => {
+  const toggleHeading1 = () => {
     editor.update(() => {
       const selection = $getSelection();
       if ($isRangeSelection(selection)) {
-        $setBlocksType(selection, () => $createParagraphNode());
-      }
-    });
-  };
-
-  const formatHeading = (headingSize: HeadingTag) => {
-    editor.update(() => {
-      const selection = $getSelection();
-      if ($isRangeSelection(selection)) {
-        $setBlocksType(selection, () => $createHeadingNode(headingSize));
+        $setBlocksType(selection, () =>
+          isHeading1 ? $createParagraphNode() : $createHeadingNode("h1"),
+        );
       }
     });
   };
@@ -161,8 +141,7 @@ export default function ToolbarPlugin() {
   }, [editor, $updateToolbar]);
 
   return (
-    <div className="border-fd-border bg-fd-secondary flex flex-wrap items-center gap-0.5 border-b px-2 py-1.5">
-      {/* Undo/Redo */}
+    <div className="border-fd-border bg-fd-secondary flex h-10 flex-nowrap items-center gap-0.5 overflow-x-auto border-b px-1.5 py-1">
       <ToolbarButton
         onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}
         disabled={!canUndo}
@@ -180,39 +159,16 @@ export default function ToolbarPlugin() {
 
       <Divider />
 
-      {/* Block Type */}
       <ToolbarButton
-        onClick={formatParagraph}
-        isActive={blockType === "paragraph"}
-        ariaLabel="Paragraph"
-      >
-        <Pilcrow size={16} />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => formatHeading("h1")}
-        isActive={blockType === "h1"}
-        ariaLabel="Heading 1"
+        onClick={toggleHeading1}
+        isActive={isHeading1}
+        ariaLabel="Toggle Heading 1"
       >
         <Heading1 size={16} />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => formatHeading("h2")}
-        isActive={blockType === "h2"}
-        ariaLabel="Heading 2"
-      >
-        <Heading2 size={16} />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => formatHeading("h3")}
-        isActive={blockType === "h3"}
-        ariaLabel="Heading 3"
-      >
-        <Heading3 size={16} />
       </ToolbarButton>
 
       <Divider />
 
-      {/* Text Format */}
       <ToolbarButton
         onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")}
         isActive={isBold}
@@ -234,19 +190,9 @@ export default function ToolbarPlugin() {
       >
         <Underline size={16} />
       </ToolbarButton>
-      <ToolbarButton
-        onClick={() =>
-          editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough")
-        }
-        isActive={isStrikethrough}
-        ariaLabel="Strikethrough"
-      >
-        <Strikethrough size={16} />
-      </ToolbarButton>
 
       <Divider />
 
-      {/* Alignment */}
       <ToolbarButton
         onClick={() => editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, "left")}
         ariaLabel="Align Left"
@@ -264,14 +210,6 @@ export default function ToolbarPlugin() {
         ariaLabel="Align Right"
       >
         <AlignRight size={16} />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() =>
-          editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, "justify")
-        }
-        ariaLabel="Justify"
-      >
-        <AlignJustify size={16} />
       </ToolbarButton>
     </div>
   );
