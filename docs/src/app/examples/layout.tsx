@@ -28,7 +28,7 @@ export default function ExamplesLayout({
             <main className="min-w-0 flex-1">{children}</main>
           </div>
         </div>
-        <Footer variant="docs" className="mt-0" />
+        <Footer variant="docs" className="mt-0 pb-12" />
       </HomeLayout>
     </RootProvider>
   );

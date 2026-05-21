@@ -28,7 +28,7 @@ export function ExamplesSidebar() {
   }
 
   return (
-    <aside className="border-fd-border bg-fd-background/80 shrink-0 border-b p-3 md:w-48 md:border-r md:border-b-0 md:p-4">
+    <aside className="border-fd-border bg-fd-background/80 shrink-0 border-b py-3 pr-1.5 pl-2 md:w-44 md:border-r md:border-b-0 md:py-4 md:pr-1.5 md:pl-2">
       <Link
         href="/examples"
         className="text-fd-foreground mb-3 block text-base font-semibold md:mb-4"
@@ -44,7 +44,7 @@ export function ExamplesSidebar() {
               href={example.path}
               onClick={(event) => openExample(event, example)}
               className={cn(
-                "block rounded-md px-2.5 py-1.5 text-sm transition-colors",
+                "block rounded-md px-2 py-1.5 text-sm transition-colors",
                 isActive
                   ? "bg-fd-accent text-fd-accent-foreground font-medium"
                   : "text-fd-muted-foreground hover:bg-fd-accent hover:text-fd-accent-foreground",

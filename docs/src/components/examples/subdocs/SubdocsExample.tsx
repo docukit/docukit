@@ -42,6 +42,10 @@ function SubdocsLoadingNode({
             <span className="bg-fd-muted block h-[0.75em] w-full animate-pulse rounded [animation-duration:1s]" />
           </span>
         </span>
+        <div className="ml-2 flex shrink-0 flex-row items-center gap-0.5">
+          <span className="inline-flex h-5 w-[1.375rem] rounded" />
+          <span className="inline-flex h-5 w-[1.375rem] rounded" />
+        </div>
       </div>
       {node.children && (
         <div className="mt-0.5">
