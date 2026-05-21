@@ -174,7 +174,8 @@ html:has(a[data-active="true"][href*="/docgrid"]) {
     animation: fade-in-up 0.6s ease-out both;
   }
 
-  .docs-editor-skeleton-overlay {
+  .docs-editor-skeleton-overlay,
+  .docs-subdocs-skeleton-overlay {
     opacity: 0;
     visibility: hidden;
     transition:
@@ -188,8 +189,15 @@ html:has(a[data-active="true"][href*="/docgrid"]) {
     transition: none;
   }
 
+  [data-subdocs-loading="true"] > .docs-subdocs-skeleton-overlay {
+    opacity: 1;
+    visibility: visible;
+    transition: none;
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .docs-editor-skeleton-overlay {
+    .docs-editor-skeleton-overlay,
+    .docs-subdocs-skeleton-overlay {
       transition: none;
     }
   }
