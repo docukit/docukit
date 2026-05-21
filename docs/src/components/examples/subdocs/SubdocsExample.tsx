@@ -68,6 +68,20 @@ function SubdocsLoadingTree() {
   );
 }
 
+function SecondaryDocLoading() {
+  return (
+    <div className="secondary-doc flex-1">
+      <div className="docnode-doc text-sm">
+        <div className="docnode rounded px-2 py-0.5">
+          <span className="text-fd-muted-foreground font-mono text-xs">
+            Loading...
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SubdocsLoadingPanel() {
   return (
     <div className="flex min-h-40 gap-3">
@@ -137,10 +151,11 @@ function SubDocContent({
     id: secondaryDocId,
     createIfMissing: true,
   });
-  const secondaryDoc =
-    activeDoc && secondaryResult.status === "success"
-      ? secondaryResult.data.doc
-      : undefined;
+  const secondaryDocReady =
+    activeDoc &&
+    secondaryResult.status === "success" &&
+    secondaryResult.data.docId === activeDoc;
+  const secondaryDoc = secondaryDocReady ? secondaryResult.data.doc : undefined;
 
   useEffect(() => {
     if (clientId !== "reference") return;
@@ -177,10 +192,12 @@ function SubDocContent({
             />
           </div>
           <div className="bg-fd-border w-px" />
-          {activeDoc && secondaryDoc ? (
+          {secondaryDoc ? (
             <div className="secondary-doc flex-1">
               <IndexDoc doc={secondaryDoc} />
             </div>
+          ) : activeDoc ? (
+            <SecondaryDocLoading />
           ) : (
             <div className="flex flex-1 items-start justify-center pt-8">
               <p className="text-fd-muted-foreground text-xs">
