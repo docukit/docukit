@@ -47,54 +47,52 @@ export function EditorPanel({
   }, [doc]);
 
   return (
-    <div className="border-fd-border bg-fd-background overflow-hidden rounded-lg border shadow-sm">
-      <LexicalComposer
-        initialConfig={{
-          namespace: "MultiEditor",
-          nodes: [HeadingNode],
-          theme: {
-            paragraph: "mb-2 text-fd-foreground leading-relaxed",
-            heading: {
-              h1: "text-3xl font-bold text-fd-foreground mb-4 mt-2",
-              h2: "text-2xl font-semibold text-fd-foreground mb-3 mt-2",
-              h3: "text-xl font-medium text-fd-foreground mb-2 mt-2",
-            },
-            text: {
-              bold: "font-bold",
-              italic: "italic",
-              underline: "underline",
-              strikethrough: "line-through",
-            },
+    <LexicalComposer
+      initialConfig={{
+        namespace: "MultiEditor",
+        nodes: [HeadingNode],
+        theme: {
+          paragraph: "mb-2 text-fd-foreground leading-relaxed",
+          heading: {
+            h1: "text-3xl font-bold text-fd-foreground mb-4 mt-2",
+            h2: "text-2xl font-semibold text-fd-foreground mb-3 mt-2",
+            h3: "text-xl font-medium text-fd-foreground mb-2 mt-2",
           },
-          onError: (error: Error) => {
-            console.error(error);
+          text: {
+            bold: "font-bold",
+            italic: "italic",
+            underline: "underline",
+            strikethrough: "line-through",
           },
-        }}
-      >
-        <DocNodePlugin
-          doc={doc}
-          presence={presence}
-          setPresence={setPresence}
-          user={user}
-          undoManager={undoManager}
+        },
+        onError: (error: Error) => {
+          console.error(error);
+        },
+      }}
+    >
+      <DocNodePlugin
+        doc={doc}
+        presence={presence}
+        setPresence={setPresence}
+        user={user}
+        undoManager={undoManager}
+      />
+      {/* <InitialContentPlugin clientId={clientId} undoManager={undoManager} /> */}
+      <ToolbarPlugin />
+      <div className="relative">
+        <RichTextPlugin
+          contentEditable={
+            <ContentEditable className="text-fd-foreground min-h-100 px-6 py-4 outline-none focus:outline-none" />
+          }
+          ErrorBoundary={LexicalErrorBoundary}
+          placeholder={
+            <div className="text-fd-muted-foreground pointer-events-none absolute top-4 left-6">
+              Start writing something amazing...
+            </div>
+          }
         />
-        <InitialContentPlugin clientId={clientId} undoManager={undoManager} />
-        <ToolbarPlugin />
-        <div className="relative">
-          <RichTextPlugin
-            contentEditable={
-              <ContentEditable className="text-fd-foreground min-h-100 px-6 py-4 outline-none focus:outline-none" />
-            }
-            ErrorBoundary={LexicalErrorBoundary}
-            placeholder={
-              <div className="text-fd-muted-foreground pointer-events-none absolute top-4 left-6">
-                Start writing something amazing...
-              </div>
-            }
-          />
-        </div>
-      </LexicalComposer>
-    </div>
+      </div>
+    </LexicalComposer>
   );
 }
 

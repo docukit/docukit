@@ -101,19 +101,33 @@ function EditorSkeletonToolbar() {
   );
 }
 
-function EditorSkeleton() {
+function EditorSkeletonBody() {
+  return (
+    <div className="min-h-100 px-6 py-4">
+      <div className="bg-fd-muted mb-3 h-4 w-24 animate-pulse rounded [animation-duration:1s]" />
+      <div className="bg-fd-muted mb-3 h-4 w-11/12 animate-pulse rounded [animation-duration:1s]" />
+      <div className="bg-fd-muted mb-3 h-4 w-4/5 animate-pulse rounded [animation-duration:1s]" />
+      <div className="bg-fd-muted h-4 w-2/3 animate-pulse rounded [animation-duration:1s]" />
+    </div>
+  );
+}
+
+function EditorPanelFrame({
+  children,
+  ariaLabel,
+  isLoading,
+}: {
+  children: React.ReactNode;
+  ariaLabel?: string;
+  isLoading?: boolean;
+}) {
   return (
     <div
-      className="border-fd-border bg-fd-background overflow-hidden rounded-lg border shadow-sm"
-      aria-label="Loading editor"
+      className="border-fd-border bg-fd-background relative overflow-hidden rounded-lg border shadow-sm"
+      aria-label={ariaLabel}
+      data-editor-loading={isLoading ? "true" : undefined}
     >
-      <EditorSkeletonToolbar />
-      <div className="min-h-100 px-6 py-4">
-        <div className="bg-fd-muted mb-3 h-4 w-24 animate-pulse rounded [animation-duration:1s]" />
-        <div className="bg-fd-muted mb-3 h-4 w-11/12 animate-pulse rounded [animation-duration:1s]" />
-        <div className="bg-fd-muted mb-3 h-4 w-4/5 animate-pulse rounded [animation-duration:1s]" />
-        <div className="bg-fd-muted h-4 w-2/3 animate-pulse rounded [animation-duration:1s]" />
-      </div>
+      {children}
     </div>
   );
 }
@@ -196,24 +210,39 @@ function EditorContent({
     createIfMissing: true,
   });
   const [presence, setPresence] = usePresenceHook({ docId });
+  const isReady = status === "success" && data.docId === docId;
 
   if (status === "error") {
     return <div className="text-destructive">Error: {error.message}</div>;
   }
 
-  if (status === "loading") {
-    return <EditorSkeleton />;
-  }
-
   return (
-    <EditorPanel
-      key={`${clientId}:${docId}`}
-      doc={data.doc}
-      clientId={clientId}
-      presence={presence as Presence}
-      setPresence={setPresence}
-      user={{ name: userId, color: USER_COLORS[userId] ?? "#888888" }}
-    />
+    <EditorPanelFrame
+      ariaLabel={isReady ? undefined : "Loading editor"}
+      isLoading={!isReady}
+    >
+      {isReady ? (
+        <EditorPanel
+          key={`${clientId}:${docId}`}
+          doc={data.doc}
+          clientId={clientId}
+          presence={presence as Presence}
+          setPresence={setPresence}
+          user={{ name: userId, color: USER_COLORS[userId] ?? "#888888" }}
+        />
+      ) : (
+        <>
+          <EditorSkeletonToolbar />
+          <div className="min-h-100" />
+        </>
+      )}
+      <div
+        className="docs-editor-skeleton-overlay bg-fd-background pointer-events-none absolute inset-x-0 top-10 bottom-0 z-10"
+        aria-hidden="true"
+      >
+        <EditorSkeletonBody />
+      </div>
+    </EditorPanelFrame>
   );
 }
 
