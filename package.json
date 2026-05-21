@@ -13,7 +13,7 @@
   },
   "scripts": {
     "build": "turbo build",
-    "dev": "[ -n \"$DOCNODE_DB_URL\" ] || docker compose up -d --wait; pnpm --filter @docukit/docs db:push && lsof -ti:3000,8081 | xargs kill -9; concurrently \"turbo dev\" \"pnpm --filter @docukit/docs docsync-server\" --names \"turbo,docsync\" --prefix name",
+    "dev": "[ -n \"$DOCNODE_DB_URL\" ] || docker compose up -d --wait; pnpm --filter @docukit/docs db:push && lsof -ti:3000,8081 | xargs kill -9; concurrently \"turbo dev\" \"pnpm --filter @docukit/docs docsync-server:dev\" --names \"turbo,docsync\" --prefix name",
     "fix": "concurrently \"prettier --write . --log-level warn\" \"eslint\" \"tsc --noEmit\" \"turbo typecheck --log-order=grouped\" --prefixColors \"yellow,magenta,green,cyan\" --group --names \"prettier,eslint,tsc-root,tsc-packages\" --prefix name",
     "check": "concurrently \"prettier --check . --log-level warn\" \"eslint\" \"tsc --noEmit\" \"turbo typecheck --log-order=grouped\" --prefixColors \"yellow,magenta,green,cyan\" --group --names \"prettier,eslint,tsc-root,tsc-packages\" --prefix name",
     "check:deps": "knip",
