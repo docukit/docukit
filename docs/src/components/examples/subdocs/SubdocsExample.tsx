@@ -35,11 +35,11 @@ function SubdocsLoadingNode({
 }) {
   return (
     <div className="relative" style={{ paddingLeft: isRoot ? "0px" : "20px" }}>
-      <div className="docnode relative rounded px-2 py-0.5">
-        <span className="text-fd-foreground inline-block truncate font-mono text-xs">
+      <div className="docnode flex items-center rounded px-2 py-0.5">
+        <span className="text-fd-foreground min-w-0 flex-1 truncate font-mono text-xs">
           {node.value}
-          <span className="node-id relative ml-1 inline-block h-[1em] w-[4ch] align-[-0.125em]">
-            <span className="bg-fd-muted absolute top-1/2 left-0 h-[0.75em] w-full -translate-y-1/2 animate-pulse rounded [animation-duration:1s]" />
+          <span className="node-id ml-1 inline-flex h-[1em] w-[4ch] items-center align-middle">
+            <span className="bg-fd-muted block h-[0.75em] w-full animate-pulse rounded [animation-duration:1s]" />
           </span>
         </span>
       </div>

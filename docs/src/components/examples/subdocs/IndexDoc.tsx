@@ -63,7 +63,7 @@ export function IndexDoc({
             >
               <div
                 onClick={(ev) => handleSelect(ev, node.id)}
-                className={`docnode group relative rounded px-2 py-0.5 transition-colors ${
+                className={`docnode group flex items-center rounded px-2 py-0.5 transition-colors ${
                   isSelected
                     ? "bg-fd-primary/15"
                     : isClickable
@@ -75,17 +75,17 @@ export function IndexDoc({
                 }
               >
                 {/* Node label */}
-                <span className="text-fd-foreground inline-block truncate font-mono text-xs">
+                <span className="text-fd-foreground min-w-0 flex-1 truncate font-mono text-xs">
                   {node.is(IndexNode) ? node.state.value.get() : "root"}
                   <span className="node-id text-fd-muted-foreground/70 ml-1">
                     {node.id.slice(-4)}
                   </span>
                 </span>
 
-                {/* Buttons on hover - floating over the label on the right */}
-                <div className="absolute top-0 right-1 hidden flex-row gap-0.5 group-hover:flex">
+                {/* Buttons on hover */}
+                <div className="ml-2 flex shrink-0 flex-row items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                   <button
-                    className="create bg-fd-primary text-fd-primary-foreground hover:bg-fd-primary/80 rounded px-1.5 py-0.5 text-xs font-medium transition-colors"
+                    className="create bg-fd-primary text-fd-primary-foreground hover:bg-fd-primary/80 inline-flex h-5 items-center justify-center rounded px-1.5 text-xs leading-none font-medium transition-colors"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleAppend(node);
@@ -95,7 +95,7 @@ export function IndexDoc({
                     +
                   </button>
                   <button
-                    className="delete bg-destructive text-fd-primary-foreground hover:bg-destructive/80 rounded px-1.5 py-0.5 text-xs font-medium transition-colors"
+                    className="delete bg-destructive text-fd-primary-foreground hover:bg-destructive/80 inline-flex h-5 items-center justify-center rounded px-1.5 text-xs leading-none font-medium transition-colors"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDelete(node);
