@@ -116,32 +116,22 @@ export class DocNodeHelper extends HelperBase {
     locator: Locator,
     panel: "main" | "secondary",
   ): Promise<Array<{ value: string; id: string; indent: number }>> {
-    const docnodes = locator.locator(`.${panel}-doc .docnode`);
-    const count = await docnodes.count();
-    const nodes = [];
+    return await locator
+      .locator(`.${panel}-doc .docnode`)
+      .evaluateAll((docnodes) =>
+        docnodes.map((node) => {
+          const value = node.getAttribute("data-node-value");
+          const id = node.querySelector("span.node-id")?.textContent;
+          if (!value || !id) throw new Error("no value or id found");
 
-    for (let i = 0; i < count; i++) {
-      const node = docnodes.nth(i);
-      const value = await node.getAttribute("data-node-value");
+          const parent = node.parentElement;
+          const paddingLeft = parent
+            ? parseInt(window.getComputedStyle(parent).paddingLeft) || 0
+            : 0;
 
-      // Get the short id rendered next to the node label.
-      const idSpan = node.locator("span.node-id");
-      const id = await idSpan.textContent();
-
-      if (!value || !id) throw new Error("no value or id found");
-
-      // Get indent from the parent relative div's padding-left
-      const parent = node.locator("..");
-      const paddingLeft = await parent.evaluate((el) => {
-        const style = window.getComputedStyle(el);
-        return parseInt(style.paddingLeft) || 0;
-      });
-      const indent = paddingLeft / 20; // 20px per indent level
-
-      nodes.push({ value, id, indent });
-    }
-
-    return nodes;
+          return { value, id, indent: paddingLeft / 20 };
+        }),
+      );
   }
 
   private async _assertSync() {
@@ -178,13 +168,23 @@ export class DocNodeHelper extends HelperBase {
   async assertPanel(panel: "main" | "secondary", state: string[]) {
     state.unshift("root");
     const expectedCount = state.length;
-    const docNodes = this.getDocnodes(this._reference, panel);
-    // Wait for expected node count so sync has finished (CI is slower)
-    await docNodes
-      .nth(expectedCount - 1)
-      .locator("span.node-id")
-      .waitFor({ state: "visible", timeout: 15_000 });
+    const clients = [
+      this._reference,
+      this._otherTab,
+      this._otherDevice,
+      this._referenceHidden,
+      this._otherTabHidden,
+      this._otherDeviceHidden,
+    ];
+
+    for (const client of clients) {
+      await expect(this.getDocnodes(client, panel)).toHaveCount(expectedCount, {
+        timeout: 15_000,
+      });
+    }
+
     await this._assertSync();
+    const docNodes = this.getDocnodes(this._reference, panel);
     const count = await docNodes.count();
 
     // Get the left position of the root element to use as baseline
@@ -206,6 +206,5 @@ export class DocNodeHelper extends HelperBase {
       // Calculate relative position from the root element (20px per indent level)
       expect(rect.left - baseLeft).toBe(indent * 20);
     }
-    await this._assertSync();
   }
 }

@@ -4,12 +4,13 @@ import { DocNodeHelper } from "./utils.js";
 test.describe("main", () => {
   test("two real tabs syncs", async ({ page, context }) => {
     const dn = await DocNodeHelper.create({ page });
+    await dn.assertPanel("main", ["1", "2", "__2.1", "__2.2", "3", "4"]);
+
     const page2 = await context.newPage();
-    const dn2 = await DocNodeHelper.create({ page: page2 });
+    const dn2 = new DocNodeHelper(page2, dn.docId);
     await page2.goto(`examples/subdocs?docId=${dn.docId}`);
     await page2.waitForLoadState("networkidle");
 
-    await dn.assertPanel("main", ["1", "2", "__2.1", "__2.2", "3", "4"]);
     await dn2.assertPanel("main", ["1", "2", "__2.1", "__2.2", "3", "4"]);
 
     await dn.reference.createChild({ parent: "root", panel: "main" });
