@@ -27,7 +27,6 @@ const undoManagers = new WeakMap<Doc, UndoManager>();
 
 export function EditorPanel({
   doc,
-  clientId,
   presence,
   setPresence,
   user,

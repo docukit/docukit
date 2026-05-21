@@ -34,14 +34,21 @@ function EditorSkeletonDivider() {
 
 function EditorSkeletonToolbarButton({
   children,
+  disabled = false,
 }: {
   children: React.ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       tabIndex={-1}
-      className="text-fd-muted-foreground hover:bg-fd-accent hover:text-fd-accent-foreground flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors duration-150"
+      className={cn(
+        "flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
+        disabled
+          ? "text-fd-muted-foreground/50 cursor-not-allowed"
+          : "text-fd-muted-foreground hover:bg-fd-accent hover:text-fd-accent-foreground",
+      )}
     >
       {children}
     </button>
@@ -54,10 +61,10 @@ function EditorSkeletonToolbar() {
       aria-hidden="true"
       className="border-fd-border bg-fd-secondary flex h-10 flex-nowrap items-center gap-0.5 overflow-x-auto border-b px-1.5 py-1"
     >
-      <EditorSkeletonToolbarButton>
+      <EditorSkeletonToolbarButton disabled>
         <Undo2 size={16} />
       </EditorSkeletonToolbarButton>
-      <EditorSkeletonToolbarButton>
+      <EditorSkeletonToolbarButton disabled>
         <Redo2 size={16} />
       </EditorSkeletonToolbarButton>
 
