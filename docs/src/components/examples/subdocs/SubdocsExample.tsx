@@ -57,11 +57,11 @@ function SubDocContent({
   }, [data, clientId]);
 
   if (status === "error") {
-    return <div className="text-red-400">Error: {error.message}</div>;
+    return <div className="text-destructive">Error: {error.message}</div>;
   }
 
   if (status === "loading") {
-    return <div className="text-zinc-400">Connecting...</div>;
+    return <div className="text-fd-muted-foreground">Connecting...</div>;
   }
 
   return (
@@ -73,14 +73,14 @@ function SubDocContent({
           setActiveDoc={setActiveDoc}
         />
       </div>
-      <div className="w-px bg-zinc-800" />
+      <div className="bg-fd-border w-px" />
       {activeDoc && secondaryDoc ? (
         <div className="secondary-doc flex-1">
           <IndexDoc doc={secondaryDoc} />
         </div>
       ) : (
         <div className="flex flex-1 items-start justify-center pt-8">
-          <p className="text-xs text-zinc-500">Select a document</p>
+          <p className="text-fd-muted-foreground text-xs">Select a document</p>
         </div>
       )}
     </div>

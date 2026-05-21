@@ -59,9 +59,7 @@ export class DocNodeHelper extends HelperBase {
         if (buttonText?.includes("Offline")) {
           await toggleButton.click();
           // Wait for the button to show "Online"
-          await toggleButton
-            .getByText("🟢 Online")
-            .waitFor({ state: "visible" });
+          await toggleButton.getByText("Online").waitFor({ state: "visible" });
         }
       },
       disconnect: async () => {
@@ -75,9 +73,7 @@ export class DocNodeHelper extends HelperBase {
         if (buttonText?.includes("Online")) {
           await toggleButton.click();
           // Wait for the button to show "Offline"
-          await toggleButton
-            .getByText("🔴 Offline")
-            .waitFor({ state: "visible" });
+          await toggleButton.getByText("Offline").waitFor({ state: "visible" });
         }
       },
       createChild: async ({ parent, panel }) => {
@@ -128,8 +124,8 @@ export class DocNodeHelper extends HelperBase {
       const node = docnodes.nth(i);
       const value = await node.getAttribute("data-node-value");
 
-      // Get the id from the second span (the one with text-zinc-600 class)
-      const idSpan = node.locator("span.text-zinc-600");
+      // Get the short id rendered next to the node label.
+      const idSpan = node.locator("span.node-id");
       const id = await idSpan.textContent();
 
       if (!value || !id) throw new Error("no value or id found");
@@ -186,7 +182,7 @@ export class DocNodeHelper extends HelperBase {
     // Wait for expected node count so sync has finished (CI is slower)
     await docNodes
       .nth(expectedCount - 1)
-      .locator("span.text-zinc-600")
+      .locator("span.node-id")
       .waitFor({ state: "visible", timeout: 15_000 });
     await this._assertSync();
     const count = await docNodes.count();

@@ -46,7 +46,7 @@ function DocIdControl({
     <div className="mx-auto mb-4 flex max-w-3xl flex-col gap-2 px-4 md:flex-row md:items-center">
       <label
         htmlFor="docsync-demo-doc-id"
-        className="text-xs font-medium tracking-wide text-zinc-400 uppercase"
+        className="text-fd-muted-foreground text-xs font-medium tracking-wide uppercase"
       >
         Doc ID
       </label>
@@ -56,18 +56,20 @@ function DocIdControl({
         value={draftDocId}
         onChange={(event) => updateDraft(event.target.value)}
         aria-invalid={!draftIsValid}
-        className="h-9 min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 font-mono text-sm text-zinc-200 transition outline-none focus:border-blue-400 aria-invalid:border-red-500"
+        className="border-fd-border bg-fd-background text-fd-foreground focus:border-fd-primary aria-invalid:border-destructive h-9 min-w-0 flex-1 rounded-md border px-3 font-mono text-sm transition outline-none"
       />
       <button
         type="button"
         data-testid="new-doc-button"
         onClick={createNewDoc}
-        className="h-9 rounded-md border border-zinc-700 px-3 text-sm font-medium text-zinc-200 transition hover:bg-zinc-800"
+        className="border-fd-border text-fd-foreground hover:bg-fd-accent hover:text-fd-accent-foreground h-9 rounded-md border px-3 text-sm font-medium transition"
       >
         New
       </button>
       {!draftIsValid && (
-        <p className="text-xs text-red-400 md:w-38">Use a lowercase ULID.</p>
+        <p className="text-destructive text-xs md:w-38">
+          Use a lowercase ULID.
+        </p>
       )}
     </div>
   );
@@ -94,11 +96,11 @@ function EditorContent({
   const [presence, setPresence] = usePresenceHook({ docId });
 
   if (status === "error") {
-    return <div className="text-red-400">Error: {error.message}</div>;
+    return <div className="text-destructive">Error: {error.message}</div>;
   }
 
   if (status === "loading") {
-    return <div className="text-zinc-400">Connecting...</div>;
+    return <div className="text-fd-muted-foreground">Connecting...</div>;
   }
 
   return (

@@ -48,17 +48,17 @@ export function EditorPanel({
   }, [doc]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-zinc-700/50 bg-zinc-900/50 shadow-2xl shadow-black/50 backdrop-blur-sm">
+    <div className="border-fd-border bg-fd-background overflow-hidden rounded-lg border shadow-sm">
       <LexicalComposer
         initialConfig={{
           namespace: "MultiEditor",
           nodes: [HeadingNode],
           theme: {
-            paragraph: "mb-2 text-zinc-200 leading-relaxed",
+            paragraph: "mb-2 text-fd-foreground leading-relaxed",
             heading: {
-              h1: "text-3xl font-bold text-white mb-4 mt-2",
-              h2: "text-2xl font-semibold text-zinc-100 mb-3 mt-2",
-              h3: "text-xl font-medium text-zinc-200 mb-2 mt-2",
+              h1: "text-3xl font-bold text-fd-foreground mb-4 mt-2",
+              h2: "text-2xl font-semibold text-fd-foreground mb-3 mt-2",
+              h3: "text-xl font-medium text-fd-foreground mb-2 mt-2",
             },
             text: {
               bold: "font-bold",
@@ -84,11 +84,11 @@ export function EditorPanel({
         <div className="relative">
           <RichTextPlugin
             contentEditable={
-              <ContentEditable className="min-h-100 px-6 py-4 text-zinc-300 outline-none focus:outline-none" />
+              <ContentEditable className="text-fd-foreground min-h-100 px-6 py-4 outline-none focus:outline-none" />
             }
             ErrorBoundary={LexicalErrorBoundary}
             placeholder={
-              <div className="pointer-events-none absolute top-4 left-6 text-zinc-600">
+              <div className="text-fd-muted-foreground pointer-events-none absolute top-4 left-6">
                 Start writing something amazing...
               </div>
             }

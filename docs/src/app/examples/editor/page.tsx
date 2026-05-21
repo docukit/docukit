@@ -10,18 +10,20 @@ function EditorPageContent() {
   if (!docId) return null;
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-zinc-950 via-zinc-900 to-zinc-950 p-4">
-      <h1 className="mb-6 text-2xl font-bold">
-        Lexical Editor Example - Multi-Client Sync
+    <main className="px-4 py-6 md:px-6">
+      <h1 className="mb-6 text-2xl font-semibold tracking-tight">
+        Lexical Editor Example
       </h1>
       <EditorExample docId={docId} />
-    </div>
+    </main>
   );
 }
 
 export default function Page() {
   return (
-    <Suspense fallback={<div className="p-4 text-zinc-400">Loading...</div>}>
+    <Suspense
+      fallback={<div className="text-fd-muted-foreground p-4">Loading...</div>}
+    >
       <EditorPageContent />
     </Suspense>
   );

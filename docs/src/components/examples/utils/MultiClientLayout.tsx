@@ -2,6 +2,38 @@
 
 import { type ReactNode, useState } from "react";
 import type { DocSyncClient } from "@docukit/docsync-react/client";
+import { cn } from "@/lib/cn";
+
+function ConnectionToggle({
+  connected,
+  onClick,
+  testId,
+}: {
+  connected: boolean;
+  onClick: () => void;
+  testId: string;
+}) {
+  return (
+    <button
+      data-testid={testId}
+      onClick={onClick}
+      className={cn(
+        "border-fd-border hover:bg-fd-accent inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors",
+        connected ? "text-fd-primary" : "text-destructive",
+      )}
+      title={connected ? "Disconnect from server" : "Connect to server"}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "size-2 rounded-full",
+          connected ? "bg-fd-primary" : "bg-destructive",
+        )}
+      />
+      {connected ? "Online" : "Offline"}
+    </button>
+  );
+}
 
 export function MultiClientLayout({
   children,
@@ -48,32 +80,23 @@ export function MultiClientLayout({
     setOtherDeviceConnected(!otherDeviceConnected);
   };
   return (
-    <div className="flex w-full gap-4 p-4">
+    <div className="grid w-full grid-cols-1 gap-4 px-4 pb-6 lg:grid-cols-3">
       {/* Reference Client - User 1 */}
-      <div className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900/30 p-4">
-        <div className="mb-4 flex items-center justify-between border-b border-zinc-700 pb-2">
+      <div className="border-fd-border bg-fd-card min-w-0 rounded-lg border p-4">
+        <div className="border-fd-border mb-4 flex items-center justify-between gap-3 border-b pb-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-emerald-400">
+            <h2 className="text-fd-foreground text-sm font-semibold">
               Reference
             </h2>
-            <button
-              data-testid="reference-connection-toggle"
+            <ConnectionToggle
               onClick={toggleReference}
-              className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-                referenceConnected
-                  ? "bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30"
-                  : "bg-red-600/20 text-red-400 hover:bg-red-600/30"
-              }`}
-              title={
-                referenceConnected
-                  ? "Disconnect from server"
-                  : "Connect to server"
-              }
-            >
-              {referenceConnected ? "🟢 Online" : "🔴 Offline"}
-            </button>
+              connected={referenceConnected}
+              testId="reference-connection-toggle"
+            />
           </div>
-          <span className="text-xs text-zinc-500">User 1 • Device A</span>
+          <span className="text-fd-muted-foreground shrink-0 text-xs">
+            User 1 • Device A
+          </span>
         </div>
         <div id="reference">{children("reference", "user1")}</div>
         {/* Hidden duplicate for testing multiple useDoc calls */}
@@ -83,28 +106,21 @@ export function MultiClientLayout({
       </div>
 
       {/* Other Tab - User 1 (same user, different tab) */}
-      <div className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900/30 p-4">
-        <div className="mb-4 flex items-center justify-between border-b border-zinc-700 pb-2">
+      <div className="border-fd-border bg-fd-card min-w-0 rounded-lg border p-4">
+        <div className="border-fd-border mb-4 flex items-center justify-between gap-3 border-b pb-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-blue-400">Other Tab</h2>
-            <button
-              data-testid="otherTab-connection-toggle"
+            <h2 className="text-fd-foreground text-sm font-semibold">
+              Other Tab
+            </h2>
+            <ConnectionToggle
               onClick={toggleOtherTab}
-              className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-                otherTabConnected
-                  ? "bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30"
-                  : "bg-red-600/20 text-red-400 hover:bg-red-600/30"
-              }`}
-              title={
-                otherTabConnected
-                  ? "Disconnect from server"
-                  : "Connect to server"
-              }
-            >
-              {otherTabConnected ? "🟢 Online" : "🔴 Offline"}
-            </button>
+              connected={otherTabConnected}
+              testId="otherTab-connection-toggle"
+            />
           </div>
-          <span className="text-xs text-zinc-500">User 1 • Device A</span>
+          <span className="text-fd-muted-foreground shrink-0 text-xs">
+            User 1 • Device A
+          </span>
         </div>
         <div id="otherTab">{children("otherTab", "user1")}</div>
         {/* Hidden duplicate for testing multiple useDoc calls */}
@@ -114,30 +130,21 @@ export function MultiClientLayout({
       </div>
 
       {/* Other Device - User 2 (different user, different device) */}
-      <div className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900/30 p-4">
-        <div className="mb-4 flex items-center justify-between border-b border-zinc-700 pb-2">
+      <div className="border-fd-border bg-fd-card min-w-0 rounded-lg border p-4">
+        <div className="border-fd-border mb-4 flex items-center justify-between gap-3 border-b pb-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-purple-400">
+            <h2 className="text-fd-foreground text-sm font-semibold">
               Other Device
             </h2>
-            <button
-              data-testid="otherDevice-connection-toggle"
+            <ConnectionToggle
               onClick={toggleOtherDevice}
-              className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-                otherDeviceConnected
-                  ? "bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30"
-                  : "bg-red-600/20 text-red-400 hover:bg-red-600/30"
-              }`}
-              title={
-                otherDeviceConnected
-                  ? "Disconnect from server"
-                  : "Connect to server"
-              }
-            >
-              {otherDeviceConnected ? "🟢 Online" : "🔴 Offline"}
-            </button>
+              connected={otherDeviceConnected}
+              testId="otherDevice-connection-toggle"
+            />
           </div>
-          <span className="text-xs text-zinc-500">User 2 • Device B</span>
+          <span className="text-fd-muted-foreground shrink-0 text-xs">
+            User 2 • Device B
+          </span>
         </div>
         <div id="otherDevice">{children("otherDevice", "user2")}</div>
         {/* Hidden duplicate for testing multiple useDoc calls */}

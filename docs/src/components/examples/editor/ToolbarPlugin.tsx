@@ -33,12 +33,13 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
+import { cn } from "@/lib/cn";
 
 type HeadingTag = "h1" | "h2" | "h3";
 type BlockType = "paragraph" | HeadingTag;
 
 function Divider() {
-  return <div className="mx-1 h-6 w-px bg-zinc-600" />;
+  return <div className="bg-fd-border mx-1 h-6 w-px" />;
 }
 
 function ToolbarButton({
@@ -59,13 +60,14 @@ function ToolbarButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={ariaLabel}
-      className={`flex h-8 w-8 items-center justify-center rounded-md transition-all duration-150 ${
+      className={cn(
+        "flex h-8 w-8 items-center justify-center rounded-md transition-colors duration-150",
         disabled
-          ? "cursor-not-allowed text-zinc-600"
+          ? "text-fd-muted-foreground/50 cursor-not-allowed"
           : isActive
-            ? "bg-amber-500/20 text-amber-400 shadow-inner"
-            : "text-zinc-300 hover:bg-zinc-700 hover:text-white"
-      }`}
+            ? "bg-fd-primary/15 text-fd-primary"
+            : "text-fd-muted-foreground hover:bg-fd-accent hover:text-fd-accent-foreground",
+      )}
     >
       {children}
     </button>
@@ -159,7 +161,7 @@ export default function ToolbarPlugin() {
   }, [editor, $updateToolbar]);
 
   return (
-    <div className="flex flex-wrap items-center gap-0.5 rounded-t-xl border-b border-zinc-700 bg-zinc-800/80 px-2 py-1.5 backdrop-blur-sm">
+    <div className="border-fd-border bg-fd-secondary flex flex-wrap items-center gap-0.5 border-b px-2 py-1.5">
       {/* Undo/Redo */}
       <ToolbarButton
         onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}

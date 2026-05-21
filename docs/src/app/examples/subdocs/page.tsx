@@ -10,18 +10,20 @@ function SubdocsPageContent() {
   if (!docId) return null;
 
   return (
-    <div className="p-4">
-      <h1 className="mb-6 text-2xl font-bold">
-        Subdocs Example - Multi-Client Sync
+    <main className="px-4 py-6 md:px-6">
+      <h1 className="mb-6 text-2xl font-semibold tracking-tight">
+        Subdocs Example
       </h1>
       <SubdocsExample docId={docId} />
-    </div>
+    </main>
   );
 }
 
 export default function Page() {
   return (
-    <Suspense fallback={<div className="p-4 text-zinc-400">Loading...</div>}>
+    <Suspense
+      fallback={<div className="text-fd-muted-foreground p-4">Loading...</div>}
+    >
       <SubdocsPageContent />
     </Suspense>
   );

@@ -1,16 +1,25 @@
 import React from "react";
 import Link from "next/link";
+import { cn } from "@/lib/cn";
 
-const Footer = ({ variant = "home" }: { variant?: "home" | "docs" }) => {
+const Footer = ({
+  variant = "home",
+  className,
+}: {
+  variant?: "home" | "docs";
+  className?: string;
+}) => {
   const isDocs = variant === "docs";
 
   return (
     <footer
-      className={`relative ${
+      className={cn(
+        "text-fd-foreground relative",
         isDocs
-          ? "mt-12 border-t border-slate-800/50 pt-8"
-          : "mt-24 border-t border-slate-800 bg-slate-950/50 backdrop-blur-sm"
-      }`}
+          ? "border-fd-border mt-12 border-t pt-8"
+          : "border-fd-border bg-fd-background/50 mt-24 border-t backdrop-blur-sm",
+        className,
+      )}
     >
       <div
         className={`${
@@ -24,14 +33,14 @@ const Footer = ({ variant = "home" }: { variant?: "home" | "docs" }) => {
         >
           {/* Libraries */}
           <div>
-            <h3 className="mb-4 text-sm font-bold tracking-wider text-white uppercase">
+            <h3 className="text-fd-foreground mb-4 text-sm font-bold tracking-wider uppercase">
               Libraries
             </h3>
             <ul className="space-y-3">
               <li>
                 <Link
                   href="/docnode"
-                  className="text-slate-400 transition-colors hover:text-white"
+                  className="text-fd-muted-foreground hover:text-fd-foreground transition-colors"
                 >
                   DocNode
                 </Link>
@@ -39,7 +48,7 @@ const Footer = ({ variant = "home" }: { variant?: "home" | "docs" }) => {
               <li>
                 <Link
                   href="/docsync"
-                  className="text-slate-400 transition-colors hover:text-white"
+                  className="text-fd-muted-foreground hover:text-fd-foreground transition-colors"
                 >
                   DocSync
                 </Link>
@@ -49,14 +58,14 @@ const Footer = ({ variant = "home" }: { variant?: "home" | "docs" }) => {
 
           {/* Compare */}
           <div>
-            <h3 className="mb-4 text-sm font-bold tracking-wider text-white uppercase">
+            <h3 className="text-fd-foreground mb-4 text-sm font-bold tracking-wider uppercase">
               Compare
             </h3>
             <ul className="space-y-3">
               <li>
                 <Link
                   href="/docnode#comparison-table"
-                  className="text-slate-400 transition-colors hover:text-white"
+                  className="text-fd-muted-foreground hover:text-fd-foreground transition-colors"
                 >
                   DocNode vs Yjs
                 </Link>
@@ -64,7 +73,7 @@ const Footer = ({ variant = "home" }: { variant?: "home" | "docs" }) => {
               <li>
                 <Link
                   href="/docsync#comparison-table"
-                  className="text-slate-400 transition-colors hover:text-white"
+                  className="text-fd-muted-foreground hover:text-fd-foreground transition-colors"
                 >
                   DocSync vs Hocuspocus
                 </Link>
@@ -74,14 +83,22 @@ const Footer = ({ variant = "home" }: { variant?: "home" | "docs" }) => {
 
           {/* More */}
           <div>
-            <h3 className="mb-4 text-sm font-bold tracking-wider text-white uppercase">
+            <h3 className="text-fd-foreground mb-4 text-sm font-bold tracking-wider uppercase">
               More
             </h3>
             <ul className="space-y-3">
               <li>
                 <Link
+                  href="/examples"
+                  className="text-fd-muted-foreground hover:text-fd-foreground transition-colors"
+                >
+                  Examples
+                </Link>
+              </li>
+              <li>
+                <Link
                   href="/blog"
-                  className="text-slate-400 transition-colors hover:text-white"
+                  className="text-fd-muted-foreground hover:text-fd-foreground transition-colors"
                 >
                   Blog
                 </Link>
@@ -89,7 +106,7 @@ const Footer = ({ variant = "home" }: { variant?: "home" | "docs" }) => {
               <li>
                 <Link
                   href="/contact"
-                  className="text-slate-400 transition-colors hover:text-white"
+                  className="text-fd-muted-foreground hover:text-fd-foreground transition-colors"
                 >
                   Contact
                 </Link>
@@ -97,7 +114,7 @@ const Footer = ({ variant = "home" }: { variant?: "home" | "docs" }) => {
               <li>
                 <Link
                   href="/about"
-                  className="text-slate-400 transition-colors hover:text-white"
+                  className="text-fd-muted-foreground hover:text-fd-foreground transition-colors"
                 >
                   About
                 </Link>
@@ -105,7 +122,7 @@ const Footer = ({ variant = "home" }: { variant?: "home" | "docs" }) => {
               <li>
                 <Link
                   href="/license"
-                  className="text-slate-400 transition-colors hover:text-white"
+                  className="text-fd-muted-foreground hover:text-fd-foreground transition-colors"
                 >
                   License
                 </Link>
@@ -121,7 +138,7 @@ const Footer = ({ variant = "home" }: { variant?: "home" | "docs" }) => {
                 href="https://x.com/docnode"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-800 text-slate-400 transition-colors hover:bg-slate-700 hover:text-white"
+                className="bg-fd-secondary text-fd-muted-foreground hover:bg-fd-accent hover:text-fd-accent-foreground flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
                 aria-label="Twitter"
               >
                 <svg
@@ -136,7 +153,7 @@ const Footer = ({ variant = "home" }: { variant?: "home" | "docs" }) => {
                 href="https://discord.gg/WWCWcphGSJ"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-800 text-slate-400 transition-colors hover:bg-slate-700 hover:text-white"
+                className="bg-fd-secondary text-fd-muted-foreground hover:bg-fd-accent hover:text-fd-accent-foreground flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
                 aria-label="Discord"
               >
                 <svg
@@ -151,7 +168,7 @@ const Footer = ({ variant = "home" }: { variant?: "home" | "docs" }) => {
                 href="https://github.com/docukit/docukit"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-800 text-slate-400 transition-colors hover:bg-slate-700 hover:text-white"
+                className="bg-fd-secondary text-fd-muted-foreground hover:bg-fd-accent hover:text-fd-accent-foreground flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
                 aria-label="GitHub"
               >
                 <svg
