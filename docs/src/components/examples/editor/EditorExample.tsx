@@ -19,7 +19,7 @@ import { cn } from "@/lib/cn";
 import { createMultiClients } from "../utils/createMultiClients";
 import { createDocId, isValidDocId } from "../utils/docId";
 import { MultiClientLayout } from "../utils/MultiClientLayout";
-import { EditorPanel } from "./EditorPanel";
+import { EditorPanel, type InitializeEditor } from "./EditorPanel";
 
 const USER_COLORS: Record<string, string> = {
   user1: "#3b82f6",
@@ -217,9 +217,11 @@ function EditorContent({
   userId,
   docId,
   useDocHook,
+  initializeEditor,
   usePresenceHook,
 }: {
   clientId: string;
+  initializeEditor?: InitializeEditor;
   userId: string;
   docId: string;
   useDocHook: typeof clients.useReferenceDoc;
@@ -247,6 +249,9 @@ function EditorContent({
           key={`${clientId}:${docId}`}
           doc={data.doc}
           clientId={clientId}
+          initializeEditor={
+            clientId === "reference" ? initializeEditor : undefined
+          }
           presence={presence as Presence}
           setPresence={setPresence}
           user={{ name: userId, color: USER_COLORS[userId] ?? "#888888" }}
@@ -278,10 +283,12 @@ export function EditorExampleLoading({ className }: { className?: string }) {
 
 export function EditorExample({
   docId,
+  initializeEditor,
   onDocIdChange,
   className,
 }: {
   docId: string;
+  initializeEditor?: InitializeEditor;
   onDocIdChange?: (docId: string) => void;
   className?: string;
 }) {
@@ -300,6 +307,7 @@ export function EditorExample({
             return (
               <EditorContent
                 clientId={clientId}
+                initializeEditor={initializeEditor}
                 userId={userId}
                 docId={docId}
                 useDocHook={clients.useReferenceDoc}
@@ -312,6 +320,7 @@ export function EditorExample({
             return (
               <EditorContent
                 clientId={clientId}
+                initializeEditor={initializeEditor}
                 userId={userId}
                 docId={docId}
                 useDocHook={clients.useOtherTabDoc}
@@ -323,6 +332,7 @@ export function EditorExample({
           return (
             <EditorContent
               clientId={clientId}
+              initializeEditor={initializeEditor}
               userId={userId}
               docId={docId}
               useDocHook={clients.useOtherDeviceDoc}

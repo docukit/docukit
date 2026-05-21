@@ -8,11 +8,10 @@ import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import ToolbarPlugin from "./ToolbarPlugin";
 import {
-  $createParagraphNode,
-  $createTextNode,
   $getRoot,
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
+  type RootNode,
 } from "lexical";
 import type { PresenceSelection } from "@docukit/docnode-lexical";
 import {
@@ -25,14 +24,18 @@ import { useEffect, useMemo } from "react";
 
 const undoManagers = new WeakMap<Doc, UndoManager>();
 
+export type InitializeEditor = (root: RootNode) => void;
+
 export function EditorPanel({
   doc,
   presence,
   setPresence,
   user,
+  initializeEditor,
 }: {
   doc: Doc;
   clientId: string;
+  initializeEditor?: InitializeEditor;
   presence?: Presence;
   setPresence?: (selection: PresenceSelection | undefined) => void;
   user?: PresenceUser;
@@ -77,7 +80,12 @@ export function EditorPanel({
         user={user}
         undoManager={undoManager}
       />
-      {/* <InitialContentPlugin clientId={clientId} undoManager={undoManager} /> */}
+      {initializeEditor ? (
+        <InitialContentPlugin
+          initializeEditor={initializeEditor}
+          undoManager={undoManager}
+        />
+      ) : null}
       <ToolbarPlugin />
       <div className="relative">
         <RichTextPlugin
@@ -97,10 +105,10 @@ export function EditorPanel({
 }
 
 function InitialContentPlugin({
-  clientId,
+  initializeEditor,
   undoManager,
 }: {
-  clientId: string;
+  initializeEditor: InitializeEditor;
   undoManager: UndoManager;
 }) {
   const [editor] = useLexicalComposerContext();
@@ -111,17 +119,8 @@ function InitialContentPlugin({
     editor.update(
       () => {
         const root = $getRoot();
-        if (clientId !== "reference" || root.getChildrenSize() !== 0) return;
-        const p1 = $createParagraphNode();
-        const p2 = $createParagraphNode();
-        const p3 = $createParagraphNode();
-        const text1 = $createTextNode("Item one.");
-        const text2 = $createTextNode("Item two.");
-        const text3 = $createTextNode("Item three.");
-        p1.append(text1);
-        p2.append(text2);
-        p3.append(text3);
-        root.append(p1, p2, p3);
+        if (root.getChildrenSize() !== 0) return;
+        initializeEditor(root);
         seeded = true;
       },
       { discrete: true },
@@ -131,7 +130,7 @@ function InitialContentPlugin({
     undoManager.clear();
     editor.dispatchCommand(CAN_UNDO_COMMAND, false);
     editor.dispatchCommand(CAN_REDO_COMMAND, false);
-  }, [editor, clientId, undoManager]);
+  }, [editor, initializeEditor, undoManager]);
 
   return null;
 }

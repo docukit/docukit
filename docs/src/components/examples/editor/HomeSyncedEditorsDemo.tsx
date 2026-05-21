@@ -1,8 +1,42 @@
 "use client";
 
+import { $createHeadingNode } from "@lexical/rich-text";
+import { $createParagraphNode, $createTextNode, type RootNode } from "lexical";
 import { useState } from "react";
 import { createDocId } from "../utils/docId";
 import { EditorExample } from "./EditorExample";
+
+function initializeHomeEditor(root: RootNode) {
+  const heading = $createHeadingNode("h1");
+  heading.append($createTextNode("This is a Lexical editor."));
+
+  const p1 = $createParagraphNode();
+  const syncIntro = $createTextNode(
+    "It stays collaborative and in sync thanks to ",
+  );
+  const docNode = $createTextNode("DocNode");
+  docNode.setFormat("bold");
+  const and = $createTextNode(" and ");
+  const docSync = $createTextNode("DocSync");
+  docSync.setFormat("bold");
+  const syncOutro = $createTextNode(
+    ": type here or in the other panel — changes flow in real time.",
+  );
+  p1.append(syncIntro, docNode, and, docSync, syncOutro);
+
+  const p2 = $createParagraphNode();
+  const pitchStart = $createTextNode(
+    "DocNode gives you type-safe documents and conflict-free merges. ",
+  );
+  const pitchSync = $createTextNode("DocSync");
+  pitchSync.setFormat("bold");
+  const pitchEnd = $createTextNode(
+    " keeps every client in sync over the wire—no custom server logic required.",
+  );
+  p2.append(pitchStart, pitchSync, pitchEnd);
+
+  root.append(heading, p1, p2);
+}
 
 export function HomeSyncedEditorsDemo() {
   const [docId, setDocId] = useState(createDocId);
@@ -28,7 +62,11 @@ export function HomeSyncedEditorsDemo() {
           Type in any editor, disconnect clients, or switch the document ID.
         </p>
       </div>
-      <EditorExample docId={docId} onDocIdChange={setDocId} />
+      <EditorExample
+        docId={docId}
+        initializeEditor={initializeHomeEditor}
+        onDocIdChange={setDocId}
+      />
     </section>
   );
 }
