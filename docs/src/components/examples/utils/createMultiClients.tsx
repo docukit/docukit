@@ -6,9 +6,7 @@ import {
   createDocSyncClient,
 } from "@docukit/docsync-react/client";
 import type { DocConfig } from "@docukit/docnode";
-
-const DOCSYNC_SERVER_URL =
-  process.env.NEXT_PUBLIC_DOCSYNC_SERVER_URL ?? "ws://localhost:8081";
+import { env } from "@/env";
 
 // Create 3 separate DocSyncClient instances with different deviceIds
 const createClientForUser = (
@@ -23,7 +21,7 @@ const createClientForUser = (
 
   return createDocSyncClient({
     server: {
-      url: DOCSYNC_SERVER_URL,
+      url: env.NEXT_PUBLIC_DOCSYNC_SERVER_URL,
       auth: {
         getToken: () => userId, // Use userId as token
       },
