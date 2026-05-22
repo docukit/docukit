@@ -164,7 +164,6 @@ html:has(a[data-active="true"][href*="/docgrid"]) {
       transform: translateY(0);
     }
   }
-
   .animate-float {
     animation: float 10s ease-in-out infinite;
   }
@@ -173,6 +172,34 @@ html:has(a[data-active="true"][href*="/docgrid"]) {
   }
   .animate-fade-in-up {
     animation: fade-in-up 0.6s ease-out both;
+  }
+
+  .docs-editor-skeleton-overlay,
+  .docs-subdocs-skeleton-overlay {
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 400ms ease,
+      visibility 0s linear 400ms;
+  }
+
+  [data-editor-loading="true"] > .docs-editor-skeleton-overlay {
+    opacity: 1;
+    visibility: visible;
+    transition: none;
+  }
+
+  [data-subdocs-loading="true"] > .docs-subdocs-skeleton-overlay {
+    opacity: 1;
+    visibility: visible;
+    transition: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .docs-editor-skeleton-overlay,
+    .docs-subdocs-skeleton-overlay {
+      transition: none;
+    }
   }
 
   /* My styles */

@@ -14,8 +14,8 @@ test.fixme("after navigating to DocNode and back, editor demo is visible (not st
 }) => {
   await page.goto("/");
   // Wait for the synced editors demo to finish loading (editors visible, not "Connecting…")
-  await expect(page.getByText("Connecting…")).toBeHidden({ timeout: 15_000 });
-  await expect(page.locator("[data-lexical-editor]")).toHaveCount(2);
+  await expect(page.getByText("Connecting...")).toBeHidden({ timeout: 15_000 });
+  await expect(page.locator("[data-lexical-editor]")).toHaveCount(6);
 
   // Navigate to DocNode docs (product card link; sidebar also has a DocNode link)
   const docNodeCard = page.getByRole("link", { name: /DocNode Type-safe/ });
@@ -28,8 +28,8 @@ test.fixme("after navigating to DocNode and back, editor demo is visible (not st
   await expect(page).toHaveURL(/\/$/);
 
   // Editor demo should be visible again, not stuck on loading
-  await expect(page.getByText("Connecting…")).toBeHidden({ timeout: 5_000 });
-  await expect(page.locator("[data-lexical-editor]")).toHaveCount(2, {
+  await expect(page.getByText("Connecting...")).toBeHidden({ timeout: 5_000 });
+  await expect(page.locator("[data-lexical-editor]")).toHaveCount(6, {
     timeout: 15_000,
   });
 });

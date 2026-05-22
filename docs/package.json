@@ -5,6 +5,8 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev",
+    "docsync-server": "node --env-file-if-exists=.env ./collab-server/docsync-server.ts",
+    "docsync-server:dev": "node --env-file-if-exists=.env --watch --watch-preserve-output ./collab-server/docsync-server.ts",
     "clean": "rm -rf .next node_modules .turbo || rmdir /s /q .next node_modules .turbo",
     "start": "next start",
     "typecheck": "tsc --noEmit"
@@ -24,7 +26,9 @@
     "@radix-ui/react-popover": "^1.1.15",
     "@t3-oss/env-nextjs": "^0.13.8",
     "@vercel/analytics": "^1.5.0",
+    "better-sqlite3": "^12.10.0",
     "class-variance-authority": "^0.7.1",
+    "drizzle-orm": "^0.38.4",
     "fumadocs-core": "^16.0.8",
     "fumadocs-mdx": "^14.2.6",
     "fumadocs-typescript": "5.0.1",
@@ -42,12 +46,14 @@
     "remark-rehype": "^11.1.2",
     "shiki": "^3.21.0",
     "tailwind-merge": "^3.3.1",
+    "ulid": "^2.4.0",
     "unist-util-visit": "^5.0.0",
     "zod": "^4.1.12"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.18",
     "@tailwindcss/typography": "^0.5.19",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/hast": "^3.0.4",
     "@types/mdx": "^2.0.13",
     "@types/node": "24.1.0",

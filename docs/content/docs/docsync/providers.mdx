@@ -196,12 +196,15 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
           },
 
           saveOperations: async ({ docId, operations }) => {
+            const doc = await tx.query.documents.findFirst({
+              where: eq(schema.documents.docId, docId),
+            });
             if (operations.length === 0) {
               const latest = await tx.query.operations.findFirst({
                 where: eq(schema.operations.docId, docId),
                 orderBy: (ops, { desc }) => [desc(ops.clock)],
               });
-              return latest?.clock ?? 0;
+              return Math.max(latest?.clock ?? 0, doc?.clock ?? 0);
             }
             const inserted = await tx
               .insert(schema.operations)
@@ -264,7 +267,7 @@ new DocSyncServer({
 });
 ```
 
-You can find this exact code in the [`/examples` folder](https://github.com/docukit/docukit/tree/main/examples) of the repository.
+The public examples use a separate [SQLite provider](https://github.com/docukit/docukit/blob/main/docs/collab-server/sqlite-provider.ts) with seven-day cleanup because demo documents are intentionally ephemeral.
 
 ### Method semantics
 

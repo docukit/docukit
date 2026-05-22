@@ -86,7 +86,7 @@ export class EditorHelper extends HelperBase {
     { page }: { page: Page },
   ): Promise<T> {
     const helper = new this(page, ulid().toLowerCase());
-    await page.goto(`editor?docId=${helper.docId}`, {
+    await page.goto(`examples/editor?docId=${helper.docId}`, {
       waitUntil: "domcontentloaded",
     });
     await waitForEditorReady(page);
@@ -209,7 +209,7 @@ export class EditorHelper extends HelperBase {
   }
 
   private async _gotoEditor() {
-    await this._page.goto(`editor?docId=${this.docId}`, {
+    await this._page.goto(`examples/editor?docId=${this.docId}`, {
       waitUntil: "domcontentloaded",
     });
     await waitForEditorReady(this._page);

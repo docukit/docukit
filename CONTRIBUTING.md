@@ -6,7 +6,6 @@ Thanks for contributing to Docukit!
 
 - Node.js >= 22
 - [pnpm](https://pnpm.io/) 9.10+
-- [Docker](https://www.docker.com/) (must be running before starting dev, unless using your own PostgreSQL)
 
 ### Getting Started
 
@@ -17,27 +16,20 @@ pnpm dev
 
 `pnpm dev` automatically:
 
-1. Starts a PostgreSQL container via Docker Compose (skipped if `examples/.env` exists)
-2. Pushes the database schema (via `drizzle-kit push`)
-3. Launches all packages in dev mode with [Turbo](https://turbo.build/)
-
-To use your own PostgreSQL instead of Docker, create `examples/.env`:
-
-```
-DOCNODE_DB_URL=postgres://user:password@localhost:5432/dbname
-```
+1. Launches the docs site with [Turbo](https://turbo.build/)
+2. Starts the DocSync examples server on port 8081
 
 The two main apps are:
 
-| App          | Port             | Description                                                       |
-| ------------ | ---------------- | ----------------------------------------------------------------- |
-| **examples** | `localhost:4000` | Docukit playground (see below) with a DocSync server on port 8081 |
-| **docs**     | `localhost:3000` | Documentation site ([docukit.dev](https://docukit.dev))           |
+| App      | Port             | Description                                             |
+| -------- | ---------------- | ------------------------------------------------------- |
+| **docs** | `localhost:3000` | Documentation site and examples playground              |
+| DocSync  | `localhost:8081` | WebSocket server used by the examples and homepage demo |
 
 The playground includes two examples:
 
-- **Editor** (`/editor`) — A Lexical rich text editor with real-time collaboration via DocSync. Demonstrates `docnode-lexical` integration.
-- **Subdocs** (`/subdocs`) — Hierarchical document structure with nested navigation. Shows how to build tree-based UIs with DocNode.
+- **Editor** (`/examples/editor`) — A Lexical rich text editor with real-time collaboration via DocSync. Demonstrates `docnode-lexical` integration.
+- **Subdocs** (`/examples/subdocs`) — Hierarchical document structure with nested navigation. Shows how to build tree-based UIs with DocNode.
 
 ## Contributor License Agreement (CLA)
 

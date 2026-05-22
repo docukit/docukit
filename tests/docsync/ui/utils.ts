@@ -19,7 +19,7 @@ export class HelperBase {
   async navigateToNewDoc() {
     const oldDocId = this.docId;
     // Click on the subdocs link in the sidebar
-    await this._page.locator("a[href='/subdocs']").click();
+    await this._page.locator("a[href='/examples/subdocs']").click();
 
     // Wait for the URL to change and get the new docId in one go
     const docId = await this._page
