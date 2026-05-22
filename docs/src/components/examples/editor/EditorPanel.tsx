@@ -19,10 +19,8 @@ import {
   type Presence,
   type PresenceUser,
 } from "@docukit/docnode-lexical/react";
-import { UndoManager, type Doc } from "@docukit/docnode";
-import { useEffect, useMemo } from "react";
-
-const undoManagers = new WeakMap<Doc, UndoManager>();
+import { type Doc } from "@docukit/docnode";
+import { useEffect } from "react";
 
 export type InitializeEditor = (root: RootNode) => void;
 
@@ -40,15 +38,6 @@ export function EditorPanel({
   setPresence?: (selection: PresenceSelection | undefined) => void;
   user?: PresenceUser;
 }) {
-  const undoManager = useMemo(() => {
-    let manager = undoManagers.get(doc);
-    if (!manager) {
-      manager = new UndoManager(doc);
-      undoManagers.set(doc, manager);
-    }
-    return manager;
-  }, [doc]);
-
   return (
     <LexicalComposer
       initialConfig={{
@@ -78,13 +67,9 @@ export function EditorPanel({
         presence={presence}
         setPresence={setPresence}
         user={user}
-        undoManager={undoManager}
       />
       {initializeEditor ? (
-        <InitialContentPlugin
-          initializeEditor={initializeEditor}
-          undoManager={undoManager}
-        />
+        <InitialContentPlugin initializeEditor={initializeEditor} doc={doc} />
       ) : null}
       <ToolbarPlugin />
       <div className="relative">
@@ -106,10 +91,10 @@ export function EditorPanel({
 
 function InitialContentPlugin({
   initializeEditor,
-  undoManager,
+  doc,
 }: {
   initializeEditor: InitializeEditor;
-  undoManager: UndoManager;
+  doc: Doc;
 }) {
   const [editor] = useLexicalComposerContext();
 
@@ -127,10 +112,10 @@ function InitialContentPlugin({
     );
     if (!seeded) return;
     // Clear the initial seed so it does not enter the UndoManager.
-    undoManager.clear();
+    doc.undoManager.clear();
     editor.dispatchCommand(CAN_UNDO_COMMAND, false);
     editor.dispatchCommand(CAN_REDO_COMMAND, false);
-  }, [editor, initializeEditor, undoManager]);
+  }, [editor, initializeEditor, doc]);
 
   return null;
 }

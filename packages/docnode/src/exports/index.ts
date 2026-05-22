@@ -13,8 +13,8 @@ export {
   type Extension,
   type ChangeEvent,
   type NodeIdGenerator,
+  type UndoManagerConfig,
 } from "../types.js";
 export { defineNode } from "../utils.js";
 export { boolean, number, string, defineState } from "../stateDefinitions.js";
 export { type Operations } from "../operations.js";
-export { UndoManager } from "../undoManager.js";

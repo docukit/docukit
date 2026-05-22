@@ -1,5 +1,6 @@
 import { type Doc } from "./main.js";
 import type { Operations } from "./operations.js";
+import type { UndoManagerConfig } from "./types.js";
 
 /** `meta` is opaque — consumers attach arbitrary data (e.g. selection). */
 type UndoStackItem = { operations: Operations; meta: Map<string, unknown> };
@@ -18,25 +19,9 @@ export class UndoManager {
   private _pushHandlers = new Set<Handler>();
   private _popHandlers = new Set<Handler>();
 
-  constructor(
-    doc: Doc,
-    options?: {
-      /**
-       * The maximum number of undo steps to keep in the undo stack.
-       * If the number of undo steps exceeds this limit, the oldest undo step will be removed.
-       * @default 100
-       */
-      maxUndoSteps?: number;
-      // TODO:
-      // /**
-      //  * The interval in milliseconds to merge transactions into a single undo step.
-      //  * @default 1000
-      //  */
-      // mergeInterval?: number;
-    },
-  ) {
+  constructor(doc: Doc, options?: UndoManagerConfig) {
     this._doc = doc;
-    this._maxUndoSteps = options?.maxUndoSteps ?? 100;
+    this._maxUndoSteps = options?.maxUndoSteps ?? 0;
     this._doc.onChange((event) => {
       if (event.origin?.startsWith("remote")) return;
       const item: UndoStackItem = {

@@ -1,4 +1,4 @@
-import { UndoManager, type Doc } from "@docukit/docnode";
+import { type Doc } from "@docukit/docnode";
 import {
   $createRangeSelection,
   $getNodeByKey,
@@ -21,25 +21,6 @@ import {
 
 import type { KeyBinding, PresenceSelection } from "./types.js";
 
-/**
- * One default UndoManager per Doc. Memoizing here means the editor's undo
- * history survives mount/unmount/remount cycles (StrictMode, HMR, route
- * changes that keep the Doc alive) instead of being recreated and leaking the
- * previous one in `doc._changeListeners`. The entry is GC'd when the Doc is
- * GC'd. Users who want a dedicated UndoManager pass one via the third
- * argument and bypass this cache.
- */
-const defaultUndoManagers = new WeakMap<Doc, UndoManager>();
-
-function getDefaultUndoManager(doc: Doc): UndoManager {
-  let undoManager = defaultUndoManagers.get(doc);
-  if (!undoManager) {
-    undoManager = new UndoManager(doc);
-    defaultUndoManagers.set(doc, undoManager);
-  }
-  return undoManager;
-}
-
 const META_SELECTION = "selection";
 
 /**
@@ -49,8 +30,8 @@ export function setupUndoManager(
   editor: LexicalEditor,
   doc: Doc,
   keyBinding: KeyBinding,
-  undoManager: UndoManager = getDefaultUndoManager(doc),
 ): () => void {
+  const undoManager = doc.undoManager;
   // Track previous values so we only dispatch on transitions, mirroring
   // Lexical's own history plugin (lexical-history dispatches CAN_*_COMMAND
   // only when the boolean changes, not on every editor update).

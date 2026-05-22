@@ -25,6 +25,7 @@ import {
 import * as ops from "./operations.js";
 import { nodeIdFactory } from "./idGenerator.js";
 import { decodeTime, ulid } from "ulid";
+import { UndoManager } from "./undoManager.js";
 
 export class DocNode<T extends NodeDefinition = NodeDefinition> {
   readonly id: string;
@@ -562,6 +563,7 @@ export class Doc {
   protected _nodeIdGenerator: (doc: Doc) => string;
   protected _idGen: NodeIdGenerator;
   readonly root: DocNode;
+  readonly undoManager: UndoManager;
 
   constructor(config: DocConfig) {
     this._nodeDefs = new Set();
@@ -744,6 +746,7 @@ export class Doc {
     });
     this._lifeCycleStage = "idle";
     this.forceCommit(true);
+    this.undoManager = new UndoManager(this, config.undoManager);
   }
 
   getNodeById(docNodeId: string): DocNode | undefined {

@@ -5,18 +5,22 @@ description: Undo Manager of the DocNode
 
 import { TypeTable } from "fumadocs-ui/components/type-table";
 
-DocNode provides a built-in undo manager that can be used to undo and redo transactions. It has a modular design and is completely opt-in.
+DocNode provides a built-in undo manager that can be used to undo and redo transactions. It is configured on the document constructor and is disabled by default.
 
 ```ts
-import { UndoManager } from "@docukit/docnode";
+import { Doc } from "@docukit/docnode";
 
-const undoManager = new UndoManager(doc, { maxUndoSteps: 100 });
+const doc = new Doc({
+  type: "root",
+  extensions: [MyExtension],
+  undoManager: { maxUndoSteps: 100 },
+});
 
-undoManager.undo(); // undo the last transaction
-undoManager.redo(); // redo the last undone transaction
-undoManager.canUndo(); // true if there are undo steps available
-undoManager.canRedo(); // true if there are redo steps available
-undoManager.clear(); // clears both stacks
+doc.undoManager.undo(); // undo the last transaction
+doc.undoManager.redo(); // redo the last undone transaction
+doc.undoManager.canUndo(); // true if there are undo steps available
+doc.undoManager.canRedo(); // true if there are redo steps available
+doc.undoManager.clear(); // clears both stacks
 ```
 
 ## Options
@@ -24,7 +28,7 @@ undoManager.clear(); // clears both stacks
 {/* I wonder if a simple table offers better readability than the TypeTable component. */}
 {/* | Option | Description | Default | */}
 {/* | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | */}
-{/* | maxUndoSteps | The maximum number of undo steps to keep in the undo stack. If the number of undo steps exceeds this limit, the oldest undo step will be removed. | 100 | */}
+{/* | maxUndoSteps | The maximum number of undo steps to keep in the undo stack. If the number of undo steps exceeds this limit, the oldest undo step will be removed. | 0 | */}
 
 <TypeTable
   type={{
@@ -32,7 +36,7 @@ undoManager.clear(); // clears both stacks
       description:
         "The maximum number of undo steps to keep in the undo stack. If the number of undo steps exceeds this limit, the oldest undo step will be removed.",
       type: "number",
-      default: 100,
+      default: 0,
     },
   }}
 />
@@ -42,11 +46,11 @@ undoManager.clear(); // clears both stacks
 Most apps will not need these methods. They’re useful when binding data structures that need to restore external state, like selections in a rich text editor.
 
 ```ts
-const offPush = undoManager.onPush(({ meta }) => {
+const offPush = doc.undoManager.onPush(({ meta }) => {
   meta.set("selection", currentSelection);
 });
 
-const offPop = undoManager.onPop(({ meta }) => {
+const offPop = doc.undoManager.onPop(({ meta }) => {
   const selection = meta.get("selection");
   restoreSelection(selection);
 });

@@ -4,7 +4,6 @@ import {
   defineNode,
   type Extension,
   type Operations,
-  UndoManager,
 } from "@docukit/docnode";
 import {
   TextExtension,
@@ -115,15 +114,19 @@ describe("undoManager.ts coverage", () => {
   // Lines 67-71: canUndo() and canRedo() returning false
   test("canUndo and canRedo when empty", () => {
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc);
+    const undoManager = doc.undoManager;
     expect(undoManager.canUndo()).toBe(false);
     expect(undoManager.canRedo()).toBe(false);
   });
 
   // Lines 34, 41, 61: UndoManager with max steps and redo
   test("undoManager with operations", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc, { maxUndoSteps: 2 });
+    const doc = new Doc({
+      type: "root",
+      extensions: [TextExtension],
+      undoManager: { maxUndoSteps: 2 },
+    });
+    const undoManager = doc.undoManager;
 
     doc.root.append(...text(doc, "1"));
     doc.forceCommit();
@@ -141,7 +144,7 @@ describe("undoManager.ts coverage", () => {
   // Line 61: redo when redoStack is empty
   test("undoManager redo when empty", () => {
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc);
+    const undoManager = doc.undoManager;
 
     doc.root.append(...text(doc, "1"));
     doc.forceCommit();
@@ -154,7 +157,7 @@ describe("undoManager.ts coverage", () => {
 
   test("undoManager event listeners can be removed", () => {
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc);
+    const undoManager = doc.undoManager;
     let pushCount = 0;
     let popCount = 0;
 
@@ -176,8 +179,12 @@ describe("undoManager.ts coverage", () => {
   });
 
   test("undoManager emits push and pop listener events", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc);
+    const doc = new Doc({
+      type: "root",
+      extensions: [TextExtension],
+      undoManager: { maxUndoSteps: 10 },
+    });
+    const undoManager = doc.undoManager;
     const events: string[] = [];
 
     undoManager.onPush(({ type }) => {
