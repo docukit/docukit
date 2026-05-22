@@ -1,6 +1,11 @@
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
+const localDocSyncServerUrl =
+  process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test"
+    ? "ws://localhost:8081"
+    : undefined;
+
 export const env = createEnv({
   /**
    * Server-side environment variables schema.
@@ -24,8 +29,13 @@ export const env = createEnv({
    * These are exposed to the browser and must be prefixed with NEXT_PUBLIC_.
    */
   client: {
-    // Add client-side env vars here if needed
-    // NEXT_PUBLIC_EXAMPLE: z.string().min(1),
+    NEXT_PUBLIC_DOCSYNC_SERVER_URL: z
+      .string()
+      .url()
+      .refine(
+        (value) => value.startsWith("ws://") || value.startsWith("wss://"),
+        "Must be a ws:// or wss:// URL",
+      ),
   },
 
   /**
@@ -33,8 +43,8 @@ export const env = createEnv({
    * For Next.js >= 13.4.4, you only need to destructure client variables.
    */
   experimental__runtimeEnv: {
-    // Client vars need to be destructured here
-    // NEXT_PUBLIC_EXAMPLE: process.env.NEXT_PUBLIC_EXAMPLE,
+    NEXT_PUBLIC_DOCSYNC_SERVER_URL:
+      process.env.NEXT_PUBLIC_DOCSYNC_SERVER_URL ?? localDocSyncServerUrl,
   },
 
   /**
@@ -42,7 +52,10 @@ export const env = createEnv({
    * and only client variables on the client. This saves on bundle size.
    * If you want to always validate, set this to true.
    */
-  skipValidation: !!process.env.CI || process.env.NODE_ENV === "development",
+  skipValidation:
+    process.env.SKIP_ENV_VALIDATION === "true" ||
+    process.env.NODE_ENV === "development" ||
+    process.env.NODE_ENV === "test",
 
   /**
    * Makes it so that empty strings are treated as undefined.

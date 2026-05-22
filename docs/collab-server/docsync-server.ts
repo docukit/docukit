@@ -4,9 +4,9 @@ import { lexicalDocNodeConfig } from "@docukit/docnode-lexical";
 import { indexDocConfig } from "../src/components/examples/shared-config.ts";
 import { sqliteProvider } from "./sqlite-provider.ts";
 
-const port = Number(process.env.DOCSYNC_PORT ?? "8081");
+const port = Number(process.env.PORT ?? process.env.DOCSYNC_PORT ?? "8081");
 if (!Number.isInteger(port) || port <= 0) {
-  throw new Error("DOCSYNC_PORT must be a positive integer");
+  throw new Error("PORT/DOCSYNC_PORT must be a positive integer");
 }
 
 new DocSyncServer({
