@@ -24,14 +24,6 @@ const config: KnipConfig = {
     // legitimately referenced from optional bindings.
     optionalPeerDependencies: "off",
   },
-  workspaces: {
-    examples: {
-      entry: [
-        "collab-server/docsync-server.ts",
-        "collab-server/drizzle.config.ts",
-      ],
-    },
-  },
 };
 
 export default config;
