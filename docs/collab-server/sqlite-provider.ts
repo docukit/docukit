@@ -113,14 +113,25 @@ export function sqliteProvider({
 > {
   let queue = Promise.resolve();
 
+  function runExclusive<T>(run: () => Promise<T> | T): Promise<T> {
+    const result = queue.then(run, run);
+    queue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
   setInterval(() => {
-    cleanupExpiredDocs(ttlMs);
-    console.log("[docsync:sqlite] stats", getStats());
+    void runExclusive(() => {
+      cleanupExpiredDocs(ttlMs);
+      console.log("[docsync:sqlite] stats", getStats());
+    });
   }, cleanupIntervalMs);
 
   return {
     transaction<T>(
-      _mode: "readonly" | "readwrite",
+      mode: "readonly" | "readwrite",
       callback: (ctx: ServerProviderContext<JsonDoc, Operations>) => Promise<T>,
     ): Promise<T> {
       const runTransaction = async () => {
@@ -231,15 +242,18 @@ export function sqliteProvider({
           },
         };
 
-        return callback(ctx);
+        sqlite.exec(mode === "readwrite" ? "begin immediate" : "begin");
+        try {
+          const result = await callback(ctx);
+          sqlite.exec("commit");
+          return result;
+        } catch (error) {
+          sqlite.exec("rollback");
+          throw error;
+        }
       };
 
-      const result = queue.then(runTransaction, runTransaction);
-      queue = result.then(
-        () => undefined,
-        () => undefined,
-      );
-      return result;
+      return runExclusive(runTransaction);
     },
   };
 }

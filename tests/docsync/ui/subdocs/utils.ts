@@ -177,11 +177,15 @@ export class DocNodeHelper extends HelperBase {
       this._otherDeviceHidden,
     ];
 
-    for (const client of clients) {
-      await expect(this.getDocnodes(client, panel)).toHaveCount(expectedCount, {
-        timeout: 15_000,
-      });
-    }
+    await expect
+      .poll(
+        async () =>
+          Promise.all(
+            clients.map((client) => this.getDocnodes(client, panel).count()),
+          ),
+        { message: `wait for ${panel} panel counts to sync`, timeout: 15_000 },
+      )
+      .toEqual(clients.map(() => expectedCount));
 
     await this._assertSync();
     const docNodes = this.getDocnodes(this._reference, panel);
