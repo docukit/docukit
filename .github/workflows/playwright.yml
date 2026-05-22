@@ -23,6 +23,9 @@ jobs:
       - name: Install Playwright Browsers
         run: pnpm exec playwright install --with-deps
       - name: Run Playwright tests
+        env:
+          NEXT_PUBLIC_DOCSYNC_SERVER_URL: ws://localhost:8081
+          SKIP_ENV_VALIDATION: "true"
         run: pnpm exec playwright test
       - uses: actions/upload-artifact@v4
         if: failure()
