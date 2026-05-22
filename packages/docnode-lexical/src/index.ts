@@ -14,7 +14,7 @@ import type { syncLexicalWithDocPresenceOptions } from "./types.js";
 export function syncLexicalWithDoc(
   editor: LexicalEditor,
   doc: Doc,
-  options?: { presence?: syncLexicalWithDocPresenceOptions | undefined },
+  options?: syncLexicalWithDocPresenceOptions,
 ): () => void {
   // 1. Set Lexical content to match DocNode and build key binding
   const keyBinding = initializeEditorFromDoc(editor, doc);
@@ -31,7 +31,7 @@ export function syncLexicalWithDoc(
   const offDocListener = syncDocNodeToLexical(doc, editor, keyBinding);
 
   // 5. Sync presence (optional). Handles local selection → presence and remote cursors.
-  const offSyncPresence = syncPresence(editor, keyBinding, options?.presence);
+  const offSyncPresence = syncPresence(editor, keyBinding, options);
 
   return () => {
     offSyncPresence?.();
