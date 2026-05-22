@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { type Doc, UndoManager } from "@docukit/docnode";
+import { type Doc } from "@docukit/docnode";
 import {
   createLexicalDoc,
   LexicalDocNode,
@@ -49,33 +49,31 @@ const forceGc = async (): Promise<void> => {
   }
 };
 
-describe("setupUndoManager default cache (WeakMap)", () => {
-  it("reuses the cached default across remounts on the same Doc, preserving history without leaking listeners", () => {
+describe("setupUndoManager doc undo manager", () => {
+  it("reuses doc.undoManager across remounts on the same Doc, preserving history without leaking listeners", () => {
     const doc = createLexicalDoc();
     const editor = makeEditor();
-    expect(listenerCount(doc)).toBe(0);
+    expect(listenerCount(doc)).toBe(1);
 
     const off1 = setupUndoManager(editor, doc, emptyKeyBinding());
-    // +1 from the default UndoManager constructor, +1 from CAN_UNDO/REDO dispatcher.
+    // +1 from the built-in undo manager, +1 from CAN_UNDO/REDO dispatcher.
     expect(listenerCount(doc)).toBe(2);
 
-    // Record a change so the cached UndoManager has something to undo.
+    // Record a change so doc.undoManager has something to undo.
     doc.root.append(doc.createNode(LexicalDocNode));
     doc.forceCommit();
     expect(doc.root.first).toBeDefined();
 
     off1();
-    // The CAN_* dispatcher is gone; the cached UndoManager's listener stays
-    // (so the next mount finds the same instance and same history).
+    // The CAN_* dispatcher is gone; doc.undoManager's listener stays.
     expect(listenerCount(doc)).toBe(1);
 
     const off2 = setupUndoManager(editor, doc, emptyKeyBinding());
-    // Cache hit: only the CAN_* dispatcher is added. If the cache failed, we'd
-    // see 3 listeners (a second UndoManager would have registered a duplicate).
+    // Only the CAN_* dispatcher is added.
     expect(listenerCount(doc)).toBe(2);
 
     // The history survived the remount → UNDO_COMMAND reverts the doc change
-    // through the cached UndoManager.
+    // through doc.undoManager.
     editor.dispatchCommand(UNDO_COMMAND, undefined);
     expect(doc.root.first).toBeUndefined();
 
@@ -168,33 +166,6 @@ describe("setupUndoManager default cache (WeakMap)", () => {
     offRedoFallback();
   });
 
-  it("with a user-provided UndoManager: bypasses the cache, owns its lifecycle", () => {
-    const doc = createLexicalDoc();
-    const editor = makeEditor();
-    const userUm = new UndoManager(doc);
-    const baseline = listenerCount(doc); // 1, from userUm's own constructor
-
-    const off = setupUndoManager(editor, doc, emptyKeyBinding(), userUm);
-    // +1 for the CAN_* dispatcher only — no default UndoManager is created.
-    expect(listenerCount(doc)).toBe(baseline + 1);
-
-    // Undo flows through the user's UndoManager.
-    doc.root.append(doc.createNode(LexicalDocNode));
-    doc.forceCommit();
-    expect(userUm.canUndo()).toBe(true);
-
-    editor.dispatchCommand(UNDO_COMMAND, undefined);
-    expect(userUm.canUndo()).toBe(false);
-    expect(doc.root.first).toBeUndefined();
-
-    off();
-    // Binding cleanup MUST NOT detach the user's UndoManager — it has no
-    // detach() and its listener lives until `doc.dispose()`. Asserting that
-    // baseline is preserved (and not lower) protects against an accidental
-    // "if (ownsUndoManager) undoManager.detach()" leaking into the binding.
-    expect(listenerCount(doc)).toBe(baseline);
-  });
-
   it("warns (dev-only) when HistoryPlugin's UNDO_COMMAND handler is detected at COMMAND_PRIORITY_EDITOR", async () => {
     const doc = createLexicalDoc();
     const editor = makeEditor();
@@ -235,7 +206,7 @@ describe("setupUndoManager default cache (WeakMap)", () => {
     warn.mockRestore();
   });
 
-  it("default UndoManager is GC'd once its Doc becomes unreferenced (WeakMap key is weak)", async () => {
+  it("doc.undoManager listener is GC'd once its Doc becomes unreferenced", async () => {
     let weakRef!: WeakRef<object>;
 
     // IIFE so all local refs (doc, editor, listener array) drop after the scope.
@@ -244,19 +215,13 @@ describe("setupUndoManager default cache (WeakMap)", () => {
       const editor = makeEditor();
       const off = setupUndoManager(editor, doc, emptyKeyBinding());
 
-      // Snapshot the listener closure registered by the default UndoManager's
-      // constructor. It's the first listener in `_changeListeners` because
-      // setupUndoManager evaluates `getDefaultUndoManager(doc)` (which calls
-      // `new UndoManager(doc)` → registers its listener) before registering
-      // the CAN_*_COMMAND dispatcher. The closure captures `this` (the
-      // UndoManager), so its collection implies the UndoManager's collection.
+      // Snapshot the listener closure registered by doc.undoManager.
       const listeners = Array.from(doc["_changeListeners"]);
       weakRef = new WeakRef(listeners[0]!);
 
       off();
-      // Note: we deliberately do NOT call doc.dispose(). The WeakMap key is
-      // the doc itself, so once doc has no strong refs the entry is released
-      // and the UndoManager becomes collectible — without any explicit cleanup.
+      // Note: we deliberately do NOT call doc.dispose(). Once doc has no
+      // strong refs, the built-in undo manager listener is collectible too.
     })();
 
     await forceGc();

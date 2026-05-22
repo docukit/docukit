@@ -1,13 +1,9 @@
 import { describe, expect, test } from "vitest";
-import {
-  Doc,
-  type DocNode,
-  type Operations,
-  UndoManager,
-} from "@docukit/docnode";
+import { Doc, type DocNode, type Operations } from "@docukit/docnode";
 import {
   assertDoc,
   checkUndoManager,
+  createTextDocWithUndo,
   emptyUpdate,
   humanReadableOperations,
   text,
@@ -20,7 +16,7 @@ import {
 describe("update", () => {
   // TODO: test normalize event too.
   test("Updates that do not mutate the document should not trigger listeners", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const doc = createTextDocWithUndo();
     checkUndoManager(1, doc, () => {
       emptyUpdate(doc, () => void {});
       emptyUpdate(doc, () => {
@@ -109,8 +105,8 @@ describe("throw errors and abort", () => {
 
 describe("undoManager", () => {
   test("simplest case", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc, { maxUndoSteps: 1 });
+    const doc = createTextDocWithUndo(1);
+    const undoManager = doc.undoManager;
     doc.root.append(...text(doc, "1", "2"));
     assertDoc(doc, ["1", "2"]);
     undoManager.undo();
@@ -120,8 +116,8 @@ describe("undoManager", () => {
   });
 
   test("undo immediately after a pending local update still undoes that update", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    const doc = createTextDocWithUndo();
+    const undoManager = doc.undoManager;
     const origins: (string | undefined)[] = [];
     doc.forceCommit();
     const unregister = doc.onChange((event) => {
@@ -145,8 +141,8 @@ describe("undoManager", () => {
   });
 
   test("clear removes both undo and redo history", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    const doc = createTextDocWithUndo();
+    const undoManager = doc.undoManager;
 
     doc.root.append(...text(doc, "a"));
     doc.forceCommit();
@@ -161,8 +157,8 @@ describe("undoManager", () => {
   });
 
   test("undo/redo - adding and deleting nodes", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    const doc = createTextDocWithUndo();
+    const undoManager = doc.undoManager;
 
     // inserte only
     updateAndListen(
@@ -287,8 +283,8 @@ describe("undoManager", () => {
    * - mutate nested object directly?
    **/
   test("undo/redo - mutating state", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    const doc = createTextDocWithUndo();
+    const undoManager = doc.undoManager;
     doc.root.append(...text(doc, "1", "2", "3", "4", "5"));
     doc.root.first?.next?.append(...text(doc, "2.1", "2.2"));
     doc.forceCommit();
@@ -332,8 +328,8 @@ describe("undoManager", () => {
   });
 
   test.skip("ignore one update", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    const doc = createTextDocWithUndo();
+    const undoManager = doc.undoManager;
     doc.root.append(...text(doc, "1", "2"));
     doc.forceCommit();
     const one = doc.root.first!;
@@ -356,8 +352,8 @@ describe("undoManager", () => {
 
 describe("undoManager events", () => {
   test("onPush fires synchronously when an item is added to the undo stack", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    const doc = createTextDocWithUndo();
+    const undoManager = doc.undoManager;
     const events: { type: "undo" | "redo"; meta: Map<unknown, unknown> }[] = [];
     undoManager.onPush(({ meta, type }) => {
       events.push({ type, meta });
@@ -373,8 +369,8 @@ describe("undoManager events", () => {
   });
 
   test("onPush fires with type:'redo' when undo pushes to the redo stack", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    const doc = createTextDocWithUndo();
+    const undoManager = doc.undoManager;
     doc.root.append(...text(doc, "1"));
     doc.forceCommit();
 
@@ -388,8 +384,8 @@ describe("undoManager events", () => {
   });
 
   test("onPop fires after undo/redo applies, with the popped meta", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    const doc = createTextDocWithUndo();
+    const undoManager = doc.undoManager;
     doc.root.append(...text(doc, "1"));
     doc.forceCommit();
 
@@ -408,8 +404,8 @@ describe("undoManager events", () => {
   });
 
   test("binding can attach metadata via meta and read it back on pop", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    const doc = createTextDocWithUndo();
+    const undoManager = doc.undoManager;
 
     let counter = 0;
     undoManager.onPush(({ meta }) => {
@@ -432,8 +428,8 @@ describe("undoManager events", () => {
   });
 
   test("the unsubscribe function returned from onPush/onPop removes the handler", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+    const doc = createTextDocWithUndo();
+    const undoManager = doc.undoManager;
     let pushCount = 0;
     const off = undoManager.onPush(() => {
       pushCount++;
@@ -498,8 +494,8 @@ describe("applyOperations", () => {
   test("UndoManager ignores remote-origin transactions by default", () => {
     const remoteOperations = createRemoteInsertOperations("remote");
 
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const undoManager = new UndoManager(doc);
+    const doc = createTextDocWithUndo();
+    const undoManager = doc.undoManager;
 
     doc.applyOperations(remoteOperations, "remote");
     doc.forceCommit();

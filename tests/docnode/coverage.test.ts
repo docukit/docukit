@@ -12,6 +12,7 @@ import {
   TestExtension,
   TestNode,
   checkUndoManager,
+  createTextDocWithUndo,
 } from "./utils.js";
 
 describe("main.ts coverage", () => {
@@ -121,11 +122,7 @@ describe("undoManager.ts coverage", () => {
 
   // Lines 34, 41, 61: UndoManager with max steps and redo
   test("undoManager with operations", () => {
-    const doc = new Doc({
-      type: "root",
-      extensions: [TextExtension],
-      undoManager: { maxUndoSteps: 2 },
-    });
+    const doc = createTextDocWithUndo(2);
     const undoManager = doc.undoManager;
 
     doc.root.append(...text(doc, "1"));
@@ -179,11 +176,7 @@ describe("undoManager.ts coverage", () => {
   });
 
   test("undoManager emits push and pop listener events", () => {
-    const doc = new Doc({
-      type: "root",
-      extensions: [TextExtension],
-      undoManager: { maxUndoSteps: 10 },
-    });
+    const doc = createTextDocWithUndo();
     const undoManager = doc.undoManager;
     const events: string[] = [];
 

@@ -11,7 +11,6 @@ import {
   string,
   type Diff,
   type JsonDoc,
-  UndoManager,
 } from "@docukit/docnode";
 import { ULID_REGEX } from "valibot";
 import { expect } from "vitest";
@@ -43,6 +42,14 @@ export const text = (doc: Doc, ...values: string[]) =>
     node.state.value.set(value);
     return node;
   });
+
+export function createTextDocWithUndo(maxUndoSteps = 10): Doc {
+  return new Doc({
+    type: "root",
+    extensions: [TextExtension],
+    undoManager: { maxUndoSteps },
+  });
+}
 
 function getStateSnapshot(doc: Doc, isTestNode = true): unknown[] {
   let count = 1;
@@ -275,12 +282,22 @@ export function checkUndoManager(
   const jsonDoc = doc.toJSON();
   const nodes = Array.from(doc["_nodeDefs"]);
   // This document will replay all doc operations in a single update
-  const doc2 = Doc.fromJSON({ type: "root", extensions: [{ nodes }] }, jsonDoc);
-  const undoManager2 = new UndoManager(doc2, { maxUndoSteps: 1 });
+  const doc2 = Doc.fromJSON(
+    { type: "root", extensions: [{ nodes }], undoManager: { maxUndoSteps: 1 } },
+    jsonDoc,
+  );
+  const undoManager2 = doc2.undoManager;
 
   // This document will replay all doc operations in different updates
-  const doc3 = Doc.fromJSON({ type: "root", extensions: [{ nodes }] }, jsonDoc);
-  const undoManager3 = new UndoManager(doc3, { maxUndoSteps: 10000000 });
+  const doc3 = Doc.fromJSON(
+    {
+      type: "root",
+      extensions: [{ nodes }],
+      undoManager: { maxUndoSteps: 10000000 },
+    },
+    jsonDoc,
+  );
+  const undoManager3 = doc3.undoManager;
 
   // This document will replay all operations, but twice each operation
   const doc4 = Doc.fromJSON({ type: "root", extensions: [{ nodes }] }, jsonDoc);
