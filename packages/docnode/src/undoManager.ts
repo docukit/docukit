@@ -22,6 +22,8 @@ export class UndoManager {
   constructor(doc: Doc, options?: UndoManagerConfig) {
     this._doc = doc;
     this._maxUndoSteps = options?.maxUndoSteps ?? 0;
+    if (!this.isEnabled) return;
+
     this._doc.onChange((event) => {
       if (event.origin?.startsWith("remote")) return;
       const item: UndoStackItem = {
@@ -49,20 +51,24 @@ export class UndoManager {
     });
   }
 
+  get isEnabled() {
+    return this._maxUndoSteps > 0;
+  }
+
   undo() {
     this._doc.forceCommit();
-    this._txType = "undo";
     const item = this._undoStack.pop();
     if (!item) return;
+    this._txType = "undo";
     this._doc.applyOperations(item.operations);
     this._popHandlers.forEach((h) => h({ meta: item.meta, type: "undo" }));
   }
 
   redo() {
     this._doc.forceCommit();
-    this._txType = "redo";
     const item = this._redoStack.pop();
     if (!item) return;
+    this._txType = "redo";
     this._doc.applyOperations(item.operations);
     this._popHandlers.forEach((h) => h({ meta: item.meta, type: "redo" }));
   }

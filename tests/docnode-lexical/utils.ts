@@ -1,13 +1,14 @@
 import { Doc } from "@docukit/docnode";
-import { LexicalDocNode } from "@docukit/docnode-lexical";
+import { createLexicalDocNodeConfig } from "@docukit/docnode-lexical";
 
-export const createLexicalDoc = (): Doc => {
+export const createLexicalDoc = ({
+  enableUndoManager = true,
+}: { enableUndoManager?: boolean } = {}): Doc => {
   return Doc.fromJSON(
-    {
+    createLexicalDocNodeConfig({
       type: "root",
-      extensions: [{ nodes: [LexicalDocNode] }],
-      undoManager: { maxUndoSteps: 100 },
-    },
+      undoManager: { maxUndoSteps: enableUndoManager ? 100 : 0 },
+    }),
     ["01kc52hq510g6y44jhq0wqrjb3", "root", {}],
   );
 };

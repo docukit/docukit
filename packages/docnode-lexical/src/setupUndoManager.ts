@@ -32,6 +32,15 @@ export function setupUndoManager(
   keyBinding: KeyBinding,
 ): () => void {
   const undoManager = doc.undoManager;
+
+  if (process.env.NODE_ENV !== "production") {
+    warnIfHistoryPluginActive(editor);
+  }
+
+  if (!undoManager.isEnabled) {
+    return () => undefined;
+  }
+
   // Track previous values so we only dispatch on transitions, mirroring
   // Lexical's own history plugin (lexical-history dispatches CAN_*_COMMAND
   // only when the boolean changes, not on every editor update).
@@ -131,10 +140,6 @@ export function setupUndoManager(
     },
     COMMAND_PRIORITY_HIGH,
   );
-
-  if (process.env.NODE_ENV !== "production") {
-    warnIfHistoryPluginActive(editor);
-  }
 
   return () => {
     offUndo();
@@ -258,9 +263,10 @@ function warnIfHistoryPluginActive(editor: LexicalEditor): void {
     if ((undoListeners?.[COMMAND_PRIORITY_EDITOR]?.size ?? 0) > 0) {
       console.warn(
         "[docnode-lexical] Another UNDO_COMMAND handler detected (likely " +
-          "<HistoryPlugin />). Remove it — DocNode's delta-based undo is " +
-          "already wired; the duplicate keeps a full-snapshot history in " +
-          "memory unnecessarily.",
+          "<HistoryPlugin />). Remove it and instead enable DocNode's " +
+          "undoManager, which ignores remote operations, is more reliable " +
+          "for collaborative edits, and consumes less memory because it only " +
+          "stores deltas and not full snapshots.",
       );
     }
   });

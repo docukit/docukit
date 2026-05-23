@@ -13,6 +13,7 @@ import {
   TestNode,
   checkUndoManager,
   createTextDocWithUndo,
+  assertDoc,
 } from "./utils.js";
 
 describe("main.ts coverage", () => {
@@ -112,18 +113,82 @@ describe("stateDefinitions.ts coverage", () => {
 });
 
 describe("undoManager.ts coverage", () => {
-  // Lines 67-71: canUndo() and canRedo() returning false
-  test("canUndo and canRedo when empty", () => {
+  test("canUndo and canRedo are false when disabled manager is empty", () => {
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const undoManager = doc.undoManager;
+    expect(undoManager.isEnabled).toBe(false);
     expect(undoManager.canUndo()).toBe(false);
     expect(undoManager.canRedo()).toBe(false);
+  });
+
+  test("canUndo and canRedo are false when enabled manager is empty", () => {
+    const doc = createTextDocWithUndo();
+    const undoManager = doc.undoManager;
+    expect(undoManager.isEnabled).toBe(true);
+    expect(undoManager.canUndo()).toBe(false);
+    expect(undoManager.canRedo()).toBe(false);
+  });
+
+  test("empty undo does not turn the next local edit into redo history", () => {
+    const doc = createTextDocWithUndo();
+    const undoManager = doc.undoManager;
+
+    undoManager.undo();
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+
+    expect(undoManager.canUndo()).toBe(true);
+    expect(undoManager.canRedo()).toBe(false);
+
+    undoManager.redo();
+    assertDoc(doc, ["1"]);
+  });
+
+  test("disabled undoManager stays inert after edits", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = doc.undoManager;
+    let pushCount = 0;
+    let popCount = 0;
+
+    expect(undoManager.isEnabled).toBe(false);
+    expect(doc["_changeListeners"].size).toBe(0);
+
+    const removePushListener = undoManager.onPush(() => {
+      pushCount++;
+    });
+    const removePopListener = undoManager.onPop(() => {
+      popCount++;
+    });
+
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+    const first = doc.root.first;
+
+    expect(undoManager.canUndo()).toBe(false);
+    expect(undoManager.canRedo()).toBe(false);
+
+    undoManager.undo();
+    expect(doc.root.first).toBe(first);
+    expect(undoManager.canUndo()).toBe(false);
+    expect(undoManager.canRedo()).toBe(false);
+
+    undoManager.redo();
+    expect(doc.root.first).toBe(first);
+    expect(undoManager.canUndo()).toBe(false);
+    expect(undoManager.canRedo()).toBe(false);
+    expect(pushCount).toBe(0);
+    expect(popCount).toBe(0);
+
+    removePushListener();
+    removePopListener();
   });
 
   // Lines 34, 41, 61: UndoManager with max steps and redo
   test("undoManager with operations", () => {
     const doc = createTextDocWithUndo(2);
     const undoManager = doc.undoManager;
+    expect(undoManager.isEnabled).toBe(true);
+    expect(doc["_changeListeners"].size).toBe(1);
 
     doc.root.append(...text(doc, "1"));
     doc.forceCommit();
@@ -140,7 +205,7 @@ describe("undoManager.ts coverage", () => {
 
   // Line 61: redo when redoStack is empty
   test("undoManager redo when empty", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const doc = createTextDocWithUndo();
     const undoManager = doc.undoManager;
 
     doc.root.append(...text(doc, "1"));
@@ -153,7 +218,7 @@ describe("undoManager.ts coverage", () => {
   });
 
   test("undoManager event listeners can be removed", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const doc = createTextDocWithUndo();
     const undoManager = doc.undoManager;
     let pushCount = 0;
     let popCount = 0;

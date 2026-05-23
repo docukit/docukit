@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Doc } from "@docukit/docnode";
 import {
   LexicalDocNode,
@@ -9,8 +9,11 @@ import {
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
   COMMAND_PRIORITY_EDITOR,
+  COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
   createEditor,
+  type LexicalCommand,
+  type LexicalEditor,
   REDO_COMMAND,
   UNDO_COMMAND,
 } from "lexical";
@@ -42,6 +45,12 @@ const emptyKeyBinding = () => ({
 
 const listenerCount = (doc: Doc): number => doc["_changeListeners"].size;
 
+const commandListenerCount = <T>(
+  editor: LexicalEditor,
+  command: LexicalCommand<T>,
+  priority: number,
+): number => editor._commands.get(command)?.[priority]?.size ?? 0;
+
 const forceGc = async (): Promise<void> => {
   for (let i = 0; i < 5; i++) {
     gc();
@@ -50,14 +59,34 @@ const forceGc = async (): Promise<void> => {
 };
 
 describe("setupUndoManager doc undo manager", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("reuses doc.undoManager across remounts on the same Doc, preserving history without leaking listeners", () => {
     const doc = createLexicalDoc();
     const editor = makeEditor();
+    const initialUndoHandlerCount = commandListenerCount(
+      editor,
+      UNDO_COMMAND,
+      COMMAND_PRIORITY_HIGH,
+    );
+    const initialRedoHandlerCount = commandListenerCount(
+      editor,
+      REDO_COMMAND,
+      COMMAND_PRIORITY_HIGH,
+    );
     expect(listenerCount(doc)).toBe(1);
 
     const off1 = setupUndoManager(editor, doc, emptyKeyBinding());
     // +1 from the built-in undo manager, +1 from CAN_UNDO/REDO dispatcher.
     expect(listenerCount(doc)).toBe(2);
+    expect(
+      commandListenerCount(editor, UNDO_COMMAND, COMMAND_PRIORITY_HIGH),
+    ).toBe(initialUndoHandlerCount + 1);
+    expect(
+      commandListenerCount(editor, REDO_COMMAND, COMMAND_PRIORITY_HIGH),
+    ).toBe(initialRedoHandlerCount + 1);
 
     // Record a change so doc.undoManager has something to undo.
     doc.root.append(doc.createNode(LexicalDocNode));
@@ -67,6 +96,12 @@ describe("setupUndoManager doc undo manager", () => {
     off1();
     // The CAN_* dispatcher is gone; doc.undoManager's listener stays.
     expect(listenerCount(doc)).toBe(1);
+    expect(
+      commandListenerCount(editor, UNDO_COMMAND, COMMAND_PRIORITY_HIGH),
+    ).toBe(initialUndoHandlerCount);
+    expect(
+      commandListenerCount(editor, REDO_COMMAND, COMMAND_PRIORITY_HIGH),
+    ).toBe(initialRedoHandlerCount);
 
     const off2 = setupUndoManager(editor, doc, emptyKeyBinding());
     // Only the CAN_* dispatcher is added.
@@ -166,7 +201,52 @@ describe("setupUndoManager doc undo manager", () => {
     offRedoFallback();
   });
 
-  it("warns (dev-only) when HistoryPlugin's UNDO_COMMAND handler is detected at COMMAND_PRIORITY_EDITOR", async () => {
+  it("does not register undo handlers when undo manager is disabled", () => {
+    const doc = createLexicalDoc({ enableUndoManager: false });
+    const editor = makeEditor();
+    const canUndoListener = vi.fn(() => false);
+    const canRedoListener = vi.fn(() => false);
+    const beforeSetupListenerCount = listenerCount(doc);
+    const beforeUndoHighCount = commandListenerCount(
+      editor,
+      UNDO_COMMAND,
+      COMMAND_PRIORITY_HIGH,
+    );
+    const beforeRedoHighCount = commandListenerCount(
+      editor,
+      REDO_COMMAND,
+      COMMAND_PRIORITY_HIGH,
+    );
+
+    const offCanUndo = editor.registerCommand(
+      CAN_UNDO_COMMAND,
+      canUndoListener,
+      COMMAND_PRIORITY_LOW,
+    );
+    const offCanRedo = editor.registerCommand(
+      CAN_REDO_COMMAND,
+      canRedoListener,
+      COMMAND_PRIORITY_LOW,
+    );
+
+    const off = setupUndoManager(editor, doc, emptyKeyBinding());
+
+    expect(listenerCount(doc)).toBe(beforeSetupListenerCount);
+    expect(
+      commandListenerCount(editor, UNDO_COMMAND, COMMAND_PRIORITY_HIGH),
+    ).toBe(beforeUndoHighCount);
+    expect(
+      commandListenerCount(editor, REDO_COMMAND, COMMAND_PRIORITY_HIGH),
+    ).toBe(beforeRedoHighCount);
+    expect(canUndoListener).not.toHaveBeenCalled();
+    expect(canRedoListener).not.toHaveBeenCalled();
+
+    off();
+    offCanUndo();
+    offCanRedo();
+  });
+
+  it("warns when HistoryPlugin is detected and undo manager is enabled", async () => {
     const doc = createLexicalDoc();
     const editor = makeEditor();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -192,8 +272,48 @@ describe("setupUndoManager doc undo manager", () => {
     warn.mockRestore();
   });
 
-  it("does not warn when no HistoryPlugin-equivalent handler is mounted", async () => {
+  it("warns when HistoryPlugin is detected and undo manager is disabled", async () => {
+    const doc = createLexicalDoc({ enableUndoManager: false });
+    const editor = makeEditor();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    // Simulate <HistoryPlugin /> registering at COMMAND_PRIORITY_EDITOR.
+    const offHistoryStub = editor.registerCommand(
+      UNDO_COMMAND,
+      () => true,
+      COMMAND_PRIORITY_EDITOR,
+    );
+
+    const off = setupUndoManager(editor, doc, emptyKeyBinding());
+
+    // The check is deferred via queueMicrotask so sibling effects can register
+    // first. Flush the microtask queue.
+    await Promise.resolve();
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]?.[0]).toContain("HistoryPlugin");
+
+    off();
+    offHistoryStub();
+    warn.mockRestore();
+  });
+
+  it("does not warn when no HistoryPlugin-equivalent handler is mounted and undo manager is enabled", async () => {
     const doc = createLexicalDoc();
+    const editor = makeEditor();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const off = setupUndoManager(editor, doc, emptyKeyBinding());
+    await Promise.resolve();
+
+    expect(warn).not.toHaveBeenCalled();
+
+    off();
+    warn.mockRestore();
+  });
+
+  it("does not warn when no HistoryPlugin-equivalent handler is mounted and undo manager is disabled", async () => {
+    const doc = createLexicalDoc({ enableUndoManager: false });
     const editor = makeEditor();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 

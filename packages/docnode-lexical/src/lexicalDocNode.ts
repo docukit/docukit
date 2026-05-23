@@ -11,7 +11,12 @@ export const LexicalDocNode = defineNode({
   },
 });
 
-export const lexicalDocNodeConfig: DocConfig = {
-  type: "docnode-lexical",
-  extensions: [{ nodes: [LexicalDocNode] }],
-};
+export function createLexicalDocNodeConfig(
+  config?: Omit<Partial<DocConfig>, "extensions">,
+): DocConfig {
+  return {
+    type: "docnode-lexical",
+    ...config,
+    extensions: [{ nodes: [LexicalDocNode] }],
+  };
+}
