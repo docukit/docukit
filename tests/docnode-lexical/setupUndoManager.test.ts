@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { type Doc } from "@docukit/docnode";
 import {
-  createLexicalDoc,
   LexicalDocNode,
   _INTERNAL_setupUndoManager as setupUndoManager,
 } from "@docukit/docnode-lexical";
+import { createLexicalDoc } from "./utils.js";
 import {
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,

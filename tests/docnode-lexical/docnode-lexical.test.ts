@@ -1,11 +1,8 @@
 import { test, expect, describe } from "vitest";
 import { Doc } from "@docukit/docnode";
-import {
-  createLexicalDoc,
-  syncLexicalWithDoc,
-  LexicalDocNode,
-} from "@docukit/docnode-lexical";
+import { syncLexicalWithDoc, LexicalDocNode } from "@docukit/docnode-lexical";
 import { assertJson } from "../docnode/utils.js";
+import { createLexicalDoc } from "./utils.js";
 import {
   createEditor,
   type SerializedParagraphNode,

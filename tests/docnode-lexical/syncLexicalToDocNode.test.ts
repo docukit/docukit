@@ -11,12 +11,9 @@ import {
 } from "lexical";
 import { describe, expect, test } from "vitest";
 
-import {
-  createLexicalDoc,
-  syncLexicalWithDoc,
-  LexicalDocNode,
-} from "@docukit/docnode-lexical";
+import { syncLexicalWithDoc, LexicalDocNode } from "@docukit/docnode-lexical";
 import { assertJson } from "../docnode/utils.js";
+import { createLexicalDoc } from "./utils.js";
 
 describe("docnode to lexical", () => {
   test("no doc provided", () => {
