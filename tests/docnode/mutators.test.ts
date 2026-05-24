@@ -993,7 +993,6 @@ describe("move", () => {
       assertDoc(doc, ["1", "2"]);
       doc.forceCommit();
       const undoManager = doc.undoManager;
-      undoManager.clear();
       updateAndListen(
         doc,
         () => {

@@ -244,22 +244,6 @@ describe("undoManager", () => {
     expect(flags).toStrictEqual([{}, {}, {}, {}]);
   });
 
-  test("clear removes both undo and redo history", () => {
-    const doc = createTextDocWithUndo();
-    const undoManager = doc.undoManager;
-
-    doc.root.append(...text(doc, "a"));
-    doc.forceCommit();
-    expect(undoManager.canUndo()).toBe(true);
-
-    undoManager.undo();
-    expect(undoManager.canRedo()).toBe(true);
-
-    undoManager.clear();
-    expect(undoManager.canUndo()).toBe(false);
-    expect(undoManager.canRedo()).toBe(false);
-  });
-
   test("undo/redo - adding and deleting nodes", () => {
     const doc = createTextDocWithUndo();
     const undoManager = doc.undoManager;

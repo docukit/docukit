@@ -81,13 +81,6 @@ export class UndoManager {
     return this._redoStack.length > 0;
   }
 
-  clear() {
-    this._undoStack = [];
-    this._redoStack = [];
-    this._txType = "update";
-    this._lastUpdate = undefined;
-  }
-
   /**
    * Fires synchronously when an item is pushed to either stack.
    * Text editor bindings will often store selection state here.

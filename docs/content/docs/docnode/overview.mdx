@@ -116,7 +116,6 @@ doc.undoManager.undo(); // Undo the last undoable transaction
 doc.undoManager.redo(); // Redo the last undone transaction
 doc.undoManager.canUndo(); // Check if there is an undo step available
 doc.undoManager.canRedo(); // Check if there is a redo step available
-doc.undoManager.clear(); // Clear both undo and redo stacks
 doc.undoManager.isEnabled; // Check if maxUndoSteps is greater than 0
 doc.undoManager.onPush(callback); // Listen when a step is pushed to undo or redo
 doc.undoManager.onPop(callback); // Listen after undo or redo pops a step
