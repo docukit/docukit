@@ -1,4 +1,5 @@
 export { syncLexicalWithDoc } from "../index.js";
+export { SKIP_UNDO_TAG } from "../constants.js";
 export {
   LexicalDocNode,
   createLexicalDocNodeConfig,

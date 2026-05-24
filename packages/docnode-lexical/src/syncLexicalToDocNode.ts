@@ -10,6 +10,7 @@ import {
 } from "lexical";
 
 import { LexicalDocNode } from "./lexicalDocNode.js";
+import { SKIP_UNDO_TAG } from "./constants.js";
 import type { KeyBinding } from "./types.js";
 
 // Track which editor is currently making changes to prevent reapplying own changes
@@ -55,21 +56,28 @@ export function syncLexicalToDocNode(
       isApplyingOwnChanges.set(editor, true);
 
       try {
-        // Read Lexical state and sync to DocNode
-        editorState.read(() => {
-          const lexicalRoot = $getRoot();
-          $syncLexicalToDocNode(
-            doc,
-            doc.root,
-            lexicalRoot,
-            dirtyElements,
-            dirtyLeaves,
-            keyBinding,
-          );
-        });
+        const syncToDocNode = () => {
+          // Read Lexical state and sync to DocNode
+          editorState.read(() => {
+            const lexicalRoot = $getRoot();
+            $syncLexicalToDocNode(
+              doc,
+              doc.root,
+              lexicalRoot,
+              dirtyElements,
+              dirtyLeaves,
+              keyBinding,
+            );
+          });
+        };
 
-        // Force commit to trigger onChange handlers
-        doc.forceCommit();
+        if (tags.has(SKIP_UNDO_TAG)) {
+          doc.forceCommit(syncToDocNode, { skipUndo: true });
+        } else {
+          syncToDocNode();
+          // Force commit to trigger onChange handlers
+          doc.forceCommit();
+        }
       } finally {
         // Clear the flag synchronously after doc.forceCommit() completes
         isApplyingOwnChanges.set(editor, false);

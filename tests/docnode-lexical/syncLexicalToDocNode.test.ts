@@ -11,7 +11,11 @@ import {
 } from "lexical";
 import { describe, expect, test } from "vitest";
 
-import { syncLexicalWithDoc, LexicalDocNode } from "@docukit/docnode-lexical";
+import {
+  syncLexicalWithDoc,
+  LexicalDocNode,
+  SKIP_UNDO_TAG,
+} from "@docukit/docnode-lexical";
 import { assertJson } from "../docnode/utils.js";
 import { createLexicalDoc } from "./utils.js";
 
@@ -152,6 +156,43 @@ describe("lexical to docnode sync", () => {
     expect(docChild.is(LexicalDocNode)).toBe(true);
     const json = (docChild as DocNode<typeof LexicalDocNode>).state.j.get();
     expect(json.type).toBe("paragraph");
+  });
+
+  test("skip undo tag excludes lexical updates from DocNode undo history", () => {
+    const editor = createEditor({
+      namespace: "MyEditor",
+      onError: (error) => {
+        console.error(error);
+      },
+    });
+    const doc = createLexicalDoc();
+    syncLexicalWithDoc(editor, doc);
+
+    editor.update(
+      () => {
+        const root = $getRoot();
+        root.append($createParagraphNode());
+      },
+      { discrete: true, tag: SKIP_UNDO_TAG },
+    );
+
+    expect(doc.root.first).toBeDefined();
+    expect(doc.undoManager.canUndo()).toBe(false);
+
+    editor.update(
+      () => {
+        const root = $getRoot();
+        root.append($createParagraphNode());
+      },
+      { discrete: true },
+    );
+
+    expect(doc.root.first?.next).toBeDefined();
+    expect(doc.undoManager.canUndo()).toBe(true);
+
+    doc.undoManager.undo();
+    expect(doc.root.first).toBeDefined();
+    expect(doc.root.first?.next).toBeUndefined();
   });
 
   test("add text to paragraph", () => {

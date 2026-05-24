@@ -7,13 +7,11 @@ import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import ToolbarPlugin from "./ToolbarPlugin";
+import { $getRoot, type RootNode } from "lexical";
 import {
-  $getRoot,
-  CAN_REDO_COMMAND,
-  CAN_UNDO_COMMAND,
-  type RootNode,
-} from "lexical";
-import type { PresenceSelection } from "@docukit/docnode-lexical";
+  SKIP_UNDO_TAG,
+  type PresenceSelection,
+} from "@docukit/docnode-lexical";
 import {
   DocNodePlugin,
   type Presence,
@@ -69,7 +67,7 @@ export function EditorPanel({
         user={user}
       />
       {initializeEditor ? (
-        <InitialContentPlugin initializeEditor={initializeEditor} doc={doc} />
+        <InitialContentPlugin initializeEditor={initializeEditor} />
       ) : null}
       <ToolbarPlugin />
       <div className="relative">
@@ -91,31 +89,22 @@ export function EditorPanel({
 
 function InitialContentPlugin({
   initializeEditor,
-  doc,
 }: {
   initializeEditor: InitializeEditor;
-  doc: Doc;
 }) {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
     if (!editor) return;
-    let seeded = false;
     editor.update(
       () => {
         const root = $getRoot();
         if (root.getChildrenSize() !== 0) return;
         initializeEditor(root);
-        seeded = true;
       },
-      { discrete: true },
+      { tag: SKIP_UNDO_TAG },
     );
-    if (!seeded) return;
-    // Clear the initial seed so it does not enter the UndoManager.
-    doc.undoManager.clear();
-    editor.dispatchCommand(CAN_UNDO_COMMAND, false);
-    editor.dispatchCommand(CAN_REDO_COMMAND, false);
-  }, [editor, initializeEditor, doc]);
+  }, [editor, initializeEditor]);
 
   return null;
 }

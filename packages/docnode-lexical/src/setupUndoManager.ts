@@ -20,6 +20,7 @@ import {
 } from "lexical";
 
 import type { KeyBinding, PresenceSelection } from "./types.js";
+import { SKIP_UNDO_TAG } from "./constants.js";
 
 const META_SELECTION = "selection";
 
@@ -74,6 +75,7 @@ export function setupUndoManager(
   const offUpdate = editor.registerUpdateListener(
     ({ prevEditorState, dirtyElements, dirtyLeaves, tags }) => {
       if (tags.has(COLLABORATION_TAG)) return;
+      if (tags.has(SKIP_UNDO_TAG)) return;
       if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return;
       pending = {
         targetStack: "undo",
