@@ -16,10 +16,7 @@ async function applyServerOperations<D extends {}, S extends {}, O extends {}>(
   if (!doc) return;
 
   for (const op of args.operations) {
-    client["_docBinding"].applyOperations(doc, op, {
-      origin: "network",
-      skipUndo: true,
-    });
+    client["_applyOperationsFrom"]("network", doc, op, { skipUndo: true });
   }
 }
 
@@ -187,7 +184,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     for (const op of persistedServerOperations) {
       client["_bcHelper"]?.broadcast({
         type: "OPERATIONS",
-        source: "remote",
+        source: "network",
         operations: op,
         docId,
         ...(presencePatch && { presence: presencePatch }),

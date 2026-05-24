@@ -24,7 +24,7 @@ export interface DocBinding<
   serialize(doc: D): S;
   onChange(
     doc: D,
-    cb: (ev: { operations: O; flags?: TransactionFlags | undefined }) => void,
+    cb: (ev: { operations: O; flags?: TransactionFlags }) => void,
   ): void;
   applyOperations(doc: D, operations: O, flags?: TransactionFlags): void;
   dispose(doc: D): void;
@@ -32,10 +32,7 @@ export interface DocBinding<
 
 // Keep this local instead of importing from @docukit/docnode because DocNode is
 // an optional peer dependency of @docukit/docsync.
-export type TransactionFlags = {
-  origin?: "network" | "local-broadcast";
-  skipUndo?: boolean;
-};
+export type TransactionFlags = { skipUndo?: boolean };
 
 // ============================================================================
 // Utility Types

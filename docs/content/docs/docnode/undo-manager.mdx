@@ -21,7 +21,10 @@ doc.undoManager.redo(); // redo the last undone transaction
 doc.undoManager.canUndo(); // true if there are undo steps available
 doc.undoManager.canRedo(); // true if there are redo steps available
 doc.undoManager.clear(); // clears both stacks
+doc.undoManager.isEnabled; // true when maxUndoSteps is greater than 0
 ```
+
+If `undoManager` is omitted, `maxUndoSteps` defaults to `0`, so undo and redo are disabled.
 
 ## Options
 
@@ -40,6 +43,33 @@ doc.undoManager.clear(); // clears both stacks
     },
   }}
 />
+
+## Skipping Undo History
+
+Some transactions should update the document without becoming undoable. Common examples are initial content, imports, and operations received from another device.
+
+Use `forceCommit(callback, { skipUndo: true })` to isolate a local update and keep it out of the undo stack:
+
+```ts
+doc.forceCommit(
+  () => {
+    seedInitialContent(doc);
+  },
+  { skipUndo: true },
+);
+```
+
+When replaying remote operations, pass the same flag to `applyOperations`:
+
+```ts
+doc.applyOperations(operations, { skipUndo: true });
+```
+
+<Callout type="info">
+  The first transaction created in the same microtask as a new `Doc` is skipped
+  by the undo manager. This keeps initial document setup from becoming the first
+  undo step.
+</Callout>
 
 ## Advanced: onPush and onPop
 

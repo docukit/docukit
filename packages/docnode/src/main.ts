@@ -554,7 +554,7 @@ export class Doc {
     | "disposed" = "idle";
   protected _operations: ops.Operations = [[], {}];
   protected _inverseOperations: ops.Operations = [[], {}];
-  protected _transactionFlags: TransactionFlags | undefined;
+  protected _transactionFlags: TransactionFlags;
   private _isForceCommitCallback = false;
   protected _diff: Diff = {
     deleted: new Map(),
@@ -756,7 +756,7 @@ export class Doc {
     // is not undoable and does not commit a transaction.
     queueMicrotask(() => {
       if (this._lifeCycleStage === "idle" && this._transactionFlags?.skipUndo) {
-        this._transactionFlags = undefined;
+        this._transactionFlags = {};
       }
     });
   }
@@ -1001,12 +1001,12 @@ export class Doc {
     }
     this._forceCommit();
     if (!callback) return;
-    this._transactionFlags = flags;
+    this._transactionFlags = flags ?? {};
     this._isForceCommitCallback = true;
     try {
       withTransaction(this, callback);
       if (this._lifeCycleStage === "update") this._forceCommit();
-      else this._transactionFlags = undefined;
+      else this._transactionFlags = {};
     } finally {
       this._isForceCommitCallback = false;
     }
@@ -1022,7 +1022,7 @@ export class Doc {
     ops.maybeTriggerListeners(this, ignoreEmptyDiff);
     this._operations = [[], {}];
     this._inverseOperations = [[], {}];
-    this._transactionFlags = undefined;
+    this._transactionFlags = {};
     this._diff = {
       deleted: new Map(),
       inserted: new Set(),
@@ -1046,7 +1046,7 @@ export class Doc {
     );
     this["_operations"] = [[], {}];
     this["_inverseOperations"] = [[], {}];
-    this["_transactionFlags"] = undefined;
+    this["_transactionFlags"] = {};
     this["_diff"] = {
       deleted: new Map(),
       inserted: new Set(),

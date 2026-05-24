@@ -31,10 +31,7 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
     },
     onChange: (
       doc,
-      cb: (ev: {
-        operations: Operations;
-        flags?: TransactionFlags | undefined;
-      }) => void,
+      cb: (ev: { operations: Operations; flags?: TransactionFlags }) => void,
     ) => doc.onChange(cb),
     applyOperations: (doc, operations, flags) => {
       doc.applyOperations(operations, flags);
