@@ -14,6 +14,7 @@ import {
   type DefaultStateMethods,
   type ChangeEvent,
   type NodeIdGenerator,
+  type TransactionFlags,
 } from "./types.js";
 import {
   detachRange,
@@ -553,7 +554,7 @@ export class Doc {
     | "disposed" = "idle";
   protected _operations: ops.Operations = [[], {}];
   protected _inverseOperations: ops.Operations = [[], {}];
-  protected _changeOrigin: string | undefined;
+  protected _transactionFlags: TransactionFlags | undefined;
   private _isForceCommitCallback = false;
   protected _diff: Diff = {
     deleted: new Map(),
@@ -748,6 +749,16 @@ export class Doc {
     this._lifeCycleStage = "idle";
     this._forceCommit(true);
     this.undoManager = new UndoManager(this, config.undoManager);
+    this._transactionFlags = { skipUndo: true };
+    // If the first tx happens in the same microtask the doc is created,
+    // we can skip the undo manager for that tx.
+    // This makes even more sense when you consider that Doc.fromJSON
+    // is not undoable and does not commit a transaction.
+    queueMicrotask(() => {
+      if (this._lifeCycleStage === "idle" && this._transactionFlags?.skipUndo) {
+        this._transactionFlags = undefined;
+      }
+    });
   }
 
   getNodeById(docNodeId: string): DocNode | undefined {
@@ -942,7 +953,7 @@ export class Doc {
     this._normalizeListeners.add(callback);
   }
 
-  applyOperations(operations: ops.Operations, origin?: string) {
+  applyOperations(operations: ops.Operations, flags?: TransactionFlags) {
     const hasOperations =
       operations[0].length > 0 || !isObjectEmpty(operations[1]);
     if (!hasOperations) {
@@ -962,7 +973,7 @@ export class Doc {
     }
     if (this._lifeCycleStage === "update") this.forceCommit();
     let didApplyOperations = false;
-    this._changeOrigin = origin;
+    if (flags) this._transactionFlags = flags;
     withTransaction(
       this,
       () => {
@@ -981,8 +992,8 @@ export class Doc {
    * Using forceCommit is uncommon and can hurt your app's performance.
    */
   forceCommit(): void;
-  forceCommit(callback: () => void, origin?: string): void;
-  forceCommit(callback?: () => void, origin?: string): void {
+  forceCommit(callback: () => void, flags: TransactionFlags): void;
+  forceCommit(callback?: () => void, flags?: TransactionFlags): void {
     if (this._isForceCommitCallback) {
       throw new Error(
         "You can't call forceCommit inside a forceCommit callback",
@@ -990,12 +1001,12 @@ export class Doc {
     }
     this._forceCommit();
     if (!callback) return;
-    this._changeOrigin = origin;
+    this._transactionFlags = flags;
     this._isForceCommitCallback = true;
     try {
       withTransaction(this, callback);
       if (this._lifeCycleStage === "update") this._forceCommit();
-      else this._changeOrigin = undefined;
+      else this._transactionFlags = undefined;
     } finally {
       this._isForceCommitCallback = false;
     }
@@ -1011,7 +1022,7 @@ export class Doc {
     ops.maybeTriggerListeners(this, ignoreEmptyDiff);
     this._operations = [[], {}];
     this._inverseOperations = [[], {}];
-    this._changeOrigin = undefined;
+    this._transactionFlags = undefined;
     this._diff = {
       deleted: new Map(),
       inserted: new Set(),
@@ -1035,7 +1046,7 @@ export class Doc {
     );
     this["_operations"] = [[], {}];
     this["_inverseOperations"] = [[], {}];
-    this["_changeOrigin"] = undefined;
+    this["_transactionFlags"] = undefined;
     this["_diff"] = {
       deleted: new Map(),
       inserted: new Set(),
@@ -1123,12 +1134,14 @@ export class Doc {
         }
       });
     };
-    const root = doc._createNodeFromJson(jsonDoc);
-    doc._nodeMap.delete(doc.root.id);
-    // @ts-expect-error - read-only property
-    doc.root = root;
-    doc._nodeMap.set(doc.root.id, doc.root);
-    if (jsonDoc[3]) jsonDocToDocNode(root, jsonDoc[3]);
+    withTransaction(doc, () => {
+      const root = doc._createNodeFromJson(jsonDoc);
+      doc._nodeMap.delete(doc.root.id);
+      // @ts-expect-error - read-only property
+      doc.root = root;
+      doc._nodeMap.set(doc.root.id, doc.root);
+      if (jsonDoc[3]) jsonDocToDocNode(root, jsonDoc[3]);
+    });
     return doc;
   }
 

@@ -8,7 +8,7 @@ export type DisconnectEvent = { reason: string };
 
 export type ChangeEvent<O = unknown> = {
   docId: string;
-  origin: "local" | "broadcast" | "remote";
+  origin: "local" | "network" | "local-broadcast";
   operation: O;
 };
 

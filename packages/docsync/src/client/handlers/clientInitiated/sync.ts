@@ -16,7 +16,10 @@ async function applyServerOperations<D extends {}, S extends {}, O extends {}>(
   if (!doc) return;
 
   for (const op of args.operations) {
-    client["_docBinding"].applyOperations(doc, op, "remote");
+    client["_docBinding"].applyOperations(doc, op, {
+      origin: "network",
+      skipUndo: true,
+    });
   }
 }
 

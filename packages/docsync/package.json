@@ -20,8 +20,22 @@
     "clean": "rm -rf .next node_modules .turbo dist tsconfig.build.tsbuildinfo || rmdir /s /q .next node_modules .turbo dist tsconfig.build.tsbuildinfo",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "idb": "^8.0.1",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
+  },
   "devDependencies": {
+    "@docukit/docnode": "workspace:*",
     "concurrently": "^9.1.2"
+  },
+  "peerDependencies": {
+    "@docukit/docnode": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@docukit/docnode": {
+      "optional": true
+    }
   },
   "exports": {
     ".": {
@@ -34,12 +48,6 @@
       "types": "./dist/src/exports/*.d.ts",
       "default": "./dist/src/exports/*.js"
     }
-  },
-  "dependencies": {
-    "@docukit/docnode": "workspace:*",
-    "idb": "^8.0.1",
-    "socket.io": "^4.8.1",
-    "socket.io-client": "^4.8.1"
   },
   "keywords": [
     "sync",

@@ -25,7 +25,7 @@ export class UndoManager {
     if (!this.isEnabled) return;
 
     this._doc.onChange((event) => {
-      if (event.origin?.startsWith("remote")) return;
+      if (event.flags?.skipUndo) return;
       const item: UndoStackItem = {
         operations: event.inverseOperations,
         meta: new Map(),

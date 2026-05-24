@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { Doc, type DocNode, type Operations } from "@docukit/docnode";
+import {
+  Doc,
+  type DocNode,
+  type Operations,
+  type TransactionFlags,
+} from "@docukit/docnode";
 import {
   assertDoc,
   checkUndoManager,
@@ -34,42 +39,48 @@ describe("update", () => {
     });
   });
 
-  test("forceCommit callback commits synchronously with origin", () => {
+  test("forceCommit callback commits synchronously with flags", () => {
     const doc = createTextDocWithUndo(10);
-    const origins: (string | undefined)[] = [];
+    const flags: (TransactionFlags | undefined)[] = [];
     doc.onChange((event) => {
-      origins.push(event.origin);
+      flags.push(event.flags);
     });
 
-    doc.forceCommit(() => {
-      doc.root.append(...text(doc, "seed"));
-    }, "remote:seed");
+    doc.forceCommit(
+      () => {
+        doc.root.append(...text(doc, "seed"));
+      },
+      { skipUndo: true },
+    );
 
-    expect(origins).toStrictEqual(["remote:seed"]);
+    expect(flags).toStrictEqual([{ skipUndo: true }]);
     expect(doc.undoManager.canUndo()).toBe(false);
     expect(() => doc.toJSON()).not.toThrow();
 
     doc.root.append(...text(doc, "local"));
     doc.forceCommit();
 
-    expect(origins).toStrictEqual(["remote:seed", undefined]);
+    expect(flags).toStrictEqual([{ skipUndo: true }, undefined]);
     expect(doc.undoManager.canUndo()).toBe(true);
   });
 
-  test("forceCommit callback that closes its transaction does not leak origin", () => {
+  test("forceCommit callback that closes its transaction does not leak flags", () => {
     const doc = createTextDocWithUndo(10);
-    const origins: (string | undefined)[] = [];
+    const flags: (TransactionFlags | undefined)[] = [];
     doc.onChange((event) => {
-      origins.push(event.origin);
+      flags.push(event.flags);
     });
 
-    doc.forceCommit(() => {
-      doc.abort();
-    }, "remote:noop");
+    doc.forceCommit(
+      () => {
+        doc.abort();
+      },
+      { skipUndo: true },
+    );
     doc.root.append(...text(doc, "local"));
     doc.forceCommit();
 
-    expect(origins).toStrictEqual([undefined]);
+    expect(flags).toStrictEqual([undefined]);
   });
 
   test("forceCommit callback aborts pending changes when it throws", () => {
@@ -80,10 +91,13 @@ describe("update", () => {
     });
 
     expect(() =>
-      doc.forceCommit(() => {
-        doc.root.append(...text(doc, "seed"));
-        throw new Error("boom");
-      }, "remote:seed"),
+      doc.forceCommit(
+        () => {
+          doc.root.append(...text(doc, "seed"));
+          throw new Error("boom");
+        },
+        { skipUndo: true },
+      ),
     ).toThrowError("boom");
 
     assertDoc(doc, []);
@@ -95,10 +109,13 @@ describe("update", () => {
     const doc = createTextDocWithUndo(10);
 
     expect(() =>
-      doc.forceCommit(() => {
-        doc.root.append(...text(doc, "seed"));
-        doc.forceCommit();
-      }),
+      doc.forceCommit(
+        () => {
+          doc.root.append(...text(doc, "seed"));
+          doc.forceCommit();
+        },
+        { skipUndo: true },
+      ),
     ).toThrowError("You can't call forceCommit inside a forceCommit callback");
 
     assertDoc(doc, []);
@@ -189,10 +206,10 @@ describe("undoManager", () => {
   test("undo immediately after a pending local update still undoes that update", () => {
     const doc = createTextDocWithUndo();
     const undoManager = doc.undoManager;
-    const origins: (string | undefined)[] = [];
+    const flags: (TransactionFlags | undefined)[] = [];
     doc.forceCommit();
     const unregister = doc.onChange((event) => {
-      origins.push(event.origin);
+      flags.push(event.flags);
     });
 
     doc.root.append(...text(doc, "a"));
@@ -208,7 +225,7 @@ describe("undoManager", () => {
     assertDoc(doc, ["a", "b"]);
 
     unregister();
-    expect(origins).toStrictEqual([undefined, undefined, undefined, undefined]);
+    expect(flags).toStrictEqual([undefined, undefined, undefined, undefined]);
   });
 
   test("clear removes both undo and redo history", () => {
@@ -534,45 +551,54 @@ describe("applyOperations", () => {
     return remoteOperations;
   }
 
-  function collectOrigins(
+  function collectFlags(
     doc: Doc,
     callback: () => void,
-  ): (string | undefined)[] {
-    const origins: (string | undefined)[] = [];
+  ): (TransactionFlags | undefined)[] {
+    const flags: (TransactionFlags | undefined)[] = [];
     doc.forceCommit();
     const unregister = doc.onChange((event) => {
-      origins.push(event.origin);
+      flags.push(event.flags);
     });
     callback();
     doc.forceCommit();
     unregister();
-    return origins;
+    return flags;
   }
 
-  test("commits atomically and forwards its origin when called inside another update", () => {
+  test("commits atomically and forwards its flags when called inside another update", () => {
     const remoteOperations = createRemoteInsertOperations("remote");
 
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const origins = collectOrigins(doc, () => {
+    const flags = collectFlags(doc, () => {
       doc.root.append(...text(doc, "local"));
-      doc.applyOperations(remoteOperations, "remote");
+      doc.applyOperations(remoteOperations, {
+        origin: "network",
+        skipUndo: true,
+      });
     });
 
-    expect(origins).toStrictEqual([undefined, "remote"]);
+    expect(flags).toStrictEqual([
+      undefined,
+      { origin: "network", skipUndo: true },
+    ]);
     assertDoc(doc, ["local", "remote"]);
   });
 
-  test("UndoManager ignores remote-origin transactions by default", () => {
+  test("UndoManager ignores transactions with skipUndo flag", () => {
     const remoteOperations = createRemoteInsertOperations("remote");
 
     const doc = createTextDocWithUndo();
     const undoManager = doc.undoManager;
 
-    doc.applyOperations(remoteOperations, "remote");
+    doc.applyOperations(remoteOperations, { skipUndo: true });
     doc.forceCommit();
     expect(undoManager.canUndo()).toBe(false);
 
-    doc.applyOperations(remoteOperations, "remote:peer-2");
+    doc.applyOperations(remoteOperations, {
+      origin: "network",
+      skipUndo: true,
+    });
     doc.forceCommit();
     expect(undoManager.canUndo()).toBe(false);
 
@@ -584,11 +610,17 @@ describe("applyOperations", () => {
   test("applyOperations plus update are committed as two transactions", () => {
     const remoteOperations = createRemoteInsertOperations("remote");
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const origins = collectOrigins(doc, () => {
-      doc.applyOperations(remoteOperations, "remote");
+    const flags = collectFlags(doc, () => {
+      doc.applyOperations(remoteOperations, {
+        origin: "network",
+        skipUndo: true,
+      });
       doc.root.append(...text(doc, "local"));
     });
-    expect(origins).toStrictEqual(["remote", undefined]);
+    expect(flags).toStrictEqual([
+      { origin: "network", skipUndo: true },
+      undefined,
+    ]);
     assertDoc(doc, ["remote", "local"]);
   });
 });

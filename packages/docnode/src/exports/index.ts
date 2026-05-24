@@ -12,6 +12,7 @@ export {
   type DefaultStateMethods,
   type Extension,
   type ChangeEvent,
+  type TransactionFlags,
   type NodeIdGenerator,
   type UndoManagerConfig,
 } from "../types.js";

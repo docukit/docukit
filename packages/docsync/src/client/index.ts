@@ -303,12 +303,8 @@ export class DocSyncClient<
   }
 
   private _setupChangeListener(doc: D, docId: string) {
-    this._docBinding.onChange(doc, ({ operations, origin }) => {
-      const changeOrigin = origin?.startsWith("remote")
-        ? "remote"
-        : origin === "broadcast"
-          ? "broadcast"
-          : "local";
+    this._docBinding.onChange(doc, ({ operations, flags }) => {
+      const changeOrigin = flags?.origin ?? "local";
 
       this._events.emit("change", {
         docId,
@@ -337,6 +333,7 @@ export class DocSyncClient<
             source: "local",
             operations,
             docId,
+            ...(flags?.skipUndo && { flags: { skipUndo: true } }),
             ...(presencePatch && { presence: presencePatch }),
           });
         });

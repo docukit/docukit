@@ -81,7 +81,7 @@ describe("Client Events", () => {
   // ──────────────────────────────────────────────────────────────────────────
 
   describe('on("change")', () => {
-    test("should emit for remote changes", async () => {
+    test("should emit for network changes", async () => {
       const client = await createClient();
       const docId = generateDocId();
 
@@ -93,10 +93,10 @@ describe("Client Events", () => {
       const testOperations = [ops({ test: "data" })];
       client["_events"].emit("change", {
         docId,
-        origin: "remote",
+        origin: "network",
         operation: testOperations[0],
       });
-      await expect.poll(() => changeOrigin).toBe("remote");
+      await expect.poll(() => changeOrigin).toBe("network");
     });
   });
 

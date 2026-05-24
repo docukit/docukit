@@ -9,6 +9,7 @@ type BroadcastMessage<O> =
       source: "local" | "remote";
       operations: O;
       docId: string;
+      flags?: { skipUndo?: boolean };
       presence?: Record<string, unknown>;
     }
   | { type: "PRESENCE"; docId: string; presence: Record<string, unknown> };
@@ -23,12 +24,12 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
     this._channel.onmessage = (ev: MessageEvent<BroadcastMessage<O>>) => {
       const msg = ev.data;
       if (msg.type === "OPERATIONS") {
-        const { docId, operations, presence, source } = msg;
+        const { docId, flags, operations, presence, source } = msg;
         const currentStatus = client["_pushStatusByDocId"].get(docId) ?? "idle";
         if (currentStatus === "pushing") {
           client["_pushStatusByDocId"].set(docId, "pushing-with-pending");
         }
-        void this._applyOperations(client, operations, docId, source);
+        void this._applyOperations(client, operations, docId, source, flags);
         if (presence) {
           const cacheEntry = client["_docsCache"].get(docId);
           if (cacheEntry)
@@ -50,6 +51,7 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
     operations: O,
     docId: string,
     source: "local" | "remote",
+    flags?: { skipUndo?: boolean },
   ): Promise<void> {
     const cacheEntry = client["_docsCache"].get(docId);
     if (!cacheEntry) return;
@@ -58,7 +60,9 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
     client["_docBinding"].applyOperations(
       doc,
       operations,
-      source === "remote" ? "remote:broadcast" : "broadcast",
+      source === "remote"
+        ? { ...flags, origin: "network", skipUndo: true }
+        : { ...flags, origin: "local-broadcast" },
     );
   }
 

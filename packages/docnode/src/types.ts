@@ -155,6 +155,11 @@ export type Diff = {
   updated: Set<string>;
 };
 
+export type TransactionFlags = {
+  skipUndo?: boolean;
+  origin?: "network" | "local-broadcast";
+};
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type IntersectionOf<T extends any[]> = T extends [
   infer First,
@@ -254,5 +259,5 @@ export type ChangeEvent = {
   operations: Operations;
   inverseOperations: Operations;
   diff: Diff;
-  origin?: string | undefined;
+  flags?: TransactionFlags | undefined;
 };

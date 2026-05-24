@@ -338,7 +338,7 @@ export const maybeTriggerListeners = (doc: Doc, ignoreEmptyDiff = false) => {
       operations: doc["_operations"],
       inverseOperations: doc["_inverseOperations"],
       diff: doc["_diff"],
-      origin: doc["_changeOrigin"],
+      flags: doc["_transactionFlags"],
     }),
   );
 };

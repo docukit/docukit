@@ -4,10 +4,10 @@ import {
   indexedDBProvider,
   type ClientConfig,
   type DocData,
+  type DocBinding,
   type Identity,
   type QueryResult,
 } from "@docukit/docsync/client";
-import type { DocBinding } from "@docukit/docsync/shared";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import {
   defineNode,
@@ -155,7 +155,7 @@ describe("DocSyncClient", () => {
       type FakeOperation = { value: string };
       type FakeChangeListener = (ev: {
         operations: FakeOperation;
-        origin?: string | undefined;
+        flags?: { origin?: "network" | "local-broadcast" } | undefined;
       }) => void;
 
       const changeListeners = new Set<FakeChangeListener>();
@@ -170,9 +170,9 @@ describe("DocSyncClient", () => {
           onChange: (_doc, cb) => {
             changeListeners.add(cb);
           },
-          applyOperations: (_doc, operations, origin) => {
+          applyOperations: (_doc, operations, flags) => {
             changeListeners.forEach((listener) =>
-              listener({ operations, origin }),
+              listener({ operations, flags }),
             );
           },
           dispose: vi.fn(),
@@ -222,7 +222,7 @@ describe("DocSyncClient", () => {
       docBinding.applyOperations(
         doc,
         { value: "unrelated-remote-change" },
-        "remote",
+        { origin: "network" },
       );
       await Promise.resolve();
 
@@ -238,7 +238,7 @@ describe("DocSyncClient", () => {
       docBinding.applyOperations(
         doc,
         { value: "selection-changing-remote-change" },
-        "remote",
+        { origin: "network" },
       );
       await Promise.resolve();
 
@@ -809,6 +809,7 @@ describe("DocSyncClient", () => {
           type: "OPERATIONS",
           docId,
           source: "local",
+          flags: { skipUndo: true },
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           operations: expect.anything(),
         });
