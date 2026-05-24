@@ -23,7 +23,13 @@ const MyNodeDef = defineNode({
     foo: string(""), // "" is the default value
   },
 });
-const doc = new Doc({ extensions: [{ nodes: [MyNodeDef] }] }); // New doc that accepts MyNodeDef
+
+// New doc that accepts MyNodeDef
+const doc = new Doc({
+  extensions: [{ nodes: [MyNodeDef] }],
+  undoManager: { maxUndoSteps: 100 },
+});
+
 const docnode = doc.createNode(MyNodeDef); // Creates a node of type DocNode<typeof MyNodeDef>
 doc.root.append(docnode); // An example of how you can insert the node into the doc
 
@@ -101,4 +107,20 @@ const jsonDoc = doc.toJSON(); // Get the JSON representation of the doc
 const doc2 = Doc.fromJSON({ extensions: [{ nodes: [MyNodeDef] }] }, jsonDoc);
 
 const jsonDocNode = docnode.toJSON(); // Get the JSON of the node. Useful for debugging
+
+/*===============================================
+               UNDO MANAGER
+ ===============================================*/
+
+doc.undoManager.undo(); // Undo the last undoable transaction
+doc.undoManager.redo(); // Redo the last undone transaction
+doc.undoManager.canUndo(); // Check if there is an undo step available
+doc.undoManager.canRedo(); // Check if there is a redo step available
+doc.undoManager.clear(); // Clear both undo and redo stacks
+doc.undoManager.isEnabled; // Check if maxUndoSteps is greater than 0
+doc.undoManager.onPush(callback); // Listen when a step is pushed to undo or redo
+doc.undoManager.onPop(callback); // Listen after undo or redo pops a step
+
+doc.forceCommit(callback, { skipUndo: true }); // Commit without adding to undo history
+doc.applyOperations(operations, { skipUndo: true }); // Apply operations without adding to undo history
 ```
