@@ -265,6 +265,113 @@ describe("undoManager.ts coverage", () => {
       "pop:redo",
     ]);
   });
+
+  test("same-microtask updates after fromJSON do not seed undo history", () => {
+    const source = new Doc({ type: "root", extensions: [TextExtension] });
+    source.root.append(...text(source, "seed"));
+    source.forceCommit();
+
+    const doc = Doc.fromJSON(
+      {
+        type: "root",
+        extensions: [TextExtension],
+        undoManager: { maxUndoSteps: 10 },
+      },
+      source.toJSON(),
+    );
+
+    doc.root.append(...text(doc, "local"));
+    doc.forceCommit();
+    expect(doc.undoManager.canUndo()).toBe(false);
+    assertDoc(doc, ["seed", "local"]);
+
+    doc.undoManager.undo();
+    assertDoc(doc, ["seed", "local"]);
+
+    doc.root.append(...text(doc, "after"));
+    doc.forceCommit();
+    assertDoc(doc, ["seed", "local", "after"]);
+    expect(doc.undoManager.canUndo()).toBe(true);
+  });
+
+  test("fromJSON keeps the initial transaction open until forceCommit", () => {
+    const source = new Doc({ type: "root", extensions: [TextExtension] });
+    source.root.append(...text(source, "seed"));
+    source.forceCommit();
+
+    const doc = Doc.fromJSON(
+      {
+        type: "root",
+        extensions: [TextExtension],
+        undoManager: { maxUndoSteps: 10 },
+      },
+      source.toJSON(),
+    );
+
+    expect(() => doc.toJSON()).toThrowError(
+      "Cannot serialize a document during an active transaction.",
+    );
+
+    let changeCount = 0;
+    doc.onChange(() => {
+      changeCount++;
+    });
+    doc.root.append(...text(doc, "local"));
+    expect(changeCount).toBe(0);
+
+    doc.forceCommit();
+
+    expect(() => doc.toJSON()).not.toThrow();
+    expect(changeCount).toBe(1);
+    assertDoc(doc, ["seed", "local"]);
+  });
+
+  test("fromJSON allows registering onChange before the initial transaction commits", () => {
+    const source = new Doc({ type: "root", extensions: [TextExtension] });
+    source.root.append(...text(source, "seed"));
+    source.forceCommit();
+
+    const doc = Doc.fromJSON(
+      {
+        type: "root",
+        extensions: [TextExtension],
+        undoManager: { maxUndoSteps: 10 },
+      },
+      source.toJSON(),
+    );
+    let changeCount = 0;
+    doc.onChange(() => {
+      changeCount++;
+    });
+    doc.root.append(...text(doc, "local"));
+    expect(changeCount).toBe(0);
+
+    doc.forceCommit();
+
+    expect(changeCount).toBe(1);
+    assertDoc(doc, ["seed", "local"]);
+    expect(doc.undoManager.canUndo()).toBe(false);
+  });
+
+  test("same-microtask updates after doc creation do not seed undo history", () => {
+    const doc = new Doc({
+      type: "root",
+      extensions: [TextExtension],
+      undoManager: { maxUndoSteps: 10 },
+    });
+
+    doc.root.append(...text(doc, "seed"));
+    doc.forceCommit();
+    expect(doc.undoManager.canUndo()).toBe(false);
+    assertDoc(doc, ["seed"]);
+    doc.undoManager.undo();
+    assertDoc(doc, ["seed"]);
+
+    doc.root.append(...text(doc, "local"));
+    doc.forceCommit();
+    assertDoc(doc, ["seed", "local"]);
+    expect(doc.undoManager.canUndo()).toBe(true);
+  });
 });
 
 describe("operations.ts coverage", () => {

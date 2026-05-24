@@ -554,6 +554,7 @@ export class Doc {
   protected _operations: ops.Operations = [[], {}];
   protected _inverseOperations: ops.Operations = [[], {}];
   protected _changeOrigin: string | undefined;
+  private _isForceCommitCallback = false;
   protected _diff: Diff = {
     deleted: new Map(),
     inserted: new Set(),
@@ -745,7 +746,7 @@ export class Doc {
       extension.register?.(this);
     });
     this._lifeCycleStage = "idle";
-    this.forceCommit(true);
+    this._forceCommit(true);
     this.undoManager = new UndoManager(this, config.undoManager);
   }
 
@@ -979,7 +980,28 @@ export class Doc {
    * Terminates the transaction early and synchronously, triggering events.
    * Using forceCommit is uncommon and can hurt your app's performance.
    */
-  forceCommit(ignoreEmptyDiff = false) {
+  forceCommit(): void;
+  forceCommit(callback: () => void, origin?: string): void;
+  forceCommit(callback?: () => void, origin?: string): void {
+    if (this._isForceCommitCallback) {
+      throw new Error(
+        "You can't call forceCommit inside a forceCommit callback",
+      );
+    }
+    this._forceCommit();
+    if (!callback) return;
+    this._changeOrigin = origin;
+    this._isForceCommitCallback = true;
+    try {
+      withTransaction(this, callback);
+      if (this._lifeCycleStage === "update") this._forceCommit();
+      else this._changeOrigin = undefined;
+    } finally {
+      this._isForceCommitCallback = false;
+    }
+  }
+
+  private _forceCommit(ignoreEmptyDiff = false) {
     if (this._lifeCycleStage === "change")
       throw new Error("You can't trigger an update inside a change event");
     // push + reverse is more performant than unshift at insertion time
@@ -1077,9 +1099,8 @@ export class Doc {
   /**
    * Creates a new doc from the given JSON.
    *
-   * In the process, it dispatches an initial transaction,
-   * so if you want to register listeners events immediately
-   * afterward, you must first call doc.forceCommit().
+   * The initial JSON import starts a transaction, allowing updates made
+   * immediately afterward to be batched with it.
    */
   static fromJSON(config: DocConfig, jsonDoc: JsonDoc): Doc {
     const id = jsonDoc[0];

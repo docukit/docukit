@@ -44,11 +44,13 @@ export const text = (doc: Doc, ...values: string[]) =>
   });
 
 export function createTextDocWithUndo(maxUndoSteps = 10): Doc {
-  return new Doc({
+  const doc = new Doc({
     type: "root",
     extensions: [TextExtension],
     undoManager: { maxUndoSteps },
   });
+  doc.forceCommit();
+  return doc;
 }
 
 function getStateSnapshot(doc: Doc, isTestNode = true): unknown[] {

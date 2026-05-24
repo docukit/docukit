@@ -33,6 +33,77 @@ describe("update", () => {
       assertDoc(doc, ["1"]);
     });
   });
+
+  test("forceCommit callback commits synchronously with origin", () => {
+    const doc = createTextDocWithUndo(10);
+    const origins: (string | undefined)[] = [];
+    doc.onChange((event) => {
+      origins.push(event.origin);
+    });
+
+    doc.forceCommit(() => {
+      doc.root.append(...text(doc, "seed"));
+    }, "remote:seed");
+
+    expect(origins).toStrictEqual(["remote:seed"]);
+    expect(doc.undoManager.canUndo()).toBe(false);
+    expect(() => doc.toJSON()).not.toThrow();
+
+    doc.root.append(...text(doc, "local"));
+    doc.forceCommit();
+
+    expect(origins).toStrictEqual(["remote:seed", undefined]);
+    expect(doc.undoManager.canUndo()).toBe(true);
+  });
+
+  test("forceCommit callback that closes its transaction does not leak origin", () => {
+    const doc = createTextDocWithUndo(10);
+    const origins: (string | undefined)[] = [];
+    doc.onChange((event) => {
+      origins.push(event.origin);
+    });
+
+    doc.forceCommit(() => {
+      doc.abort();
+    }, "remote:noop");
+    doc.root.append(...text(doc, "local"));
+    doc.forceCommit();
+
+    expect(origins).toStrictEqual([undefined]);
+  });
+
+  test("forceCommit callback aborts pending changes when it throws", () => {
+    const doc = createTextDocWithUndo(10);
+    let changeCount = 0;
+    doc.onChange(() => {
+      changeCount++;
+    });
+
+    expect(() =>
+      doc.forceCommit(() => {
+        doc.root.append(...text(doc, "seed"));
+        throw new Error("boom");
+      }, "remote:seed"),
+    ).toThrowError("boom");
+
+    assertDoc(doc, []);
+    expect(changeCount).toBe(0);
+    expect(doc.undoManager.canUndo()).toBe(false);
+  });
+
+  test("forceCommit callback cannot be nested", () => {
+    const doc = createTextDocWithUndo(10);
+
+    expect(() =>
+      doc.forceCommit(() => {
+        doc.root.append(...text(doc, "seed"));
+        doc.forceCommit();
+      }),
+    ).toThrowError("You can't call forceCommit inside a forceCommit callback");
+
+    assertDoc(doc, []);
+    expect(doc.undoManager.canUndo()).toBe(false);
+  });
 });
 
 describe("throw errors and abort", () => {
