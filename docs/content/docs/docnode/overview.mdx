@@ -112,6 +112,8 @@ const jsonDocNode = docnode.toJSON(); // Get the JSON of the node. Useful for de
                UNDO MANAGER
  ===============================================*/
 
+// For configuration options, see https://docukit.dev/docnode/undo-manager
+
 doc.undoManager.undo(); // Undo the last undoable transaction
 doc.undoManager.redo(); // Redo the last undone transaction
 doc.undoManager.canUndo(); // Check if there is an undo step available
