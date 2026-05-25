@@ -14,6 +14,7 @@ import { handleDisconnect } from "./handlers/disconnect.js";
 import { handlePresence } from "./handlers/presence.js";
 import { handleSync } from "./handlers/sync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
+import { startupLog } from "./utils/startupLog.js";
 
 type AuthenticatedContext<TContext = {}> = {
   userId: string;
@@ -49,11 +50,14 @@ export class DocSyncServer<
   private _syncRequestEventListeners = new Set<SyncRequestEventListener>();
 
   constructor(config: ServerConfig<TContext, D, S, O>) {
-    this._io = new Server(config.port ?? 8080, {
+    const port = config.port ?? 8080;
+
+    this._io = new Server(port, {
       cors: { origin: "*" },
       // Performance: Only WebSocket transport, no polling
       transports: ["websocket"],
     });
+    console.log(startupLog(port));
 
     this._docBinding = config.docBinding;
     this._provider = config.provider;
