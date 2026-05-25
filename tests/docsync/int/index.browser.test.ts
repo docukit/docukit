@@ -119,6 +119,44 @@ describe("Local-First", () => {
 
       // websocket
       await otherDevice.assertMemoryDoc(["Hello"]);
+      await otherDevice.assertCanUndo(false);
+    });
+  });
+
+  test("local broadcast changes are undoable by the same user in another tab", async () => {
+    await testWrapper(async ({ reference, otherTab }) => {
+      await reference.loadDoc();
+      await otherTab.loadDoc();
+      reference.doc?.forceCommit();
+      otherTab.doc?.forceCommit();
+
+      reference.addChild("Hello");
+      await otherTab.assertMemoryDoc(["Hello"]);
+      await reference.assertMemoryDoc(["Hello"]);
+
+      await reference.assertCanUndo(true);
+      await otherTab.assertCanUndo(true);
+    });
+  });
+
+  test("local broadcast changes can opt out of undo history in every tab", async () => {
+    await testWrapper(async ({ reference, otherTab }) => {
+      await reference.loadDoc();
+      await otherTab.loadDoc();
+      reference.doc?.forceCommit();
+      otherTab.doc?.forceCommit();
+
+      reference.addChildSkippingUndo("Hello");
+
+      await reference.assertMemoryDoc(["Hello"]);
+      await otherTab.assertMemoryDoc(["Hello"]);
+      await reference.assertCanUndo(false);
+      await otherTab.assertCanUndo(false);
+
+      reference.doc?.undoManager.undo();
+      otherTab.doc?.undoManager.undo();
+      await reference.assertMemoryDoc(["Hello"]);
+      await otherTab.assertMemoryDoc(["Hello"]);
     });
   });
 

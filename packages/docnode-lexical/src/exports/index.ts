@@ -1,8 +1,8 @@
 export { syncLexicalWithDoc } from "../index.js";
+export { SKIP_UNDO_TAG } from "../constants.js";
 export {
   LexicalDocNode,
-  lexicalDocNodeConfig,
-  createLexicalDoc,
+  createLexicalDocNodeConfig,
 } from "../lexicalDocNode.js";
 export { syncPresence, updatePresence } from "../presence/index.js";
 // Accepted internal-test exception: See AGENTS.md

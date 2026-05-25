@@ -1,4 +1,4 @@
-import { type Doc, type UndoManager } from "@docukit/docnode";
+import { type Doc } from "@docukit/docnode";
 import { type LexicalEditor } from "lexical";
 import { initializeEditorFromDoc } from "./initializeEditorFromDoc.js";
 import { setupUndoManager } from "./setupUndoManager.js";
@@ -14,10 +14,7 @@ import type { syncLexicalWithDocPresenceOptions } from "./types.js";
 export function syncLexicalWithDoc(
   editor: LexicalEditor,
   doc: Doc,
-  options?: {
-    presence?: syncLexicalWithDocPresenceOptions | undefined;
-    undoManager?: UndoManager | undefined;
-  },
+  options?: syncLexicalWithDocPresenceOptions,
 ): () => void {
   // 1. Set Lexical content to match DocNode and build key binding
   const keyBinding = initializeEditorFromDoc(editor, doc);
@@ -25,12 +22,7 @@ export function syncLexicalWithDoc(
   // 2. Wire UNDO/REDO + selection capture. Registered FIRST so its update
   //    listener fires before syncLexicalToDocNode's — that way the pre-edit
   //    selection is captured before the doc is mutated and onPush fires.
-  const offUndoManager = setupUndoManager(
-    editor,
-    doc,
-    keyBinding,
-    options?.undoManager,
-  );
+  const offUndoManager = setupUndoManager(editor, doc, keyBinding);
 
   // 3. Sync Lexical → DocNode. Every time Lexical content changes, DocNode is updated.
   const offLexicalListener = syncLexicalToDocNode(doc, editor, keyBinding);
@@ -39,7 +31,7 @@ export function syncLexicalWithDoc(
   const offDocListener = syncDocNodeToLexical(doc, editor, keyBinding);
 
   // 5. Sync presence (optional). Handles local selection → presence and remote cursors.
-  const offSyncPresence = syncPresence(editor, keyBinding, options?.presence);
+  const offSyncPresence = syncPresence(editor, keyBinding, options);
 
   return () => {
     offSyncPresence?.();

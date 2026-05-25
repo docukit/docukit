@@ -2,7 +2,7 @@
 
 import type React from "react";
 import { useEffect, useState } from "react";
-import { lexicalDocNodeConfig } from "@docukit/docnode-lexical";
+import { createLexicalDocNodeConfig } from "@docukit/docnode-lexical";
 import type { Presence } from "@docukit/docnode-lexical/react";
 import {
   AlignCenter,
@@ -26,7 +26,9 @@ const USER_COLORS: Record<string, string> = {
   user2: "#22c55e",
 };
 
-const clients = createMultiClients([lexicalDocNodeConfig]);
+const clients = createMultiClients([
+  createLexicalDocNodeConfig({ undoManager: { maxUndoSteps: 100 } }),
+]);
 
 function EditorSkeletonDivider() {
   return <div className="bg-fd-border mx-0.5 h-5 w-px shrink-0" />;

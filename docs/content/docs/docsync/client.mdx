@@ -196,3 +196,19 @@ setPresence({ cursor: { x: 100, y: 200 }, color: "#ff0000" });
     },
   }}
 />
+
+## Change Origins
+
+`DocSyncClient` emits a `change` event whenever a loaded document changes:
+
+```ts
+client.on("change", ({ docId, origin, operation }) => {
+  console.log(docId, origin, operation);
+});
+```
+
+`origin` identifies where the operation came from:
+
+- `"local"`: a change made by this client in this document instance.
+- `"network"`: a change received from the DocSync server, usually from another device.
+- `"local-broadcast"`: a change received through local broadcast from another tab or window on this device.

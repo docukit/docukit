@@ -7,22 +7,18 @@ import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import ToolbarPlugin from "./ToolbarPlugin";
+import { $getRoot, type RootNode } from "lexical";
 import {
-  $getRoot,
-  CAN_REDO_COMMAND,
-  CAN_UNDO_COMMAND,
-  type RootNode,
-} from "lexical";
-import type { PresenceSelection } from "@docukit/docnode-lexical";
+  SKIP_UNDO_TAG,
+  type PresenceSelection,
+} from "@docukit/docnode-lexical";
 import {
   DocNodePlugin,
   type Presence,
   type PresenceUser,
 } from "@docukit/docnode-lexical/react";
-import { UndoManager, type Doc } from "@docukit/docnode";
-import { useEffect, useMemo } from "react";
-
-const undoManagers = new WeakMap<Doc, UndoManager>();
+import { type Doc } from "@docukit/docnode";
+import { useEffect } from "react";
 
 export type InitializeEditor = (root: RootNode) => void;
 
@@ -40,15 +36,6 @@ export function EditorPanel({
   setPresence?: (selection: PresenceSelection | undefined) => void;
   user?: PresenceUser;
 }) {
-  const undoManager = useMemo(() => {
-    let manager = undoManagers.get(doc);
-    if (!manager) {
-      manager = new UndoManager(doc);
-      undoManagers.set(doc, manager);
-    }
-    return manager;
-  }, [doc]);
-
   return (
     <LexicalComposer
       initialConfig={{
@@ -78,13 +65,9 @@ export function EditorPanel({
         presence={presence}
         setPresence={setPresence}
         user={user}
-        undoManager={undoManager}
       />
       {initializeEditor ? (
-        <InitialContentPlugin
-          initializeEditor={initializeEditor}
-          undoManager={undoManager}
-        />
+        <InitialContentPlugin initializeEditor={initializeEditor} />
       ) : null}
       <ToolbarPlugin />
       <div className="relative">
@@ -106,31 +89,22 @@ export function EditorPanel({
 
 function InitialContentPlugin({
   initializeEditor,
-  undoManager,
 }: {
   initializeEditor: InitializeEditor;
-  undoManager: UndoManager;
 }) {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
     if (!editor) return;
-    let seeded = false;
     editor.update(
       () => {
         const root = $getRoot();
         if (root.getChildrenSize() !== 0) return;
         initializeEditor(root);
-        seeded = true;
       },
-      { discrete: true },
+      { tag: SKIP_UNDO_TAG },
     );
-    if (!seeded) return;
-    // Clear the initial seed so it does not enter the UndoManager.
-    undoManager.clear();
-    editor.dispatchCommand(CAN_UNDO_COMMAND, false);
-    editor.dispatchCommand(CAN_REDO_COMMAND, false);
-  }, [editor, initializeEditor, undoManager]);
+  }, [editor, initializeEditor]);
 
   return null;
 }

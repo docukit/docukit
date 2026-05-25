@@ -1,16 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
-import { type Doc, UndoManager } from "@docukit/docnode";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { type Doc } from "@docukit/docnode";
 import {
-  createLexicalDoc,
   LexicalDocNode,
   _INTERNAL_setupUndoManager as setupUndoManager,
 } from "@docukit/docnode-lexical";
+import { createLexicalDoc } from "./utils.js";
 import {
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
   COMMAND_PRIORITY_EDITOR,
+  COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
   createEditor,
+  type LexicalCommand,
+  type LexicalEditor,
   REDO_COMMAND,
   UNDO_COMMAND,
 } from "lexical";
@@ -42,6 +45,12 @@ const emptyKeyBinding = () => ({
 
 const listenerCount = (doc: Doc): number => doc["_changeListeners"].size;
 
+const commandListenerCount = <T>(
+  editor: LexicalEditor,
+  command: LexicalCommand<T>,
+  priority: number,
+): number => editor._commands.get(command)?.[priority]?.size ?? 0;
+
 const forceGc = async (): Promise<void> => {
   for (let i = 0; i < 5; i++) {
     gc();
@@ -49,33 +58,57 @@ const forceGc = async (): Promise<void> => {
   }
 };
 
-describe("setupUndoManager default cache (WeakMap)", () => {
-  it("reuses the cached default across remounts on the same Doc, preserving history without leaking listeners", () => {
+describe("setupUndoManager doc undo manager", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("reuses doc.undoManager across remounts on the same Doc, preserving history without leaking listeners", () => {
     const doc = createLexicalDoc();
     const editor = makeEditor();
-    expect(listenerCount(doc)).toBe(0);
+    const initialUndoHandlerCount = commandListenerCount(
+      editor,
+      UNDO_COMMAND,
+      COMMAND_PRIORITY_HIGH,
+    );
+    const initialRedoHandlerCount = commandListenerCount(
+      editor,
+      REDO_COMMAND,
+      COMMAND_PRIORITY_HIGH,
+    );
+    expect(listenerCount(doc)).toBe(1);
 
     const off1 = setupUndoManager(editor, doc, emptyKeyBinding());
-    // +1 from the default UndoManager constructor, +1 from CAN_UNDO/REDO dispatcher.
+    // +1 from the built-in undo manager, +1 from CAN_UNDO/REDO dispatcher.
     expect(listenerCount(doc)).toBe(2);
+    expect(
+      commandListenerCount(editor, UNDO_COMMAND, COMMAND_PRIORITY_HIGH),
+    ).toBe(initialUndoHandlerCount + 1);
+    expect(
+      commandListenerCount(editor, REDO_COMMAND, COMMAND_PRIORITY_HIGH),
+    ).toBe(initialRedoHandlerCount + 1);
 
-    // Record a change so the cached UndoManager has something to undo.
+    // Record a change so doc.undoManager has something to undo.
     doc.root.append(doc.createNode(LexicalDocNode));
     doc.forceCommit();
     expect(doc.root.first).toBeDefined();
 
     off1();
-    // The CAN_* dispatcher is gone; the cached UndoManager's listener stays
-    // (so the next mount finds the same instance and same history).
+    // The CAN_* dispatcher is gone; doc.undoManager's listener stays.
     expect(listenerCount(doc)).toBe(1);
+    expect(
+      commandListenerCount(editor, UNDO_COMMAND, COMMAND_PRIORITY_HIGH),
+    ).toBe(initialUndoHandlerCount);
+    expect(
+      commandListenerCount(editor, REDO_COMMAND, COMMAND_PRIORITY_HIGH),
+    ).toBe(initialRedoHandlerCount);
 
     const off2 = setupUndoManager(editor, doc, emptyKeyBinding());
-    // Cache hit: only the CAN_* dispatcher is added. If the cache failed, we'd
-    // see 3 listeners (a second UndoManager would have registered a duplicate).
+    // Only the CAN_* dispatcher is added.
     expect(listenerCount(doc)).toBe(2);
 
     // The history survived the remount → UNDO_COMMAND reverts the doc change
-    // through the cached UndoManager.
+    // through doc.undoManager.
     editor.dispatchCommand(UNDO_COMMAND, undefined);
     expect(doc.root.first).toBeUndefined();
 
@@ -168,34 +201,52 @@ describe("setupUndoManager default cache (WeakMap)", () => {
     offRedoFallback();
   });
 
-  it("with a user-provided UndoManager: bypasses the cache, owns its lifecycle", () => {
-    const doc = createLexicalDoc();
+  it("does not register undo handlers when undo manager is disabled", () => {
+    const doc = createLexicalDoc({ enableUndoManager: false });
     const editor = makeEditor();
-    const userUm = new UndoManager(doc);
-    const baseline = listenerCount(doc); // 1, from userUm's own constructor
+    const canUndoListener = vi.fn(() => false);
+    const canRedoListener = vi.fn(() => false);
+    const beforeSetupListenerCount = listenerCount(doc);
+    const beforeUndoHighCount = commandListenerCount(
+      editor,
+      UNDO_COMMAND,
+      COMMAND_PRIORITY_HIGH,
+    );
+    const beforeRedoHighCount = commandListenerCount(
+      editor,
+      REDO_COMMAND,
+      COMMAND_PRIORITY_HIGH,
+    );
 
-    const off = setupUndoManager(editor, doc, emptyKeyBinding(), userUm);
-    // +1 for the CAN_* dispatcher only — no default UndoManager is created.
-    expect(listenerCount(doc)).toBe(baseline + 1);
+    const offCanUndo = editor.registerCommand(
+      CAN_UNDO_COMMAND,
+      canUndoListener,
+      COMMAND_PRIORITY_LOW,
+    );
+    const offCanRedo = editor.registerCommand(
+      CAN_REDO_COMMAND,
+      canRedoListener,
+      COMMAND_PRIORITY_LOW,
+    );
 
-    // Undo flows through the user's UndoManager.
-    doc.root.append(doc.createNode(LexicalDocNode));
-    doc.forceCommit();
-    expect(userUm.canUndo()).toBe(true);
+    const off = setupUndoManager(editor, doc, emptyKeyBinding());
 
-    editor.dispatchCommand(UNDO_COMMAND, undefined);
-    expect(userUm.canUndo()).toBe(false);
-    expect(doc.root.first).toBeUndefined();
+    expect(listenerCount(doc)).toBe(beforeSetupListenerCount);
+    expect(
+      commandListenerCount(editor, UNDO_COMMAND, COMMAND_PRIORITY_HIGH),
+    ).toBe(beforeUndoHighCount);
+    expect(
+      commandListenerCount(editor, REDO_COMMAND, COMMAND_PRIORITY_HIGH),
+    ).toBe(beforeRedoHighCount);
+    expect(canUndoListener).not.toHaveBeenCalled();
+    expect(canRedoListener).not.toHaveBeenCalled();
 
     off();
-    // Binding cleanup MUST NOT detach the user's UndoManager — it has no
-    // detach() and its listener lives until `doc.dispose()`. Asserting that
-    // baseline is preserved (and not lower) protects against an accidental
-    // "if (ownsUndoManager) undoManager.detach()" leaking into the binding.
-    expect(listenerCount(doc)).toBe(baseline);
+    offCanUndo();
+    offCanRedo();
   });
 
-  it("warns (dev-only) when HistoryPlugin's UNDO_COMMAND handler is detected at COMMAND_PRIORITY_EDITOR", async () => {
+  it("warns when HistoryPlugin is detected and undo manager is enabled", async () => {
     const doc = createLexicalDoc();
     const editor = makeEditor();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -221,7 +272,33 @@ describe("setupUndoManager default cache (WeakMap)", () => {
     warn.mockRestore();
   });
 
-  it("does not warn when no HistoryPlugin-equivalent handler is mounted", async () => {
+  it("warns when HistoryPlugin is detected and undo manager is disabled", async () => {
+    const doc = createLexicalDoc({ enableUndoManager: false });
+    const editor = makeEditor();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    // Simulate <HistoryPlugin /> registering at COMMAND_PRIORITY_EDITOR.
+    const offHistoryStub = editor.registerCommand(
+      UNDO_COMMAND,
+      () => true,
+      COMMAND_PRIORITY_EDITOR,
+    );
+
+    const off = setupUndoManager(editor, doc, emptyKeyBinding());
+
+    // The check is deferred via queueMicrotask so sibling effects can register
+    // first. Flush the microtask queue.
+    await Promise.resolve();
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]?.[0]).toContain("HistoryPlugin");
+
+    off();
+    offHistoryStub();
+    warn.mockRestore();
+  });
+
+  it("does not warn when no HistoryPlugin-equivalent handler is mounted and undo manager is enabled", async () => {
     const doc = createLexicalDoc();
     const editor = makeEditor();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -235,7 +312,21 @@ describe("setupUndoManager default cache (WeakMap)", () => {
     warn.mockRestore();
   });
 
-  it("default UndoManager is GC'd once its Doc becomes unreferenced (WeakMap key is weak)", async () => {
+  it("does not warn when no HistoryPlugin-equivalent handler is mounted and undo manager is disabled", async () => {
+    const doc = createLexicalDoc({ enableUndoManager: false });
+    const editor = makeEditor();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const off = setupUndoManager(editor, doc, emptyKeyBinding());
+    await Promise.resolve();
+
+    expect(warn).not.toHaveBeenCalled();
+
+    off();
+    warn.mockRestore();
+  });
+
+  it("doc.undoManager listener is GC'd once its Doc becomes unreferenced", async () => {
     let weakRef!: WeakRef<object>;
 
     // IIFE so all local refs (doc, editor, listener array) drop after the scope.
@@ -244,19 +335,13 @@ describe("setupUndoManager default cache (WeakMap)", () => {
       const editor = makeEditor();
       const off = setupUndoManager(editor, doc, emptyKeyBinding());
 
-      // Snapshot the listener closure registered by the default UndoManager's
-      // constructor. It's the first listener in `_changeListeners` because
-      // setupUndoManager evaluates `getDefaultUndoManager(doc)` (which calls
-      // `new UndoManager(doc)` → registers its listener) before registering
-      // the CAN_*_COMMAND dispatcher. The closure captures `this` (the
-      // UndoManager), so its collection implies the UndoManager's collection.
+      // Snapshot the listener closure registered by doc.undoManager.
       const listeners = Array.from(doc["_changeListeners"]);
       weakRef = new WeakRef(listeners[0]!);
 
       off();
-      // Note: we deliberately do NOT call doc.dispose(). The WeakMap key is
-      // the doc itself, so once doc has no strong refs the entry is released
-      // and the UndoManager becomes collectible — without any explicit cleanup.
+      // Note: we deliberately do NOT call doc.dispose(). Once doc has no
+      // strong refs, the built-in undo manager listener is collectible too.
     })();
 
     await forceGc();

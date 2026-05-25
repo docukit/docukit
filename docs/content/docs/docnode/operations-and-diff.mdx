@@ -6,15 +6,15 @@ import { diff } from "@/components/diff";
 
 A transaction has associated with it a set of `operations`, `inverseOperations` and a `diff`.
 
-The `changeEvent` contains those 3 properties plus `origin`, while the `normalizeEvent` contains only the `diff`:
+The `changeEvent` contains those 3 properties, while the `normalizeEvent` contains only the `diff`:
 
 ```ts
 doc.onNormalize(({ diff }) => {
   console.log("normalize", diff);
 });
 
-doc.onChange(({ operations, inverseOperations, diff, origin }) => {
-  console.log("change", operations, inverseOperations, diff, origin);
+doc.onChange(({ operations, inverseOperations, diff }) => {
+  console.log("change", operations, inverseOperations, diff);
 });
 ```
 
@@ -60,17 +60,10 @@ In the \`normalize\` and \`change\` events, a top-to-bottom dirty check can be p
 `,
 required: true,
 },
-    origin: {
-      name: "origin",
-      type: "string | undefined",
-      description:
-        "Optional transaction origin. A common use case is tagging remote changes when replaying operations with `doc.applyOperations(operations, origin)`. DocNode's UndoManager ignores changes whose origin starts with remote, so they are not added to the undo stack.",
-required: false,
-},
 }}
 />
 
-These three objects are cleared or reset at the end of the [change stage](/docs/doc-lifecycle). Until then, [`getPrev`](/docs/nodes#node-state) will return the value of the state that the node had at the beginning of the transaction.
+These values are cleared or reset at the end of the [change stage](/docs/doc-lifecycle). Until then, [`getPrev`](/docs/nodes#node-state) will return the value of the state that the node had at the beginning of the transaction.
 
 ## Operations
 
@@ -80,11 +73,8 @@ You can replay operations into the same or another document:
 
 ```ts
 doc.applyOperations(operations);
-doc.applyOperations(operations, "remote");
+doc.applyOperations(operations, { skipUndo: true });
 ```
-
-Passing an `origin` is useful when your app needs to distinguish remote changes
-from local ones.
 
 In OT mode, the set of operations must be ordered. For all clients to converge on the same document, they must apply the same operations in the same order. Therefore, a central server is required as the source of truth.
 

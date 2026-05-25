@@ -3,12 +3,15 @@
 import type { DocSyncClient } from "../index.js";
 import { applyPresencePatch } from "./applyPresencePatch.js";
 
+type BroadcastSource = "network" | "local-broadcast";
+
 type BroadcastMessage<O> =
   | {
       type: "OPERATIONS";
-      source: "local" | "remote";
+      source: BroadcastSource;
       operations: O;
       docId: string;
+      flags?: { skipUndo?: boolean };
       presence?: Record<string, unknown>;
     }
   | { type: "PRESENCE"; docId: string; presence: Record<string, unknown> };
@@ -23,12 +26,12 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
     this._channel.onmessage = (ev: MessageEvent<BroadcastMessage<O>>) => {
       const msg = ev.data;
       if (msg.type === "OPERATIONS") {
-        const { docId, operations, presence, source } = msg;
+        const { docId, flags, operations, presence, source } = msg;
         const currentStatus = client["_pushStatusByDocId"].get(docId) ?? "idle";
         if (currentStatus === "pushing") {
           client["_pushStatusByDocId"].set(docId, "pushing-with-pending");
         }
-        void this._applyOperations(client, operations, docId, source);
+        void this._applyOperations(client, operations, docId, source, flags);
         if (presence) {
           const cacheEntry = client["_docsCache"].get(docId);
           if (cacheEntry)
@@ -49,16 +52,18 @@ export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
     client: DocSyncClient<D, S, O>,
     operations: O,
     docId: string,
-    source: "local" | "remote",
+    source: BroadcastSource,
+    flags?: { skipUndo?: boolean },
   ): Promise<void> {
     const cacheEntry = client["_docsCache"].get(docId);
     if (!cacheEntry) return;
     const doc = await cacheEntry.promisedDoc;
     if (!doc) return;
-    client["_docBinding"].applyOperations(
+    client["_applyOperationsFrom"](
+      source,
       doc,
       operations,
-      source === "remote" ? "remote:broadcast" : "broadcast",
+      source === "network" ? { ...flags, skipUndo: true } : flags,
     );
   }
 
