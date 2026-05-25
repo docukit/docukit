@@ -3,6 +3,7 @@ import {
   DocSyncClient,
   indexedDBProvider,
   type ClientConfig,
+  type ClientProvider,
   type DocData,
   type DocBinding,
   type Identity,
@@ -38,6 +39,88 @@ vi.mock("socket.io-client", () => ({
 // ============================================================================
 
 describe("DocSyncClient", () => {
+  type DebounceTestDoc = { docId: string };
+  type DebounceTestSerializedDoc = { docId: string };
+  type DebounceTestOperation = { value: string };
+  type SaveOperations = (arg: {
+    docId: string;
+    operations: DebounceTestOperation[];
+  }) => Promise<void>;
+
+  const createDebounceTestClient = ({
+    saveOperations,
+    timing,
+  }: {
+    saveOperations: SaveOperations;
+    timing?: {
+      operationsDebounce?: number;
+      operationsMaxDebounce?: number;
+      presenceDebounce?: number;
+    };
+  }) => {
+    const docBinding: DocBinding<
+      DebounceTestDoc,
+      DebounceTestSerializedDoc,
+      DebounceTestOperation
+    > = {
+      create: (_type, id) => {
+        const docId = id ?? ulid().toLowerCase();
+        return { doc: { docId }, docId };
+      },
+      deserialize: (serializedDoc) => ({ docId: serializedDoc.docId }),
+      serialize: (doc) => ({ docId: doc.docId }),
+      onChange: () => undefined,
+      applyOperations: () => undefined,
+      dispose: () => undefined,
+    };
+
+    const provider: ClientProvider<
+      DebounceTestSerializedDoc,
+      DebounceTestOperation
+    > = {
+      transaction: (_mode, callback) =>
+        callback({
+          getSerializedDoc: ({ docId }) =>
+            Promise.resolve({ serializedDoc: { docId }, clock: 0 }),
+          getOperations: () => Promise.resolve([]),
+          deleteOperations: () => Promise.resolve(undefined),
+          saveOperations,
+          saveSerializedDoc: () => Promise.resolve(undefined),
+        }),
+    };
+
+    const config: ClientConfig<
+      DebounceTestDoc,
+      DebounceTestSerializedDoc,
+      DebounceTestOperation
+    > = {
+      server: {
+        url: "ws://localhost:8081",
+        auth: { getToken: () => "test-token" },
+      },
+      docBinding,
+      local: {
+        provider: () => provider,
+        getIdentity: () => ({
+          userId: `debounce-test-${ulid().toLowerCase()}`,
+          secret: "test-secret",
+        }),
+      },
+    };
+
+    if (timing !== undefined) {
+      config.timing = timing;
+    }
+
+    return new DocSyncClient(config);
+  };
+
+  const flushMicrotasks = async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+
   // ──────────────────────────────────────────────────────────────────────────
   // Constructor tests
   // ──────────────────────────────────────────────────────────────────────────
@@ -244,6 +327,117 @@ describe("DocSyncClient", () => {
         docId,
         presence: { [client["_clientId"]]: { anchor: 2 } },
       });
+    });
+  });
+
+  describe("local operations debounce", () => {
+    test("uses timing configuration for operation and presence debounces", async () => {
+      const saveOperations = vi.fn<SaveOperations>(() =>
+        Promise.resolve(undefined),
+      );
+      const client = createDebounceTestClient({
+        saveOperations,
+        timing: {
+          operationsDebounce: 75,
+          operationsMaxDebounce: 500,
+          presenceDebounce: 25,
+        },
+      });
+      await client["_localPromise"];
+
+      expect(client["_operationsDebounce"]).toBe(75);
+      expect(client["_operationsMaxDebounce"]).toBe(500);
+      expect(client["_presenceDebounce"]).toBe(25);
+      client.disconnect();
+    });
+
+    test("debounces local operation persistence from the latest operation", async () => {
+      vi.useFakeTimers();
+
+      try {
+        const saveOperations = vi.fn<SaveOperations>(() =>
+          Promise.resolve(undefined),
+        );
+        const client = createDebounceTestClient({
+          saveOperations,
+          timing: { operationsDebounce: 50, operationsMaxDebounce: 1000 },
+        });
+        await client["_localPromise"];
+
+        client.onLocalOperations({
+          docId: "doc-1",
+          operations: [{ value: "A" }],
+        });
+        await vi.advanceTimersByTimeAsync(49);
+        expect(saveOperations).not.toHaveBeenCalled();
+
+        client.onLocalOperations({
+          docId: "doc-1",
+          operations: [{ value: "B" }],
+        });
+        await vi.advanceTimersByTimeAsync(49);
+        await flushMicrotasks();
+        expect(saveOperations).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(1);
+        await flushMicrotasks();
+
+        expect(saveOperations).toHaveBeenCalledOnce();
+        expect(saveOperations).toHaveBeenCalledWith({
+          docId: "doc-1",
+          operations: [{ value: "A" }, { value: "B" }],
+        });
+        client.disconnect();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("flushes local operations when maxDebounce is reached", async () => {
+      vi.useFakeTimers();
+
+      try {
+        const saveOperations = vi.fn<SaveOperations>(() =>
+          Promise.resolve(undefined),
+        );
+        const client = createDebounceTestClient({
+          saveOperations,
+          timing: { operationsDebounce: 50, operationsMaxDebounce: 100 },
+        });
+        await client["_localPromise"];
+
+        client.onLocalOperations({
+          docId: "doc-1",
+          operations: [{ value: "A" }],
+        });
+        await vi.advanceTimersByTimeAsync(40);
+
+        client.onLocalOperations({
+          docId: "doc-1",
+          operations: [{ value: "B" }],
+        });
+        await vi.advanceTimersByTimeAsync(40);
+
+        client.onLocalOperations({
+          docId: "doc-1",
+          operations: [{ value: "C" }],
+        });
+        await vi.advanceTimersByTimeAsync(19);
+        await flushMicrotasks();
+        expect(saveOperations).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(1);
+        await flushMicrotasks();
+
+        expect(saveOperations).toHaveBeenCalledOnce();
+        expect(saveOperations).toHaveBeenCalledWith({
+          docId: "doc-1",
+          operations: [{ value: "A" }, { value: "B" }, { value: "C" }],
+        });
+        client.disconnect();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

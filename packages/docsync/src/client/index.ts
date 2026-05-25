@@ -38,6 +38,10 @@ type LocalResolved<S extends {}, O extends {}> = {
   identity: Identity;
 };
 
+type LocalOpsBatchState<O extends {}> = DeferredState<O[]> & {
+  startedAt: number;
+};
+
 type PushStatus = "idle" | "pushing" | "pushing-with-pending";
 type ChangeOrigin = "local" | "network" | "local-broadcast";
 
@@ -66,8 +70,9 @@ export class DocSyncClient<
   protected _changeOrigin: ChangeOrigin = "local";
 
   // Flow control state (batching, debouncing, push queueing)
-  protected _localOpsBatchState = new Map<string, DeferredState<O[]>>();
-  protected _batchDelay = 50;
+  protected _localOpsBatchState = new Map<string, LocalOpsBatchState<O>>();
+  protected _operationsDebounce = 50;
+  protected _operationsMaxDebounce = 1000;
   protected _presenceDebounceState = new Map<string, DeferredState<unknown>>();
   protected _presenceDebounce = 200;
   protected _pushStatusByDocId = new Map<string, PushStatus>();
@@ -81,6 +86,13 @@ export class DocSyncClient<
     const { docBinding, local } = config;
     this._docBinding = docBinding;
     this._clientId = crypto.randomUUID();
+    const { timing } = config;
+    this._operationsDebounce = Math.max(0, timing?.operationsDebounce ?? 50);
+    this._operationsMaxDebounce = Math.max(
+      0,
+      timing?.operationsMaxDebounce ?? 1000,
+    );
+    this._presenceDebounce = Math.max(0, timing?.presenceDebounce ?? 200);
 
     // Initialize local provider (if configured)
     this._localPromise = (async () => {
@@ -435,10 +447,11 @@ export class DocSyncClient<
   onLocalOperations({ docId, operations }: { docId: string; operations: O[] }) {
     // Get or create the batch state for this document
     let state = this._localOpsBatchState.get(docId);
+    const now = Date.now();
 
     if (!state) {
       // Create new state with empty queue
-      state = { data: [] };
+      state = { data: [], startedAt: now };
       this._localOpsBatchState.set(docId, state);
     }
 
@@ -447,29 +460,44 @@ export class DocSyncClient<
       state.data.push(...operations);
     }
 
-    // If there is already a pending timeout, we just wait
     if (state.timeout !== undefined) {
+      clearTimeout(state.timeout);
+      delete state.timeout;
+    }
+
+    if (
+      this._operationsDebounce === 0 ||
+      now - state.startedAt >= this._operationsMaxDebounce
+    ) {
+      void this._flushLocalOperations(docId);
       return;
     }
 
-    // Otherwise, schedule the batch save
-    state.timeout = setTimeout(() => {
-      void (async () => {
-        const currentState = this._localOpsBatchState.get(docId);
-        if (!currentState) return;
+    state.timeout = setTimeout(
+      () => {
+        void this._flushLocalOperations(docId);
+      },
+      Math.min(
+        this._operationsDebounce,
+        this._operationsMaxDebounce - (now - state.startedAt),
+      ),
+    );
+  }
 
-        const opsToSave = currentState.data;
-        this._localOpsBatchState.delete(docId);
+  protected async _flushLocalOperations(docId: string): Promise<void> {
+    const currentState = this._localOpsBatchState.get(docId);
+    if (!currentState) return;
 
-        if (opsToSave && opsToSave.length > 0) {
-          const local = await this._localPromise;
-          await local?.provider.transaction("readwrite", (ctx) =>
-            ctx.saveOperations({ docId, operations: opsToSave }),
-          );
-          void handleSync(this, docId);
-        }
-      })();
-    }, this._batchDelay);
+    const opsToSave = currentState.data;
+    this._localOpsBatchState.delete(docId);
+
+    if (opsToSave.length > 0) {
+      const local = await this._localPromise;
+      await local?.provider.transaction("readwrite", (ctx) =>
+        ctx.saveOperations({ docId, operations: opsToSave }),
+      );
+      void handleSync(this, docId);
+    }
   }
 
   protected async _deleteDoc(docId: string): Promise<boolean> {
