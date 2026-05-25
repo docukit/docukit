@@ -1,11 +1,10 @@
-import { statSync } from "node:fs";
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import type { JsonDoc, Operations } from "@docukit/docnode";
 import type {
   ServerProvider,
   ServerProviderContext,
 } from "@docukit/docsync-react/server";
-import { db, sqlite, sqlitePath } from "./sqlite-db.ts";
+import { db, sqlite } from "./sqlite-db.ts";
 import * as schema from "./sqlite-schema.ts";
 
 const defaultDocTtlMs = 7 * 24 * 60 * 60 * 1000;
@@ -19,39 +18,8 @@ function parseOperations(value: string): Operations[] {
   return JSON.parse(value) as Operations[];
 }
 
-function getSqliteFileSizeKb() {
-  try {
-    const dbBytes = statSync(sqlitePath).size;
-    const walBytes = statSync(`${sqlitePath}-wal`).size;
-    const shmBytes = statSync(`${sqlitePath}-shm`).size;
-    return Math.round(((dbBytes + walBytes + shmBytes) / 1024) * 100) / 100;
-  } catch {
-    return undefined;
-  }
-}
-
-function getStats() {
-  const docsCount =
-    db
-      .select({ count: sql<number>`count(*)` })
-      .from(schema.documents)
-      .get()?.count ?? 0;
-  const operationsCount =
-    db
-      .select({ count: sql<number>`count(*)` })
-      .from(schema.operations)
-      .get()?.count ?? 0;
-
-  return {
-    docs: docsCount,
-    operationBatches: operationsCount,
-    sqliteKb: getSqliteFileSizeKb(),
-  };
-}
-
 function cleanupExpiredDocs(ttlMs: number) {
   const cutoff = Date.now() - ttlMs;
-  const before = getStats();
   const lastActivityByDocId = new Map<string, number>();
 
   const documentRows = db
@@ -94,14 +62,6 @@ function cleanupExpiredDocs(ttlMs: number) {
     sqlite.pragma("wal_checkpoint(TRUNCATE)");
     sqlite.exec("vacuum");
   }
-
-  const after = getStats();
-  if (
-    before.docs !== after.docs ||
-    before.operationBatches !== after.operationBatches
-  ) {
-    console.log("[docsync:sqlite] cleanup", { before, after });
-  }
 }
 
 export function sqliteProvider({
@@ -125,7 +85,6 @@ export function sqliteProvider({
   setInterval(() => {
     void runExclusive(() => {
       cleanupExpiredDocs(ttlMs);
-      console.log("[docsync:sqlite] stats", getStats());
     });
   }, cleanupIntervalMs);
 
