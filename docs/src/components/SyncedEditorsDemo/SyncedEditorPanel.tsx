@@ -16,6 +16,7 @@ import {
 import type { Doc } from "@docukit/docnode";
 import { useEffect } from "react";
 import { ToolbarPlugin } from "./ToolbarPlugin";
+import { SizeBenchPlugin, type SizeMeasurement } from "./SizeBenchPlugin";
 
 export function SyncedEditorPanel({
   doc,
@@ -24,6 +25,7 @@ export function SyncedEditorPanel({
   user,
   isPrimary,
   label,
+  onMeasure,
 }: {
   doc: Doc;
   presence?: Presence;
@@ -31,6 +33,7 @@ export function SyncedEditorPanel({
   user?: PresenceUser;
   isPrimary?: boolean;
   label?: string;
+  onMeasure?: (m: SizeMeasurement) => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -83,6 +86,9 @@ export function SyncedEditorPanel({
             />
           </div>
           <HistoryPlugin />
+          {isPrimary && onMeasure ? (
+            <SizeBenchPlugin doc={doc} onMeasure={onMeasure} />
+          ) : null}
         </LexicalComposer>
       </div>
     </div>

@@ -122,6 +122,9 @@ importers:
       '@lexical/utils':
         specifier: ^0.38.2
         version: 0.38.2
+      '@lexical/yjs':
+        specifier: ^0.38.2
+        version: 0.38.2(yjs@13.6.29)
       '@radix-ui/react-collapsible':
         specifier: ^1.1.2
         version: 1.1.12(@types/react-dom@19.2.3(@types/react@19.2.8))(@types/react@19.2.8)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -200,6 +203,9 @@ importers:
       unist-util-visit:
         specifier: ^5.0.0
         version: 5.0.0
+      yjs:
+        specifier: ^13.6.29
+        version: 13.6.29
       zod:
         specifier: ^4.1.12
         version: 4.3.5

@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { lexicalDocNodeConfig } from "@docukit/docnode-lexical";
 import { createTwoClients } from "@/lib/synced-editors-demo/createTwoClients";
 import { SyncedEditorPanel } from "./SyncedEditorPanel";
 import type { Presence } from "@docukit/docnode-lexical";
 import { useDemoIndexedDBReady } from "./useDemoIndexedDBReady";
+import type { SizeMeasurement } from "./SizeBenchPlugin";
+import { SizeChart } from "./SizeChart";
 
 // Fixed doc id for the home demo (must be a valid lowercase ULID per DocNode)
 const DEMO_DOC_ID = "01j8d0cs0h0me0dem000000001";
@@ -22,11 +24,13 @@ function EditorSlot({
   useDoc,
   usePresence,
   userId,
+  onMeasure,
 }: {
   isPrimary: boolean;
   useDoc: TwoClients["useEditor1Doc"];
   usePresence: TwoClients["useEditor1Presence"];
   userId: string;
+  onMeasure?: (m: SizeMeasurement) => void;
 }) {
   const { status, data, error } = useDoc({
     type: "docnode-lexical",
@@ -61,12 +65,18 @@ function EditorSlot({
       presence={presence as Presence}
       setPresence={setPresence}
       user={{ name: userId, color: USER_COLORS[userId] ?? "#888" }}
+      onMeasure={onMeasure}
     />
   );
 }
 
 export function SyncedEditorsDemo() {
   const idbReady = useDemoIndexedDBReady();
+  const [measurements, setMeasurements] = useState<SizeMeasurement[]>([]);
+
+  const handleMeasure = useCallback((m: SizeMeasurement) => {
+    setMeasurements((prev) => [...prev, m]);
+  }, []);
 
   const clients = useMemo(
     () => (idbReady ? createTwoClients([lexicalDocNodeConfig]) : null),
@@ -100,20 +110,26 @@ export function SyncedEditorsDemo() {
           Loading…
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 md:gap-10">
-          <EditorSlot
-            isPrimary
-            useDoc={clients.useEditor1Doc}
-            usePresence={clients.useEditor1Presence}
-            userId="user1"
-          />
-          <EditorSlot
-            isPrimary={false}
-            useDoc={clients.useEditor2Doc}
-            usePresence={clients.useEditor2Presence}
-            userId="user2"
-          />
-        </div>
+        <>
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 md:gap-10">
+            <EditorSlot
+              isPrimary
+              useDoc={clients.useEditor1Doc}
+              usePresence={clients.useEditor1Presence}
+              userId="user1"
+              onMeasure={handleMeasure}
+            />
+            <EditorSlot
+              isPrimary={false}
+              useDoc={clients.useEditor2Doc}
+              usePresence={clients.useEditor2Presence}
+              userId="user2"
+            />
+          </div>
+          <div className="mt-8">
+            <SizeChart data={measurements} />
+          </div>
+        </>
       )}
     </section>
   );
