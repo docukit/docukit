@@ -13,7 +13,7 @@ import { Doc } from "@docukit/docnode";
 const doc = new Doc({
   type: "root",
   extensions: [MyExtension],
-  undoManager: { maxUndoSteps: 100, mergeInterval: 1000 },
+  undoManager: { maxUndoSteps: 100, mergeInterval: 500 },
 });
 
 doc.undoManager.undo(); // undo the last transaction
@@ -39,7 +39,7 @@ If `undoManager` is omitted, `maxUndoSteps` defaults to `0`.
       description:
         "The interval in milliseconds used to merge nearby transactions into a single undo step. Set it to 0 to disable merging.",
       type: "number",
-      default: 1000,
+      default: 500,
     },
   }}
 />

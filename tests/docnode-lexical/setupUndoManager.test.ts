@@ -210,7 +210,7 @@ describe("setupUndoManager doc undo manager", () => {
   });
 
   it("keeps the first selection metadata when updates merge into one undo item", () => {
-    const doc = createLexicalDoc({ mergeInterval: 1000 });
+    const doc = createLexicalDoc({ mergeInterval: 500 });
     const editor = makeEditor();
     const docNode = doc.createNode(LexicalDocNode);
     doc.forceCommit(
@@ -262,7 +262,7 @@ describe("setupUndoManager doc undo manager", () => {
     doc.root.append(doc.createNode(LexicalDocNode));
     doc.forceCommit();
 
-    now = 1500;
+    now = 1400;
     editor.update(
       () => {
         const textNode = $getNodeByKey(textKey);

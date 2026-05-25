@@ -23,7 +23,7 @@ export class UndoManager {
   constructor(doc: Doc, options?: UndoManagerConfig) {
     this._doc = doc;
     this._maxUndoSteps = options?.maxUndoSteps ?? 0;
-    this._mergeInterval = options?.mergeInterval ?? 1000;
+    this._mergeInterval = options?.mergeInterval ?? 500;
     if (!this.isEnabled) return;
 
     this._doc.onChange((event) => {

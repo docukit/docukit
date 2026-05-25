@@ -203,7 +203,7 @@ export type UndoManagerConfig = {
   /**
    * The interval in milliseconds to merge transactions into a single undo step.
    * Set to 0 to disable merging.
-   * @default 1000
+   * @default 500
    */
   mergeInterval?: number;
 };

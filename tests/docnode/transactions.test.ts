@@ -263,14 +263,14 @@ describe("undoManager", () => {
 
   test("mergeInterval merges updates separated by a short gap", () => {
     withMockedDateNow((setNow) => {
-      const doc = createTextDocWithUndo(10, 1000);
+      const doc = createTextDocWithUndo(10, 500);
       const undoManager = doc.undoManager;
 
       checkUndoManager(2, doc, () => {
         setNow(1000);
         doc.root.append(...text(doc, "a"));
         doc.forceCommit();
-        setNow(1500);
+        setNow(1400);
         doc.root.append(...text(doc, "b"));
         doc.forceCommit();
 
@@ -286,14 +286,14 @@ describe("undoManager", () => {
 
   test("mergeInterval starts a new undo step after a long gap", () => {
     withMockedDateNow((setNow) => {
-      const doc = createTextDocWithUndo(10, 1000);
+      const doc = createTextDocWithUndo(10, 500);
       const undoManager = doc.undoManager;
 
       checkUndoManager(2, doc, () => {
         setNow(1000);
         doc.root.append(...text(doc, "a"));
         doc.forceCommit();
-        setNow(2500);
+        setNow(1600);
         doc.root.append(...text(doc, "b"));
         doc.forceCommit();
 
@@ -344,7 +344,7 @@ describe("undoManager", () => {
 
   test("merged state patches undo to the state before the first update", () => {
     withMockedDateNow((setNow) => {
-      const doc = createTextDocWithUndo(10, 1000);
+      const doc = createTextDocWithUndo(10, 500);
       const undoManager = doc.undoManager;
       let node: DocNode<typeof Text> | undefined;
 
@@ -356,10 +356,10 @@ describe("undoManager", () => {
         }, {});
         if (!node) throw new Error("Expected seed node to be created");
 
-        setNow(2500);
+        setNow(1600);
         node.state.value.set("a");
         doc.forceCommit();
-        setNow(3000);
+        setNow(2000);
         node.state.value.set("b");
         doc.forceCommit();
 
