@@ -49,15 +49,6 @@ If `undoManager` is omitted, `maxUndoSteps` defaults to `0`.
 Use `skipUndo` for changes that should not become undoable, such as initial content, imports, or remote operations.
 
 ```ts
-doc.forceCommit(
-  () => {
-    seedInitialContent(doc);
-  },
-  { skipUndo: true },
-);
-```
-
-```ts
 doc.forceCommit(() => seedInitialContent(doc), { skipUndo: true });
 doc.applyOperations(remoteOperations, { skipUndo: true });
 ```
