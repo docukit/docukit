@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   Doc,
   type DocNode,
+  mergeOperations,
   type Operations,
   type TransactionFlags,
 } from "@docukit/docnode";
@@ -208,6 +209,21 @@ describe("throw errors and abort", () => {
 });
 
 describe("undoManager", () => {
+  function withMockedDateNow(
+    callback: (setNow: (value: number) => void) => void,
+  ) {
+    const originalDateNow = Date.now;
+    let now = 0;
+    Date.now = () => now;
+    try {
+      callback((value) => {
+        now = value;
+      });
+    } finally {
+      Date.now = originalDateNow;
+    }
+  }
+
   test("simplest case", () => {
     const doc = createTextDocWithUndo(1);
     const undoManager = doc.undoManager;
@@ -217,6 +233,170 @@ describe("undoManager", () => {
     assertDoc(doc, []);
     undoManager.redo();
     assertDoc(doc, ["1", "2"]);
+  });
+
+  test("maxUndoSteps keeps the most recent undo steps", () => {
+    const doc = createTextDocWithUndo(2);
+    const undoManager = doc.undoManager;
+
+    checkUndoManager(5, doc, () => {
+      doc.root.append(...text(doc, "1"));
+      doc.forceCommit();
+      doc.root.append(...text(doc, "2"));
+      doc.forceCommit();
+      doc.root.append(...text(doc, "3"));
+      doc.forceCommit();
+
+      expect(undoManager["_undoStack"]).toHaveLength(2);
+
+      undoManager.undo();
+      assertDoc(doc, ["1", "2"]);
+
+      undoManager.undo();
+      assertDoc(doc, ["1"]);
+
+      undoManager.undo();
+      assertDoc(doc, ["1"]);
+    });
+  });
+
+  test("mergeInterval merges updates separated by a short gap", () => {
+    withMockedDateNow((setNow) => {
+      const doc = createTextDocWithUndo(10, 1000);
+      const undoManager = doc.undoManager;
+
+      checkUndoManager(4, doc, () => {
+        setNow(1000);
+        doc.root.append(...text(doc, "a"));
+        doc.forceCommit();
+        setNow(1500);
+        doc.root.append(...text(doc, "b"));
+        doc.forceCommit();
+
+        expect(undoManager["_undoStack"]).toHaveLength(1);
+
+        undoManager.undo();
+        assertDoc(doc, []);
+        undoManager.redo();
+        assertDoc(doc, ["a", "b"]);
+      });
+    });
+  });
+
+  test("mergeInterval starts a new undo step after a long gap", () => {
+    withMockedDateNow((setNow) => {
+      const doc = createTextDocWithUndo(10, 1000);
+      const undoManager = doc.undoManager;
+
+      checkUndoManager(4, doc, () => {
+        setNow(1000);
+        doc.root.append(...text(doc, "a"));
+        doc.forceCommit();
+        setNow(2500);
+        doc.root.append(...text(doc, "b"));
+        doc.forceCommit();
+
+        expect(undoManager["_undoStack"]).toHaveLength(2);
+
+        undoManager.undo();
+        assertDoc(doc, ["a"]);
+        undoManager.undo();
+        assertDoc(doc, []);
+      });
+    });
+  });
+
+  test("mergeInterval 0 disables undo step merging", () => {
+    withMockedDateNow((setNow) => {
+      const doc = createTextDocWithUndo(10, 0);
+      const undoManager = doc.undoManager;
+
+      checkUndoManager(3, doc, () => {
+        setNow(1000);
+        doc.root.append(...text(doc, "a"));
+        doc.forceCommit();
+        doc.root.append(...text(doc, "b"));
+        doc.forceCommit();
+
+        expect(undoManager["_undoStack"]).toHaveLength(2);
+
+        undoManager.undo();
+        assertDoc(doc, ["a"]);
+      });
+    });
+  });
+
+  test("maxUndoSteps 0 disables undo history", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const undoManager = doc.undoManager;
+
+    checkUndoManager(1, doc, () => {
+      doc.root.append(...text(doc, "a"));
+      doc.forceCommit();
+
+      expect(undoManager.canUndo()).toBe(false);
+
+      undoManager.undo();
+      assertDoc(doc, ["a"]);
+    });
+  });
+
+  test("merged state patches undo to the state before the first update", () => {
+    withMockedDateNow((setNow) => {
+      const doc = createTextDocWithUndo(10, 1000);
+      const undoManager = doc.undoManager;
+      let node: DocNode<typeof Text> | undefined;
+
+      checkUndoManager(4, doc, () => {
+        setNow(1000);
+        doc.forceCommit(() => {
+          node = doc.createNode(Text);
+          doc.root.append(node);
+        }, {});
+        if (!node) throw new Error("Expected seed node to be created");
+
+        setNow(2500);
+        node.state.value.set("a");
+        doc.forceCommit();
+        setNow(3000);
+        node.state.value.set("b");
+        doc.forceCommit();
+
+        expect(undoManager["_undoStack"]).toHaveLength(2);
+
+        undoManager.undo();
+        assertDoc(doc, [""]);
+      });
+    });
+  });
+
+  test("mergeOperations combines operations without mutating inputs", () => {
+    const first: Operations = [
+      [[1, "a", 0]],
+      { a: { value: "1" }, b: { value: "2" } },
+    ];
+    const second: Operations = [
+      [[2, "b", 0, 0, 0, 0]],
+      { b: { value: "3" }, c: { value: "4" } },
+    ];
+
+    const merged = mergeOperations(first, second);
+
+    expect(merged).toStrictEqual([
+      [
+        [1, "a", 0],
+        [2, "b", 0, 0, 0, 0],
+      ],
+      { a: { value: "1" }, b: { value: "3" }, c: { value: "4" } },
+    ]);
+    expect(first).toStrictEqual([
+      [[1, "a", 0]],
+      { a: { value: "1" }, b: { value: "2" } },
+    ]);
+    expect(second).toStrictEqual([
+      [[2, "b", 0, 0, 0, 0]],
+      { b: { value: "3" }, c: { value: "4" } },
+    ]);
   });
 
   test("undo immediately after a pending local update still undoes that update", () => {

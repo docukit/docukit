@@ -1,5 +1,5 @@
 import { type Doc } from "./main.js";
-import type { Operations } from "./operations.js";
+import { mergeOperations, type Operations } from "./operations.js";
 import type { UndoManagerConfig } from "./types.js";
 
 /** `meta` is opaque — consumers attach arbitrary data (e.g. selection). */
@@ -12,16 +12,18 @@ type Handler = (event: UndoManagerEvent) => void;
 export class UndoManager {
   private readonly _doc: Doc;
   private readonly _maxUndoSteps: number;
+  private readonly _mergeInterval: number;
   protected _undoStack: UndoStackItem[] = [];
   protected _redoStack: UndoStackItem[] = [];
   private _txType: "undo" | "redo" | "update" = "update";
-  private _lastUpdate: number | undefined; // TODO: threeshold to combine transactions of 500ms
+  private _lastUpdate: number | undefined;
   private _pushHandlers = new Set<Handler>();
   private _popHandlers = new Set<Handler>();
 
   constructor(doc: Doc, options?: UndoManagerConfig) {
     this._doc = doc;
     this._maxUndoSteps = options?.maxUndoSteps ?? 0;
+    this._mergeInterval = options?.mergeInterval ?? 1000;
     if (!this.isEnabled) return;
 
     this._doc.onChange((event) => {
@@ -31,14 +33,31 @@ export class UndoManager {
         meta: new Map(),
       };
       if (this._txType === "update") {
-        if (this._maxUndoSteps > this._undoStack.length) {
+        const now = Date.now();
+        const lastItem = this._undoStack.at(-1);
+        if (
+          lastItem &&
+          this._lastUpdate !== undefined &&
+          now - this._lastUpdate < this._mergeInterval
+        ) {
+          lastItem.operations = mergeOperations(
+            item.operations,
+            lastItem.operations,
+          );
+          this._pushHandlers.forEach((h) =>
+            h({ meta: lastItem.meta, type: "undo" }),
+          );
+        } else {
+          if (this._undoStack.length >= this._maxUndoSteps) {
+            this._undoStack.shift();
+          }
           this._undoStack.push(item);
           this._pushHandlers.forEach((h) =>
             h({ meta: item.meta, type: "undo" }),
           );
         }
         this._redoStack = [];
-        this._lastUpdate = Date.now();
+        this._lastUpdate = now;
       } else if (this._txType === "undo") {
         this._redoStack.push(item);
         this._txType = "update";
@@ -60,6 +79,7 @@ export class UndoManager {
     const item = this._undoStack.pop();
     if (!item) return;
     this._txType = "undo";
+    this._lastUpdate = undefined;
     this._doc.applyOperations(item.operations);
     this._popHandlers.forEach((h) => h({ meta: item.meta, type: "undo" }));
   }
@@ -69,6 +89,7 @@ export class UndoManager {
     const item = this._redoStack.pop();
     if (!item) return;
     this._txType = "redo";
+    this._lastUpdate = undefined;
     this._doc.applyOperations(item.operations);
     this._popHandlers.forEach((h) => h({ meta: item.meta, type: "redo" }));
   }

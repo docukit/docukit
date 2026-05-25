@@ -129,7 +129,7 @@ describe("undoManager.ts coverage", () => {
     expect(undoManager.canRedo()).toBe(false);
   });
 
-  test("empty undo does not turn the next local edit into redo history", () => {
+  test("empty undo and redo do not affect the next local edit", () => {
     const doc = createTextDocWithUndo();
     const undoManager = doc.undoManager;
 
@@ -142,6 +142,20 @@ describe("undoManager.ts coverage", () => {
 
     undoManager.redo();
     assertDoc(doc, ["1"]);
+
+    undoManager.undo();
+    assertDoc(doc, []);
+
+    undoManager.redo();
+    assertDoc(doc, ["1"]);
+
+    undoManager.redo();
+    doc.root.append(...text(doc, "2"));
+    doc.forceCommit();
+
+    expect(undoManager.canUndo()).toBe(true);
+    expect(undoManager.canRedo()).toBe(false);
+    assertDoc(doc, ["1", "2"]);
   });
 
   test("disabled undoManager stays inert after edits", () => {

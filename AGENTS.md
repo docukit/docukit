@@ -3,6 +3,7 @@
 - When I ask a question or describe a problem, start by brainstorming a few potential solutions.
 - Show example code for each and help me compare them.
 - Ask which one we should try together.
+- Do not perform any git-related action unless I explicitly ask for that exact action in the current conversation. This includes staging, unstaging, committing, pushing, branching, switching branches, rebasing, stashing, restoring files, or any other command that mutates git state.
 
 ## Implementation Loop
 

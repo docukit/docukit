@@ -5,7 +5,7 @@ description: Undo Manager of the DocNode
 
 import { TypeTable } from "fumadocs-ui/components/type-table";
 
-DocNode provides a built-in undo manager that can be used to undo and redo transactions. It is configured on the document constructor and is disabled by default.
+DocNode includes an undo manager for local transactions. Configure it on the `Doc`; it is disabled by default.
 
 ```ts
 import { Doc } from "@docukit/docnode";
@@ -13,7 +13,7 @@ import { Doc } from "@docukit/docnode";
 const doc = new Doc({
   type: "root",
   extensions: [MyExtension],
-  undoManager: { maxUndoSteps: 100 },
+  undoManager: { maxUndoSteps: 100, mergeInterval: 1000 },
 });
 
 doc.undoManager.undo(); // undo the last transaction
@@ -23,14 +23,9 @@ doc.undoManager.canRedo(); // true if there are redo steps available
 doc.undoManager.isEnabled; // true when maxUndoSteps is greater than 0
 ```
 
-If `undoManager` is omitted, `maxUndoSteps` defaults to `0`, so undo and redo are disabled.
+If `undoManager` is omitted, `maxUndoSteps` defaults to `0`.
 
 ## Options
-
-{/* I wonder if a simple table offers better readability than the TypeTable component. */}
-{/* | Option | Description | Default | */}
-{/* | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | */}
-{/* | maxUndoSteps | The maximum number of undo steps to keep in the undo stack. If the number of undo steps exceeds this limit, the oldest undo step will be removed. | 0 | */}
 
 <TypeTable
   type={{
@@ -40,14 +35,18 @@ If `undoManager` is omitted, `maxUndoSteps` defaults to `0`, so undo and redo ar
       type: "number",
       default: 0,
     },
+    mergeInterval: {
+      description:
+        "The interval in milliseconds used to merge nearby transactions into a single undo step. Set it to 0 to disable merging.",
+      type: "number",
+      default: 1000,
+    },
   }}
 />
 
 ## Skipping Undo History
 
-Some transactions should update the document without becoming undoable. Common examples are initial content, imports, and operations received from another device.
-
-Use `forceCommit(callback, { skipUndo: true })` to isolate a local update and keep it out of the undo stack:
+Use `skipUndo` for changes that should not become undoable, such as initial content, imports, or remote operations.
 
 ```ts
 doc.forceCommit(
@@ -58,10 +57,9 @@ doc.forceCommit(
 );
 ```
 
-When replaying remote operations, pass the same flag to `applyOperations`:
-
 ```ts
-doc.applyOperations(operations, { skipUndo: true });
+doc.forceCommit(() => seedInitialContent(doc), { skipUndo: true });
+doc.applyOperations(remoteOperations, { skipUndo: true });
 ```
 
 <Callout type="info">
@@ -85,10 +83,4 @@ const offPop = doc.undoManager.onPop(({ meta }) => {
 });
 ```
 
-`meta` is an opaque `Map` owned by that stack item.
-
-- `onPush(...)`: capture extra state before the step is finalized.
-- `onPop(...)`: restore that state after undo or redo applies.
-
-Both events also receive a type field with either "undo" or "redo".
-This helps avoid attaching metadata at the wrong moment. See our bindings source code for real examples.
+`meta` is an opaque `Map` owned by the stack item. Both callbacks also receive `type`, either `"undo"` or `"redo"`.
