@@ -6,8 +6,16 @@ import {
 } from "@docukit/docnode-lexical";
 import { createLexicalDoc } from "./utils.js";
 import {
+  $createParagraphNode,
+  $createRangeSelection,
+  $createTextNode,
+  $getNodeByKey,
+  $getRoot,
+  $isTextNode,
+  $setSelection,
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
+  COLLABORATION_TAG,
   COMMAND_PRIORITY_EDITOR,
   COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
@@ -199,6 +207,86 @@ describe("setupUndoManager doc undo manager", () => {
     off();
     offUndoFallback();
     offRedoFallback();
+  });
+
+  it("keeps the first selection metadata when updates merge into one undo item", () => {
+    const doc = createLexicalDoc({ mergeInterval: 500 });
+    const editor = makeEditor();
+    const docNode = doc.createNode(LexicalDocNode);
+    doc.forceCommit(
+      () => {
+        doc.root.append(docNode);
+      },
+      { skipUndo: true },
+    );
+
+    let textKey = "";
+    editor.update(
+      () => {
+        const root = $getRoot();
+        const paragraph = $createParagraphNode();
+        const textNode = $createTextNode("abc");
+        textKey = textNode.getKey();
+        paragraph.append(textNode);
+        root.clear();
+        root.append(paragraph);
+
+        const selection = $createRangeSelection();
+        selection.anchor.set(textKey, 0, "text");
+        selection.focus.set(textKey, 0, "text");
+        $setSelection(selection);
+      },
+      { discrete: true, tag: COLLABORATION_TAG },
+    );
+
+    const keyBinding = {
+      lexicalKeyToDocNodeId: new Map([[textKey, docNode.id]]),
+      docNodeIdToLexicalKey: new Map([[docNode.id, textKey]]),
+    };
+    const off = setupUndoManager(editor, doc, keyBinding);
+    let now = 1000;
+    const dateNow = vi.spyOn(Date, "now").mockImplementation(() => now);
+
+    editor.update(
+      () => {
+        const textNode = $getNodeByKey(textKey);
+        if (!$isTextNode(textNode)) throw new Error("Expected text node");
+        textNode.setTextContent("abcd");
+        const selection = $createRangeSelection();
+        selection.anchor.set(textKey, 1, "text");
+        selection.focus.set(textKey, 1, "text");
+        $setSelection(selection);
+      },
+      { discrete: true },
+    );
+    doc.root.append(doc.createNode(LexicalDocNode));
+    doc.forceCommit();
+
+    now = 1400;
+    editor.update(
+      () => {
+        const textNode = $getNodeByKey(textKey);
+        if (!$isTextNode(textNode)) throw new Error("Expected text node");
+        textNode.setTextContent("abcde");
+        const selection = $createRangeSelection();
+        selection.anchor.set(textKey, 2, "text");
+        selection.focus.set(textKey, 2, "text");
+        $setSelection(selection);
+      },
+      { discrete: true },
+    );
+    doc.root.append(doc.createNode(LexicalDocNode));
+    doc.forceCommit();
+
+    const item = doc.undoManager["_undoStack"][0];
+    expect(doc.undoManager["_undoStack"]).toHaveLength(1);
+    expect(item?.meta.get("selection")).toStrictEqual({
+      anchor: { key: docNode.id, offset: 0 },
+      focus: { key: docNode.id, offset: 0 },
+    });
+
+    dateNow.mockRestore();
+    off();
   });
 
   it("does not register undo handlers when undo manager is disabled", () => {

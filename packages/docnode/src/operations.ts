@@ -399,6 +399,21 @@ type StatePatch = { [id: string]: Record<string, string> };
 
 export type Operations = readonly [OrderedOperation[], StatePatch];
 
+export function mergeOperations(...operationsList: Operations[]): Operations {
+  const orderedOperations: OrderedOperation[] = [];
+  const statePatch: StatePatch = {};
+
+  for (const operations of operationsList) {
+    orderedOperations.push(...operations[0]);
+    for (const nodeId in operations[1]) {
+      statePatch[nodeId] ??= {};
+      Object.assign(statePatch[nodeId], operations[1][nodeId]);
+    }
+  }
+
+  return [orderedOperations, statePatch];
+}
+
 // TODO: decide whether this will be added to the API in node.getChildren().toArray()
 function getChildren(node: DocNode) {
   const children: DocNode[] = [];

@@ -94,7 +94,11 @@ export function setupUndoManager(
   );
 
   const offPush = undoManager.onPush(({ meta, type }) => {
-    if (pending?.targetStack === type && pending.selection) {
+    if (
+      pending?.targetStack === type &&
+      pending.selection &&
+      !meta.has(META_SELECTION)
+    ) {
       meta.set(META_SELECTION, pending.selection);
     }
     pending = undefined;

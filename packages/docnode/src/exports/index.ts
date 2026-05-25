@@ -18,4 +18,4 @@ export {
 } from "../types.js";
 export { defineNode } from "../utils.js";
 export { boolean, number, string, defineState } from "../stateDefinitions.js";
-export { type Operations } from "../operations.js";
+export { mergeOperations, type Operations } from "../operations.js";

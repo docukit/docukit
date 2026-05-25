@@ -200,12 +200,12 @@ export type UndoManagerConfig = {
    * @default 0
    */
   maxUndoSteps?: number;
-  // TODO:
-  // /**
-  //  * The interval in milliseconds to merge transactions into a single undo step.
-  //  * @default 1000
-  //  */
-  // mergeInterval?: number;
+  /**
+   * The interval in milliseconds to merge transactions into a single undo step.
+   * Set to 0 to disable merging.
+   * @default 500
+   */
+  mergeInterval?: number;
 };
 
 export type DocConfig = {
