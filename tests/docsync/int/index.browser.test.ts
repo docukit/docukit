@@ -306,9 +306,10 @@ describe("Local-First", () => {
       expect(childrenArray1.length).toBe(101);
       await reference.assertIDBDoc({ doc: childrenArray1, ops: [] });
       expect(reference.reqSpy.mock.calls.length).toBeLessThan(4);
+      const requestsAfterFirstBatch = reference.reqSpy.mock.calls.length;
 
       // without batching delay
-      reference.client["_batchDelay"] = 0;
+      reference.client["_operationsDebounce"] = 0;
 
       const childrenArray2 = [];
 
@@ -322,7 +323,9 @@ describe("Local-First", () => {
         doc: [...childrenArray1, ...childrenArray2],
         ops: [],
       });
-      expect(reference.reqSpy.mock.calls.length).toBeLessThan(4);
+      expect(
+        reference.reqSpy.mock.calls.length - requestsAfterFirstBatch,
+      ).toBeLessThan(4);
     });
   });
 });

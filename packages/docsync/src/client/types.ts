@@ -43,6 +43,11 @@ export type ClientConfig<
 > = {
   docBinding: DocBinding<D, S, O>;
   server: { url: string; auth: { getToken: () => MaybePromise<string> } };
+  timing?: {
+    operationsDebounce?: number;
+    operationsMaxDebounce?: number;
+    presenceDebounce?: number;
+  };
   local: {
     provider: (identity: Identity) => ClientProvider<NoInfer<S>, NoInfer<O>>;
     getIdentity: () => MaybePromise<Identity>;
