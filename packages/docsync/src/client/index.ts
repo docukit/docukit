@@ -1,6 +1,10 @@
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { io } from "socket.io-client";
-import type { DocBinding, Presence } from "../shared/types.js";
+import type {
+  DocBinding,
+  Presence,
+  TransactionFlags,
+} from "../shared/types.js";
 import type {
   ClientConfig,
   ClientProvider,
@@ -35,6 +39,7 @@ type LocalResolved<S extends {}, O extends {}> = {
 };
 
 type PushStatus = "idle" | "pushing" | "pushing-with-pending";
+type ChangeOrigin = "local" | "network" | "local-broadcast";
 
 export class DocSyncClient<
   D extends {} = {},
@@ -58,6 +63,7 @@ export class DocSyncClient<
   protected _clientId: string;
   protected _bcHelper?: BCHelper<D, S, O>;
   protected _socket: ClientSocket<S, O>;
+  protected _changeOrigin: ChangeOrigin = "local";
 
   // Flow control state (batching, debouncing, push queueing)
   protected _localOpsBatchState = new Map<string, DeferredState<O[]>>();
@@ -303,12 +309,8 @@ export class DocSyncClient<
   }
 
   private _setupChangeListener(doc: D, docId: string) {
-    this._docBinding.onChange(doc, ({ operations, origin }) => {
-      const changeOrigin = origin?.startsWith("remote")
-        ? "remote"
-        : origin === "broadcast"
-          ? "broadcast"
-          : "local";
+    this._docBinding.onChange(doc, ({ flags, operations }) => {
+      const changeOrigin = this._changeOrigin;
 
       this._events.emit("change", {
         docId,
@@ -334,14 +336,29 @@ export class DocSyncClient<
           const presencePatch = getOwnPresencePatch(this, docId);
           this._bcHelper?.broadcast({
             type: "OPERATIONS",
-            source: "local",
+            source: "local-broadcast",
             operations,
             docId,
+            ...(flags?.skipUndo && { flags: { skipUndo: true } }),
             ...(presencePatch && { presence: presencePatch }),
           });
         });
       });
     });
+  }
+
+  protected _applyOperationsFrom(
+    origin: Exclude<ChangeOrigin, "local">,
+    doc: D,
+    operations: O,
+    flags?: TransactionFlags,
+  ): void {
+    this._changeOrigin = origin;
+    try {
+      this._docBinding.applyOperations(doc, operations, flags);
+    } finally {
+      this._changeOrigin = "local";
+    }
   }
 
   private async _loadOrCreateDoc(

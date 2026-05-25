@@ -1,4 +1,4 @@
-import { UndoManager, type Doc } from "@docukit/docnode";
+import { type Doc } from "@docukit/docnode";
 import {
   $createRangeSelection,
   $getNodeByKey,
@@ -20,25 +20,7 @@ import {
 } from "lexical";
 
 import type { KeyBinding, PresenceSelection } from "./types.js";
-
-/**
- * One default UndoManager per Doc. Memoizing here means the editor's undo
- * history survives mount/unmount/remount cycles (StrictMode, HMR, route
- * changes that keep the Doc alive) instead of being recreated and leaking the
- * previous one in `doc._changeListeners`. The entry is GC'd when the Doc is
- * GC'd. Users who want a dedicated UndoManager pass one via the third
- * argument and bypass this cache.
- */
-const defaultUndoManagers = new WeakMap<Doc, UndoManager>();
-
-function getDefaultUndoManager(doc: Doc): UndoManager {
-  let undoManager = defaultUndoManagers.get(doc);
-  if (!undoManager) {
-    undoManager = new UndoManager(doc);
-    defaultUndoManagers.set(doc, undoManager);
-  }
-  return undoManager;
-}
+import { SKIP_UNDO_TAG } from "./constants.js";
 
 const META_SELECTION = "selection";
 
@@ -49,8 +31,17 @@ export function setupUndoManager(
   editor: LexicalEditor,
   doc: Doc,
   keyBinding: KeyBinding,
-  undoManager: UndoManager = getDefaultUndoManager(doc),
 ): () => void {
+  const undoManager = doc.undoManager;
+
+  if (process.env.NODE_ENV !== "production") {
+    warnIfHistoryPluginActive(editor);
+  }
+
+  if (!undoManager.isEnabled) {
+    return () => undefined;
+  }
+
   // Track previous values so we only dispatch on transitions, mirroring
   // Lexical's own history plugin (lexical-history dispatches CAN_*_COMMAND
   // only when the boolean changes, not on every editor update).
@@ -84,6 +75,7 @@ export function setupUndoManager(
   const offUpdate = editor.registerUpdateListener(
     ({ prevEditorState, dirtyElements, dirtyLeaves, tags }) => {
       if (tags.has(COLLABORATION_TAG)) return;
+      if (tags.has(SKIP_UNDO_TAG)) return;
       if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return;
       pending = {
         targetStack: "undo",
@@ -150,10 +142,6 @@ export function setupUndoManager(
     },
     COMMAND_PRIORITY_HIGH,
   );
-
-  if (process.env.NODE_ENV !== "production") {
-    warnIfHistoryPluginActive(editor);
-  }
 
   return () => {
     offUndo();
@@ -277,9 +265,10 @@ function warnIfHistoryPluginActive(editor: LexicalEditor): void {
     if ((undoListeners?.[COMMAND_PRIORITY_EDITOR]?.size ?? 0) > 0) {
       console.warn(
         "[docnode-lexical] Another UNDO_COMMAND handler detected (likely " +
-          "<HistoryPlugin />). Remove it — DocNode's delta-based undo is " +
-          "already wired; the duplicate keeps a full-snapshot history in " +
-          "memory unnecessarily.",
+          "<HistoryPlugin />). Remove it and instead enable DocNode's " +
+          "undoManager, which ignores remote operations, is more reliable " +
+          "for collaborative edits, and consumes less memory because it only " +
+          "stores deltas and not full snapshots.",
       );
     }
   });

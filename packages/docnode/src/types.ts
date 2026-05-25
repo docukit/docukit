@@ -155,6 +155,8 @@ export type Diff = {
   updated: Set<string>;
 };
 
+export type TransactionFlags = { skipUndo?: boolean };
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type IntersectionOf<T extends any[]> = T extends [
   infer First,
@@ -191,6 +193,21 @@ export type NodeIdGenerator = {
   extractTime?: ((id: string) => number) | undefined;
 };
 
+export type UndoManagerConfig = {
+  /**
+   * The maximum number of undo steps to keep in the undo stack.
+   * If the number of undo steps exceeds this limit, the oldest undo step will be removed.
+   * @default 0
+   */
+  maxUndoSteps?: number;
+  // TODO:
+  // /**
+  //  * The interval in milliseconds to merge transactions into a single undo step.
+  //  * @default 1000
+  //  */
+  // mergeInterval?: number;
+};
+
 export type DocConfig = {
   extensions: Extension[];
   /**
@@ -219,6 +236,10 @@ export type DocConfig = {
    * `generate` will be used for all nodes (root and non-root).
    */
   nodeIdGenerator?: NodeIdGenerator;
+  /**
+   * Configures the document's built-in undo manager.
+   */
+  undoManager?: UndoManagerConfig;
 };
 
 // https://github.com/microsoft/TypeScript/issues/13923#issuecomment-2191862501
@@ -235,5 +256,5 @@ export type ChangeEvent = {
   operations: Operations;
   inverseOperations: Operations;
   diff: Diff;
-  origin?: string | undefined;
+  flags: TransactionFlags;
 };

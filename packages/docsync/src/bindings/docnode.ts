@@ -1,5 +1,6 @@
 import { Doc, type DocConfig, type Operations } from "@docukit/docnode";
 import { createDocBinding } from "./index.js";
+import type { TransactionFlags } from "../shared/types.js";
 
 export const DocNodeBinding = (docConfigs: DocConfig[]) => {
   const docConfigsMap = new Map<string, DocConfig>();
@@ -30,10 +31,10 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
     },
     onChange: (
       doc,
-      cb: (ev: { operations: Operations; origin?: string | undefined }) => void,
+      cb: (ev: { operations: Operations; flags?: TransactionFlags }) => void,
     ) => doc.onChange(cb),
-    applyOperations: (doc, operations, origin) => {
-      doc.applyOperations(operations, origin);
+    applyOperations: (doc, operations, flags) => {
+      doc.applyOperations(operations, flags);
     },
     dispose: (doc) => doc.dispose(),
   });

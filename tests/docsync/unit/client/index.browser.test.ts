@@ -4,10 +4,10 @@ import {
   indexedDBProvider,
   type ClientConfig,
   type DocData,
+  type DocBinding,
   type Identity,
   type QueryResult,
 } from "@docukit/docsync/client";
-import type { DocBinding } from "@docukit/docsync/shared";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import {
   defineNode,
@@ -153,10 +153,7 @@ describe("DocSyncClient", () => {
       type FakeDoc = { id: string };
       type FakeSerializedDoc = { id: string };
       type FakeOperation = { value: string };
-      type FakeChangeListener = (ev: {
-        operations: FakeOperation;
-        origin?: string | undefined;
-      }) => void;
+      type FakeChangeListener = (ev: { operations: FakeOperation }) => void;
 
       const changeListeners = new Set<FakeChangeListener>();
       const docBinding: DocBinding<FakeDoc, FakeSerializedDoc, FakeOperation> =
@@ -170,10 +167,8 @@ describe("DocSyncClient", () => {
           onChange: (_doc, cb) => {
             changeListeners.add(cb);
           },
-          applyOperations: (_doc, operations, origin) => {
-            changeListeners.forEach((listener) =>
-              listener({ operations, origin }),
-            );
+          applyOperations: (_doc, operations) => {
+            changeListeners.forEach((listener) => listener({ operations }));
           },
           dispose: vi.fn(),
         };
@@ -219,11 +214,9 @@ describe("DocSyncClient", () => {
       const firstTimeout = client["_presenceDebounceState"].get(docId)?.timeout;
       expect(firstTimeout).toBeDefined();
 
-      docBinding.applyOperations(
-        doc,
-        { value: "unrelated-remote-change" },
-        "remote",
-      );
+      client["_applyOperationsFrom"]("network", doc, {
+        value: "unrelated-remote-change",
+      });
       await Promise.resolve();
 
       expect(client["_presenceDebounceState"].get(docId)?.timeout).toBe(
@@ -235,11 +228,9 @@ describe("DocSyncClient", () => {
         client.setPresence({ docId, presence: { anchor: 2 } });
       });
 
-      docBinding.applyOperations(
-        doc,
-        { value: "selection-changing-remote-change" },
-        "remote",
-      );
+      client["_applyOperationsFrom"]("network", doc, {
+        value: "selection-changing-remote-change",
+      });
       await Promise.resolve();
 
       expect(client["_presenceDebounceState"].get(docId)?.timeout).toBe(
@@ -808,7 +799,8 @@ describe("DocSyncClient", () => {
         expect(postMessageSpy).toHaveBeenCalledWith({
           type: "OPERATIONS",
           docId,
-          source: "local",
+          source: "local-broadcast",
+          flags: { skipUndo: true },
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           operations: expect.anything(),
         });

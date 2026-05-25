@@ -52,6 +52,7 @@ const ChildNode = defineNode({ type: "child", state: { value: string("") } });
 export const testDocConfig = {
   type: "test",
   extensions: [{ nodes: [ChildNode] }],
+  undoManager: { maxUndoSteps: 10 },
 };
 
 // ============================================================================
@@ -92,8 +93,10 @@ type ClientUtils = {
   loadDoc: () => Promise<void>;
   unLoadDoc: () => void;
   addChild: (text: string) => void;
+  addChildSkippingUndo: (text: string) => void;
   assertIDBDoc: (expected?: { doc: string[]; ops: string[] }) => Promise<void>;
   assertMemoryDoc: (children?: string[]) => Promise<void>;
+  assertCanUndo: (expected: boolean) => Promise<void>;
   reqSpy: Mock<
     (
       event: string,
@@ -293,6 +296,18 @@ const createClientUtils = async (
       child.state.value.set(text);
       cachedDoc.root.append(child);
     },
+    addChildSkippingUndo: (text: string) => {
+      if (!cachedDoc) throw new Error("Doc not loaded");
+      const doc = cachedDoc;
+      doc.forceCommit(
+        () => {
+          const child = doc.createNode(ChildNode);
+          child.state.value.set(text);
+          doc.root.append(child);
+        },
+        { skipUndo: true },
+      );
+    },
     assertIDBDoc: async (expected?: { doc: string[]; ops: string[] }) => {
       await expect
         .poll(async () => {
@@ -382,6 +397,14 @@ const createClientUtils = async (
           return true;
         })
         .toBe(true);
+    },
+    assertCanUndo: async (expected: boolean) => {
+      await expect
+        .poll(() => {
+          if (!cachedDoc) throw new Error("Doc not loaded");
+          return cachedDoc.undoManager.canUndo();
+        })
+        .toBe(expected);
     },
     disconnect: () => {
       api.disconnect();

@@ -297,9 +297,6 @@ importers:
 
   packages/docsync:
     dependencies:
-      '@docukit/docnode':
-        specifier: workspace:*
-        version: link:../docnode
       idb:
         specifier: ^8.0.1
         version: 8.0.3
@@ -310,6 +307,9 @@ importers:
         specifier: ^4.8.1
         version: 4.8.3
     devDependencies:
+      '@docukit/docnode':
+        specifier: workspace:*
+        version: link:../docnode
       concurrently:
         specifier: ^9.1.2
         version: 9.2.1

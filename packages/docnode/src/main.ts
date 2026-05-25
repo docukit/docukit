@@ -14,6 +14,7 @@ import {
   type DefaultStateMethods,
   type ChangeEvent,
   type NodeIdGenerator,
+  type TransactionFlags,
 } from "./types.js";
 import {
   detachRange,
@@ -25,6 +26,7 @@ import {
 import * as ops from "./operations.js";
 import { nodeIdFactory } from "./idGenerator.js";
 import { decodeTime, ulid } from "ulid";
+import { UndoManager } from "./undoManager.js";
 
 export class DocNode<T extends NodeDefinition = NodeDefinition> {
   readonly id: string;
@@ -552,7 +554,8 @@ export class Doc {
     | "disposed" = "idle";
   protected _operations: ops.Operations = [[], {}];
   protected _inverseOperations: ops.Operations = [[], {}];
-  protected _changeOrigin: string | undefined;
+  protected _transactionFlags: TransactionFlags;
+  private _isForceCommitCallback = false;
   protected _diff: Diff = {
     deleted: new Map(),
     inserted: new Set(),
@@ -562,6 +565,7 @@ export class Doc {
   protected _nodeIdGenerator: (doc: Doc) => string;
   protected _idGen: NodeIdGenerator;
   readonly root: DocNode;
+  readonly undoManager: UndoManager;
 
   constructor(config: DocConfig) {
     this._nodeDefs = new Set();
@@ -743,7 +747,18 @@ export class Doc {
       extension.register?.(this);
     });
     this._lifeCycleStage = "idle";
-    this.forceCommit(true);
+    this._forceCommit(true);
+    this.undoManager = new UndoManager(this, config.undoManager);
+    this._transactionFlags = { skipUndo: true };
+    // If the first tx happens in the same microtask the doc is created,
+    // we can skip the undo manager for that tx.
+    // This makes even more sense when you consider that Doc.fromJSON
+    // is not undoable and does not commit a transaction.
+    queueMicrotask(() => {
+      if (this._lifeCycleStage === "idle" && this._transactionFlags?.skipUndo) {
+        this._transactionFlags = {};
+      }
+    });
   }
 
   getNodeById(docNodeId: string): DocNode | undefined {
@@ -938,7 +953,7 @@ export class Doc {
     this._normalizeListeners.add(callback);
   }
 
-  applyOperations(operations: ops.Operations, origin?: string) {
+  applyOperations(operations: ops.Operations, flags?: TransactionFlags) {
     const hasOperations =
       operations[0].length > 0 || !isObjectEmpty(operations[1]);
     if (!hasOperations) {
@@ -958,7 +973,7 @@ export class Doc {
     }
     if (this._lifeCycleStage === "update") this.forceCommit();
     let didApplyOperations = false;
-    this._changeOrigin = origin;
+    if (flags) this._transactionFlags = flags;
     withTransaction(
       this,
       () => {
@@ -976,7 +991,28 @@ export class Doc {
    * Terminates the transaction early and synchronously, triggering events.
    * Using forceCommit is uncommon and can hurt your app's performance.
    */
-  forceCommit(ignoreEmptyDiff = false) {
+  forceCommit(): void;
+  forceCommit(callback: () => void, flags: TransactionFlags): void;
+  forceCommit(callback?: () => void, flags?: TransactionFlags): void {
+    if (this._isForceCommitCallback) {
+      throw new Error(
+        "You can't call forceCommit inside a forceCommit callback",
+      );
+    }
+    this._forceCommit();
+    if (!callback) return;
+    this._transactionFlags = flags ?? {};
+    this._isForceCommitCallback = true;
+    try {
+      withTransaction(this, callback);
+      if (this._lifeCycleStage === "update") this._forceCommit();
+      else this._transactionFlags = {};
+    } finally {
+      this._isForceCommitCallback = false;
+    }
+  }
+
+  private _forceCommit(ignoreEmptyDiff = false) {
     if (this._lifeCycleStage === "change")
       throw new Error("You can't trigger an update inside a change event");
     // push + reverse is more performant than unshift at insertion time
@@ -986,7 +1022,7 @@ export class Doc {
     ops.maybeTriggerListeners(this, ignoreEmptyDiff);
     this._operations = [[], {}];
     this._inverseOperations = [[], {}];
-    this._changeOrigin = undefined;
+    this._transactionFlags = {};
     this._diff = {
       deleted: new Map(),
       inserted: new Set(),
@@ -1010,7 +1046,7 @@ export class Doc {
     );
     this["_operations"] = [[], {}];
     this["_inverseOperations"] = [[], {}];
-    this["_changeOrigin"] = undefined;
+    this["_transactionFlags"] = {};
     this["_diff"] = {
       deleted: new Map(),
       inserted: new Set(),
@@ -1074,9 +1110,8 @@ export class Doc {
   /**
    * Creates a new doc from the given JSON.
    *
-   * In the process, it dispatches an initial transaction,
-   * so if you want to register listeners events immediately
-   * afterward, you must first call doc.forceCommit().
+   * The initial JSON import starts a transaction, allowing updates made
+   * immediately afterward to be batched with it.
    */
   static fromJSON(config: DocConfig, jsonDoc: JsonDoc): Doc {
     const id = jsonDoc[0];
@@ -1099,12 +1134,14 @@ export class Doc {
         }
       });
     };
-    const root = doc._createNodeFromJson(jsonDoc);
-    doc._nodeMap.delete(doc.root.id);
-    // @ts-expect-error - read-only property
-    doc.root = root;
-    doc._nodeMap.set(doc.root.id, doc.root);
-    if (jsonDoc[3]) jsonDocToDocNode(root, jsonDoc[3]);
+    withTransaction(doc, () => {
+      const root = doc._createNodeFromJson(jsonDoc);
+      doc._nodeMap.delete(doc.root.id);
+      // @ts-expect-error - read-only property
+      doc.root = root;
+      doc._nodeMap.set(doc.root.id, doc.root);
+      if (jsonDoc[3]) jsonDocToDocNode(root, jsonDoc[3]);
+    });
     return doc;
   }
 

@@ -1,1 +1,1 @@
-export * from "../shared/types.js";
+export { type DocBinding } from "../shared/types.js";

@@ -1,5 +1,6 @@
 import { type Doc } from "./main.js";
 import type { Operations } from "./operations.js";
+import type { UndoManagerConfig } from "./types.js";
 
 /** `meta` is opaque — consumers attach arbitrary data (e.g. selection). */
 type UndoStackItem = { operations: Operations; meta: Map<string, unknown> };
@@ -18,27 +19,13 @@ export class UndoManager {
   private _pushHandlers = new Set<Handler>();
   private _popHandlers = new Set<Handler>();
 
-  constructor(
-    doc: Doc,
-    options?: {
-      /**
-       * The maximum number of undo steps to keep in the undo stack.
-       * If the number of undo steps exceeds this limit, the oldest undo step will be removed.
-       * @default 100
-       */
-      maxUndoSteps?: number;
-      // TODO:
-      // /**
-      //  * The interval in milliseconds to merge transactions into a single undo step.
-      //  * @default 1000
-      //  */
-      // mergeInterval?: number;
-    },
-  ) {
+  constructor(doc: Doc, options?: UndoManagerConfig) {
     this._doc = doc;
-    this._maxUndoSteps = options?.maxUndoSteps ?? 100;
+    this._maxUndoSteps = options?.maxUndoSteps ?? 0;
+    if (!this.isEnabled) return;
+
     this._doc.onChange((event) => {
-      if (event.origin?.startsWith("remote")) return;
+      if (event.flags?.skipUndo) return;
       const item: UndoStackItem = {
         operations: event.inverseOperations,
         meta: new Map(),
@@ -64,20 +51,24 @@ export class UndoManager {
     });
   }
 
+  get isEnabled() {
+    return this._maxUndoSteps > 0;
+  }
+
   undo() {
     this._doc.forceCommit();
-    this._txType = "undo";
     const item = this._undoStack.pop();
     if (!item) return;
+    this._txType = "undo";
     this._doc.applyOperations(item.operations);
     this._popHandlers.forEach((h) => h({ meta: item.meta, type: "undo" }));
   }
 
   redo() {
     this._doc.forceCommit();
-    this._txType = "redo";
     const item = this._redoStack.pop();
     if (!item) return;
+    this._txType = "redo";
     this._doc.applyOperations(item.operations);
     this._popHandlers.forEach((h) => h({ meta: item.meta, type: "redo" }));
   }
@@ -88,13 +79,6 @@ export class UndoManager {
 
   canRedo() {
     return this._redoStack.length > 0;
-  }
-
-  clear() {
-    this._undoStack = [];
-    this._redoStack = [];
-    this._txType = "update";
-    this._lastUpdate = undefined;
   }
 
   /**

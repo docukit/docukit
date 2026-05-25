@@ -7,11 +7,8 @@ import {
 } from "lexical";
 import { describe, expect, test } from "vitest";
 
-import {
-  createLexicalDoc,
-  syncLexicalWithDoc,
-  LexicalDocNode,
-} from "@docukit/docnode-lexical";
+import { syncLexicalWithDoc, LexicalDocNode } from "@docukit/docnode-lexical";
+import { createLexicalDoc } from "./utils.js";
 
 describe("docnode to lexical sync", () => {
   test("add paragraph to empty doc", () => {

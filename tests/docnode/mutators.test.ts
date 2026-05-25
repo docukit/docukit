@@ -7,17 +7,12 @@ import {
   TextExtension,
   updateAndListen,
   checkUndoManager,
+  createTextDocWithUndo,
   humanReadableOperations,
   emptyUpdate,
   assertError,
 } from "./utils.js";
-import {
-  type DocNode,
-  Doc,
-  defineNode,
-  UndoManager,
-  string,
-} from "@docukit/docnode";
+import { type DocNode, Doc, defineNode, string } from "@docukit/docnode";
 
 //common to all mutators
 describe("base", () => {
@@ -992,12 +987,12 @@ describe("replaceChildren", () => {
 
 describe("move", () => {
   test("simple move", () => {
-    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const doc = createTextDocWithUndo();
     checkUndoManager(3, doc, () => {
       doc.root.append(...text(doc, "1", "2"));
       assertDoc(doc, ["1", "2"]);
       doc.forceCommit();
-      const undoManager = new UndoManager(doc, { maxUndoSteps: 10 });
+      const undoManager = doc.undoManager;
       updateAndListen(
         doc,
         () => {

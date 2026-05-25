@@ -5,12 +5,14 @@ title: Getting Started
 ## Installation
 
 ```npm tab="React"
-npm i @docukit/docsync-react
+npm i @docukit/docsync-react @docukit/docnode
 ```
 
 ```npm tab="Vanilla"
-npm i @docukit/docsync
+npm i @docukit/docsync @docukit/docnode
 ```
+
+`@docukit/docnode` is required when using `DocNodeBinding`. DocSync can support other document bindings, so DocNode is an optional peer dependency instead of a hard runtime dependency.
 
 {/* TODO: ### Bundle size */}
 
