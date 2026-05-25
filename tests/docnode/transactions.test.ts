@@ -239,7 +239,7 @@ describe("undoManager", () => {
     const doc = createTextDocWithUndo(2);
     const undoManager = doc.undoManager;
 
-    checkUndoManager(5, doc, () => {
+    checkUndoManager(3, doc, () => {
       doc.root.append(...text(doc, "1"));
       doc.forceCommit();
       doc.root.append(...text(doc, "2"));
@@ -248,16 +248,17 @@ describe("undoManager", () => {
       doc.forceCommit();
 
       expect(undoManager["_undoStack"]).toHaveLength(2);
-
-      undoManager.undo();
-      assertDoc(doc, ["1", "2"]);
-
-      undoManager.undo();
-      assertDoc(doc, ["1"]);
-
-      undoManager.undo();
-      assertDoc(doc, ["1"]);
     });
+
+    // TODO: make checkUndoManager support wrapping undo/redo assertions too.
+    undoManager.undo();
+    assertDoc(doc, ["1", "2"]);
+
+    undoManager.undo();
+    assertDoc(doc, ["1"]);
+
+    undoManager.undo();
+    assertDoc(doc, ["1"]);
   });
 
   test("mergeInterval merges updates separated by a short gap", () => {
@@ -265,7 +266,7 @@ describe("undoManager", () => {
       const doc = createTextDocWithUndo(10, 1000);
       const undoManager = doc.undoManager;
 
-      checkUndoManager(4, doc, () => {
+      checkUndoManager(2, doc, () => {
         setNow(1000);
         doc.root.append(...text(doc, "a"));
         doc.forceCommit();
@@ -274,12 +275,12 @@ describe("undoManager", () => {
         doc.forceCommit();
 
         expect(undoManager["_undoStack"]).toHaveLength(1);
-
-        undoManager.undo();
-        assertDoc(doc, []);
-        undoManager.redo();
-        assertDoc(doc, ["a", "b"]);
       });
+
+      undoManager.undo();
+      assertDoc(doc, []);
+      undoManager.redo();
+      assertDoc(doc, ["a", "b"]);
     });
   });
 
@@ -288,7 +289,7 @@ describe("undoManager", () => {
       const doc = createTextDocWithUndo(10, 1000);
       const undoManager = doc.undoManager;
 
-      checkUndoManager(4, doc, () => {
+      checkUndoManager(2, doc, () => {
         setNow(1000);
         doc.root.append(...text(doc, "a"));
         doc.forceCommit();
@@ -297,12 +298,12 @@ describe("undoManager", () => {
         doc.forceCommit();
 
         expect(undoManager["_undoStack"]).toHaveLength(2);
-
-        undoManager.undo();
-        assertDoc(doc, ["a"]);
-        undoManager.undo();
-        assertDoc(doc, []);
       });
+
+      undoManager.undo();
+      assertDoc(doc, ["a"]);
+      undoManager.undo();
+      assertDoc(doc, []);
     });
   });
 
@@ -311,7 +312,7 @@ describe("undoManager", () => {
       const doc = createTextDocWithUndo(10, 0);
       const undoManager = doc.undoManager;
 
-      checkUndoManager(3, doc, () => {
+      checkUndoManager(2, doc, () => {
         setNow(1000);
         doc.root.append(...text(doc, "a"));
         doc.forceCommit();
@@ -319,10 +320,10 @@ describe("undoManager", () => {
         doc.forceCommit();
 
         expect(undoManager["_undoStack"]).toHaveLength(2);
-
-        undoManager.undo();
-        assertDoc(doc, ["a"]);
       });
+
+      undoManager.undo();
+      assertDoc(doc, ["a"]);
     });
   });
 
@@ -335,10 +336,10 @@ describe("undoManager", () => {
       doc.forceCommit();
 
       expect(undoManager.canUndo()).toBe(false);
-
-      undoManager.undo();
-      assertDoc(doc, ["a"]);
     });
+
+    undoManager.undo();
+    assertDoc(doc, ["a"]);
   });
 
   test("merged state patches undo to the state before the first update", () => {
@@ -347,7 +348,7 @@ describe("undoManager", () => {
       const undoManager = doc.undoManager;
       let node: DocNode<typeof Text> | undefined;
 
-      checkUndoManager(4, doc, () => {
+      checkUndoManager(3, doc, () => {
         setNow(1000);
         doc.forceCommit(() => {
           node = doc.createNode(Text);
@@ -363,10 +364,10 @@ describe("undoManager", () => {
         doc.forceCommit();
 
         expect(undoManager["_undoStack"]).toHaveLength(2);
-
-        undoManager.undo();
-        assertDoc(doc, [""]);
       });
+
+      undoManager.undo();
+      assertDoc(doc, [""]);
     });
   });
 
