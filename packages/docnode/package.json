@@ -1,7 +1,7 @@
 {
   "name": "@docukit/docnode",
   "version": "0.3.1",
-  "license": "SEE LICENSE IN LICENSE.md",
+  "license": "MIT",
   "description": "Type-safe documents with conflict resolution. Faster than any CRDT.",
   "type": "module",
   "homepage": "https://docukit.dev",

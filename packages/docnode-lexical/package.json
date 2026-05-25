@@ -2,7 +2,7 @@
   "name": "@docukit/docnode-lexical",
   "version": "0.3.1",
   "type": "module",
-  "license": "SEE LICENSE IN LICENSE.md",
+  "license": "MIT",
   "homepage": "https://docukit.dev",
   "repository": {
     "type": "git",

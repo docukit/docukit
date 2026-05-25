@@ -27,11 +27,12 @@ export default function LicensePage() {
               variant="emerald"
               price="Free"
               priceSubtext="forever"
-              description="The entire library for any use, including commercial applications."
+              description="Type-safe documents with conflict resolution. Faster than any CRDT."
               features={[
+                { text: "Open source and MIT licensed" },
                 { text: "Full document state management" },
                 { text: "Complete TypeScript support" },
-                { text: "CRDT and OT modes" },
+                { text: "Bindings to rich text editors like Lexical" },
                 { text: "Undo/redo functionality" },
                 { text: "Schema validation" },
                 { text: "Custom node definitions" },
@@ -159,86 +160,37 @@ export default function LicensePage() {
             </Accordion>
 
             <Accordion
-              title="What things can I do and what things can't I do with DocNode?"
-              id="do-and-dont-do-with-core"
-            >
-              <p className="mb-4">
-                The DocNode license is very permissive and is designed so that
-                you can use it free of charge for any purpose, except those that
-                compete with the business model of <code>@docukit/docsync</code>
-                .
-              </p>
-              <p className="mb-2">You can use DocNode to:</p>
-              <ul className="mb-4 list-inside list-disc space-y-1">
-                <li>
-                  Create local-first or real-time collaborative applications.
-                </li>
-                <li>Monetize these applications.</li>
-                <li>
-                  Create and distribute DocNode-based libraries that are not
-                  substantially similar to or compete with the{" "}
-                  <code>@docukit/docsync</code> library. For example:
-                  DocNode-based data structures such as grids or rich text
-                  editors, or utilities for rendering documents in different UI
-                  frameworks.
-                </li>
-              </ul>
-              <p className="mb-2">You can't use DocNode to:</p>
-              <ul className="list-inside list-disc space-y-1">
-                <li>
-                  Distribute software that offers the same or substantially
-                  similar functionality as <code>@docukit/docsync</code>, such
-                  as libraries that synchronize or persist document state across
-                  multiple clients or storage systems.
-                </li>
-                <li>
-                  Offer any hosted or cloud-based service to third parties that
-                  provides the same or substantially similar functionality as{" "}
-                  <code>@docukit/docsync</code>, unless you have an explicit
-                  license from the copyright holder.
-                </li>
-              </ul>
-            </Accordion>
-
-            <Accordion
               title="Can I develop my own sync solution?"
               id="develop-own-sync"
             >
               <p className="mb-4">
-                Yes. You are free to develop your own solution that synchronizes
-                documents between multiple clients and stores them in your own
-                databases for internal or personal use.
+                Yes. The DocNode packages are open source and MIT licensed, so
+                you are free to develop your own sync solution that works with
+                DocNode.
               </p>
               <p>
-                What you can't do is distribute it to third parties or
-                commercialize it as a document synchronization solution (e.g.,
-                as a cloud-based service).
+                This does not grant production rights to{" "}
+                <code>@docukit/docsync</code>, which remains proprietary
+                software under the DocSync License.
               </p>
             </Accordion>
 
             <Accordion title="Where can I read the license?" id="read-license">
-              <p className="mb-4">DocNode has a dual license model:</p>
               <p className="mb-4">
-                <strong>DocNode packages</strong> are distributed under the{" "}
+                This monorepo contains packages with two different licenses:
+              </p>
+              <p className="mb-4">
+                <strong>DocNode packages</strong> are open source and
+                distributed under the{" "}
                 <a
                   href="https://github.com/docukit/docukit/blob/main/packages/docnode/LICENSE.md"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"
                 >
-                  DocNode License
+                  MIT License
                 </a>
-                . This license allows commercial and non-commercial use with
-                minimal restrictions to protect our Sync offering, following the{" "}
-                <a
-                  href="https://faircode.io"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  Fair Code
-                </a>{" "}
-                principles.
+                .
               </p>
               <p className="mb-4">
                 <strong>DocSync packages</strong> are proprietary software
@@ -263,8 +215,9 @@ export default function LicensePage() {
             <Accordion title="Can I contribute to the project?" id="contribute">
               <p>
                 Absolutely! We welcome contributions to any of our libraries.
-                They are all source-available, and we're happy to accept PRs,
-                bug reports, and feature requests. Check out our{" "}
+                DocNode packages are open source, DocSync packages are
+                source-available, and we're happy to accept PRs, bug reports,
+                and feature requests. Check out our{" "}
                 <a
                   href="https://github.com/docukit/docukit"
                   target="_blank"
