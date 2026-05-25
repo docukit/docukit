@@ -1,7 +1,7 @@
 {
   "name": "@docukit/docgrid",
   "type": "module",
-  "license": "SEE LICENSE IN LICENSE.md",
+  "license": "MIT",
   "private": true,
   "homepage": "https://docukit.dev",
   "repository": {
