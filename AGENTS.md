@@ -5,6 +5,12 @@
 - Ask which one we should try together.
 - Do not perform any git-related action unless I explicitly ask for that exact action in the current conversation. This includes staging, unstaging, committing, pushing, branching, switching branches, rebasing, stashing, restoring files, or any other command that mutates git state.
 
+## Git Safety Rules
+
+- Never run `git add`, `git commit`, `git push`, or any other git command unless I explicitly ask for that exact git action in the current conversation.
+- Updating a PR, editing documentation, fixing code, or running tests does not imply permission to stage, commit, push, branch, rebase, stash, restore, checkout, or mutate git state.
+- If a change is ready but I did not explicitly ask for a git action, leave it unstaged.
+
 ## Implementation Loop
 
 - After I decide, implement the chosen path.

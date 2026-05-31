@@ -25,11 +25,9 @@ Every edit (a keystroke, a click, anything) follows the same path:
 
 - The new operation is appended to `localOps`.
 - `doc` is updated immediately so the UI re-renders right away — no round-trip required.
-- A sync request is scheduled to push `localOps` to the server. The client uses a short collaborative max debounce when another user is online in the same document, and a longer single-client max debounce when this user is alone.
+- A sync request is scheduled to push `localOps` to the server.
 
 Pieces 1 and 2 are persisted (by default to IndexedDB), so closing the tab or going offline doesn't lose anything. Piece 3 is reconstructed from 1 + 2 on startup.
-
-If another user joins while local operations are still waiting in the single-client batch, the client flushes that batch immediately so the new collaborator does not wait for the longer single-client timing.
 
 ## The sync round-trip
 
