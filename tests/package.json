@@ -21,7 +21,7 @@
     "mitata": "^1.0.34",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "vitest": "^4.0.8",
+    "vitest": "4.0.17",
     "vitest-browser-react": "^2.0.2"
   }
 }
