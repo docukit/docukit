@@ -40,10 +40,7 @@ describe("authentication", () => {
 describe("collaboration", () => {
   test("reports collaboration only when another user joins the same document", async () => {
     const port = testPort(9);
-    globalThis.window = {} as Window & typeof globalThis;
-    globalThis.localStorage = {
-      getItem: () => "device-id",
-    } as unknown as Storage;
+    mockBrowserGlobals("device-id");
 
     const server = new DocSyncServer({
       docBinding: DocNodeBinding([]),
@@ -153,6 +150,24 @@ describe("collaboration", () => {
     await server.close();
   });
 });
+
+function mockBrowserGlobals(deviceId: string): void {
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {},
+  });
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      clear: () => undefined,
+      getItem: () => deviceId,
+      key: () => null,
+      length: 1,
+      removeItem: () => undefined,
+      setItem: () => undefined,
+    } satisfies Storage,
+  });
+}
 
 describe("presence", () => {
   test("cleans up presence on disconnect", async () => {
