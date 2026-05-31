@@ -17,6 +17,7 @@ import type {
   syncLexicalWithDocPresenceOptions,
 } from "../types.js";
 import { destroyCursor } from "./cursorRendering.js";
+import { resolvePresenceUser } from "./resolvePresenceUser.js";
 import { syncSelectionToPresence } from "./syncSelectionToPresence.js";
 import { syncPresenceToSelection } from "./syncPresenceToSelection.js";
 import type { Presence, PresenceBinding, PresenceHandle } from "./types.js";
@@ -58,14 +59,14 @@ export function syncPresence(
 ): (() => void) | undefined {
   const { setPresence: rawSetPresence, user } = presenceOptions ?? {};
   if (!rawSetPresence) return undefined;
+  const presenceUser = resolvePresenceUser(user);
 
   let lastSelection: PresenceSelection | undefined;
 
   const setPresence = (selection: PresenceSelection | undefined) => {
-    const nextSelection =
-      selection && user?.name != null && user?.color != null
-        ? { ...selection, name: user.name, color: user.color }
-        : selection;
+    const nextSelection = selection
+      ? { ...selection, name: presenceUser.name, color: presenceUser.color }
+      : selection;
 
     if (areSelectionsEqual(lastSelection, nextSelection)) return;
     lastSelection = nextSelection;

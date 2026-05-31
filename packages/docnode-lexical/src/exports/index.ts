@@ -10,6 +10,7 @@ export { setupUndoManager as _INTERNAL_setupUndoManager } from "../setupUndoMana
 export type {
   syncLexicalWithDocPresenceOptions,
   KeyBinding,
+  PresenceUser,
   PresenceSelection,
 } from "../types.js";
 export type {

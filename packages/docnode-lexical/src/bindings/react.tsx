@@ -5,10 +5,8 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import type { Doc } from "@docukit/docnode";
 import { syncLexicalWithDoc } from "../index.js";
 import { updatePresence } from "../presence/index.js";
-import type { PresenceSelection } from "../types.js";
+import type { PresenceSelection, PresenceUser } from "../types.js";
 import type { Presence } from "../presence/types.js";
-
-export type PresenceUser = { name: string; color: string };
 
 export type DocNodePluginProps = {
   doc: Doc;
@@ -18,8 +16,7 @@ export type DocNodePluginProps = {
     | undefined;
   /**
    * User information to attach to presence data.
-   * When provided, the plugin will automatically enrich presence updates
-   * with the user's name and color.
+   * Missing name falls back to "Anonymous"; missing color uses the name or a random curated color.
    */
   user?: PresenceUser | undefined;
 };
