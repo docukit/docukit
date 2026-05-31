@@ -2,8 +2,10 @@
 
 import type React from "react";
 import { useEffect, useState } from "react";
-import { createLexicalDocNodeConfig } from "@docukit/docnode-lexical";
-import type { Presence } from "@docukit/docnode-lexical/react";
+import {
+  createLexicalDocNodeConfig,
+  type Presence,
+} from "@docukit/docnode-lexical";
 import {
   AlignCenter,
   AlignLeft,

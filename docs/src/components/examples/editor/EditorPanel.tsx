@@ -10,13 +10,11 @@ import ToolbarPlugin from "./ToolbarPlugin";
 import { $getRoot, type RootNode } from "lexical";
 import {
   SKIP_UNDO_TAG,
-  type PresenceSelection,
-} from "@docukit/docnode-lexical";
-import {
-  DocNodePlugin,
   type Presence,
+  type PresenceSelection,
   type PresenceUser,
-} from "@docukit/docnode-lexical/react";
+} from "@docukit/docnode-lexical";
+import { DocNodePlugin } from "@docukit/docnode-lexical/react";
 import { type Doc } from "@docukit/docnode";
 import { useEffect } from "react";
 

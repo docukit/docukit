@@ -12,6 +12,12 @@ export type PresenceSelection = {
   color?: string;
 };
 
+/** User information attached to local presence. Missing fields use library defaults. */
+export type PresenceUser = {
+  name?: string | undefined;
+  color?: string | undefined;
+};
+
 /**
  * Optional presence options for syncLexicalWithDoc.
  * Pass as third argument when you want to sync selection to presence and/or render remote cursors.
@@ -21,6 +27,6 @@ export type syncLexicalWithDocPresenceOptions = {
   setPresence?:
     | ((selection: PresenceSelection | undefined) => void)
     | undefined;
-  /** When provided, outgoing presence is enriched with name and color. */
-  user?: { name: string; color: string } | undefined;
+  /** Outgoing presence user info. Missing name falls back to "Anonymous"; missing color uses the name or a random curated color. */
+  user?: PresenceUser | undefined;
 };

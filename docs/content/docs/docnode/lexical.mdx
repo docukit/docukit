@@ -17,6 +17,10 @@ npm i @docukit/docnode @docukit/docnode-lexical
 how you should sync that Doc across different clients. We recommend using DocSync as explained
 in the next section.
 
+Presence is opt-in. If you do not pass `setPresence`, `DocNodePlugin` will not send local presence.
+When you do pass `setPresence`, `user` is optional. Missing user fields are filled with
+`name: "Anonymous"` and a random curated color.
+
 ```tsx tab="React"
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { DocNodePlugin } from "@docukit/docnode-lexical/react";
@@ -29,7 +33,7 @@ function Editor({ doc, presence, setPresence }) {
         doc={doc}
         presence={presence}
         setPresence={setPresence}
-        user={{ name: "John Doe", color: "#ff0000" }}
+        user={{ name: "John Doe", color: "#ff0000" }} // optional color override
       />
       {/* ... The rest of your Lexical Plugins ... */}
       {/* ... Don't include <HistoryPlugin /> here ... */}
@@ -75,8 +79,8 @@ const doc = new Doc(
     },
     user: {
       description:
-        "User information to attach to presence data. When provided, the plugin automatically enriches presence updates with the user's name and color.",
-      type: "{ name: string; color: string } | undefined",
+        'User information to attach to presence data. If omitted, presence uses name: "Anonymous" and a random curated color. If you pass only name, color is deterministic from that name. If you pass only color, name is "Anonymous".',
+      type: "{ name?: string; color?: string } | undefined",
       required: false,
     },
   }}
@@ -101,7 +105,7 @@ function Editor() {
         doc={doc}
         presence={presence}
         setPresence={setPresence}
-        user={{ name: "John Doe", color: "#ff0000" }}
+        user={{ name: "John Doe" }}
       />
       {/* ... The rest of your Lexical Plugins ... */}
     </LexicalComposer>
