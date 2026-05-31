@@ -31,7 +31,31 @@ import {
 
 // Mock socket.io-client to avoid real connections
 vi.mock("socket.io-client", () => ({
-  io: vi.fn(() => ({ on: vi.fn(), emit: vi.fn(), disconnect: vi.fn() })),
+  io: vi.fn(() => ({
+    connected: true,
+    on: vi.fn(),
+    emit: vi.fn(
+      (
+        _event: string,
+        _payload: unknown,
+        callback?: (response: unknown) => void,
+      ) => {
+        if (!callback) return;
+        if (
+          _event === "sync" &&
+          typeof _payload === "object" &&
+          _payload !== null &&
+          "docId" in _payload &&
+          "clock" in _payload
+        ) {
+          callback({ data: { docId: _payload.docId, clock: _payload.clock } });
+          return;
+        }
+        callback({ data: undefined, success: true });
+      },
+    ),
+    disconnect: vi.fn(),
+  })),
 }));
 
 // ============================================================================
@@ -52,11 +76,7 @@ describe("DocSyncClient", () => {
     timing,
   }: {
     saveOperations: SaveOperations;
-    timing?: {
-      operationsDebounce?: number;
-      operationsMaxDebounce?: number;
-      presenceDebounce?: number;
-    };
+    timing?: { collabMaxDebounce?: number; singleClientMaxDebounce?: number };
   }) => {
     const docBinding: DocBinding<
       DebounceTestDoc,
@@ -119,6 +139,61 @@ describe("DocSyncClient", () => {
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
+  };
+
+  type DebounceTestClient = DocSyncClient<
+    DebounceTestDoc,
+    DebounceTestSerializedDoc,
+    DebounceTestOperation
+  >;
+
+  const getSocketOnMock = (client: DebounceTestClient) => {
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- socket is a Vitest mock in this test file.
+    const onMock = vi.mocked(client["_socket"].on);
+    return onMock;
+  };
+
+  const getSocketEmitMock = (client: DebounceTestClient) => {
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- socket is a Vitest mock in this test file.
+    const emitMock = vi.mocked(client["_socket"].emit);
+    return emitMock;
+  };
+
+  const emitMockedConnect = (client: DebounceTestClient) => {
+    const onMock = getSocketOnMock(client);
+    const eventCall = onMock.mock.calls.find(([event]) => event === "connect");
+    if (!eventCall) {
+      throw new Error("Expected socket listener for connect");
+    }
+
+    const listener = eventCall[1];
+    Reflect.apply(listener, undefined, []);
+  };
+
+  const emitMockedCollaboration = (
+    client: DebounceTestClient,
+    payload: { docId: string; hasCollaborators: boolean },
+  ) => {
+    const onMock = getSocketOnMock(client);
+    const eventCall = onMock.mock.calls.find(
+      ([event]) => event === "collaboration",
+    );
+    if (!eventCall) {
+      throw new Error("Expected socket listener for collaboration");
+    }
+
+    const listener = eventCall[1];
+    Reflect.apply(listener, undefined, [payload]);
+  };
+
+  const cacheDebounceTestDoc = (client: DebounceTestClient, docId: string) => {
+    client["_docsCache"].set(docId, {
+      promisedDoc: Promise.resolve({ docId }),
+      refCount: 1,
+      type: "test",
+      presence: {},
+      presenceListeners: new Set(),
+    });
   };
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -232,6 +307,167 @@ describe("DocSyncClient", () => {
   });
 
   describe("presence debounce", () => {
+    test("uses collaborative timing for cross-tab presence without server presence", async () => {
+      vi.useFakeTimers();
+
+      try {
+        const saveOperations = vi.fn<SaveOperations>(() =>
+          Promise.resolve(undefined),
+        );
+        const client = createDebounceTestClient({
+          saveOperations,
+          timing: { collabMaxDebounce: 50, singleClientMaxDebounce: 3000 },
+        });
+        await client["_localPromise"];
+
+        const docId = "doc-1";
+        cacheDebounceTestDoc(client, docId);
+
+        const bcHelper = client["_bcHelper"];
+        if (!bcHelper) {
+          throw new Error("Expected BroadcastChannel helper to be initialized");
+        }
+        const broadcastSpy = vi.spyOn(bcHelper, "broadcast");
+
+        client.setPresence({ docId, presence: { anchor: 1 } });
+
+        expect(
+          client["_presenceDebounceState"].get(docId)?.timeout,
+        ).toBeDefined();
+
+        await vi.advanceTimersByTimeAsync(49);
+        expect(broadcastSpy).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(broadcastSpy).toHaveBeenCalledWith({
+          type: "PRESENCE",
+          docId,
+          presence: { [client["_clientId"]]: { anchor: 1 } },
+        });
+        expect(client["_presenceDebounceState"].get(docId)?.timeout).toBe(
+          undefined,
+        );
+        client.disconnect();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("uses one collaborative debounce for presence", async () => {
+      vi.useFakeTimers();
+
+      try {
+        const saveOperations = vi.fn<SaveOperations>(() =>
+          Promise.resolve(undefined),
+        );
+        const client = createDebounceTestClient({
+          saveOperations,
+          timing: { collabMaxDebounce: 50 },
+        });
+        await client["_localPromise"];
+
+        const docId = "doc-1";
+        cacheDebounceTestDoc(client, docId);
+
+        client.setPresence({ docId, presence: { anchor: 1 } });
+        const firstTimeout =
+          client["_presenceDebounceState"].get(docId)?.timeout;
+        expect(firstTimeout).toBeDefined();
+
+        client["_collabDocIds"].add(docId);
+        client.setPresence({ docId, presence: { anchor: 2 } });
+        expect(client["_presenceDebounceState"].get(docId)?.timeout).toBe(
+          firstTimeout,
+        );
+
+        await vi.advanceTimersByTimeAsync(50);
+        expect(client["_presenceDebounceState"].get(docId)?.timeout).toBe(
+          undefined,
+        );
+        client.disconnect();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("sends current presence to server when collaborators appear after local flush", async () => {
+      vi.useFakeTimers();
+
+      try {
+        const saveOperations = vi.fn<SaveOperations>(() =>
+          Promise.resolve(undefined),
+        );
+        const client = createDebounceTestClient({
+          saveOperations,
+          timing: { collabMaxDebounce: 50 },
+        });
+        await client["_localPromise"];
+
+        const docId = "doc-1";
+        cacheDebounceTestDoc(client, docId);
+
+        client.setPresence({ docId, presence: { anchor: 1 } });
+        await vi.advanceTimersByTimeAsync(50);
+
+        const emitMock = getSocketEmitMock(client);
+        expect(emitMock).not.toHaveBeenCalledWith(
+          "presence",
+          { docId, presence: { anchor: 1 } },
+          expect.any(Function),
+        );
+
+        emitMockedCollaboration(client, { docId, hasCollaborators: true });
+
+        expect(emitMock).toHaveBeenCalledWith(
+          "presence",
+          { docId, presence: { anchor: 1 } },
+          expect.any(Function),
+        );
+        client.disconnect();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    test("waits for pending presence debounce before sending server presence to new collaborators", async () => {
+      vi.useFakeTimers();
+
+      try {
+        const saveOperations = vi.fn<SaveOperations>(() =>
+          Promise.resolve(undefined),
+        );
+        const client = createDebounceTestClient({
+          saveOperations,
+          timing: { collabMaxDebounce: 50 },
+        });
+        await client["_localPromise"];
+
+        const docId = "doc-1";
+        cacheDebounceTestDoc(client, docId);
+
+        client.setPresence({ docId, presence: { anchor: 1 } });
+        emitMockedCollaboration(client, { docId, hasCollaborators: true });
+
+        const emitMock = getSocketEmitMock(client);
+        expect(emitMock).not.toHaveBeenCalledWith(
+          "presence",
+          { docId, presence: { anchor: 1 } },
+          expect.any(Function),
+        );
+
+        await vi.advanceTimersByTimeAsync(50);
+
+        expect(emitMock).toHaveBeenCalledWith(
+          "presence",
+          { docId, presence: { anchor: 1 } },
+          expect.any(Function),
+        );
+        client.disconnect();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     test("remote changes flush only presence recalculated by that change", async () => {
       type FakeDoc = { id: string };
       type FakeSerializedDoc = { id: string };
@@ -331,27 +567,7 @@ describe("DocSyncClient", () => {
   });
 
   describe("local operations debounce", () => {
-    test("uses timing configuration for operation and presence debounces", async () => {
-      const saveOperations = vi.fn<SaveOperations>(() =>
-        Promise.resolve(undefined),
-      );
-      const client = createDebounceTestClient({
-        saveOperations,
-        timing: {
-          operationsDebounce: 75,
-          operationsMaxDebounce: 500,
-          presenceDebounce: 25,
-        },
-      });
-      await client["_localPromise"];
-
-      expect(client["_operationsDebounce"]).toBe(75);
-      expect(client["_operationsMaxDebounce"]).toBe(500);
-      expect(client["_presenceDebounce"]).toBe(25);
-      client.disconnect();
-    });
-
-    test("debounces local operation persistence from the latest operation", async () => {
+    test("batches collaborative local operation persistence until max debounce", async () => {
       vi.useFakeTimers();
 
       try {
@@ -360,25 +576,22 @@ describe("DocSyncClient", () => {
         );
         const client = createDebounceTestClient({
           saveOperations,
-          timing: { operationsDebounce: 50, operationsMaxDebounce: 1000 },
+          timing: { collabMaxDebounce: 1000 },
         });
         await client["_localPromise"];
+        client["_collabDocIds"].add("doc-1");
 
         client.onLocalOperations({
           docId: "doc-1",
           operations: [{ value: "A" }],
         });
-        await vi.advanceTimersByTimeAsync(49);
+        await vi.advanceTimersByTimeAsync(999);
         expect(saveOperations).not.toHaveBeenCalled();
 
         client.onLocalOperations({
           docId: "doc-1",
           operations: [{ value: "B" }],
         });
-        await vi.advanceTimersByTimeAsync(49);
-        await flushMicrotasks();
-        expect(saveOperations).not.toHaveBeenCalled();
-
         await vi.advanceTimersByTimeAsync(1);
         await flushMicrotasks();
 
@@ -393,7 +606,7 @@ describe("DocSyncClient", () => {
       }
     });
 
-    test("flushes local operations when maxDebounce is reached", async () => {
+    test("uses single-client debounce when document has no collaborators", async () => {
       vi.useFakeTimers();
 
       try {
@@ -402,7 +615,7 @@ describe("DocSyncClient", () => {
         );
         const client = createDebounceTestClient({
           saveOperations,
-          timing: { operationsDebounce: 50, operationsMaxDebounce: 100 },
+          timing: { collabMaxDebounce: 50, singleClientMaxDebounce: 100 },
         });
         await client["_localPromise"];
 
@@ -438,6 +651,109 @@ describe("DocSyncClient", () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    test("flushes pending single-client operations when a collaborator appears", async () => {
+      vi.useFakeTimers();
+
+      try {
+        const saveOperations = vi.fn<SaveOperations>(() =>
+          Promise.resolve(undefined),
+        );
+        const client = createDebounceTestClient({
+          saveOperations,
+          timing: { collabMaxDebounce: 50, singleClientMaxDebounce: 3000 },
+        });
+        await client["_localPromise"];
+
+        const docId = "doc-1";
+        cacheDebounceTestDoc(client, docId);
+        client.onLocalOperations({ docId, operations: [{ value: "A" }] });
+
+        await vi.advanceTimersByTimeAsync(2999);
+        expect(saveOperations).not.toHaveBeenCalled();
+
+        emitMockedCollaboration(client, { docId, hasCollaborators: true });
+        await flushMicrotasks();
+
+        expect(saveOperations).toHaveBeenCalledWith({
+          docId,
+          operations: [{ value: "A" }],
+        });
+
+        const emitMock = getSocketEmitMock(client);
+        await expect
+          .poll(() => emitMock.mock.calls.some(([event]) => event === "sync"))
+          .toBe(true);
+        client.disconnect();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe("connect", () => {
+    test("flushes pending local operations before syncing on reconnect", async () => {
+      const saveOperations = vi.fn<SaveOperations>(() =>
+        Promise.resolve(undefined),
+      );
+      const client = createDebounceTestClient({
+        saveOperations,
+        timing: { singleClientMaxDebounce: 1000 },
+      });
+      await client["_localPromise"];
+
+      const docId = "doc-1";
+      cacheDebounceTestDoc(client, docId);
+      client.onLocalOperations({ docId, operations: [{ value: "A" }] });
+
+      emitMockedConnect(client);
+
+      await expect
+        .poll(() => saveOperations)
+        .toHaveBeenCalledWith({ docId, operations: [{ value: "A" }] });
+
+      const emitMock = getSocketEmitMock(client);
+      await expect
+        .poll(() => emitMock.mock.calls.some(([event]) => event === "sync"))
+        .toBe(true);
+
+      const syncCallOrder = emitMock.mock.invocationCallOrder.find(
+        (_order, index) => emitMock.mock.calls[index]?.[0] === "sync",
+      );
+      if (syncCallOrder === undefined) {
+        throw new Error("Expected sync emit call");
+      }
+      expect(saveOperations.mock.invocationCallOrder[0]).toBeLessThan(
+        syncCallOrder,
+      );
+      client.disconnect();
+    });
+
+    test("syncs a loaded document on reconnect even if its pending batch is empty", async () => {
+      const saveOperations = vi.fn<SaveOperations>(() =>
+        Promise.resolve(undefined),
+      );
+      const client = createDebounceTestClient({
+        saveOperations,
+        timing: { singleClientMaxDebounce: 1000 },
+      });
+      await client["_localPromise"];
+
+      const docId = "doc-1";
+      cacheDebounceTestDoc(client, docId);
+      client.onLocalOperations({ docId, operations: [] });
+
+      emitMockedConnect(client);
+
+      await flushMicrotasks();
+      expect(saveOperations).not.toHaveBeenCalled();
+
+      const emitMock = getSocketEmitMock(client);
+      await expect
+        .poll(() => emitMock.mock.calls.some(([event]) => event === "sync"))
+        .toBe(true);
+      client.disconnect();
     });
   });
 

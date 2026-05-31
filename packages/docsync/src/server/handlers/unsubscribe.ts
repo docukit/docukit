@@ -6,6 +6,7 @@ import type {
 import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
 import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
+import { broadcastCollaborationState } from "../utils/broadcastCollaborationState.js";
 
 export type UnsubscribeDocHandler = (
   payload: UnsubscribeDocRequest,
@@ -44,6 +45,7 @@ export function handleUnsubscribeDoc({
         docId,
         presence: null,
       });
+      broadcastCollaborationState(server, docId);
 
       cb({ success: true });
     },

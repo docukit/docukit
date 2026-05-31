@@ -25,6 +25,7 @@ const { client, useDoc, usePresence } = createDocSyncClient({
       secret: await fetchUserSecret(),
     }),
   },
+  timing: { collabMaxDebounce: 50, singleClientMaxDebounce: 3000 },
 });
 ```
 
@@ -70,6 +71,23 @@ const { client, useDoc, usePresence } = createDocSyncClient({
         "Async function that resolves the local storage identity. Returns userId (for namespacing) and secret (for encryption). The secret must never be persisted client-side.",
       type: "() => Promise<Identity>",
       required: true,
+    },
+    timing: {
+      description:
+        "Optional batching configuration for local operations and presence updates.",
+      type: "object",
+    },
+    "timing.collabMaxDebounce": {
+      description:
+        "Maximum time, in milliseconds, to batch local operations while another user is online in the same document. Presence updates also use this timing for local tabs and collaborators. Recommended values are 33ms to 100ms for collaborative editing.",
+      type: "number",
+      default: "50",
+    },
+    "timing.singleClientMaxDebounce": {
+      description:
+        "Maximum time, in milliseconds, to batch local operations when no other user is online in the same document. Recommended values are 1000ms to 10000ms.",
+      type: "number",
+      default: "3000",
     },
   }}
 />
@@ -186,7 +204,7 @@ setPresence({ cursor: { x: 100, y: 200 }, color: "#ff0000" });
   type={{
     presence: {
       description:
-        "Record of socket IDs to their presence data for all connected users.",
+        "Record of client IDs to their presence data for connected users in the document.",
       type: "Record<string, T>",
     },
     setPresence: {

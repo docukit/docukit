@@ -44,9 +44,26 @@ export type ClientConfig<
   docBinding: DocBinding<D, S, O>;
   server: { url: string; auth: { getToken: () => MaybePromise<string> } };
   timing?: {
-    operationsDebounce?: number;
-    operationsMaxDebounce?: number;
-    presenceDebounce?: number;
+    /**
+     * Maximum time to batch local operation updates while another user is
+     * online in the same document, and presence updates that are visible to
+     * local tabs or collaborators.
+     *
+     * Recommended values are between 33ms (30 fps, used in Figma) and 100ms
+     * (10 fps) for a collaborative experience.
+     *
+     * @default 50
+     */
+    collabMaxDebounce?: number;
+    /**
+     * Maximum time to batch local operations when no other user is online in
+     * the same document.
+     *
+     * Recommended values are between 1s and 10s.
+     *
+     * @default 3000
+     */
+    singleClientMaxDebounce?: number;
   };
   local: {
     provider: (identity: Identity) => ClientProvider<NoInfer<S>, NoInfer<O>>;

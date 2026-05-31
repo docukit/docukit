@@ -64,7 +64,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   const socket = client["_socket"];
   const docBinding = client["_docBinding"];
 
-  // Prepare payload: read operations and clock from provider, flush presence debounce
+  // Prepare payload: read operations and clock from provider.
   const [operationsBatches, stored] = await provider.transaction(
     "readonly",
     async (ctx) => {
@@ -76,21 +76,6 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   );
   const operations = operationsBatches.flat();
   const clientClock = stored?.clock ?? 0;
-
-  const presenceState = client["_presenceDebounceState"].get(docId);
-  let hasPendingPresence = false;
-  let presence: unknown;
-  if (presenceState?.timeout !== undefined) {
-    hasPendingPresence = true;
-    presence = presenceState.data;
-    clearTimeout(presenceState.timeout);
-    delete presenceState.timeout;
-    client["_bcHelper"]?.broadcast({
-      type: "PRESENCE",
-      docId,
-      presence: { [client["_clientId"]]: presence },
-    });
-  }
 
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) {
@@ -104,7 +89,6 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
     clock: clientClock,
     docId,
     operations,
-    ...(hasPendingPresence ? { presence } : {}),
   };
   const req = { type, docId, operations, clock: clientClock };
 

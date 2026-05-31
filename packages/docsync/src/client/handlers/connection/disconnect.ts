@@ -8,6 +8,7 @@ export function handleDisconnect<
 >({ client }: { client: DocSyncClient<D, S, O> }): void {
   client["_socket"].on("disconnect", (reason) => {
     client["_pushStatusByDocId"].clear();
+    client["_collabDocIds"].clear();
     for (const state of client["_presenceDebounceState"].values()) {
       clearTimeout(state.timeout);
       delete state.timeout;

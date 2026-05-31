@@ -2,6 +2,7 @@
 import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
 import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
+import { broadcastCollaborationState } from "../utils/broadcastCollaborationState.js";
 
 export function handleDisconnect({
   server,
@@ -27,6 +28,7 @@ export function handleDisconnect({
           docId,
           presence: null,
         });
+        broadcastCollaborationState(server, docId);
       }
 
       socketToDocsMap.delete(socket.id);

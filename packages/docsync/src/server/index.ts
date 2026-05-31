@@ -138,7 +138,7 @@ export class DocSyncServer<
       const server = this as DocSyncServer;
       handleDisconnect({ server, socket, userId, deviceId, clientId });
       // prettier-ignore
-      handleSync({ server, socket, userId, deviceId, clientId, context });
+      handleSync({ server, socket, userId, deviceId, context });
       handleUnsubscribeDoc({ server, socket, clientId });
       handlePresence({ server, socket, userId, clientId, context });
       handleDeleteDoc({ server, socket, userId, context });

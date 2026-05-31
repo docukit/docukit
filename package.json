@@ -44,14 +44,14 @@
   },
   "devDependencies": {
     "@clack/prompts": "^1.2.0",
-    "@playwright/test": "1.51.0",
+    "@playwright/test": "1.60.0",
     "@types/node": "^22.10.7",
     "@vitejs/plugin-react": "^5.1.2",
-    "@vitest/browser": "^4.0.8",
-    "@vitest/browser-playwright": "^4.0.8",
-    "@vitest/coverage-v8": "4.0.8",
+    "@vitest/browser": "4.0.17",
+    "@vitest/browser-playwright": "4.0.17",
+    "@vitest/coverage-v8": "4.0.17",
     "@vitest/eslint-plugin": "^1.1.25",
-    "@vitest/ui": "4.0.8",
+    "@vitest/ui": "4.0.17",
     "bun": "^1.1.42",
     "concurrently": "^9.1.2",
     "eslint": "^9.19.0",
@@ -66,7 +66,7 @@
     "lint-staged": "15.4.1",
     "mitata": "^1.0.34",
     "picocolors": "^1.1.1",
-    "playwright": "1.51.0",
+    "playwright": "1.60.0",
     "prettier": "3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "tsx": "^4.19.2",
@@ -74,6 +74,7 @@
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.21.0",
     "ultimate-tooling": "^1.0.0",
-    "vitest": "^4.0.8"
+    "vite": "7.3.1",
+    "vitest": "4.0.17"
   }
 }

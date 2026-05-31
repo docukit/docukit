@@ -20,6 +20,7 @@ import { createClientEventEmitter } from "./utils/events.js";
 import { handleConnect } from "./handlers/connection/connect.js";
 import { handleDeleteDoc } from "./handlers/clientInitiated/deleteDoc.js";
 import { handleDisconnect } from "./handlers/connection/disconnect.js";
+import { handleCollaboration } from "./handlers/serverInitiated/collaboration.js";
 import { handleDirty } from "./handlers/serverInitiated/dirty.js";
 import {
   flushPresenceDebounce,
@@ -71,10 +72,10 @@ export class DocSyncClient<
 
   // Flow control state (batching, debouncing, push queueing)
   protected _localOpsBatchState = new Map<string, LocalOpsBatchState<O>>();
-  protected _operationsDebounce = 50;
-  protected _operationsMaxDebounce = 1000;
+  protected _collabMaxDebounce: number;
+  protected _singleClientMaxDebounce: number;
+  protected _collabDocIds = new Set<string>();
   protected _presenceDebounceState = new Map<string, DeferredState<unknown>>();
-  protected _presenceDebounce = 200;
   protected _pushStatusByDocId = new Map<string, PushStatus>();
 
   /** Typed as unknown so DocSyncClient remains covariant in O, S (assignable to DocSyncClient base). */
@@ -87,12 +88,11 @@ export class DocSyncClient<
     this._docBinding = docBinding;
     this._clientId = crypto.randomUUID();
     const { timing } = config;
-    this._operationsDebounce = Math.max(0, timing?.operationsDebounce ?? 50);
-    this._operationsMaxDebounce = Math.max(
+    this._collabMaxDebounce = Math.max(0, timing?.collabMaxDebounce ?? 50);
+    this._singleClientMaxDebounce = Math.max(
       0,
-      timing?.operationsMaxDebounce ?? 1000,
+      timing?.singleClientMaxDebounce ?? 3000,
     );
-    this._presenceDebounce = Math.max(0, timing?.presenceDebounce ?? 200);
 
     // Initialize local provider (if configured)
     this._localPromise = (async () => {
@@ -117,6 +117,7 @@ export class DocSyncClient<
 
     handleConnect({ client: this });
     handleDisconnect({ client: this });
+    handleCollaboration({ client: this });
     handleDirty({ client: this });
     handleServerPresence({ client: this });
   }
@@ -436,6 +437,7 @@ export class DocSyncClient<
         const presenceState = this._presenceDebounceState.get(docId);
         clearTimeout(presenceState?.timeout);
         this._presenceDebounceState.delete(docId);
+        this._collabDocIds.delete(docId);
         if (doc) {
           await handleUnsubscribe(this._socket, { docId });
           this._docBinding.dispose(doc);
@@ -448,6 +450,9 @@ export class DocSyncClient<
     // Get or create the batch state for this document
     let state = this._localOpsBatchState.get(docId);
     const now = Date.now();
+    const maxDebounce = this._collabDocIds.has(docId)
+      ? this._collabMaxDebounce
+      : this._singleClientMaxDebounce;
 
     if (!state) {
       // Create new state with empty queue
@@ -460,33 +465,27 @@ export class DocSyncClient<
       state.data.push(...operations);
     }
 
-    if (state.timeout !== undefined) {
-      clearTimeout(state.timeout);
-      delete state.timeout;
-    }
-
-    if (
-      this._operationsDebounce === 0 ||
-      now - state.startedAt >= this._operationsMaxDebounce
-    ) {
+    if (maxDebounce === 0 || now - state.startedAt >= maxDebounce) {
       void this._flushLocalOperations(docId);
       return;
     }
+
+    if (state.timeout !== undefined) return;
 
     state.timeout = setTimeout(
       () => {
         void this._flushLocalOperations(docId);
       },
-      Math.min(
-        this._operationsDebounce,
-        this._operationsMaxDebounce - (now - state.startedAt),
-      ),
+      maxDebounce - (now - state.startedAt),
     );
   }
 
-  protected async _flushLocalOperations(docId: string): Promise<void> {
+  protected async _flushLocalOperations(
+    docId: string,
+    options?: { sync?: boolean },
+  ): Promise<boolean> {
     const currentState = this._localOpsBatchState.get(docId);
-    if (!currentState) return;
+    if (!currentState) return false;
 
     const opsToSave = currentState.data;
     this._localOpsBatchState.delete(docId);
@@ -496,8 +495,10 @@ export class DocSyncClient<
       await local?.provider.transaction("readwrite", (ctx) =>
         ctx.saveOperations({ docId, operations: opsToSave }),
       );
-      void handleSync(this, docId);
+      if (options?.sync !== false) void handleSync(this, docId);
+      return true;
     }
+    return false;
   }
 
   protected async _deleteDoc(docId: string): Promise<boolean> {

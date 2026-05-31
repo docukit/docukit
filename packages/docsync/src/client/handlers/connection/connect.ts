@@ -9,8 +9,24 @@ export function handleConnect<
 >({ client }: { client: DocSyncClient<D, S, O> }): void {
   client["_socket"].on("connect", () => {
     client["_events"].emit("connect");
-    for (const docId of client["_docsCache"].keys()) {
-      void handleSync(client, docId);
-    }
+    void (async () => {
+      const syncedDocIds = new Set<string>();
+      // TODO: This is defensive for long debounces; consider debouncing only server sync, not local IDB persistence.
+      await Promise.all(
+        [...client["_localOpsBatchState"].keys()].map(async (docId) => {
+          const didFlush = await client["_flushLocalOperations"](docId, {
+            sync: false,
+          });
+          if (didFlush) {
+            syncedDocIds.add(docId);
+            void handleSync(client, docId);
+          }
+        }),
+      );
+
+      for (const docId of client["_docsCache"].keys()) {
+        if (!syncedDocIds.has(docId)) void handleSync(client, docId);
+      }
+    })();
   });
 }
