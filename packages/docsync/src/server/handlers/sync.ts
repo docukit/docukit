@@ -2,7 +2,7 @@
 import type { SyncRequest, SyncResponse } from "../../shared/types.js";
 import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
-import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
+import { broadcastCollaborationState } from "../utils/broadcastCollaborationState.js";
 
 const OPERATION_THRESHOLD = 100;
 
@@ -21,14 +21,12 @@ export function handleSync<
   socket,
   userId,
   deviceId,
-  clientId,
   context,
 }: {
   server: DocSyncServer<TContext, D, S, O>;
   socket: ServerConnectionSocket<S, O>;
   userId: string;
   deviceId: string;
-  clientId: string;
   context: TContext;
 }): void {
   socket.on(
@@ -82,13 +80,7 @@ export function handleSync<
 
         const presence = presenceByDoc.get(docId);
         if (presence) socket.emit("presence", { docId, presence });
-      }
-
-      if ("presence" in req) {
-        applyPresenceUpdate(server["_presenceByDoc"], socket, clientId, {
-          docId,
-          presence: req.presence,
-        });
+        broadcastCollaborationState(server, docId);
       }
 
       try {

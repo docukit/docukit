@@ -100,6 +100,7 @@ test("client keeps own presence for debounced outgoing sync", async () => {
       provider: indexedDBProvider,
       getIdentity: () => ({ userId: "John", secret: "asdasdasd" }),
     },
+    timing: { singleClientMaxDebounce: 200 },
     docBinding: DocNodeBinding([docConfig]),
   });
 

@@ -114,7 +114,6 @@ describe("Local-First", () => {
       await otherTab.assertMemoryDoc(["Hello"]);
 
       // broadcastChannel then IDB
-      await otherDevice.assertMemoryDoc([]);
       await reference.assertIDBDoc({ doc: ["Hello"], ops: [] });
 
       // websocket
@@ -309,7 +308,8 @@ describe("Local-First", () => {
       const requestsAfterFirstBatch = reference.reqSpy.mock.calls.length;
 
       // without batching delay
-      reference.client["_operationsDebounce"] = 0;
+      reference.client["_collabMaxDebounce"] = 0;
+      reference.client["_singleClientMaxDebounce"] = 0;
 
       const childrenArray2 = [];
 

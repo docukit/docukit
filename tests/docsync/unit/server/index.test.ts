@@ -37,6 +37,123 @@ describe("authentication", () => {
   });
 });
 
+describe("collaboration", () => {
+  test("reports collaboration only when another user joins the same document", async () => {
+    const port = testPort(9);
+    globalThis.window = {} as Window & typeof globalThis;
+    globalThis.localStorage = {
+      getItem: () => "device-id",
+    } as unknown as Storage;
+
+    const server = new DocSyncServer({
+      docBinding: DocNodeBinding([]),
+      port,
+      provider: inMemoryServerProvider(),
+      authenticate: ({ token }) => {
+        if (token.startsWith("valid-")) {
+          return { userId: token.replace("valid-", "") };
+        }
+      },
+    });
+
+    const client1 = createMockDocSyncClient(port, "valid-user1");
+    const clientSameUser = createMockDocSyncClient(port, "valid-user1");
+    const client2 = createMockDocSyncClient(port, "valid-user2");
+
+    const socket1 = client1["_socket"];
+    const socketSameUser = clientSameUser["_socket"];
+    const socket2 = client2["_socket"];
+
+    await Promise.all([
+      new Promise<void>((resolve) => socket1.on("connect", resolve)),
+      new Promise<void>((resolve) => socketSameUser.on("connect", resolve)),
+      new Promise<void>((resolve) => socket2.on("connect", resolve)),
+    ]);
+
+    const docId = "01kfpgjsabrpdcw0qgh5evhy2g";
+    const collaborationUpdates1: Array<{
+      docId: string;
+      hasCollaborators: boolean;
+    }> = [];
+    const collaborationUpdatesSameUser: Array<{
+      docId: string;
+      hasCollaborators: boolean;
+    }> = [];
+    const collaborationUpdates2: Array<{
+      docId: string;
+      hasCollaborators: boolean;
+    }> = [];
+
+    socket1.on("collaboration", (payload) =>
+      collaborationUpdates1.push(payload),
+    );
+    socketSameUser.on("collaboration", (payload) =>
+      collaborationUpdatesSameUser.push(payload),
+    );
+    socket2.on("collaboration", (payload) =>
+      collaborationUpdates2.push(payload),
+    );
+
+    await new Promise((resolve) =>
+      socket1.emit(
+        "sync",
+        { type: "test", docId, operations: [], clock: 0 },
+        resolve,
+      ),
+    );
+    await new Promise((resolve) =>
+      socketSameUser.emit(
+        "sync",
+        { type: "test", docId, operations: [], clock: 0 },
+        resolve,
+      ),
+    );
+
+    expect(collaborationUpdates1.at(-1)).toStrictEqual({
+      docId,
+      hasCollaborators: false,
+    });
+    expect(collaborationUpdatesSameUser.at(-1)).toStrictEqual({
+      docId,
+      hasCollaborators: false,
+    });
+
+    await new Promise((resolve) =>
+      socket2.emit(
+        "sync",
+        { type: "test", docId, operations: [], clock: 0 },
+        resolve,
+      ),
+    );
+
+    expect(collaborationUpdates1.at(-1)).toStrictEqual({
+      docId,
+      hasCollaborators: true,
+    });
+    expect(collaborationUpdatesSameUser.at(-1)).toStrictEqual({
+      docId,
+      hasCollaborators: true,
+    });
+    expect(collaborationUpdates2.at(-1)).toStrictEqual({
+      docId,
+      hasCollaborators: true,
+    });
+
+    client2.disconnect();
+
+    await expect
+      .poll(() => collaborationUpdates1.at(-1))
+      .toStrictEqual({ docId, hasCollaborators: false });
+    await expect
+      .poll(() => collaborationUpdatesSameUser.at(-1))
+      .toStrictEqual({ docId, hasCollaborators: false });
+
+    client1.disconnect();
+    clientSameUser.disconnect();
+    await server.close();
+  });
+});
+
 describe("presence", () => {
   test("cleans up presence on disconnect", async () => {
     // Manually create server and clients to test multi-client scenarios

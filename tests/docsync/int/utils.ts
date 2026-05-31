@@ -175,6 +175,7 @@ const createClientWithConfig = (config: {
 }): DocSyncClient<Doc, JsonDoc, Operations> => {
   const clientConfig: ClientConfig<Doc, JsonDoc, Operations> = {
     server: { url: getTestServerUrl(), auth: { getToken: () => config.token } },
+    timing: { collabMaxDebounce: 50, singleClientMaxDebounce: 50 },
     docBinding: config.docBinding,
     local: {
       provider: indexedDBProvider,

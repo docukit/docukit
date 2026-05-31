@@ -58,7 +58,6 @@ export type SyncRequest<O = unknown> = {
   docId: string;
   operations?: O[];
   clock: number;
-  presence?: unknown;
 };
 
 /** Shared response for the sync event (server sends, client receives). */
@@ -129,6 +128,11 @@ export type ClientToServerEvents<S, O> = {
 export type ServerToClientEvents = {
   // Server notifies clients that a document has been modified
   dirty: (payload: { docId: string }) => void;
+  // Server notifies clients whether another user is online in the same document
+  collaboration: (payload: {
+    docId: string;
+    hasCollaborators: boolean;
+  }) => void;
   // Server notifies clients about presence updates
   presence: (payload: { docId: string; presence: Presence }) => void;
 };
