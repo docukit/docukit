@@ -52,7 +52,7 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
   }): QueryResult<DocData | undefined>;
   function useDoc(args: GetDocArgs): QueryResult<DocData | undefined> {
     const [result, setResult] = useState<QueryResult<DocData | undefined>>({
-      status: "loading",
+      status: "pending",
     });
     const id = "id" in args ? args.id : undefined;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;

@@ -37,7 +37,7 @@ test("createDocSyncClient", async () => {
     () => useDoc({ type: "test", id: "1" }),
   );
   expectTypeOf(_1.current).toEqualTypeOf<MaybeDocResult>();
-  expect(_1.current.status).toBe("loading");
+  expect(_1.current.status).toBe("pending");
   await expect
     .poll(() => _1.current.status, { interval: 100, timeout: 2000 })
     .toBe("success");
@@ -50,7 +50,7 @@ test("createDocSyncClient", async () => {
     useDoc({ type: "test", id: id2, createIfMissing: true }),
   );
   expectTypeOf(_2.current).toEqualTypeOf<DocResult>();
-  expect(_2.current.status).toBe("loading");
+  expect(_2.current.status).toBe("pending");
   await expect
     .poll(() => _2.current.status, { interval: 100, timeout: 2000 })
     .toBe("success");
@@ -84,7 +84,7 @@ test("createDocSyncClient", async () => {
 
   // Type check: QueryResult<DocData<Doc>> has the expected structure
   expectTypeOf<DocResult>().toEqualTypeOf<
-    | { status: "loading"; data?: never; error?: never }
+    | { status: "pending"; data?: never; error?: never }
     | { status: "success"; data: DocData<Doc>; error?: never }
     | { status: "error"; data?: never; error: Error }
   >();

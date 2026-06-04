@@ -12,7 +12,7 @@ import type {
 // ============================================================================
 
 export type QueryResult<D, E = Error> =
-  | { status: "loading"; data?: never; error?: never }
+  | { status: "pending"; data?: never; error?: never }
   | { status: "success"; data: D; error?: never }
   | { status: "error"; data?: never; error: E };
 
