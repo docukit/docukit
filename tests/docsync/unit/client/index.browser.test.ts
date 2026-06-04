@@ -816,9 +816,24 @@ describe("DocSyncClient", () => {
 
     test("QueryResult has expected structure", () => {
       expectTypeOf<DocResult>().toEqualTypeOf<
-        | { status: "pending"; data?: never; error?: never }
-        | { status: "success"; data: DocData<Doc>; error?: never }
-        | { status: "error"; data?: never; error: Error }
+        | {
+            status: "pending";
+            fetchStatus: "fetching" | "paused" | "idle";
+            data?: never;
+            error?: never;
+          }
+        | {
+            status: "success";
+            fetchStatus: "fetching" | "paused" | "idle";
+            data: DocData<Doc>;
+            error?: never;
+          }
+        | {
+            status: "error";
+            fetchStatus: "fetching" | "paused" | "idle";
+            data?: DocData<Doc> | undefined;
+            error: Error;
+          }
       >();
     });
   });
@@ -837,8 +852,7 @@ describe("DocSyncClient", () => {
 
         expect(callback).toHaveBeenCalledWith({
           status: "pending",
-          data: undefined,
-          error: undefined,
+          fetchStatus: "fetching",
         });
       });
 
@@ -849,7 +863,7 @@ describe("DocSyncClient", () => {
         client.getDoc({ type: "test", id: "non-existent-id" }, callback);
         await expect
           .poll(() => callback.mock.calls.at(-1)?.[0])
-          .toEqual({ status: "success", data: undefined, error: undefined });
+          .toEqual({ status: "success", fetchStatus: "idle", data: undefined });
       });
 
       test("should return cached document when requested multiple times", async () => {
@@ -957,6 +971,84 @@ describe("DocSyncClient", () => {
           callback,
         );
         await expect.poll(() => getSuccessData(callback)?.docId).toBe(customId);
+      });
+
+      test("should emit local success while network fetch is still active", async () => {
+        const client = createClient();
+        const callback = createCallback();
+        const customId = ulid().toLowerCase();
+
+        client.getDoc(
+          { type: "test", id: customId, createIfMissing: true },
+          callback,
+        );
+
+        await expect
+          .poll(() =>
+            callback.mock.calls.some(
+              ([result]) =>
+                result.status === "success" &&
+                result.fetchStatus === "fetching",
+            ),
+          )
+          .toBe(true);
+      });
+
+      test("should emit local success as paused when disconnected", async () => {
+        const client = createClient();
+        const callback = createCallback();
+        const cachedCallback = createCallback();
+
+        client.getDoc({ type: "test", createIfMissing: true }, callback);
+        const created = getSuccessData(callback);
+        expect(created).toBeDefined();
+
+        Object.defineProperty(client["_socket"], "connected", {
+          configurable: true,
+          value: false,
+        });
+        client.getDoc({ type: "test", id: created!.docId }, cachedCallback);
+
+        await expect
+          .poll(() =>
+            cachedCallback.mock.calls.some(
+              ([result]) =>
+                result.status === "success" && result.fetchStatus === "paused",
+            ),
+          )
+          .toBe(true);
+      });
+
+      test("should emit a new result object when network settles after local success", async () => {
+        const client = createClient();
+        const callback = createCallback();
+        const customId = ulid().toLowerCase();
+
+        client.getDoc(
+          { type: "test", id: customId, createIfMissing: true },
+          callback,
+        );
+
+        await expect
+          .poll(
+            () =>
+              callback.mock.calls.find(
+                ([result]) =>
+                  result.status === "success" &&
+                  result.fetchStatus === "fetching",
+              )?.[0],
+          )
+          .toBeDefined();
+        const localResult = callback.mock.calls.find(
+          ([result]) =>
+            result.status === "success" && result.fetchStatus === "fetching",
+        )?.[0];
+
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0].fetchStatus)
+          .toBe("idle");
+
+        expect(callback.mock.calls.at(-1)?.[0]).not.toBe(localResult);
       });
     });
 
