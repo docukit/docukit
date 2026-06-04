@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createReducer } from "../../../../packages/docsync/src/client/utils/reducer.js";
+import { _INTERNAL_createReducer as createReducer } from "@docukit/docsync/client";
 
 type State = { count: number };
 

@@ -13,6 +13,9 @@ type Dispatchers<State, Actions extends ActionMap<State>> = {
   ) => State;
 };
 
+/**
+ * @internal - Do not use this function!
+ */
 export function createReducer<State, Actions extends ActionMap<State>>(config: {
   initialState: State;
   actions: Actions;
