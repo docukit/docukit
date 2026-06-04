@@ -139,7 +139,7 @@ export class DocSyncClient<
    * - `{ type, id, createIfMissing: true }` → Get existing doc or create it if not found.
    *
    * The callback will be invoked with state updates:
-   * 1. `{ status: "loading" }` - Initial state while fetching
+   * 1. `{ status: "pending" }` - Initial state while fetching
    * 2. `{ status: "success", data: { doc, docId } }` - Document loaded successfully
    * 3. `{ status: "error", error }` - Failed to load document
    *
@@ -150,7 +150,7 @@ export class DocSyncClient<
    * const unsubscribe = client.getDoc(
    *   { type: "notes", id: "abc123" },
    *   (result) => {
-   *     if (result.status === "loading") console.log("Loading...");
+   *     if (result.status === "pending") console.log("Pending...");
    *     if (result.status === "success") console.log("Doc:", result.data.doc);
    *     if (result.status === "error") console.error(result.error);
    *   }
@@ -216,7 +216,7 @@ export class DocSyncClient<
     }
 
     // Preparing for the async cases
-    emit({ status: "loading" });
+    emit({ status: "pending" });
 
     // Case: { type, id } or { type, id, createIfMissing } → Load or create (async).
     if (argId) {

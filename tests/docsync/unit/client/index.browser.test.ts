@@ -816,7 +816,7 @@ describe("DocSyncClient", () => {
 
     test("QueryResult has expected structure", () => {
       expectTypeOf<DocResult>().toEqualTypeOf<
-        | { status: "loading"; data?: never; error?: never }
+        | { status: "pending"; data?: never; error?: never }
         | { status: "success"; data: DocData<Doc>; error?: never }
         | { status: "error"; data?: never; error: Error }
       >();
@@ -829,14 +829,14 @@ describe("DocSyncClient", () => {
 
   describe("getDoc", () => {
     describe("Get existing document", () => {
-      test("should emit loading status initially", () => {
+      test("should emit pending status initially", () => {
         const client = createClient();
         const callback = createCallback();
 
         client.getDoc({ type: "test", id: "test-id" }, callback);
 
         expect(callback).toHaveBeenCalledWith({
-          status: "loading",
+          status: "pending",
           data: undefined,
           error: undefined,
         });
@@ -882,8 +882,8 @@ describe("DocSyncClient", () => {
         // Request the same doc - cache hit
         client.getDoc({ type: "test", id: createdDoc!.docId }, callback2);
 
-        // First call is loading (sync)
-        expect(callback2.mock.calls[0]?.[0]?.status).toBe("loading");
+        // First call is pending (sync)
+        expect(callback2.mock.calls[0]?.[0]?.status).toBe("pending");
 
         // Wait just one microtask (not setTimeout like tick())
         await Promise.resolve();
@@ -961,26 +961,26 @@ describe("DocSyncClient", () => {
     });
 
     describe("Sync vs async behavior", () => {
-      test("should NOT emit loading when creating new doc without id", () => {
+      test("should NOT emit pending when creating new doc without id", () => {
         const client = createClient();
         const callback = createCallback();
 
         client.getDoc({ type: "test", createIfMissing: true }, callback);
 
-        // First call should be success, not loading
+        // First call should be success, not pending
         expect(callback.mock.calls[0]?.[0]?.status).toBe("success");
         expect(callback).toHaveBeenCalledTimes(1);
       });
 
-      test("should emit loading before success when fetching by id", async () => {
+      test("should emit pending before success when fetching by id", async () => {
         const client = createClient();
         const callback = createCallback();
         const customId = ulid().toLowerCase();
 
         client.getDoc({ type: "test", id: customId }, callback);
 
-        // First call should be loading
-        expect(callback.mock.calls[0]?.[0]?.status).toBe("loading");
+        // First call should be pending
+        expect(callback.mock.calls[0]?.[0]?.status).toBe("pending");
 
         await expect
           .poll(() => callback.mock.calls[1]?.[0]?.status)
@@ -1211,7 +1211,7 @@ describe("DocSyncClient", () => {
       }
     });
 
-    test("should emit loading then error (not just error)", async () => {
+    test("should emit pending then error (not just error)", async () => {
       const errorMessage = "Provider failed";
       const FailingProvider = createFailingProvider(errorMessage);
       const client = createClientWithProvider(FailingProvider);
@@ -1229,8 +1229,8 @@ describe("DocSyncClient", () => {
           callback,
         );
 
-        // First call should be loading
-        expect(callback.mock.calls[0]?.[0]?.status).toBe("loading");
+        // First call should be pending
+        expect(callback.mock.calls[0]?.[0]?.status).toBe("pending");
 
         await expect
           .poll(() => callback.mock.calls[1]?.[0]?.status)
