@@ -11,6 +11,8 @@ import type {
 // Query / Doc
 // ============================================================================
 
+export type FetchStatus = "fetching" | "paused" | "idle";
+
 export type QueryResult<D, E = Error> =
   | { status: "pending"; data?: never; error?: never }
   | { status: "success"; data: D; error?: never }

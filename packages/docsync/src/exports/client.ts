@@ -14,6 +14,7 @@ export type {
 export type {
   ClientConfig,
   ClientProvider,
+  FetchStatus,
   GetDocArgs,
   DocData,
   Identity,
