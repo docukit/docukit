@@ -25,56 +25,49 @@ function error<D>(
  * @internal - Do not use this function!
  */
 export function createQueryResultReducer<D>(config: {
-  initialFetchStatus: FetchStatus;
+  initialState: QueryResult<D>;
   createIfMissing: boolean;
 }) {
-  const initialState: QueryResult<D> = {
-    status: "pending",
-    fetchStatus: config.initialFetchStatus,
-  };
+  return createReducer({
+    initialState: config.initialState,
+    actions: {
+      // localDocNotFound is not an action, because does not change the state
+      localDocFound: (state: QueryResult<D>, payload: { data: D }) =>
+        success(payload.data, state.fetchStatus),
 
-  const actions = {
-    // localDocNotFound is not an action, because does not change the state
-    localDocFound: (state: QueryResult<D>, payload: { data: D }) =>
-      success(payload.data, state.fetchStatus),
+      localQueryError: (state: QueryResult<D>, payload: { error: Error }) =>
+        error(state, state.fetchStatus, payload.error),
 
-    localQueryError: (state: QueryResult<D>, payload: { error: Error }) =>
-      error(state, state.fetchStatus, payload.error),
+      connected: (state: QueryResult<D>, _payload: undefined) => {
+        if (state.fetchStatus !== "paused") return state;
+        return withFetchStatus(state, "fetching");
+      },
 
-    connected: (state: QueryResult<D>, _payload: undefined) => {
-      if (state.fetchStatus !== "paused") return state;
-      return withFetchStatus(state, "fetching");
+      disconnected: (state: QueryResult<D>, _payload: undefined) => {
+        if (state.fetchStatus !== "fetching") return state;
+        return withFetchStatus(state, "paused");
+      },
+
+      networkDocFound: (_state: QueryResult<D>, payload: { data: D }) =>
+        success(payload.data, "idle"),
+
+      networkDocNotFound: (
+        state: QueryResult<D>,
+        _payload: undefined,
+      ): QueryResult<D> => {
+        if (state.status === "success") return success(state.data, "idle");
+        if (state.status === "error" && state.data !== undefined) {
+          return success(state.data, "idle");
+        }
+        if (config.createIfMissing) {
+          return { status: "pending", fetchStatus: "idle" };
+        }
+        return success(undefined as D, "idle");
+      },
+
+      networkQueryError: (state: QueryResult<D>, payload: { error: Error }) =>
+        error(state, "idle", payload.error),
     },
-
-    disconnected: (state: QueryResult<D>, _payload: undefined) => {
-      if (state.fetchStatus !== "fetching") return state;
-      return withFetchStatus(state, "paused");
-    },
-
-    networkDocFound: (_state: QueryResult<D>, payload: { data: D }) =>
-      success(payload.data, "idle"),
-
-    networkDocNotFound: (
-      state: QueryResult<D>,
-      _payload: undefined,
-    ): QueryResult<D> => {
-      if (state.status === "success") return success(state.data, "idle");
-      if (state.status === "error" && state.data !== undefined) {
-        return success(state.data, "idle");
-      }
-      if (config.createIfMissing) {
-        return { status: "pending", fetchStatus: "idle" };
-      }
-      return success(undefined as D, "idle");
-    },
-
-    networkQueryError: (state: QueryResult<D>, payload: { error: Error }) =>
-      error(state, "idle", payload.error),
-  };
-
-  return createReducer<QueryResult<D>, typeof actions>({
-    initialState,
-    actions,
     beforeAction: (state, action) => {
       const terminalNetworkAction =
         action.type === "networkDocFound" ||
