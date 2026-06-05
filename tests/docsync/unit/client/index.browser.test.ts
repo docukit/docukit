@@ -883,7 +883,7 @@ describe("DocSyncClient", () => {
         expect(cachedDoc?.doc).toBe(createdDoc!.doc);
       });
 
-      test("should resolve cache hit on next microtask (no setTimeout needed)", async () => {
+      test("should emit cached query state immediately", () => {
         const client = createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
@@ -896,15 +896,8 @@ describe("DocSyncClient", () => {
         // Request the same doc - cache hit
         client.getDoc({ type: "test", id: createdDoc!.docId }, callback2);
 
-        // First call is pending (sync)
-        expect(callback2.mock.calls[0]?.[0]?.status).toBe("pending");
-
-        // Wait just one microtask (not setTimeout like tick())
-        await Promise.resolve();
-
-        // Should already have success from cache
-        expect(callback2.mock.calls.length).toBe(2);
-        expect(callback2.mock.calls[1]?.[0]?.status).toBe("success");
+        expect(callback2.mock.calls.length).toBe(1);
+        expect(callback2.mock.calls[0]?.[0]?.status).toBe("success");
         expect(getSuccessData(callback2)?.doc).toBe(createdDoc!.doc);
       });
     });
@@ -973,6 +966,34 @@ describe("DocSyncClient", () => {
         await expect.poll(() => getSuccessData(callback)?.docId).toBe(customId);
       });
 
+      test("createIfMissing true should promote an existing shared query", async () => {
+        const client = createClient();
+        const callback1 = createCallback();
+        const callback2 = createCallback();
+        const customId = ulid().toLowerCase();
+
+        client.getDoc({ type: "test", id: customId }, callback1);
+        client.getDoc(
+          { type: "test", id: customId, createIfMissing: true },
+          callback2,
+        );
+
+        await expect
+          .poll(() => getSuccessData(callback1)?.docId)
+          .toBe(customId);
+        await expect
+          .poll(() => getSuccessData(callback2)?.docId)
+          .toBe(customId);
+
+        const doc1 = getSuccessData(callback1)?.doc;
+        const doc2 = getSuccessData(callback2)?.doc;
+        expect(doc1).toBe(doc2);
+
+        const cacheEntry = client["_docsCache"].get(customId);
+        expect(cacheEntry?.refCount).toBe(2);
+        expect(cacheEntry?.createIfMissing).toBe(true);
+      });
+
       test("should emit local success while network fetch is still active", async () => {
         const client = createClient();
         const callback = createCallback();
@@ -997,21 +1018,20 @@ describe("DocSyncClient", () => {
       test("should emit local success as paused when disconnected", async () => {
         const client = createClient();
         const callback = createCallback();
-        const cachedCallback = createCallback();
-
-        client.getDoc({ type: "test", createIfMissing: true }, callback);
-        const created = getSuccessData(callback);
-        expect(created).toBeDefined();
+        const customId = ulid().toLowerCase();
 
         Object.defineProperty(client["_socket"], "connected", {
           configurable: true,
           value: false,
         });
-        client.getDoc({ type: "test", id: created!.docId }, cachedCallback);
+        client.getDoc(
+          { type: "test", id: customId, createIfMissing: true },
+          callback,
+        );
 
         await expect
           .poll(() =>
-            cachedCallback.mock.calls.some(
+            callback.mock.calls.some(
               ([result]) =>
                 result.status === "success" && result.fetchStatus === "paused",
             ),
