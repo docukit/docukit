@@ -20,13 +20,8 @@ const fetchStatuses = ["fetching", "paused", "idle"] satisfies FetchStatus[];
 const localError = new Error("local failed");
 const networkError = new Error("network failed");
 
-function reducerFor(state: State, createIfMissing = false) {
-  const reducer = createQueryResultReducer<Data>({
-    initialFetchStatus: state.fetchStatus === "paused" ? "paused" : "fetching",
-    createIfMissing,
-  });
-  Object.assign(reducer.getState(), state);
-  return reducer;
+function reducerFor(state: State) {
+  return createQueryResultReducer<Data>({ initialState: state });
 }
 
 function success(data: Data, fetchStatus: FetchStatus): State {
@@ -134,14 +129,15 @@ export const actionCases: ActionCase[] = [
   },
   {
     name: "networkDocNotFound optional data",
-    run: (state) => reducerFor(state).action.networkDocNotFound(undefined),
+    run: (state) =>
+      reducerFor(state).action.networkDocNotFound({ createIfMissing: false }),
     expected: (state) => networkDocNotFoundExpected(state, false),
     invalid: invalidNetworkAction,
   },
   {
     name: "networkDocNotFound required data",
     run: (state) =>
-      reducerFor(state, true).action.networkDocNotFound(undefined),
+      reducerFor(state).action.networkDocNotFound({ createIfMissing: true }),
     expected: (state) => networkDocNotFoundExpected(state, true),
     invalid: invalidNetworkAction,
   },

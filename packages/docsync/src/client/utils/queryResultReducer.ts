@@ -26,7 +26,6 @@ function error<D>(
  */
 export function createQueryResultReducer<D>(config: {
   initialState: QueryResult<D>;
-  createIfMissing: boolean;
 }) {
   return createReducer({
     initialState: config.initialState,
@@ -53,13 +52,13 @@ export function createQueryResultReducer<D>(config: {
 
       networkDocNotFound: (
         state: QueryResult<D>,
-        _payload: undefined,
+        payload: { createIfMissing: boolean },
       ): QueryResult<D> => {
         if (state.status === "success") return success(state.data, "idle");
         if (state.status === "error" && state.data !== undefined) {
           return success(state.data, "idle");
         }
-        if (config.createIfMissing) {
+        if (payload.createIfMissing) {
           return { status: "pending", fetchStatus: "idle" };
         }
         return success(undefined as D, "idle");
