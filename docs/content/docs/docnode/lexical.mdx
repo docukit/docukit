@@ -94,9 +94,9 @@ import { DocNodePlugin } from "@docukit/docnode-lexical/react";
 // see the DocSync docs for more info on how to generate these hooks
 import { useDoc, usePresence } from "../docsync/client";
 
-function Editor() {
+function Editor({ id }: { id: string }) {
   // [!code highlight:2]
-  const { doc, docId } = useDoc({ type: "lexical", createIfMissing: true });
+  const { doc, docId } = useDoc({ type: "lexical", id, createIfMissing: true });
   const [presence, setPresence] = usePresence({ docId });
 
   return (

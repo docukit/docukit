@@ -43,7 +43,7 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
   function useDoc(args: {
     type: string;
     createIfMissing: true;
-    id?: string;
+    id: string;
   }): QueryResult<DocData>;
   function useDoc(args: {
     type: string;
@@ -54,17 +54,16 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
     const [result, setResult] = useState<QueryResult<DocData | undefined>>({
       status: "pending",
     });
-    const id = "id" in args ? args.id : undefined;
+    const id = args.id;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
     const type = args.type;
-    const getDocArgs = useMemo<GetDocArgs | undefined>(() => {
-      if (id !== undefined) return { type, id, createIfMissing };
-      if (createIfMissing) return { type, createIfMissing: true };
-      return undefined;
-    }, [id, type, createIfMissing]);
+    const getDocArgs = useMemo<GetDocArgs>(
+      () => ({ type, id, createIfMissing }),
+      [id, type, createIfMissing],
+    );
 
     useEffect(() => {
-      if (!client || !getDocArgs) return;
+      if (!client) return;
       return client.getDoc(getDocArgs, setResult);
     }, [getDocArgs]);
 

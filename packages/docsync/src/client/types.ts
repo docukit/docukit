@@ -19,9 +19,11 @@ export type QueryResult<D, E = Error> =
 /**
  * Arguments for {@link DocSyncClient["getDoc"]}.
  */
-export type GetDocArgs =
-  | { type: string; id: string; createIfMissing?: boolean }
-  | { type: string; createIfMissing: true };
+export type GetDocArgs = {
+  type: string;
+  id: string;
+  createIfMissing?: boolean;
+};
 
 export type DocData<D> = { doc: D; docId: string };
 
