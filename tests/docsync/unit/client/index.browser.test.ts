@@ -245,7 +245,10 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
 
         // Trigger _localPromise resolution by calling getDoc
-        client.getDoc({ type: "test", createIfMissing: true }, callback);
+        client.getDoc(
+          { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
+          callback,
+        );
 
         await expect.poll(() => constructorSpy.mock.calls.length).toBe(1);
         // BroadcastChannel name should be user-specific: "docsync:{userId}"
@@ -283,7 +286,10 @@ describe("DocSyncClient", () => {
         const client = createClient();
         const callback = createCallback();
 
-        client.getDoc({ type: "test", createIfMissing: true }, callback);
+        client.getDoc(
+          { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
+          callback,
+        );
         await expect.poll(() => client["_bcHelper"]).toBeDefined();
 
         const bcHelper = client["_bcHelper"];
@@ -780,11 +786,6 @@ describe("DocSyncClient", () => {
         expectTypeOf(result).toEqualTypeOf<DocResult>();
       });
 
-      // without id, createIfMissing: true → DocResult
-      client.getDoc({ type: "test", createIfMissing: true }, (result) => {
-        expectTypeOf(result).toEqualTypeOf<DocResult>();
-      });
-
       // with id, createIfMissing: false → MaybeDocResult
       client.getDoc({ type: "test", id, createIfMissing: false }, (result) => {
         expectTypeOf(result).toEqualTypeOf<MaybeDocResult>();
@@ -803,11 +804,14 @@ describe("DocSyncClient", () => {
         // @ts-expect-error - type is required (even with createIfMissing and id)
         client.getDoc({ createIfMissing: true, id: "123" }, callback);
 
-        // @ts-expect-error - without id, createIfMissing must be true
+        // @ts-expect-error - id is required
         client.getDoc({ type: "test" }, callback);
 
-        // @ts-expect-error - without id, createIfMissing: false is invalid
+        // @ts-expect-error - id is required
         client.getDoc({ type: "test", createIfMissing: false }, callback);
+
+        // @ts-expect-error - id is required
+        client.getDoc({ type: "test", createIfMissing: true }, callback);
       };
 
       // Verify the function exists (never called, just for type checking)
@@ -870,9 +874,13 @@ describe("DocSyncClient", () => {
         const client = createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
+        const docId = ulid().toLowerCase();
 
         // Create a doc first
-        client.getDoc({ type: "test", createIfMissing: true }, callback1);
+        client.getDoc(
+          { type: "test", id: docId, createIfMissing: true },
+          callback1,
+        );
         await expect.poll(() => getSuccessData(callback1)).toBeDefined();
         const createdDoc = getSuccessData(callback1);
 
@@ -887,11 +895,15 @@ describe("DocSyncClient", () => {
         const client = createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
+        const docId = ulid().toLowerCase();
 
-        // Create a doc first (sync path)
-        client.getDoc({ type: "test", createIfMissing: true }, callback1);
+        // Create a doc first
+        client.getDoc(
+          { type: "test", id: docId, createIfMissing: true },
+          callback1,
+        );
+        await expect.poll(() => getSuccessData(callback1)).toBeDefined();
         const createdDoc = getSuccessData(callback1);
-        expect(createdDoc).toBeDefined();
 
         // Request the same doc - cache hit
         client.getDoc({ type: "test", id: createdDoc!.docId }, callback2);
@@ -903,41 +915,17 @@ describe("DocSyncClient", () => {
     });
 
     describe("Create new document", () => {
-      test("should create new document with auto-generated ID when createIfMissing is true", () => {
+      test("should create new document with provided ID when createIfMissing is true", async () => {
         const client = createClient();
         const callback = createCallback();
+        const docId = ulid().toLowerCase();
 
-        client.getDoc({ type: "test", createIfMissing: true }, callback);
-
-        // Should immediately emit success (sync operation)
-        expect(callback).toHaveBeenCalledWith(
-          expect.objectContaining({
-            status: "success",
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            data: expect.objectContaining({
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-              doc: expect.anything(),
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-              docId: expect.any(String),
-            }),
-          }),
+        client.getDoc(
+          { type: "test", id: docId, createIfMissing: true },
+          callback,
         );
-      });
 
-      test("should generate unique IDs for each new document", () => {
-        const client = createClient();
-        const callback1 = createCallback();
-        const callback2 = createCallback();
-
-        client.getDoc({ type: "test", createIfMissing: true }, callback1);
-        client.getDoc({ type: "test", createIfMissing: true }, callback2);
-
-        const id1 = callback1.mock.calls[0]?.[0]?.data?.docId;
-        const id2 = callback2.mock.calls[0]?.[0]?.data?.docId;
-
-        expect(id1).toBeDefined();
-        expect(id2).toBeDefined();
-        expect(id1).not.toBe(id2);
+        await expect.poll(() => getSuccessData(callback)?.docId).toBe(docId);
       });
 
       test("should return unsubscribe function", () => {
@@ -945,7 +933,7 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
 
         const unsubscribe = client.getDoc(
-          { type: "test", createIfMissing: true },
+          { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
           callback,
         );
 
@@ -1073,15 +1061,18 @@ describe("DocSyncClient", () => {
     });
 
     describe("Sync vs async behavior", () => {
-      test("should NOT emit pending when creating new doc without id", () => {
+      test("should emit pending before success when creating by id", async () => {
         const client = createClient();
         const callback = createCallback();
+        const customId = ulid().toLowerCase();
 
-        client.getDoc({ type: "test", createIfMissing: true }, callback);
+        client.getDoc(
+          { type: "test", id: customId, createIfMissing: true },
+          callback,
+        );
 
-        // First call should be success, not pending
-        expect(callback.mock.calls[0]?.[0]?.status).toBe("success");
-        expect(callback).toHaveBeenCalledTimes(1);
+        expect(callback.mock.calls[0]?.[0]?.status).toBe("pending");
+        await expect.poll(() => getSuccessData(callback)?.docId).toBe(customId);
       });
 
       test("should emit pending before success when fetching by id", async () => {
@@ -1104,11 +1095,13 @@ describe("DocSyncClient", () => {
       test("should remove doc from cache and call dispose when last subscriber unsubscribes", async () => {
         const { client, disposeSpy } = createClientWithDisposeSpy();
         const callback = createCallback();
+        const createdId = ulid().toLowerCase();
 
         const unsubscribe = client.getDoc(
-          { type: "test", createIfMissing: true },
+          { type: "test", id: createdId, createIfMissing: true },
           callback,
         );
+        await expect.poll(() => getSuccessData(callback)).toBeDefined();
         const doc = getSuccessData(callback)!.doc;
         const docId = getSuccessData(callback)!.docId;
         const cache = client["_docsCache"];
@@ -1127,12 +1120,14 @@ describe("DocSyncClient", () => {
         const { client, disposeSpy } = createClientWithDisposeSpy();
         const callback1 = createCallback();
         const callback2 = createCallback();
+        const createdId = ulid().toLowerCase();
 
         // First subscription creates the doc
         const unsubscribe1 = client.getDoc(
-          { type: "test", createIfMissing: true },
+          { type: "test", id: createdId, createIfMissing: true },
           callback1,
         );
+        await expect.poll(() => getSuccessData(callback1)).toBeDefined();
         const doc = getSuccessData(callback1)!.doc;
         const docId = getSuccessData(callback1)!.docId;
 
@@ -1164,9 +1159,14 @@ describe("DocSyncClient", () => {
         const callback1 = createCallback();
         const callback2 = createCallback();
         const callback3 = createCallback();
+        const createdId = ulid().toLowerCase();
 
         // Create doc
-        client.getDoc({ type: "test", createIfMissing: true }, callback1);
+        client.getDoc(
+          { type: "test", id: createdId, createIfMissing: true },
+          callback1,
+        );
+        await expect.poll(() => getSuccessData(callback1)).toBeDefined();
         const docId = getSuccessData(callback1)!.docId;
 
         const cache = client["_docsCache"];
@@ -1185,9 +1185,14 @@ describe("DocSyncClient", () => {
         const client = createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
+        const createdId = ulid().toLowerCase();
 
         // Create doc
-        client.getDoc({ type: "test", createIfMissing: true }, callback1);
+        client.getDoc(
+          { type: "test", id: createdId, createIfMissing: true },
+          callback1,
+        );
+        await expect.poll(() => getSuccessData(callback1)).toBeDefined();
         const doc1 = getSuccessData(callback1)!.doc;
 
         // Second subscription
@@ -1205,18 +1210,24 @@ describe("DocSyncClient", () => {
       test("should NOT notify callback when document content changes", async () => {
         const client = createClient();
         const callback = createCallback();
+        const createdId = ulid().toLowerCase();
 
         // Create doc
-        client.getDoc({ type: "test", createIfMissing: true }, callback);
+        client.getDoc(
+          { type: "test", id: createdId, createIfMissing: true },
+          callback,
+        );
+        await expect.poll(() => getSuccessData(callback)).toBeDefined();
         const doc = getSuccessData(callback)!.doc;
 
-        // Initial call count (1 for success)
-        expect(callback.mock.calls.length).toBe(1);
+        const initialCallCount = callback.mock.calls.length;
 
         // Trigger a document change
         doc.root.append(doc.createNode(ChildNode));
         // Callback should NOT be called on doc changes (poll until stable)
-        await expect.poll(() => callback.mock.calls.length).toBe(1);
+        await expect
+          .poll(() => callback.mock.calls.length)
+          .toBe(initialCallCount);
       });
     });
 
@@ -1408,8 +1419,13 @@ describe("DocSyncClient", () => {
       try {
         const client = createClient();
         const callback = createCallback();
+        const createdId = ulid().toLowerCase();
 
-        client.getDoc({ type: "test", createIfMissing: true }, callback);
+        client.getDoc(
+          { type: "test", id: createdId, createIfMissing: true },
+          callback,
+        );
+        await expect.poll(() => getSuccessData(callback)).toBeDefined();
         const doc = getSuccessData(callback)!.doc;
         const docId = getSuccessData(callback)!.docId;
 
@@ -1422,7 +1438,6 @@ describe("DocSyncClient", () => {
           type: "OPERATIONS",
           docId,
           source: "local-broadcast",
-          flags: { skipUndo: true },
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           operations: expect.anything(),
         });
@@ -1456,9 +1471,14 @@ describe("DocSyncClient", () => {
       try {
         const client = createClient();
         const callback = createCallback();
+        const createdId = ulid().toLowerCase();
 
         // Create a doc
-        client.getDoc({ type: "test", createIfMissing: true }, callback);
+        client.getDoc(
+          { type: "test", id: createdId, createIfMissing: true },
+          callback,
+        );
+        await expect.poll(() => getSuccessData(callback)).toBeDefined();
         const doc = getSuccessData(callback)!.doc;
         const docId = getSuccessData(callback)!.docId;
 
@@ -1468,7 +1488,11 @@ describe("DocSyncClient", () => {
         // Simulate receiving operations from another tab
         // We need to create valid operations, so we'll create them from another doc
         const tempCallback = createCallback();
-        client.getDoc({ type: "test", createIfMissing: true }, tempCallback);
+        client.getDoc(
+          { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
+          tempCallback,
+        );
+        await expect.poll(() => getSuccessData(tempCallback)).toBeDefined();
         const tempDoc = getSuccessData(tempCallback)!.doc;
         tempDoc.root.append(tempDoc.createNode(ChildNode));
         await expect.poll(() => messageHandler !== null).toBe(true);
@@ -1509,9 +1533,14 @@ describe("DocSyncClient", () => {
       try {
         const client = createClient();
         const callback = createCallback();
+        const createdId = ulid().toLowerCase();
 
         // Create a doc - this will resolve _localPromise and initialize BroadcastChannel
-        client.getDoc({ type: "test", createIfMissing: true }, callback);
+        client.getDoc(
+          { type: "test", id: createdId, createIfMissing: true },
+          callback,
+        );
+        await expect.poll(() => getSuccessData(callback)).toBeDefined();
         const docId = getSuccessData(callback)!.docId;
 
         await expect.poll(() => messageHandler !== undefined).toBe(true);

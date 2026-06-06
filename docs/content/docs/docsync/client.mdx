@@ -123,8 +123,6 @@ React hook that subscribes to a document with reactive state updates.
 ```tsx
 const result = useDoc({ type: "notes", id: "doc-123" });
 
-const result = useDoc({ type: "notes", createIfMissing: true });
-
 const result = useDoc({ type: "notes", id: "doc-123", createIfMissing: true });
 ```
 
@@ -139,13 +137,12 @@ const result = useDoc({ type: "notes", id: "doc-123", createIfMissing: true });
       required: true,
     },
     id: {
-      description:
-        "The document ID to load. If omitted with createIfMissing: true, a new ID will be auto-generated.",
+      description: "The document ID to load or create.",
       type: "string",
+      required: true,
     },
     createIfMissing: {
-      description:
-        "If true, creates the document if it doesn't exist. When true without id, generates a new document with auto-generated ID.",
+      description: "If true, creates the document if it doesn't exist.",
       type: "boolean",
       default: "false",
     },
