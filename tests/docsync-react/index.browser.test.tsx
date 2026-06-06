@@ -45,7 +45,6 @@ test("createDocSyncClient", async () => {
     // @ts-expect-error - id is required
     hook({ type: "test", createIfMissing: false });
 
-    // @ts-expect-error - id is required
     hook({ type: "test", createIfMissing: true });
   };
   expect(typeCheck).toBeDefined();
