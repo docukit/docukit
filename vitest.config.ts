@@ -23,9 +23,13 @@ const project = (name: string, browser: boolean): TestProjectConfiguration => ({
     testTimeout: 2000, // (includes Playwright launch time?)
     hookTimeout: 2000,
     ...(browser
-      ? { include: ["**/*.browser.test.ts", "**/*.browser.test.tsx"] }
+      ? {
+          include: ["**/*.browser.test.ts", "**/*.browser.test.tsx"],
+          exclude: ["**/.context/**", "**/node_modules/**", "**/dist/**"],
+        }
       : {
           exclude: [
+            "**/.context/**",
             "**/*.browser.test.ts",
             "**/*.browser.test.tsx",
             "**/*.ui.test.ts",
@@ -61,6 +65,7 @@ export default defineConfig({
       reportsDirectory: ".test-results/vitest",
       reporter: ["text", "html"],
       exclude: [
+        "**/.context/**",
         "**/node_modules/**",
         "**/tests/**",
         "**/*.d.ts",

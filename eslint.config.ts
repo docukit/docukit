@@ -208,6 +208,7 @@ export const rootEslintConfig = tseslint.config(
   {
     ignores: [
       "**/dist",
+      "**/.context",
       "**/.next",
       "**/node_modules",
       "**/.test-results",

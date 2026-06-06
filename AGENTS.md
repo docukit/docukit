@@ -3,11 +3,13 @@
 - When I ask a question or describe a problem, start by brainstorming a few potential solutions.
 - Show example code for each and help me compare them.
 - Ask which one we should try together.
-- Do not perform any git-related action unless I explicitly ask for that exact action in the current conversation. This includes staging, unstaging, committing, pushing, branching, switching branches, rebasing, stashing, restoring files, or any other command that mutates git state.
+- Git commands that only read information are allowed, such as `git status`, `git diff`, `git show`, `git log`, and `git branch --show-current`.
+- Do not perform any git action that mutates state unless I explicitly ask for that exact action in the current conversation. This includes staging, unstaging, committing, pushing, branching, switching branches, rebasing, stashing, restoring files, or any other command that mutates git state.
 
 ## Git Safety Rules
 
-- Never run `git add`, `git commit`, `git push`, or any other git command unless I explicitly ask for that exact git action in the current conversation.
+- Read-only git commands are allowed when they help inspect work, review staged files, compare changes, or understand history.
+- Never run `git add`, `git commit`, `git push`, or any other git command that mutates git state unless I explicitly ask for that exact git action in the current conversation.
 - Updating a PR, editing documentation, fixing code, or running tests does not imply permission to stage, commit, push, branch, rebase, stash, restore, checkout, or mutate git state.
 - If a change is ready but I did not explicitly ask for a git action, leave it unstaged.
 
@@ -37,6 +39,7 @@
 ## TypeScript Rules
 
 - **NEVER add `any` (or `as any`, `as unknown as ...`, etc.) without first stopping, presenting every alternative you can think of, and waiting for explicit approval.** This applies to both implementation code and tests, to both new code and edits to existing code, and to both function signatures (including generic defaults like `<T = any>`) and local values. If TS inference is failing, the right move is to surface the problem and the trade-offs — not to silence it with `any`. Even if the existing code already used `any`, do not preserve it without asking.
+- Never call a function with an explicit type parameter. Let TypeScript infer it. For example, write `createQueryResultReducer(...)`, not `createQueryResultReducer<Data>(...)`.
 
 ## Critical Rules for Agents
 

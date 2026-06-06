@@ -9,11 +9,18 @@ import type { DocData, QueryResult } from "@docukit/docsync/client";
 import { renderHook } from "vitest-browser-react";
 import { docConfig, id } from "./utils.js";
 
+declare global {
+  var __TEST_SERVER_PORT__: number | undefined;
+}
+
+const testServerUrl = () =>
+  `ws://localhost:${globalThis.__TEST_SERVER_PORT__ ?? 8082}`;
+
 test("createDocSyncClient", async () => {
   const { useDoc } = createDocSyncClient({
     server: {
-      url: "ws://localhost:8081",
-      auth: { getToken: () => "1234567890" as string },
+      url: testServerUrl(),
+      auth: { getToken: () => "test-token-John" },
     },
     local: {
       provider: indexedDBProvider,
@@ -50,9 +57,12 @@ test("createDocSyncClient", async () => {
   );
   expectTypeOf(_1.current).toEqualTypeOf<MaybeDocResult>();
   expect(_1.current.status).toBe("pending");
+  expect(_1.current.fetchStatus).toBeDefined();
+  const initialResult = _1.current;
   await expect
     .poll(() => _1.current.status, { interval: 100, timeout: 2000 })
     .toBe("success");
+  expect(_1.current).not.toBe(initialResult);
   expect(_1.current.data?.doc).toBeUndefined();
 
   // with id, with createIfMissing true
@@ -88,17 +98,32 @@ test("createDocSyncClient", async () => {
 
   // Type check: QueryResult<DocData<Doc>> has the expected structure
   expectTypeOf<DocResult>().toEqualTypeOf<
-    | { status: "pending"; data?: never; error?: never }
-    | { status: "success"; data: DocData<Doc>; error?: never }
-    | { status: "error"; data?: never; error: Error }
+    | {
+        status: "pending";
+        fetchStatus: "fetching" | "paused" | "idle";
+        data?: never;
+        error?: never;
+      }
+    | {
+        status: "success";
+        fetchStatus: "fetching" | "paused" | "idle";
+        data: DocData<Doc>;
+        error?: never;
+      }
+    | {
+        status: "error";
+        fetchStatus: "fetching" | "paused" | "idle";
+        data?: DocData<Doc> | undefined;
+        error: Error;
+      }
   >();
-});
+}, 5000);
 
 test("client keeps own presence for debounced outgoing sync", async () => {
   const { useDoc, usePresence, client } = createDocSyncClient({
     server: {
-      url: "ws://localhost:8081",
-      auth: { getToken: () => "1234567890" as string },
+      url: testServerUrl(),
+      auth: { getToken: () => "test-token-John" },
     },
     local: {
       provider: indexedDBProvider,

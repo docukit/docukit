@@ -45,6 +45,18 @@ type LocalOpsBatchState<O extends {}> = DeferredState<O[]> & {
 
 type PushStatus = "idle" | "pushing" | "pushing-with-pending";
 type ChangeOrigin = "local" | "network" | "local-broadcast";
+type LocalLoadMode = "load" | "loadOrCreate";
+type QueryListener = (result: QueryResult<DocData<{}> | undefined>) => void;
+type DocCacheEntry<D> = {
+  promisedDoc: Promise<D | undefined>;
+  refCount: number;
+  type: string;
+  localLoadMode?: LocalLoadMode;
+  queryResult: QueryResult<DocData<D> | undefined>;
+  queryListeners: Set<QueryListener>;
+  presence: Presence;
+  presenceListeners: Set<(presence: Presence) => void>;
+};
 
 export class DocSyncClient<
   D extends {} = {},
@@ -52,16 +64,7 @@ export class DocSyncClient<
   O extends {} = {},
 > {
   protected _docBinding: DocBinding<D, S, O>;
-  protected _docsCache = new Map<
-    string,
-    {
-      promisedDoc: Promise<D | undefined>;
-      refCount: number;
-      type: string;
-      presence: Presence;
-      presenceListeners: Set<(presence: Presence) => void>;
-    }
-  >();
+  protected _docsCache = new Map<string, DocCacheEntry<D>>();
   protected _localPromise: Promise<LocalResolved<S, O>>;
   protected _deviceId: string;
   /** Client-generated id for presence (works offline; sent in auth so server uses same key) */
@@ -170,71 +173,132 @@ export class DocSyncClient<
     ) => void,
   ): () => void {
     const type = args.type;
-    const argId = args.id;
-    const createIfMissing = "createIfMissing" in args && args.createIfMissing;
-    // Internal emit uses wider type; runtime logic ensures correct data per overload
-    const emit = onChange as (
-      result: QueryResult<DocData<D> | undefined>,
-    ) => void;
-    const docId = argId;
+    const docId = args.id;
+    const createIfMissing =
+      "createIfMissing" in args && args.createIfMissing === true;
+    const localLoadMode = createIfMissing ? "loadOrCreate" : "load";
+    const listener = onChange as QueryListener;
+    const initialFetchStatus = this._socket.connected ? "fetching" : "paused";
 
-    emit({ status: "pending" });
-
-    // Check cache BEFORE async block to avoid race conditions with getPresence
     const existingCacheEntry = this._docsCache.get(docId);
     if (existingCacheEntry) {
       existingCacheEntry.refCount += 1;
+      existingCacheEntry.queryListeners.add(listener);
+      listener(existingCacheEntry.queryResult);
+
+      const hasDoc =
+        existingCacheEntry.queryResult.status === "success" &&
+        existingCacheEntry.queryResult.data !== undefined;
+
+      if (
+        createIfMissing &&
+        existingCacheEntry.localLoadMode !== "loadOrCreate" &&
+        !hasDoc
+      ) {
+        existingCacheEntry.localLoadMode = "loadOrCreate";
+        const promisedDoc = this._loadOrCreateDoc(docId, type);
+        existingCacheEntry.promisedDoc = promisedDoc;
+        this._observePromisedDoc(docId, promisedDoc, "loadOrCreate");
+      }
     } else {
       // Create cache entry immediately so getPresence can subscribe
       const promisedDoc = this._loadOrCreateDoc(
         docId,
         createIfMissing ? type : undefined,
       );
+      const queryResult: QueryResult<DocData<D> | undefined> = {
+        status: "pending",
+        fetchStatus: initialFetchStatus,
+      };
       this._docsCache.set(docId, {
         promisedDoc,
         refCount: 1,
         type,
+        localLoadMode,
+        queryResult,
+        queryListeners: new Set([listener]),
         presence: {},
         presenceListeners: new Set(),
       });
+      listener(queryResult);
+      this._observePromisedDoc(docId, promisedDoc, localLoadMode);
     }
 
+    return () => {
+      this._docsCache.get(docId)?.queryListeners.delete(listener);
+      void this._unloadDoc(docId);
+    };
+  }
+
+  protected _emitQueryResult(
+    docId: string,
+    result: QueryResult<DocData<D> | undefined>,
+  ): void {
+    const cacheEntry = this._docsCache.get(docId);
+    if (!cacheEntry) return;
+
+    cacheEntry.queryResult = result;
+    for (const listener of cacheEntry.queryListeners) {
+      listener(result);
+    }
+  }
+
+  protected _markDocQueryIdle(docId: string): void {
+    const cacheEntry = this._docsCache.get(docId);
+    if (!cacheEntry) return;
+    if (cacheEntry.queryResult.fetchStatus === "idle") return;
+
+    this._emitQueryResult(docId, {
+      ...cacheEntry.queryResult,
+      fetchStatus: "idle",
+    });
+  }
+
+  private _observePromisedDoc(
+    docId: string,
+    promisedDoc: Promise<D | undefined>,
+    localLoadMode: LocalLoadMode,
+  ): void {
     void (async () => {
       try {
-        let doc: D | undefined;
-        let source: "cache" | "local" | "created" = "local";
-        const cacheEntry = this._docsCache.get(docId)!;
-        if (existingCacheEntry) {
-          doc = await cacheEntry.promisedDoc;
-          source = "cache";
-        } else {
-          doc = await cacheEntry.promisedDoc;
-          if (doc) {
-            // Register listener only for new docs (not cache hits)
-            this._setupChangeListener(doc, docId);
-            source = createIfMissing ? "created" : "local";
-          }
-        }
+        const doc = await promisedDoc;
+        const cacheEntry = this._docsCache.get(docId);
+        if (!cacheEntry) return;
+        if (cacheEntry.promisedDoc !== promisedDoc) return;
+        delete cacheEntry.localLoadMode;
 
         if (doc) {
-          const refCount = this._docsCache.get(docId)?.refCount ?? 1;
-          this._events.emit("docLoad", { docId, source, refCount });
+          this._setupChangeListener(doc, docId);
+          this._events.emit("docLoad", {
+            docId,
+            source: localLoadMode === "loadOrCreate" ? "created" : "local",
+            refCount: cacheEntry.refCount,
+          });
         }
 
-        emit({ status: "success", data: doc ? { doc, docId } : undefined });
-        // Fetch from server to check if document exists there
+        this._emitQueryResult(docId, {
+          status: "success",
+          fetchStatus: doc ? cacheEntry.queryResult.fetchStatus : "idle",
+          data: doc ? { doc, docId } : undefined,
+        });
+
         if (doc) {
           void handleSync(this, docId);
         }
       } catch (e) {
+        const cacheEntry = this._docsCache.get(docId);
+        if (!cacheEntry) return;
+        if (cacheEntry.promisedDoc !== promisedDoc) return;
+        delete cacheEntry.localLoadMode;
+
         const error = e instanceof Error ? e : new Error(String(e));
-        emit({ status: "error", error });
+        this._emitQueryResult(docId, {
+          ...cacheEntry.queryResult,
+          status: "error",
+          error,
+        });
       }
     })();
-
-    return () => {
-      void this._unloadDoc(docId);
-    };
   }
 
   /**
