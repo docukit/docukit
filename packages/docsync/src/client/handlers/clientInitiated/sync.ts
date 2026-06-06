@@ -39,6 +39,11 @@ function _replaceDocInCache<D extends {}, S extends {}, O extends {}>(
     promisedDoc: Promise.resolve(newDoc),
     refCount: cacheEntry.refCount,
     type: cacheEntry.type,
+    ...(cacheEntry.localLoadMode && {
+      localLoadMode: cacheEntry.localLoadMode,
+    }),
+    queryResult: cacheEntry.queryResult,
+    queryListeners: cacheEntry.queryListeners,
     presence: cacheEntry.presence,
     presenceListeners: cacheEntry.presenceListeners,
   });
@@ -181,5 +186,7 @@ export const handleSync = async <D extends {}, S extends {}, O extends {}>(
   pushStatusByDocId.set(docId, "idle");
   if (shouldRetry) {
     void handleSync(client, docId);
+    return;
   }
+  client["_markDocQueryIdle"](docId);
 };

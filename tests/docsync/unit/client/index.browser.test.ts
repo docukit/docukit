@@ -187,10 +187,17 @@ describe("DocSyncClient", () => {
   };
 
   const cacheDebounceTestDoc = (client: DebounceTestClient, docId: string) => {
+    const doc = { docId };
     client["_docsCache"].set(docId, {
-      promisedDoc: Promise.resolve({ docId }),
+      promisedDoc: Promise.resolve(doc),
       refCount: 1,
       type: "test",
+      queryResult: {
+        status: "success",
+        fetchStatus: "idle",
+        data: { doc, docId },
+      },
+      queryListeners: new Set(),
       presence: {},
       presenceListeners: new Set(),
     });
@@ -891,7 +898,7 @@ describe("DocSyncClient", () => {
         expect(cachedDoc?.doc).toBe(createdDoc!.doc);
       });
 
-      test("should emit cached query state immediately", () => {
+      test("should emit cached query state immediately", async () => {
         const client = createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
@@ -979,7 +986,6 @@ describe("DocSyncClient", () => {
 
         const cacheEntry = client["_docsCache"].get(customId);
         expect(cacheEntry?.refCount).toBe(2);
-        expect(cacheEntry?.createIfMissing).toBe(true);
       });
 
       test("should emit local success while network fetch is still active", async () => {

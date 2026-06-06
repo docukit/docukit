@@ -186,6 +186,12 @@ export const triggerSync = (
       promisedDoc: Promise.resolve(doc),
       refCount: 1,
       type: "test",
+      queryResult: {
+        status: "success",
+        fetchStatus: "idle",
+        data: { doc, docId },
+      },
+      queryListeners: new Set(),
       presence: {},
       presenceListeners: new Set(),
     });
