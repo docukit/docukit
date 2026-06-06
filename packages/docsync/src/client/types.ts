@@ -14,9 +14,14 @@ import type {
 export type FetchStatus = "fetching" | "paused" | "idle";
 
 export type QueryResult<D, E = Error> =
-  | { status: "pending"; data?: never; error?: never }
-  | { status: "success"; data: D; error?: never }
-  | { status: "error"; data?: never; error: E };
+  | { status: "pending"; fetchStatus: FetchStatus; data?: never; error?: never }
+  | { status: "success"; fetchStatus: FetchStatus; data: D; error?: never }
+  | {
+      status: "error";
+      fetchStatus: FetchStatus;
+      data?: D | undefined;
+      error: E;
+    };
 
 /**
  * Arguments for {@link DocSyncClient["getDoc"]}.
