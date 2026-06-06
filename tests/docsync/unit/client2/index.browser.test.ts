@@ -228,8 +228,10 @@ describe("Client 2", () => {
         "sync",
         expect.objectContaining({ docId, operations: [ops({ test: "data" })] }),
       );
+      await expect
+        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .toBe("idle");
       expect(await getOperationsCount(client, docId)).toBe(0);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
     });
 
     test("should handle client sends operations + server returns operations", async () => {
@@ -255,8 +257,10 @@ describe("Client 2", () => {
         "sync",
         expect.objectContaining({ docId, operations: [ops({ client: "op" })] }),
       );
+      await expect
+        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .toBe("idle");
       expect(await getOperationsCount(client, docId)).toBe(0);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
     });
 
     test("should handle client sends no operations + server returns no operations (pull with no updates)", async () => {
@@ -283,7 +287,9 @@ describe("Client 2", () => {
         "sync",
         expect.objectContaining({ docId, operations: [] }),
       );
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+      await expect
+        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .toBe("idle");
     });
 
     test("should handle client sends no operations + server returns operations (pull with updates)", async () => {
@@ -332,6 +338,9 @@ describe("Client 2", () => {
         "sync",
         expect.objectContaining({ docId, operations: [] }),
       );
+      await expect
+        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .toBe("idle");
 
       // Verify server operations were applied to stored document
       const storedDoc = await provider.transaction("readonly", async (ctx) => {
@@ -345,7 +354,6 @@ describe("Client 2", () => {
       storedDoc.root.children().forEach(() => storedChildren++);
       // Should have the 2 server children
       expect(storedChildren).toBe(2);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
     });
   });
 
