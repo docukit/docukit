@@ -28,8 +28,20 @@ test("createDocSyncClient", async () => {
   // Type check: useDoc returns QueryResult<Doc>
   expectTypeOf<ReturnType<typeof useDoc>>().toEqualTypeOf<MaybeDocResult>();
 
-  // @ts-expect-error - type is required
-  await renderHook(() => useDoc({ createIfMissing: true, id: "123" }));
+  const typeCheck = (hook: typeof useDoc) => {
+    // @ts-expect-error - type is required
+    hook({ createIfMissing: true, id: "123" });
+
+    // @ts-expect-error - id is required
+    hook({ type: "test" });
+
+    // @ts-expect-error - id is required
+    hook({ type: "test", createIfMissing: false });
+
+    // @ts-expect-error - id is required
+    hook({ type: "test", createIfMissing: true });
+  };
+  expect(typeCheck).toBeDefined();
 
   // with id, without createIfMissing
   // prettier-ignore
@@ -58,21 +70,13 @@ test("createDocSyncClient", async () => {
   expect(_2.current.data?.docId.endsWith("002")).toBe(true);
   expect(_2.current.data?.docId).toBe(_2.current.data?.doc?.root.id);
 
-  // without id, with createIfMissing true
+  // with id, with createIfMissing true
   // prettier-ignore
   const id3 = id.ending("3");
   const { result: _3 } = await renderHook(() =>
     useDoc({ type: "test", id: id3, createIfMissing: true }),
   );
   expectTypeOf(_3.current).toEqualTypeOf<DocResult>();
-
-  // @ts-expect-error - without id, without createIfMissing
-  await renderHook(() => useDoc({ type: "test" }));
-
-  // without id, with createIfMissing false
-  // @ts-expect-error - required id
-  // prettier-ignore
-  await renderHook(() => useDoc({ type: "test", createIfMissing: false }));
 
   // with id, with createIfMissing false
   // prettier-ignore
