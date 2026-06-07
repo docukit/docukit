@@ -360,12 +360,12 @@ importers:
       '@docukit/docsync':
         specifier: workspace:*
         version: link:../packages/docsync
-      '@docukit/docsync-react':
-        specifier: workspace:*
-        version: link:../packages/docsync-react
       '@docukit/docsync2':
         specifier: workspace:*
         version: link:../packages/docsync2
+      '@docukit/docsync-react':
+        specifier: workspace:*
+        version: link:../packages/docsync-react
       '@tanstack/query-core':
         specifier: ^5.101.0
         version: 5.101.0

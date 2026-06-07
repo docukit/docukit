@@ -2,13 +2,13 @@ import {
   isExistingGetDocData,
   isGetDocData,
 } from "../../shared/validators/getDocData.js";
-import type { DocSync2Client } from "../index.js";
+import type { DocSyncClient } from "../index.js";
 import { getDocKey } from "../queries/getDoc/getDocKey.js";
 
 export type CreateDocArgs = { type: string; id: string };
 
 export const createDoc = <D extends object, S extends object, O extends object>(
-  docSync: DocSync2Client<D, S, O>,
+  docSync: DocSyncClient<D, S, O>,
   args: CreateDocArgs,
 ) => {
   const { queryClient, docBinding } = docSync.config;
@@ -21,7 +21,7 @@ export const createDoc = <D extends object, S extends object, O extends object>(
 
   if (!docBinding)
     return Promise.reject(
-      new Error("DocSync2Client requires docBinding to create docs"),
+      new Error("DocSyncClient requires docBinding to create docs"),
     );
 
   const { doc, docId } = docBinding.create(args.type, args.id);

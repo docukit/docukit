@@ -1,7 +1,7 @@
 import * as v from "valibot";
 
 export const presenceQueryKeySchema = v.tuple([
-  v.literal("docsync2"),
+  v.literal("docsync"),
   v.literal("presence"),
   v.string(),
 ]);

@@ -9,10 +9,10 @@ and may throw `not implemented yet` until the runtime is filled in.
 
 ```ts
 import { QueryClient } from "@tanstack/query-core";
-import { DocSync2Client, indexedDBProvider } from "@docukit/docsync2/client";
+import { DocSyncClient, indexedDBProvider } from "@docukit/docsync2/client";
 
 const queryClient = new QueryClient();
-const docSync = new DocSync2Client({
+const docSync = new DocSyncClient({
   queryClient,
   docBinding,
   server: {
@@ -40,7 +40,7 @@ const query = docSync.queries.getDoc({ type: "note", id: "note-1" });
 - There are no React hooks in this package.
 - There are no callback APIs like the original `getDoc` or `getPresence`.
 - There is no old `QueryResult`, `FetchStatus`, or reducer query state.
-- Socket protocol is intentionally not copied in full yet.
+- Server code is currently copied from `@docukit/docsync` and still needs adaptation.
 - Client provider contracts exist, but their implementation is still minimal.
 - The package is self-contained and does not import implementation from `@docukit/docsync`.
 
@@ -55,8 +55,8 @@ not limited to plain records. This accepts class instances like `Y.Doc` or
 
 - Public API names and query keys are scaffolded.
 - `DocBinding`, `createDocBinding`, and the DocNode binding are available.
-- `DocSync2Client` configures TanStack Query defaults for `["docsync2"]` with `staleTime: Infinity`.
+- `DocSyncClient` configures TanStack Query defaults for `["docsync"]` with `staleTime: Infinity`.
 - `docSync.mutations.createDoc` creates a local doc through `docBinding` and seeds TanStack Query.
 - `docSync.queries.getDoc` lets TanStack Query own the cached result and returns `doc: undefined` when the doc has not been created.
-- `DocSync2Client`, `DocSync2Server`, presence, sync, persistence, and providers are not fully implemented yet.
+- `DocSyncClient`, `DocSyncServer`, presence, sync, persistence, and providers are not fully implemented yet.
 - The next work should make local persistence real before expanding socket sync behavior.

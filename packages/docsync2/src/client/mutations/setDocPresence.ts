@@ -1,5 +1,5 @@
 import { notImplemented } from "../../shared/notImplemented.js";
-import type { DocSync2Client } from "../index.js";
+import type { DocSyncClient } from "../index.js";
 
 export type SetDocPresenceArgs<TPresence = unknown> = {
   docId: string;
@@ -7,7 +7,7 @@ export type SetDocPresenceArgs<TPresence = unknown> = {
 };
 
 export const setDocPresence = <TPresence = unknown>(
-  _docSync: DocSync2Client,
+  _docSync: DocSyncClient,
   _args: SetDocPresenceArgs<TPresence>,
 ): Promise<void> => {
   return Promise.reject(notImplemented());

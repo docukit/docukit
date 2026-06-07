@@ -1,7 +1,7 @@
 import * as v from "valibot";
 
 export const getDocKeySchema = v.tuple([
-  v.literal("docsync2"),
+  v.literal("docsync"),
   v.literal("doc"),
   v.string(),
   v.string(),

@@ -27,14 +27,14 @@
 
 - **NEVER** inspect node IDs, operation contents, or document structure
 
-### DocSync2 Cleanup Rules
+### DocSync Cleanup Rules
 
 - In `packages/docsync2`, do not add cleanups, disposers, or unsubscribe flows automatically.
 - First prove with an integration or GC test that there is a real memory leak that the JavaScript garbage collector cannot collect. `tests/docsync2/client/queries/getDoc/GC.test.ts` may be useful, or it may need to be improved.
-- Before proposing cleanup, first check whether references are already lost naturally, whether DocSync2 is storing unnecessary references, or whether TanStack Query already owns that state.
+- Before proposing cleanup, first check whether references are already lost naturally, whether DocSync is storing unnecessary references, or whether TanStack Query already owns that state.
 - If cleanup still seems necessary after that investigation, compare realistic alternatives and explain the pros and cons before implementing it.
 
-### DocSync2 Test Rules
+### DocSync Test Rules
 
 - In `packages/docsync2`, prefer integration tests that include the full client-server architecture, or UI tests when the behavior is user-facing.
 - Avoid unit tests and partial integration tests with mocked parts by default. If one seems valuable because it checks complex behavior, first explain the mock, compare it with integration or UI alternatives, and wait for approval.

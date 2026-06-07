@@ -1,4 +1,4 @@
-export { DocSync2Client } from "../client/index.js";
+export { DocSyncClient } from "../client/index.js";
 export {
   getDocArgsFromKey,
   getDocKey,
@@ -33,7 +33,7 @@ export type {
 } from "../shared/validators/getDocData.js";
 export type { GetDocKey } from "../shared/validators/getDocKey.js";
 export type { PresenceQueryKey } from "../shared/validators/presenceQueryKey.js";
-export type { DocSync2ClientConfig } from "../client/index.js";
+export type { DocSyncClientConfig } from "../client/index.js";
 export type {
   ClientConfig,
   ClientProvider,

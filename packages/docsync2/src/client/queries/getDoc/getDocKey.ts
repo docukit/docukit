@@ -6,7 +6,7 @@ import {
 export type GetDocKeyArgs = { type: string; id: string };
 
 export const getDocKey = ({ type, id }: GetDocKeyArgs): GetDocKey => [
-  "docsync2",
+  "docsync",
   "doc",
   type,
   id,

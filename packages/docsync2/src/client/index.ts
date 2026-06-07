@@ -18,13 +18,13 @@ import {
 import { setupQueryClient } from "./utils/setupQueryClient/setupQueryClient.js";
 import type { ClientConfig } from "./types.js";
 
-export type DocSync2ClientConfig<
+export type DocSyncClientConfig<
   D extends object = object,
   S extends object = object,
   O extends object = object,
 > = ClientConfig<D, S, O> & { queryClient: QueryClient };
 
-export class DocSync2Client<
+export class DocSyncClient<
   D extends object = object,
   S extends object = object,
   O extends object = object,
@@ -42,7 +42,7 @@ export class DocSync2Client<
     setDocPresence: (args: SetDocPresenceArgs) => setDocPresence(this, args),
   };
 
-  constructor(public readonly config: DocSync2ClientConfig<D, S, O>) {
+  constructor(public readonly config: DocSyncClientConfig<D, S, O>) {
     setupQueryClient(this);
   }
 
@@ -56,7 +56,7 @@ export class DocSync2Client<
 
   dispose(): void {
     // this._events.emit("dispose"); // Maybe needed in the future
-    this.config.queryClient.removeQueries({ queryKey: ["docsync2"] });
+    this.config.queryClient.removeQueries({ queryKey: ["docsync"] });
   }
 
   /**

@@ -13,7 +13,7 @@ export const docPresence = <TPresence = unknown>({
   docId,
 }: DocPresenceArgs): DocPresenceOptions<TPresence> => {
   return {
-    queryKey: ["docsync2", "presence", docId],
+    queryKey: ["docsync", "presence", docId],
     queryFn: () => Promise.reject(notImplemented()),
   };
 };
