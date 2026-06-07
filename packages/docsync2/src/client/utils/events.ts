@@ -3,7 +3,7 @@ import type { NonNullableValue } from "../../shared/types.js";
 export type ClientEventMap<
   _O extends NonNullableValue = NonNullableValue,
   _S extends NonNullableValue = NonNullableValue,
-> = { dispose: undefined };
+> = { todo: undefined };
 
 export type ClientEventName = keyof ClientEventMap;
 
@@ -30,7 +30,7 @@ export function createClientEventEmitter<
 >(): ClientEventEmitter<O, S> {
   const listeners: {
     [K in ClientEventName]: Set<(payload: ClientEventMap<O, S>[K]) => void>;
-  } = { dispose: new Set() };
+  } = { todo: new Set() };
 
   function on<K extends ClientEventName>(
     event: K,

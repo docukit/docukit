@@ -16,21 +16,23 @@ export const createDoc = <
   docSync: DocSync2Client<D, S, O>,
   args: CreateDocArgs,
 ) => {
-  const existingData = docSync.config.queryClient.getQueryData(getDocKey(args));
-  if (isExistingGetDocData(existingData, docSync.config.docBinding))
+  const { queryClient, docBinding } = docSync.config;
+
+  const existingData = queryClient.getQueryData(getDocKey(args));
+  if (isExistingGetDocData(existingData, docBinding))
     return Promise.resolve(existingData);
   if (existingData !== undefined && !isGetDocData(existingData))
     return Promise.reject(new Error("Invalid getDoc query data"));
 
-  if (!docSync.config.docBinding)
+  if (!docBinding)
     return Promise.reject(
       new Error("DocSync2Client requires docBinding to create docs"),
     );
 
-  const { doc, docId } = docSync.config.docBinding.create(args.type, args.id);
+  const { doc, docId } = docBinding.create(args.type, args.id);
   const data = { docId, doc };
 
-  docSync.config.queryClient.setQueryData(getDocKey(args), data);
+  queryClient.setQueryData(getDocKey(args), data);
 
   return Promise.resolve(data);
 };

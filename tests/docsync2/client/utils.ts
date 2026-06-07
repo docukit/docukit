@@ -17,7 +17,6 @@ const createTestDocBinding = () => {
     doc: { id, type },
     docId: id,
   }));
-  const dispose = vi.fn((_doc: TestDoc) => undefined);
 
   const binding: DocBinding<TestDoc, TestSerializedDoc, TestOperation> = {
     create,
@@ -25,18 +24,17 @@ const createTestDocBinding = () => {
     serialize: (doc) => ({ id: doc.id }),
     onChange: () => undefined,
     applyOperations: () => undefined,
-    dispose,
   };
 
-  return { binding, create, dispose };
+  return { binding, create };
 };
 
 export const createTestClient = () => {
   const queryClient = new QueryClient();
-  const { binding, create, dispose } = createTestDocBinding();
+  const { binding, create } = createTestDocBinding();
   const docSync = new DocSync2Client({ queryClient, docBinding: binding });
 
-  return { queryClient, docSync, create, dispose };
+  return { queryClient, docSync, create };
 };
 
 export const createTestDoc = ({

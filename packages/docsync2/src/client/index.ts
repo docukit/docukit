@@ -55,7 +55,8 @@ export class DocSync2Client<
   }
 
   dispose(): void {
-    this._events.emit("dispose");
+    // this._events.emit("dispose"); // Maybe needed in the future
+    this.config.queryClient.removeQueries({ queryKey: ["docsync2"] });
   }
 
   /**

@@ -37,8 +37,5 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
     applyOperations: (doc, operations, flags) => {
       doc.applyOperations(operations, flags);
     },
-    dispose: (doc) => {
-      doc.dispose();
-    },
   });
 };

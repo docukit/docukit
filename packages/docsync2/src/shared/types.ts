@@ -19,5 +19,8 @@ export type DocBinding<
     cb: (ev: { operations: O; flags?: TransactionFlags }) => void,
   ): void | (() => void);
   applyOperations(doc: D, operations: O, flags?: TransactionFlags): void;
-  dispose(doc: D): void;
+  // dispose(doc: D): void;
+  // In this DocSync rewrite we have not found evidence that this is needed yet.
+  // Once TanStack removes docs from query data, no strong references remain and
+  // docs can be garbage-collected. GC.test.ts was added to detect possible regression.
 };

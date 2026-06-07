@@ -28,7 +28,7 @@ describe("getDoc", () => {
 
   test("unsubscribing one observer keeps the doc alive while another observer is active", async () => {
     const testClient = createTestClient();
-    const { queryClient, dispose } = testClient;
+    const { queryClient } = testClient;
     const created = await createTestDoc(testClient);
     const key = getTestDocKey();
 
@@ -38,7 +38,6 @@ describe("getDoc", () => {
     observed1.unsubscribe();
     await tick();
 
-    expect(dispose).not.toHaveBeenCalled();
     expect(queryClient.getQueryData(key)).toStrictEqual(created);
 
     observed2.unsubscribe();
@@ -46,7 +45,7 @@ describe("getDoc", () => {
 
   test("unsubscribing the last observer keeps the doc cached until TanStack removes the query", async () => {
     const testClient = createTestClient();
-    const { queryClient, dispose } = testClient;
+    const { queryClient } = testClient;
     const created = await createTestDoc(testClient);
     const key = getTestDocKey();
     const observed = observeTestDoc(testClient);
@@ -55,13 +54,12 @@ describe("getDoc", () => {
     await tick();
 
     expect(queryClient.getQueryData(key)).toStrictEqual(created);
-    expect(dispose).not.toHaveBeenCalled();
   });
 
-  test("when TanStack removes the doc query, the doc is disposed", async () => {
+  test("when TanStack removes the doc query, the doc leaves the query cache", async () => {
     const testClient = createTestClient();
-    const { queryClient, dispose } = testClient;
-    const created = await createTestDoc(testClient);
+    const { queryClient } = testClient;
+    await createTestDoc(testClient);
     const key = getTestDocKey();
     const observed = observeTestDoc(testClient);
 
@@ -69,21 +67,17 @@ describe("getDoc", () => {
     queryClient.removeQueries({ queryKey: key });
 
     expect(queryClient.getQueryData(key)).toBeUndefined();
-    expect(dispose).toHaveBeenCalledTimes(1);
-    expect(dispose).toHaveBeenCalledWith(created.doc);
   });
 
-  test("disposing the client removes doc queries and disposes their docs", async () => {
+  test("disposing the client removes doc queries", async () => {
     const testClient = createTestClient();
-    const { queryClient, docSync, dispose } = testClient;
-    const created = await createTestDoc(testClient);
+    const { queryClient, docSync } = testClient;
+    await createTestDoc(testClient);
     const key = getTestDocKey();
 
     docSync.dispose();
 
     expect(queryClient.getQueryData(key)).toBeUndefined();
-    expect(dispose).toHaveBeenCalledTimes(1);
-    expect(dispose).toHaveBeenCalledWith(created.doc);
   });
 
   test.todo("disconnected client can still read a locally created doc");
