@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type {
   ClientToServerEvents,
   DocBinding,
@@ -75,7 +74,12 @@ export type SyncRequestEventListener<O = unknown, S = unknown> = (
  * @typeParam TContext - Application-defined context shape returned by authenticate
  *                       and passed to authorize. Defaults to empty object.
  */
-export type ServerConfig<TContext, D extends {}, S extends {}, O extends {}> = {
+export type ServerConfig<
+  TContext extends object = object,
+  D extends object = object,
+  S extends object = object,
+  O extends object = object,
+> = {
   docBinding: DocBinding<D, S, O>;
   port?: number;
   provider: ServerProvider<NoInfer<S>, NoInfer<O>>;
@@ -101,7 +105,7 @@ export type ServerConfig<TContext, D extends {}, S extends {}, O extends {}> = {
  * All operations share the same underlying transaction.
  */
 // prettier-ignore
-export type ServerProviderContext<S extends {}, O extends {}> = {
+export type ServerProviderContext<S extends object, O extends object> = {
   getSerializedDoc(arg: { docId: string }): Promise<{ serializedDoc: S; clock: number } | undefined>;
   getOperations(arg: { docId: string; clock: number }): Promise<O[][]>;
   deleteOperations(arg: { docId: string; count: number }): Promise<void>;
@@ -113,7 +117,7 @@ export type ServerProviderContext<S extends {}, O extends {}> = {
  * Storage provider for the server.
  * All operations must be performed within a transaction.
  */
-export type ServerProvider<S extends {}, O extends {}> = {
+export type ServerProvider<S extends object, O extends object> = {
   transaction<T>(
     mode: "readonly" | "readwrite",
     callback: (ctx: ServerProviderContext<S, O>) => Promise<T>,

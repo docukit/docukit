@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
 import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
@@ -12,7 +11,7 @@ export function handleDisconnect({
   clientId,
 }: {
   server: DocSyncServer;
-  socket: ServerConnectionSocket<{}, {}>;
+  socket: ServerConnectionSocket<object, object>;
   userId: string;
   deviceId: string;
   clientId: string;

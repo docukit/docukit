@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { Presence } from "../../shared/types.js";
 import type { ServerConnectionSocket } from "../types.js";
 
@@ -8,7 +7,7 @@ import type { ServerConnectionSocket } from "../types.js";
  */
 export function applyPresenceUpdate(
   presenceByDoc: Map<string, Presence>,
-  socket: ServerConnectionSocket<{}, {}>,
+  socket: ServerConnectionSocket<object, object>,
   clientId: string,
   args: { docId: string; presence: unknown },
 ): void {

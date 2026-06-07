@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type {
   UnsubscribeDocRequest,
   UnsubscribeDocResponse,
@@ -19,7 +18,7 @@ export function handleUnsubscribeDoc({
   clientId,
 }: {
   server: DocSyncServer;
-  socket: ServerConnectionSocket<{}, {}>;
+  socket: ServerConnectionSocket<object, object>;
   clientId: string;
 }): void {
   const socketToDocsMap = server["_socketToDocsMap"];

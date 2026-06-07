@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import { Server } from "socket.io";
 import type { DocBinding, Presence } from "../shared/types.js";
 import type {
@@ -16,7 +15,7 @@ import { handleSync } from "./handlers/sync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
 import { startupLog } from "./utils/startupLog.js";
 
-type AuthenticatedContext<TContext = {}> = {
+type AuthenticatedContext<TContext extends object = object> = {
   userId: string;
   deviceId: string;
   /** Client-generated id for presence (set from auth or socket.id in connection flow) */
@@ -25,10 +24,10 @@ type AuthenticatedContext<TContext = {}> = {
 };
 
 export class DocSyncServer<
-  TContext = {},
-  D extends {} = {},
-  S extends {} = {},
-  O extends {} = {},
+  TContext extends object = object,
+  D extends object = object,
+  S extends object = object,
+  O extends object = object,
 > {
   private _io: ServerSocket<S, O>;
   private _docBinding: DocBinding<D, S, O>;

@@ -1,13 +1,12 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { ServerProvider, ServerProviderContext } from "../types.js";
 
 interface StoredDoc {
-  serializedDoc: unknown;
+  serializedDoc: object;
   clock: number;
 }
 
 interface StoredOperation {
-  operations: unknown;
+  operations: object;
   clock: number;
 }
 
@@ -15,7 +14,7 @@ interface StoredOperation {
  * In-memory server provider for testing.
  * Stores documents and operations in memory - data is lost when the process ends.
  */
-export function inMemoryServerProvider(): ServerProvider<any, any> {
+export function inMemoryServerProvider(): ServerProvider<object, object> {
   const docs = new Map<string, StoredDoc>();
   const operationsMap = new Map<string, StoredOperation[]>();
   const clockCounterByDocId = new Map<string, number>();
@@ -30,9 +29,9 @@ export function inMemoryServerProvider(): ServerProvider<any, any> {
   return {
     async transaction<T>(
       _mode: "readonly" | "readwrite",
-      callback: (ctx: ServerProviderContext<any, any>) => Promise<T>,
+      callback: (ctx: ServerProviderContext<object, object>) => Promise<T>,
     ): Promise<T> {
-      const ctx: ServerProviderContext<any, any> = {
+      const ctx: ServerProviderContext<object, object> = {
         // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
         getSerializedDoc: async ({ docId }) => {
           return docs.get(docId);

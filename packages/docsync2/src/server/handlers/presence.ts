@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { PresenceRequest, PresenceResponse } from "../../shared/types.js";
 import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
@@ -9,7 +8,7 @@ export type PresenceHandler = (
   cb: (res: PresenceResponse) => void,
 ) => void | Promise<void>;
 
-export function handlePresence<TContext = unknown>({
+export function handlePresence<TContext extends object = object>({
   server,
   socket,
   userId,
@@ -17,7 +16,7 @@ export function handlePresence<TContext = unknown>({
   context,
 }: {
   server: DocSyncServer<TContext>;
-  socket: ServerConnectionSocket<{}, {}>;
+  socket: ServerConnectionSocket<object, object>;
   userId: string;
   clientId: string;
   context: TContext;

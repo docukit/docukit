@@ -1,11 +1,10 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { DocSyncServer } from "../index.js";
 
 export function broadcastCollaborationState<
-  TContext,
-  D extends {},
-  S extends {},
-  O extends {},
+  TContext extends object,
+  D extends object,
+  S extends object,
+  O extends object,
 >(server: DocSyncServer<TContext, D, S, O>, docId: string): void {
   const io = server["_io"];
   const room = io.sockets.adapter.rooms.get(`doc:${docId}`);
