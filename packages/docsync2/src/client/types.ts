@@ -1,16 +1,15 @@
 import type {
   DocBinding,
   MaybePromise,
-  NonNullableValue,
   SerializedDocPayload,
 } from "../shared/types.js";
 
 export type Identity = { userId: string; secret: string };
 
 export type ClientConfig<
-  D extends NonNullableValue = NonNullableValue,
-  S extends NonNullableValue = NonNullableValue,
-  O extends NonNullableValue = NonNullableValue,
+  D extends object = object,
+  S extends object = object,
+  O extends object = object,
 > = {
   docBinding: DocBinding<D, S, O>;
   server: { url: string; auth: { getToken: () => MaybePromise<string> } };
@@ -46,10 +45,7 @@ export type ClientConfig<
  * Context passed to client transaction callbacks.
  * All operations share the same underlying transaction.
  */
-export type ClientProviderContext<
-  S extends NonNullableValue,
-  O extends NonNullableValue,
-> = {
+export type ClientProviderContext<S extends object, O extends object> = {
   getSerializedDoc(arg: {
     docId: string;
   }): Promise<{ serializedDoc: S; clock: number } | undefined>;
@@ -63,10 +59,7 @@ export type ClientProviderContext<
  * Storage provider for the client.
  * All operations must be performed within a transaction.
  */
-export type ClientProvider<
-  S extends NonNullableValue,
-  O extends NonNullableValue,
-> = {
+export type ClientProvider<S extends object, O extends object> = {
   transaction<T>(
     mode: "readonly" | "readwrite",
     callback: (ctx: ClientProviderContext<S, O>) => Promise<T>,

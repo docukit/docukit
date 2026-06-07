@@ -1,15 +1,13 @@
-import type { NonNullableValue } from "../../shared/types.js";
-
 export type ClientEventMap<
-  _O extends NonNullableValue = NonNullableValue,
-  _S extends NonNullableValue = NonNullableValue,
+  _O extends object = object,
+  _S extends object = object,
 > = { todo: undefined };
 
 export type ClientEventName = keyof ClientEventMap;
 
 export type ClientEventEmitter<
-  O extends NonNullableValue = NonNullableValue,
-  S extends NonNullableValue = NonNullableValue,
+  O extends object = object,
+  S extends object = object,
 > = {
   listeners: {
     [K in ClientEventName]: Set<(payload: ClientEventMap<O, S>[K]) => void>;
@@ -25,8 +23,8 @@ export type ClientEventEmitter<
 };
 
 export function createClientEventEmitter<
-  O extends NonNullableValue = NonNullableValue,
-  S extends NonNullableValue = NonNullableValue,
+  O extends object = object,
+  S extends object = object,
 >(): ClientEventEmitter<O, S> {
   const listeners: {
     [K in ClientEventName]: Set<(payload: ClientEventMap<O, S>[K]) => void>;

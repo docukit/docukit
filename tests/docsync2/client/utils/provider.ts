@@ -1,13 +1,9 @@
-import type {
-  ClientProvider,
-  DocBinding,
-  NonNullableValue,
-} from "@docukit/docsync2/client";
+import type { ClientProvider, DocBinding } from "@docukit/docsync2/client";
 
 export const createTestProvider = <
-  D extends NonNullableValue,
-  S extends NonNullableValue,
-  O extends NonNullableValue,
+  D extends object,
+  S extends object,
+  O extends object,
 >(
   _docBinding: DocBinding<D, S, O>,
 ): ClientProvider<S, O> => ({

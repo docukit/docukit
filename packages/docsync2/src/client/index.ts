@@ -1,5 +1,4 @@
 import type { QueryClient } from "@tanstack/query-core";
-import type { NonNullableValue } from "../shared/types.js";
 import { createDoc, type CreateDocArgs } from "./mutations/createDoc.js";
 import {
   setDocPresence,
@@ -20,15 +19,15 @@ import { setupQueryClient } from "./utils/setupQueryClient/setupQueryClient.js";
 import type { ClientConfig } from "./types.js";
 
 export type DocSync2ClientConfig<
-  D extends NonNullableValue = NonNullableValue,
-  S extends NonNullableValue = NonNullableValue,
-  O extends NonNullableValue = NonNullableValue,
+  D extends object = object,
+  S extends object = object,
+  O extends object = object,
 > = ClientConfig<D, S, O> & { queryClient: QueryClient };
 
 export class DocSync2Client<
-  D extends NonNullableValue = NonNullableValue,
-  S extends NonNullableValue = NonNullableValue,
-  O extends NonNullableValue = NonNullableValue,
+  D extends object = object,
+  S extends object = object,
+  O extends object = object,
 > {
   protected _connected = false;
   protected _events: ClientEventEmitter<O, S> = createClientEventEmitter();

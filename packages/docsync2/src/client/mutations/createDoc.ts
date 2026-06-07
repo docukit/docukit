@@ -2,17 +2,12 @@ import {
   isExistingGetDocData,
   isGetDocData,
 } from "../../shared/validators/getDocData.js";
-import type { NonNullableValue } from "../../shared/types.js";
 import type { DocSync2Client } from "../index.js";
 import { getDocKey } from "../queries/getDoc/getDocKey.js";
 
 export type CreateDocArgs = { type: string; id: string };
 
-export const createDoc = <
-  D extends NonNullableValue,
-  S extends NonNullableValue,
-  O extends NonNullableValue,
->(
+export const createDoc = <D extends object, S extends object, O extends object>(
   docSync: DocSync2Client<D, S, O>,
   args: CreateDocArgs,
 ) => {

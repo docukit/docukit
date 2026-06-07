@@ -17,8 +17,8 @@ export {
 export type {
   DocBinding,
   MaybePromise,
-  NonNullableValue,
   Presence,
+  SerializedDocPayload,
   TransactionFlags,
 } from "../shared/types.js";
 export type {

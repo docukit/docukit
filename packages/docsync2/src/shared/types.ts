@@ -4,18 +4,16 @@ export type TransactionFlags = { skipUndo?: boolean };
 
 export type Presence<T = unknown> = Record<string, T>;
 
-export type NonNullableValue = NonNullable<unknown>;
-
-export type SerializedDocPayload<S> = {
+export type SerializedDocPayload<S extends object = object> = {
   serializedDoc: S;
   docId: string;
   clock: number;
 };
 
 export type DocBinding<
-  D extends NonNullableValue = NonNullableValue,
-  S extends NonNullableValue = NonNullableValue,
-  O extends NonNullableValue = NonNullableValue,
+  D extends object = object,
+  S extends object = object,
+  O extends object = object,
 > = {
   create(type: string, id: string): { doc: D; docId: string };
   deserialize(serializedDoc: S): D;

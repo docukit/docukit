@@ -44,6 +44,13 @@ const query = docSync.queries.getDoc({ type: "note", id: "note-1" });
 - Client provider contracts exist, but their implementation is still minimal.
 - The package is self-contained and does not import implementation from `@docukit/docsync`.
 
+## Type Constraints
+
+`DocBinding` uses `object` for the live document, serialized document, and
+operation/update types. In TypeScript, `object` means "not a primitive"; it is
+not limited to plain records. This accepts class instances like `Y.Doc` or
+`LoroDoc`, arrays/tuples like DocNode data, and binary values like `Uint8Array`.
+
 ## Current Status
 
 - Public API names and query keys are scaffolded.

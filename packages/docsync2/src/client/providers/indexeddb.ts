@@ -1,14 +1,8 @@
 import { openDB, type DBSchema } from "idb";
-import type {
-  NonNullableValue,
-  SerializedDocPayload,
-} from "../../shared/types.js";
+import type { SerializedDocPayload } from "../../shared/types.js";
 import type { ClientProvider, Identity } from "../types.js";
 
-interface DocNodeIDB<
-  S extends NonNullableValue,
-  O extends NonNullableValue,
-> extends DBSchema {
+interface DocNodeIDB<S extends object, O extends object> extends DBSchema {
   docs: { key: string; value: SerializedDocPayload<S> };
   operations: {
     key: number;
@@ -21,8 +15,8 @@ interface DocNodeIDB<
  * IndexedDB-backed client provider.
  */
 export function indexedDBProvider<
-  S extends NonNullableValue = NonNullableValue,
-  O extends NonNullableValue = NonNullableValue,
+  S extends object = object,
+  O extends object = object,
 >(identity: Identity): ClientProvider<S, O> {
   // Each user gets their own database for isolation and performance.
   const dbName = `docsync-${identity.userId}`;

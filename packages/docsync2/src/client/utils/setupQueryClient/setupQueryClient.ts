@@ -1,10 +1,9 @@
 import type { DocSync2Client } from "../../index.js";
-import type { NonNullableValue } from "../../../shared/types.js";
 
 export const setupQueryClient = <
-  D extends NonNullableValue,
-  S extends NonNullableValue,
-  O extends NonNullableValue,
+  D extends object,
+  S extends object,
+  O extends object,
 >(
   client: DocSync2Client<D, S, O>,
 ): void => {

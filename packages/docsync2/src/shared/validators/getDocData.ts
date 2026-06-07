@@ -1,7 +1,8 @@
 import * as v from "valibot";
-import type { NonNullableValue } from "../types.js";
 
-export const docValueSchema = v.nonNullish(v.unknown());
+export const docValueSchema = v.custom<object>(
+  (value) => typeof value === "object" && value !== null,
+);
 
 export const getDocDataSchema = v.object({
   docId: v.string(),
@@ -13,19 +14,19 @@ export const existingGetDocDataSchema = v.object({
   doc: docValueSchema,
 });
 
-export type GetDocData<D extends NonNullableValue = NonNullableValue> =
-  v.InferOutput<typeof getDocDataSchema> & { doc: D | undefined };
+export type GetDocData<D extends object = object> = v.InferOutput<
+  typeof getDocDataSchema
+> & { doc: D | undefined };
 
-export type ExistingGetDocData<D extends NonNullableValue = NonNullableValue> =
-  v.InferOutput<typeof existingGetDocDataSchema> & { doc: D };
+export type ExistingGetDocData<D extends object = object> = v.InferOutput<
+  typeof existingGetDocDataSchema
+> & { doc: D };
 
 export const isGetDocData = (value: unknown): value is GetDocData => {
   return v.safeParse(getDocDataSchema, value).success;
 };
 
-export const isExistingGetDocData = <
-  D extends NonNullableValue = NonNullableValue,
->(
+export const isExistingGetDocData = <D extends object = object>(
   value: unknown,
   _docType?: { create(type: string, id: string): { doc: D } },
 ): value is ExistingGetDocData<D> => {

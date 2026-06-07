@@ -23,7 +23,6 @@ export {
 export type {
   DocBinding,
   MaybePromise,
-  NonNullableValue,
   Presence,
   SerializedDocPayload,
   TransactionFlags,
