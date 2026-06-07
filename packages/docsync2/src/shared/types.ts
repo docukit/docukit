@@ -4,32 +4,13 @@ export type TransactionFlags = { skipUndo?: boolean };
 
 export type Presence<T = unknown> = Record<string, T>;
 
-export type DocQueryData<D extends object = object> = {
-  docId: string;
-  doc: D | undefined;
-};
+export type NonNullableValue = NonNullable<unknown>;
 
-export type ExistingDocQueryData<D extends object = object> = {
-  docId: string;
-  doc: D;
-};
-
-export type DocQueryKey = readonly [
-  "docukit",
-  "docsync2",
-  "doc",
-  type: string,
-  id: string,
-];
-
-export type PresenceQueryKey = readonly [
-  "docukit",
-  "docsync2",
-  "presence",
-  docId: string,
-];
-
-export type DocBinding<D extends object = object, S = unknown, O = unknown> = {
+export type DocBinding<
+  D extends NonNullableValue = NonNullableValue,
+  S extends NonNullableValue = NonNullableValue,
+  O extends NonNullableValue = NonNullableValue,
+> = {
   create(type: string, id: string): { doc: D; docId: string };
   deserialize(serializedDoc: S): D;
   serialize(doc: D): S;

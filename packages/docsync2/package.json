@@ -51,5 +51,8 @@
     "offline-first",
     "query",
     "document"
-  ]
+  ],
+  "dependencies": {
+    "valibot": "^1.0.0"
+  }
 }

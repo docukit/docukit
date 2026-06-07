@@ -1,5 +1,6 @@
-import { notImplemented } from "../../shared/notImplemented.js";
-import type { Presence, PresenceQueryKey } from "../../shared/types.js";
+import { notImplemented } from "../../../shared/notImplemented.js";
+import type { Presence } from "../../../shared/types.js";
+import type { PresenceQueryKey } from "../../../shared/validators/presenceQueryKey.js";
 
 export type DocPresenceArgs = { docId: string };
 
@@ -12,7 +13,7 @@ export const docPresence = <TPresence = unknown>({
   docId,
 }: DocPresenceArgs): DocPresenceOptions<TPresence> => {
   return {
-    queryKey: ["docukit", "docsync2", "presence", docId],
+    queryKey: ["docsync2", "presence", docId],
     queryFn: () => Promise.reject(notImplemented()),
   };
 };

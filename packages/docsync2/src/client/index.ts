@@ -1,25 +1,74 @@
 import type { QueryClient } from "@tanstack/query-core";
-import type { DocBinding } from "../shared/types.js";
-import { notImplemented } from "../shared/notImplemented.js";
+import type { DocBinding, NonNullableValue } from "../shared/types.js";
+import { createDoc, type CreateDocArgs } from "./mutations/createDoc.js";
+import {
+  setDocPresence,
+  type SetDocPresenceArgs,
+} from "./mutations/setDocPresence.js";
+import { getDoc, type GetDocArgs } from "./queries/getDoc/getDoc.js";
+import {
+  docPresence,
+  type DocPresenceArgs,
+} from "./queries/presence/presence.js";
+import {
+  createClientEventEmitter,
+  type ClientEventMap,
+  type ClientEventName,
+  type ClientEventEmitter,
+} from "./utils/events.js";
+import { setupQueryClient } from "./utils/setupQueryClient/setupQueryClient.js";
 
 export type DocSync2ClientConfig<
-  D extends object = object,
-  S = unknown,
-  O = unknown,
+  D extends NonNullableValue = NonNullableValue,
+  S extends NonNullableValue = NonNullableValue,
+  O extends NonNullableValue = NonNullableValue,
 > = { queryClient: QueryClient; docBinding?: DocBinding<D, S, O> };
 
 export class DocSync2Client<
-  D extends object = object,
-  S = unknown,
-  O = unknown,
+  D extends NonNullableValue = NonNullableValue,
+  S extends NonNullableValue = NonNullableValue,
+  O extends NonNullableValue = NonNullableValue,
 > {
-  constructor(public readonly config: DocSync2ClientConfig<D, S, O>) {}
+  protected _connected = false;
+  protected _events: ClientEventEmitter<O, S> = createClientEventEmitter();
 
-  connect(): never {
-    throw notImplemented();
+  readonly queries = {
+    getDoc: (args: GetDocArgs) => getDoc(args),
+    docPresence: (args: DocPresenceArgs) => docPresence(args),
+  };
+
+  readonly mutations = {
+    createDoc: (args: CreateDocArgs) => createDoc(this, args),
+    setDocPresence: (args: SetDocPresenceArgs) => setDocPresence(this, args),
+  };
+
+  constructor(public readonly config: DocSync2ClientConfig<D, S, O>) {
+    setupQueryClient(this);
   }
 
-  disconnect(): never {
-    throw notImplemented();
+  connect(): void {
+    this._connected = true;
+  }
+
+  disconnect(): void {
+    this._connected = false;
+  }
+
+  dispose(): void {
+    this._events.emit("dispose");
+  }
+
+  /**
+   * Register a listener for an event. Returns an unsubscribe function.
+   * Event payload type is inferred from the event name (first argument).
+   * @example
+   * const off = client.on("dispose", () => { ... });
+   * off(); // unsubscribe
+   */
+  on<K extends ClientEventName>(
+    event: K,
+    listener: (payload: ClientEventMap<O, S>[K]) => void,
+  ): () => void {
+    return this._events.on(event, listener);
   }
 }

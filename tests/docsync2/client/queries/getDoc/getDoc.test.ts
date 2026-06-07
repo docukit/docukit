@@ -1,0 +1,93 @@
+import { describe, expect, test } from "vitest";
+import {
+  createTestClient,
+  createTestDoc,
+  getTestDocKey,
+  observeTestDoc,
+  tick,
+} from "../../utils.js";
+
+describe("getDoc", () => {
+  test("two observers for the same doc id receive the same in-memory doc", async () => {
+    const testClient = createTestClient();
+    const created = await createTestDoc(testClient);
+
+    const observed1 = observeTestDoc(testClient);
+    const observed2 = observeTestDoc(testClient);
+
+    const result1 = observed1.observer.getCurrentResult();
+    const result2 = observed2.observer.getCurrentResult();
+
+    expect(result1.data?.doc).toBe(created.doc);
+    expect(result2.data?.doc).toBe(created.doc);
+    expect(result1.data?.doc).toBe(result2.data?.doc);
+
+    observed1.unsubscribe();
+    observed2.unsubscribe();
+  });
+
+  test("unsubscribing one observer keeps the doc alive while another observer is active", async () => {
+    const testClient = createTestClient();
+    const { queryClient, dispose } = testClient;
+    const created = await createTestDoc(testClient);
+    const key = getTestDocKey();
+
+    const observed1 = observeTestDoc(testClient);
+    const observed2 = observeTestDoc(testClient);
+
+    observed1.unsubscribe();
+    await tick();
+
+    expect(dispose).not.toHaveBeenCalled();
+    expect(queryClient.getQueryData(key)).toStrictEqual(created);
+
+    observed2.unsubscribe();
+  });
+
+  test("unsubscribing the last observer keeps the doc cached until TanStack removes the query", async () => {
+    const testClient = createTestClient();
+    const { queryClient, dispose } = testClient;
+    const created = await createTestDoc(testClient);
+    const key = getTestDocKey();
+    const observed = observeTestDoc(testClient);
+
+    observed.unsubscribe();
+    await tick();
+
+    expect(queryClient.getQueryData(key)).toStrictEqual(created);
+    expect(dispose).not.toHaveBeenCalled();
+  });
+
+  test("when TanStack removes the doc query, the doc is disposed", async () => {
+    const testClient = createTestClient();
+    const { queryClient, dispose } = testClient;
+    const created = await createTestDoc(testClient);
+    const key = getTestDocKey();
+    const observed = observeTestDoc(testClient);
+
+    observed.unsubscribe();
+    queryClient.removeQueries({ queryKey: key });
+
+    expect(queryClient.getQueryData(key)).toBeUndefined();
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(dispose).toHaveBeenCalledWith(created.doc);
+  });
+
+  test("disposing the client removes doc queries and disposes their docs", async () => {
+    const testClient = createTestClient();
+    const { queryClient, docSync, dispose } = testClient;
+    const created = await createTestDoc(testClient);
+    const key = getTestDocKey();
+
+    docSync.dispose();
+
+    expect(queryClient.getQueryData(key)).toBeUndefined();
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(dispose).toHaveBeenCalledWith(created.doc);
+  });
+
+  test.todo("disconnected client can still read a locally created doc");
+  test.todo(
+    "connected and disconnected client expose the same local doc result",
+  );
+});

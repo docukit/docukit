@@ -1,6 +1,10 @@
-import type { DocBinding } from "../shared/types.js";
+import type { DocBinding, NonNullableValue } from "../shared/types.js";
 
-export const createDocBinding = <D extends object, S, O = unknown>(
+export const createDocBinding = <
+  D extends NonNullableValue,
+  S extends NonNullableValue,
+  O extends NonNullableValue = NonNullableValue,
+>(
   docBinding: DocBinding<D, S, O>,
 ): DocBinding<D, S, O> => {
   return docBinding;
