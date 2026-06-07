@@ -53,6 +53,7 @@
     "document"
   ],
   "dependencies": {
+    "idb": "^8.0.1",
     "valibot": "^1.0.0"
   }
 }

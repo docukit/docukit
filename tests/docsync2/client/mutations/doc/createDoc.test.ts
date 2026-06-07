@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createTestClient, createTestDoc, testDocArgs } from "../../utils.js";
+import { createTestClient, createTestDoc } from "../../utils/index.js";
 
 describe("createDoc", () => {
   test("creates one in-memory doc and seeds getDoc", async () => {
@@ -8,7 +8,7 @@ describe("createDoc", () => {
 
     const created = await createTestDoc(testClient);
     const queried = await queryClient.fetchQuery(
-      docSync.queries.getDoc(testDocArgs),
+      docSync.queries.getDoc(testClient.docArgs),
     );
 
     expect(queried.doc).toBe(created.doc);

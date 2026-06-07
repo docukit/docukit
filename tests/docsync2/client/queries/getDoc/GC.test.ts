@@ -1,27 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { QueryClient } from "@tanstack/query-core";
-import { DocSync2Client } from "@docukit/docsync2/client";
-import { DocNodeBinding } from "@docukit/docsync2/docnode";
-import { tick } from "../../utils.js";
+import { createTestDocNodeClient, tick } from "../../utils/index.js";
 
 declare const gc: (() => void) | undefined;
 
-const testDocNodeArgs = { type: "note", id: "01j00000000000000000000000" };
-
-const createDocNodeTestClient = () => {
-  const queryClient = new QueryClient();
-  const docBinding = DocNodeBinding([
-    { type: testDocNodeArgs.type, extensions: [] },
-  ]);
-  const docSync = new DocSync2Client({ queryClient, docBinding });
-
-  return { queryClient, docSync };
-};
-
 const createDocNodeTestDoc = ({
   docSync,
-}: ReturnType<typeof createDocNodeTestClient>) =>
-  docSync.mutations.createDoc(testDocNodeArgs);
+  docArgs,
+}: ReturnType<typeof createTestDocNodeClient>) =>
+  docSync.mutations.createDoc(docArgs);
 
 const forceGc = async () => {
   if (typeof gc !== "function") {
@@ -37,7 +23,7 @@ const forceGc = async () => {
 };
 
 const createDocNodeWeakRefAfterTanStackClear = async () => {
-  const testClient = createDocNodeTestClient();
+  const testClient = createTestDocNodeClient();
   const created = await createDocNodeTestDoc(testClient);
   const weakRef = new WeakRef(created.doc);
 
@@ -47,12 +33,12 @@ const createDocNodeWeakRefAfterTanStackClear = async () => {
 };
 
 const createDocNodeWeakRefAfterTanStackRemove = async () => {
-  const testClient = createDocNodeTestClient();
+  const testClient = createTestDocNodeClient();
   const created = await createDocNodeTestDoc(testClient);
   const weakRef = new WeakRef(created.doc);
 
   testClient.queryClient.removeQueries({
-    queryKey: testClient.docSync.queries.getDoc(testDocNodeArgs).queryKey,
+    queryKey: testClient.docSync.queries.getDoc(testClient.docArgs).queryKey,
   });
 
   return { testClient, weakRef };

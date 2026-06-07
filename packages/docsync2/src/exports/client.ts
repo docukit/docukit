@@ -25,6 +25,7 @@ export type {
   MaybePromise,
   NonNullableValue,
   Presence,
+  SerializedDocPayload,
   TransactionFlags,
 } from "../shared/types.js";
 export type {
@@ -34,6 +35,12 @@ export type {
 export type { GetDocKey } from "../shared/validators/getDocKey.js";
 export type { PresenceQueryKey } from "../shared/validators/presenceQueryKey.js";
 export type { DocSync2ClientConfig } from "../client/index.js";
+export type {
+  ClientConfig,
+  ClientProvider,
+  ClientProviderContext,
+  Identity,
+} from "../client/types.js";
 export type {
   ClientEventEmitter,
   ClientEventMap,
@@ -50,4 +57,3 @@ export type {
 } from "../client/queries/presence/presence.js";
 export type { CreateDocArgs } from "../client/mutations/createDoc.js";
 export type { SetDocPresenceArgs } from "../client/mutations/setDocPresence.js";
-export type { Identity } from "../client/providers/indexeddb.js";

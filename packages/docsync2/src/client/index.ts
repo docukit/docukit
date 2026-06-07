@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/query-core";
-import type { DocBinding, NonNullableValue } from "../shared/types.js";
+import type { NonNullableValue } from "../shared/types.js";
 import { createDoc, type CreateDocArgs } from "./mutations/createDoc.js";
 import {
   setDocPresence,
@@ -17,12 +17,13 @@ import {
   type ClientEventEmitter,
 } from "./utils/events.js";
 import { setupQueryClient } from "./utils/setupQueryClient/setupQueryClient.js";
+import type { ClientConfig } from "./types.js";
 
 export type DocSync2ClientConfig<
   D extends NonNullableValue = NonNullableValue,
   S extends NonNullableValue = NonNullableValue,
   O extends NonNullableValue = NonNullableValue,
-> = { queryClient: QueryClient; docBinding?: DocBinding<D, S, O> };
+> = ClientConfig<D, S, O> & { queryClient: QueryClient };
 
 export class DocSync2Client<
   D extends NonNullableValue = NonNullableValue,

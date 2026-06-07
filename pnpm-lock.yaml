@@ -332,6 +332,9 @@ importers:
 
   packages/docsync2:
     dependencies:
+      idb:
+        specifier: ^8.0.1
+        version: 8.0.3
       valibot:
         specifier: ^1.0.0
         version: 1.2.0(typescript@5.9.3)

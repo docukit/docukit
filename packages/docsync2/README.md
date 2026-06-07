@@ -9,10 +9,21 @@ and may throw `not implemented yet` until the runtime is filled in.
 
 ```ts
 import { QueryClient } from "@tanstack/query-core";
-import { DocSync2Client } from "@docukit/docsync2/client";
+import { DocSync2Client, indexedDBProvider } from "@docukit/docsync2/client";
 
 const queryClient = new QueryClient();
-const docSync = new DocSync2Client({ queryClient, docBinding });
+const docSync = new DocSync2Client({
+  queryClient,
+  docBinding,
+  server: {
+    url: "ws://localhost:3000",
+    auth: { getToken: () => "server-token" },
+  },
+  local: {
+    provider: (identity) => indexedDBProvider(identity),
+    getIdentity: () => ({ userId: "user-1", secret: "local-secret" }),
+  },
+});
 
 await docSync.mutations.createDoc({ type: "note", id: "note-1" });
 
@@ -29,7 +40,8 @@ const query = docSync.queries.getDoc({ type: "note", id: "note-1" });
 - There are no React hooks in this package.
 - There are no callback APIs like the original `getDoc` or `getPresence`.
 - There is no old `QueryResult`, `FetchStatus`, or reducer query state.
-- Socket protocol and provider contracts are intentionally not copied in full yet.
+- Socket protocol is intentionally not copied in full yet.
+- Client provider contracts exist, but their implementation is still minimal.
 - The package is self-contained and does not import implementation from `@docukit/docsync`.
 
 ## Current Status

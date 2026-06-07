@@ -6,6 +6,12 @@ export type Presence<T = unknown> = Record<string, T>;
 
 export type NonNullableValue = NonNullable<unknown>;
 
+export type SerializedDocPayload<S> = {
+  serializedDoc: S;
+  docId: string;
+  clock: number;
+};
+
 export type DocBinding<
   D extends NonNullableValue = NonNullableValue,
   S extends NonNullableValue = NonNullableValue,

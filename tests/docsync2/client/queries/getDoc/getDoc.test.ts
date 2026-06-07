@@ -5,7 +5,7 @@ import {
   getTestDocKey,
   observeTestDoc,
   tick,
-} from "../../utils.js";
+} from "../../utils/index.js";
 
 describe("getDoc", () => {
   test("two observers for the same doc id receive the same in-memory doc", async () => {
@@ -30,7 +30,7 @@ describe("getDoc", () => {
     const testClient = createTestClient();
     const { queryClient } = testClient;
     const created = await createTestDoc(testClient);
-    const key = getTestDocKey();
+    const key = getTestDocKey(testClient);
 
     const observed1 = observeTestDoc(testClient);
     const observed2 = observeTestDoc(testClient);
@@ -47,7 +47,7 @@ describe("getDoc", () => {
     const testClient = createTestClient();
     const { queryClient } = testClient;
     const created = await createTestDoc(testClient);
-    const key = getTestDocKey();
+    const key = getTestDocKey(testClient);
     const observed = observeTestDoc(testClient);
 
     observed.unsubscribe();
@@ -60,7 +60,7 @@ describe("getDoc", () => {
     const testClient = createTestClient();
     const { queryClient } = testClient;
     await createTestDoc(testClient);
-    const key = getTestDocKey();
+    const key = getTestDocKey(testClient);
     const observed = observeTestDoc(testClient);
 
     observed.unsubscribe();
@@ -73,7 +73,7 @@ describe("getDoc", () => {
     const testClient = createTestClient();
     const { queryClient, docSync } = testClient;
     await createTestDoc(testClient);
-    const key = getTestDocKey();
+    const key = getTestDocKey(testClient);
 
     docSync.dispose();
 
