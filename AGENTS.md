@@ -55,6 +55,13 @@
 - Use TypeScript inference as much as possible. Do not add explicit return types, object shape types, or wrapper aliases when the inferred type is clear and stable from the implementation.
 - Never call a function with an explicit type parameter. Let TypeScript infer it. For example, write `createQueryResultReducer(...)`, not `createQueryResultReducer<Data>(...)`.
 
+## Export Rules
+
+- Do not export types only because implementation code uses them internally.
+- Export a type only when it is used by public docs, public tests, or a real user-facing API.
+- Export as little runtime API as possible. Internal helpers should stay internal.
+- If a rare test needs a complex internal runtime helper, export it with the `_INTERNAL_` prefix and add a JSDoc `@internal` note on the source symbol.
+
 ## Critical Rules for Agents
 
 **If you cannot execute tests, you MUST fix that problem FIRST before working on anything else.**

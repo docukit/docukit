@@ -335,6 +335,9 @@ importers:
       idb:
         specifier: ^8.0.1
         version: 8.0.3
+      socket.io:
+        specifier: ^4.8.1
+        version: 4.8.3
       valibot:
         specifier: ^1.0.0
         version: 1.2.0(typescript@5.9.3)
