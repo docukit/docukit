@@ -1,13 +1,12 @@
 import { describe, expect, test } from "vitest";
-import { createTestDocNodeClient, tick } from "../../utils/index.js";
+import { createTestClient, tick } from "../../utils/index.js";
 
 declare const gc: (() => void) | undefined;
 
 const createDocNodeTestDoc = ({
   docSync,
   docArgs,
-}: ReturnType<typeof createTestDocNodeClient>) =>
-  docSync.mutations.createDoc(docArgs);
+}: ReturnType<typeof createTestClient>) => docSync.mutations.createDoc(docArgs);
 
 const forceGc = async () => {
   if (typeof gc !== "function") {
@@ -23,7 +22,7 @@ const forceGc = async () => {
 };
 
 const createDocNodeWeakRefAfterTanStackClear = async () => {
-  const testClient = createTestDocNodeClient();
+  const testClient = createTestClient();
   const created = await createDocNodeTestDoc(testClient);
   const weakRef = new WeakRef(created.doc);
 
@@ -33,7 +32,7 @@ const createDocNodeWeakRefAfterTanStackClear = async () => {
 };
 
 const createDocNodeWeakRefAfterTanStackRemove = async () => {
-  const testClient = createTestDocNodeClient();
+  const testClient = createTestClient();
   const created = await createDocNodeTestDoc(testClient);
   const weakRef = new WeakRef(created.doc);
 

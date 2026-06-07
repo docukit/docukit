@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/query-core";
 import { DocSync2Client, type DocBinding } from "@docukit/docsync2/client";
-import { createTestDocBinding } from "./docBinding.js";
+import { DocNodeBinding } from "@docukit/docsync2/docnode";
 import { createTestDocArgs, generateTestUserId } from "./generators.js";
 import { createTestProvider } from "./provider.js";
 
@@ -29,9 +29,9 @@ export const createTestDocSyncClient = <
 };
 
 export const createTestClient = () => {
-  const { binding, create } = createTestDocBinding();
-  const { queryClient, docSync } = createTestDocSyncClient(binding);
   const docArgs = createTestDocArgs();
+  const binding = DocNodeBinding([{ type: docArgs.type, extensions: [] }]);
+  const { queryClient, docSync } = createTestDocSyncClient(binding);
 
-  return { queryClient, docSync, create, docArgs };
+  return { queryClient, docSync, docArgs };
 };

@@ -1,4 +1,5 @@
 import type { DocSync2Client } from "../../index.js";
+import { observeActiveGetDocQueries } from "./observeActiveGetDocQueries.js";
 
 export const setupQueryClient = <
   D extends object,
@@ -13,4 +14,6 @@ export const setupQueryClient = <
     // We update queries in real-time via ws, so we don't need to re-fetch.
     staleTime: Infinity,
   });
+
+  observeActiveGetDocQueries(queryClient, client.config.docBinding);
 };

@@ -17,12 +17,10 @@ describe("createDoc", () => {
 
   test("calling createDoc twice for the same id returns the existing doc", async () => {
     const testClient = createTestClient();
-    const { create } = testClient;
 
     const first = await createTestDoc(testClient);
     const second = await createTestDoc(testClient);
 
-    expect(create).toHaveBeenCalledTimes(1);
     expect(second.doc).toBe(first.doc);
     expect(second).toStrictEqual(first);
   });
