@@ -10,18 +10,19 @@ export type DeleteDocHandler = (
   cb: (res: DeleteDocResponse) => void,
 ) => void | Promise<void>;
 
-export const handleDeleteDoc = <TContext extends object = object>({
+export const handleDeleteDoc = <
+  TContext extends object = object,
+  S extends object = object,
+  O extends object = object,
+>({
   server,
   socket,
-  userId,
-  context,
 }: {
-  server: DocSyncServer<TContext>;
-  socket: ServerConnectionSocket<object, object>;
-  userId: string;
-  context: TContext;
+  server: DocSyncServer<TContext, S, O>;
+  socket: ServerConnectionSocket<TContext, S, O>;
 }): void => {
   socket.on("delete-doc", async (req, cb) => {
+    const { userId, context } = socket.data;
     const authorized = server["_authorize"]
       ? await server["_authorize"]({ type: "delete-doc", req, userId, context })
       : true;

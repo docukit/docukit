@@ -1,4 +1,3 @@
-export { createDocBinding } from "../bindings/index.js";
 export {
   docValueSchema,
   existingGetDocDataSchema,
@@ -15,11 +14,9 @@ export {
   presenceQueryKeySchema,
 } from "../shared/validators/presenceQueryKey.js";
 export type {
-  DocBinding,
   MaybePromise,
   Presence,
   SerializedDocPayload,
-  TransactionFlags,
 } from "../shared/types.js";
 export type {
   ExistingGetDocData,

@@ -1,62 +1,50 @@
 # @docukit/docsync2
 
-Minimal experimental rewrite of DocSync around TanStack Query Core.
+Small experimental DocSync rewrite around TanStack Query Core. Some APIs are
+scaffolds and may still throw `not implemented yet`.
 
-This package is intentionally small for now. Some exported APIs are scaffolds
-and may throw `not implemented yet` until the runtime is filled in.
-
-## Basic Shape
+## Example
 
 ```ts
 import { QueryClient } from "@tanstack/query-core";
 import { DocSyncClient, indexedDBProvider } from "@docukit/docsync2/client";
+import { DocNodeBinding, DocNodeValidators } from "@docukit/docsync2/docnode";
+import { DocSyncServer } from "@docukit/docsync2/server";
 
 const queryClient = new QueryClient();
+const docBinding = DocNodeBinding([{ type: "note", extensions: [] }]);
+
 const docSync = new DocSyncClient({
   queryClient,
   docBinding,
-  server: {
-    url: "ws://localhost:3000",
-    auth: { getToken: () => "server-token" },
-  },
-  local: {
-    provider: (identity) => indexedDBProvider(identity),
-    getIdentity: () => ({ userId: "user-1", secret: "local-secret" }),
-  },
+  server: { url: "ws://localhost:3000", auth: { getToken } },
+  local: { provider: indexedDBProvider, getIdentity },
 });
 
 await docSync.mutations.createDoc({ type: "note", id: "note-1" });
-
 const query = docSync.queries.getDoc({ type: "note", id: "note-1" });
+
+const server = new DocSyncServer({
+  validators: DocNodeValidators(),
+  provider,
+  authenticate,
+});
 ```
 
 ## Differences From `@docukit/docsync`
 
-- Built around TanStack Query Core from the start.
-- Query status, fetch status, observers, and mutation state belong to TanStack.
-- Document creation is explicit through `docSync.mutations.createDoc`; `docSync.queries.getDoc` only reads.
-- `getDoc` always requires a stable `id`.
-- There is no `createIfMissing` query option.
-- There are no React hooks in this package.
-- There are no callback APIs like the original `getDoc` or `getPresence`.
-- There is no old `QueryResult`, `FetchStatus`, or reducer query state.
-- Server code is currently copied from `@docukit/docsync` and still needs adaptation.
-- Client provider contracts exist, but their implementation is still minimal.
-- The package is self-contained and does not import implementation from `@docukit/docsync`.
+- Uses TanStack Query for query status, observers, cache, and mutations.
+- Uses `docSync.queries.getDoc` and `docSync.mutations.createDoc`.
+- No React hooks, callback APIs, `QueryResult`, `FetchStatus`, or reducer state.
+- Original DocSync squashes operations on the server after enough operations.
+- This rewrite aims to squash on the client, keeping the server CRDT-agnostic.
+- The server validates, persists, and forwards opaque serialized docs/operations.
 
-## Type Constraints
+## Types
 
-`DocBinding` uses `object` for the live document, serialized document, and
-operation/update types. In TypeScript, `object` means "not a primitive"; it is
-not limited to plain records. This accepts class instances like `Y.Doc` or
-`LoroDoc`, arrays/tuples like DocNode data, and binary values like `Uint8Array`.
+- `D`: live document, client-only, handled by `DocBinding`.
+- `S`: serialized document, validated and stored by the server.
+- `O`: operation/update, validated and stored by the server.
+- `DocNodeBinding` and `DocNodeValidators()` are exported from `/docnode`.
 
-## Current Status
-
-- Public API names and query keys are scaffolded.
-- `DocBinding`, `createDocBinding`, and the DocNode binding are available.
-- `DocSyncClient` configures TanStack Query defaults for `["docsync"]` with `staleTime: Infinity`.
-- `docSync.mutations.createDoc` creates a local doc through `docBinding` and seeds TanStack Query.
-- `docSync.queries.getDoc` lets TanStack Query own the cached result and returns `doc: undefined` when the doc has not been created.
-- `DocSyncClient`, `DocSyncServer`, presence, sync, persistence, and providers are not fully implemented yet.
-- The next work should make local persistence real before expanding socket sync behavior.
+`object` means non-primitive: arrays, class instances, and `Uint8Array` fit.

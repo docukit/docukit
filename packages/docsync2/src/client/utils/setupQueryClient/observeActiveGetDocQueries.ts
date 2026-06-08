@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/query-core";
-import type { DocBinding } from "../../../shared/types.js";
+import type { DocBinding } from "../../bindings/types.js";
 import { isExistingGetDocData } from "../../../shared/validators/getDocData.js";
 import { isGetDocKey } from "../../../shared/validators/getDocKey.js";
 

@@ -1,8 +1,5 @@
-import type {
-  DocBinding,
-  MaybePromise,
-  SerializedDocPayload,
-} from "../shared/types.js";
+import type { MaybePromise, SerializedDocPayload } from "../shared/types.js";
+import type { DocBinding } from "./bindings/types.js";
 
 export type Identity = { userId: string; secret: string };
 

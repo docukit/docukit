@@ -1,1 +1,2 @@
-export { DocNodeBinding } from "../bindings/docnode.js";
+export { DocNodeBinding } from "../client/bindings/docnode.js";
+export { DocNodeValidators } from "../server/validators/docnode.js";

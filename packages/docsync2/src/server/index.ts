@@ -1,12 +1,14 @@
 import { Server } from "socket.io";
-import type { DocBinding, Presence } from "../shared/types.js";
+import type { Presence } from "../shared/types.js";
 import type {
+  AuthenticatedSocketData,
   ClientConnectEventListener,
   ClientDisconnectEventListener,
   ServerConfig,
   ServerProvider,
   ServerSocket,
   SyncRequestEventListener,
+  Validators,
 } from "./types.js";
 import { handleDeleteDoc } from "./handlers/deleteDoc.js";
 import { handleDisconnect } from "./handlers/disconnect.js";
@@ -15,25 +17,16 @@ import { handleSync } from "./handlers/sync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
 import { startupLog } from "./utils/startupLog.js";
 
-type AuthenticatedContext<TContext extends object = object> = {
-  userId: string;
-  deviceId: string;
-  /** Client-generated id for presence (set from auth or socket.id in connection flow) */
-  clientId: string;
-  context: TContext;
-};
-
 export class DocSyncServer<
   TContext extends object = object,
-  D extends object = object,
   S extends object = object,
   O extends object = object,
 > {
-  private _io: ServerSocket<S, O>;
-  private _docBinding: DocBinding<D, S, O>;
+  private _io: ServerSocket<TContext, S, O>;
   private _provider: ServerProvider<S, O>;
-  private _authenticate: ServerConfig<TContext, D, S, O>["authenticate"];
-  private _authorize?: ServerConfig<TContext, D, S, O>["authorize"];
+  private _validators: Validators<S, O>;
+  private _authenticate: ServerConfig<TContext, S, O>["authenticate"];
+  private _authorize?: ServerConfig<TContext, S, O>["authorize"];
   // TODO: see comment in sync
   private _LRUCache = new Map<string, { deviceId: string; clock: number }>();
   // Track presence state per document: docId -> Record<clientId, presence data>
@@ -48,7 +41,7 @@ export class DocSyncServer<
     new Set<ClientDisconnectEventListener>();
   private _syncRequestEventListeners = new Set<SyncRequestEventListener>();
 
-  constructor(config: ServerConfig<TContext, D, S, O>) {
+  constructor(config: ServerConfig<TContext, S, O>) {
     const port = config.port ?? 8080;
 
     this._io = new Server(port, {
@@ -58,8 +51,8 @@ export class DocSyncServer<
     });
     console.log(startupLog(port));
 
-    this._docBinding = config.docBinding;
     this._provider = config.provider;
+    this._validators = config.validators;
     this._authenticate = config.authenticate.bind(config);
     this._authorize = config.authorize?.bind(config);
     this._setupSocketServer();
@@ -98,7 +91,7 @@ export class DocSyncServer<
             deviceId,
             clientId,
             context: authResult.context ?? ({} as TContext),
-          } satisfies AuthenticatedContext<TContext>;
+          } satisfies AuthenticatedSocketData<TContext>;
 
           next();
         })
@@ -123,8 +116,7 @@ export class DocSyncServer<
     );
 
     this._io.on("connection", (socket) => {
-      const { userId, deviceId, clientId, context } =
-        socket.data as AuthenticatedContext;
+      const { userId, deviceId, context } = socket.data;
 
       // Emit client connect event
       this._emit(this._clientConnectEventListeners, {
@@ -134,13 +126,13 @@ export class DocSyncServer<
         context,
       });
 
-      const server = this as DocSyncServer;
-      handleDisconnect({ server, socket, userId, deviceId, clientId });
+      const server = this;
+      handleDisconnect({ server, socket });
       // prettier-ignore
-      handleSync({ server, socket, userId, deviceId, context });
-      handleUnsubscribeDoc({ server, socket, clientId });
-      handlePresence({ server, socket, userId, clientId, context });
-      handleDeleteDoc({ server, socket, userId, context });
+      handleSync({ server, socket });
+      handleUnsubscribeDoc({ server, socket });
+      handlePresence({ server, socket });
+      handleDeleteDoc({ server, socket });
     });
   }
 

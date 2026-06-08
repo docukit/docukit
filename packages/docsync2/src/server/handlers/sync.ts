@@ -1,46 +1,53 @@
-import type { SyncRequest, SyncResponse } from "../../shared/types.js";
+import type { SyncResponse } from "../../shared/types.js";
 import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
+import { createSyncValidation } from "./sync/validation.js";
 import { broadcastCollaborationState } from "../utils/broadcastCollaborationState.js";
 
-const OPERATION_THRESHOLD = 100;
-
 export type SyncHandler<S = unknown, O = unknown> = (
-  payload: SyncRequest<O>,
+  payload: unknown,
   cb: (res: SyncResponse<S, O>) => void,
 ) => void | Promise<void>;
 
 export function handleSync<
   TContext extends object = object,
-  D extends object = object,
   S extends object = object,
   O extends object = object,
 >({
   server,
   socket,
-  userId,
-  deviceId,
-  context,
 }: {
-  server: DocSyncServer<TContext, D, S, O>;
-  socket: ServerConnectionSocket<S, O>;
-  userId: string;
-  deviceId: string;
-  context: TContext;
+  server: DocSyncServer<TContext, S, O>;
+  socket: ServerConnectionSocket<TContext, S, O>;
 }): void {
   socket.on(
     "sync",
     async (
-      req: SyncRequest<O>,
+      req: unknown,
       cb: (res: SyncResponse<S, O>) => void,
     ): Promise<void> => {
-      const { type, docId, operations = [], clock } = req;
       const startTime = Date.now();
+      const validation = createSyncValidation({
+        server,
+        socket,
+        req,
+        cb,
+        startTime,
+      });
 
-      // TODO: we should validate req with Valibot here
+      const envelope = validation.envelope();
+      if (!envelope) return;
+
+      const { docId, clock } = envelope;
+      const { userId, deviceId, context } = socket.data;
 
       const authorized = server["_authorize"]
-        ? await server["_authorize"]({ type: "sync", req, userId, context })
+        ? await server["_authorize"]({
+            type: "sync",
+            req: envelope,
+            userId,
+            context,
+          })
         : true;
       if (!authorized) {
         const errorEvent = {
@@ -53,7 +60,7 @@ export function handleSync<
           deviceId,
           socketId: socket.id,
           status: "error",
-          req,
+          req: envelope,
           error: errorEvent,
           durationMs: Date.now() - startTime,
         });
@@ -64,9 +71,11 @@ export function handleSync<
 
       const io = server["_io"];
       const provider = server["_provider"];
-      const docBinding = server["_docBinding"];
       const socketToDocsMap = server["_socketToDocsMap"];
       const presenceByDoc = server["_presenceByDoc"];
+
+      const operations = validation.operations(envelope);
+      if (!operations) return;
 
       const room = io.sockets.adapter.rooms.get(`doc:${docId}`);
       if (!room?.has(socket.id)) {
@@ -83,29 +92,31 @@ export function handleSync<
       }
 
       try {
-        const result = await provider.transaction("readwrite", async (ctx) => {
+        const stored = await provider.transaction("readwrite", async (ctx) => {
           const serverOps = await ctx.getOperations({ docId, clock });
           const serverDoc = await ctx.getSerializedDoc({ docId });
+          const validatedStored = validation.stored({
+            docId,
+            operations: serverOps.flat(),
+            serializedDoc: serverDoc?.serializedDoc,
+            clock,
+          });
+          if (!validatedStored) return;
+
           const newClock = await ctx.saveOperations({ docId, operations });
 
-          return {
-            docId,
-            ...(serverOps.length > 0 ? { operations: serverOps.flat() } : {}),
-            ...(serverDoc?.serializedDoc
-              ? { serializedDoc: serverDoc.serializedDoc }
-              : {}),
-            clock: newClock,
-          };
+          return { ...validatedStored, clock: newClock };
         });
+        if (!stored) return;
 
         cb({
           data: {
-            docId: result.docId,
-            ...(result.operations ? { operations: result.operations } : {}),
-            ...(result.serializedDoc
-              ? { serializedDoc: result.serializedDoc }
+            docId: stored.docId,
+            ...(stored.operations ? { operations: stored.operations } : {}),
+            ...(stored.serializedDoc
+              ? { serializedDoc: stored.serializedDoc }
               : {}),
-            clock: result.clock,
+            clock: stored.clock,
           },
         });
 
@@ -118,8 +129,7 @@ export function handleSync<
             const targetSocket = io.sockets.sockets.get(socketId);
             if (!targetSocket) continue;
 
-            const targetDeviceId = (targetSocket.data as { deviceId: string })
-              .deviceId;
+            const { deviceId: targetDeviceId } = targetSocket.data;
             devicesInRoom.add(targetDeviceId);
 
             if (shouldNotifyClients) {
@@ -138,17 +148,17 @@ export function handleSync<
           deviceId,
           socketId: socket.id,
           status: "success",
-          req,
-          ...(result.operations || result.serializedDoc
+          req: envelope,
+          ...(stored.operations || stored.serializedDoc
             ? {
                 res: {
-                  ...(result.operations
-                    ? { operations: result.operations }
+                  ...(stored.operations
+                    ? { operations: stored.operations }
                     : {}),
-                  ...(result.serializedDoc
-                    ? { serializedDoc: result.serializedDoc }
+                  ...(stored.serializedDoc
+                    ? { serializedDoc: stored.serializedDoc }
                     : {}),
-                  clock: result.clock,
+                  clock: stored.clock,
                 },
               }
             : {}),
@@ -156,34 +166,6 @@ export function handleSync<
           clientsCount: docRoom?.size ?? 0,
           devicesCount: devicesInRoom.size,
         });
-
-        if (
-          result.operations &&
-          result.operations.length >= OPERATION_THRESHOLD
-        ) {
-          const {
-            docId: resultDocId,
-            operations: serverOps,
-            serializedDoc,
-            clock: resultClock,
-          } = result;
-          const allOperations = [...serverOps, ...operations];
-          const doc = serializedDoc
-            ? docBinding.deserialize(serializedDoc)
-            : docBinding.create(type, resultDocId).doc;
-          allOperations.forEach((operation) => {
-            docBinding.applyOperations(doc, operation);
-          });
-          const newSerializedDoc = docBinding.serialize(doc);
-          await provider.transaction("readwrite", async (ctx) => {
-            await ctx.saveSerializedDoc({
-              docId: resultDocId,
-              serializedDoc: newSerializedDoc,
-              clock: resultClock,
-            });
-            await ctx.deleteOperations({ docId: resultDocId, count: 1 });
-          });
-        }
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
@@ -198,7 +180,7 @@ export function handleSync<
           deviceId,
           socketId: socket.id,
           status: "error",
-          req,
+          req: envelope,
           error: {
             ...errorEvent,
             ...(error instanceof Error && error.stack

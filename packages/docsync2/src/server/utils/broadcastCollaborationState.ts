@@ -2,10 +2,9 @@ import type { DocSyncServer } from "../index.js";
 
 export function broadcastCollaborationState<
   TContext extends object,
-  D extends object,
   S extends object,
   O extends object,
->(server: DocSyncServer<TContext, D, S, O>, docId: string): void {
+>(server: DocSyncServer<TContext, S, O>, docId: string): void {
   const io = server["_io"];
   const room = io.sockets.adapter.rooms.get(`doc:${docId}`);
   if (!room) return;
@@ -15,7 +14,7 @@ export function broadcastCollaborationState<
   for (const socketId of room) {
     const targetSocket = io.sockets.sockets.get(socketId);
     if (!targetSocket) continue;
-    const { userId } = targetSocket.data as { userId: string };
+    const { userId } = targetSocket.data;
     socketIds.push(socketId);
     userIds.add(userId);
   }

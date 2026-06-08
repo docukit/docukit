@@ -1,4 +1,4 @@
-import type { DocBinding } from "../shared/types.js";
+import type { DocBinding } from "./types.js";
 
 export const createDocBinding = <
   D extends object,

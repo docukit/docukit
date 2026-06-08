@@ -1,11 +1,12 @@
 import type {
   ClientToServerEvents,
-  DocBinding,
   DocSyncEventName,
   MaybePromise,
   ServerToClientEvents,
+  SyncRequest,
   SerializedDocPayload,
 } from "../shared/types.js";
+import type { Server, Socket } from "socket.io";
 
 // ============================================================================
 // Server Events
@@ -32,27 +33,41 @@ export type ClientDisconnectEvent = {
   reason: string;
 };
 
-/** Emitted once after sync request completes. */
-export type SyncRequestEvent<O = unknown, S = unknown> = {
+type SyncRequestEventBase = {
   userId: string;
   deviceId: string;
   socketId: string;
-  status: "success" | "error";
-
-  req: { type: string; docId: string; operations?: O[]; clock: number };
-
-  res?: { operations?: O[]; clock?: number; serializedDoc?: S };
-
   durationMs?: number;
   devicesCount?: number;
   clientsCount?: number;
-
-  error?: {
-    type: "AuthorizationError" | "DatabaseError" | "ValidationError";
-    message: string;
-    stack?: string;
-  };
 };
+
+type SyncRequestEventError<T extends string> = {
+  type: T;
+  message: string;
+  stack?: string;
+};
+
+/** Emitted once after sync request completes. */
+export type SyncRequestEvent<O = unknown, S = unknown> =
+  | (SyncRequestEventBase & {
+      status: "success";
+      req: SyncRequest<O>;
+      res?: { operations?: O[]; clock?: number; serializedDoc?: S };
+      error?: never;
+    })
+  | (SyncRequestEventBase & {
+      status: "error";
+      req: SyncRequest<O>;
+      error: SyncRequestEventError<"AuthorizationError" | "DatabaseError">;
+      res?: { operations?: O[]; clock?: number; serializedDoc?: S };
+    })
+  | (SyncRequestEventBase & {
+      status: "error";
+      req: unknown;
+      error: SyncRequestEventError<"ValidationError">;
+      res?: never;
+    });
 
 export type ClientConnectEventListener<TContext = unknown> = (
   event: ClientConnectEvent<TContext>,
@@ -68,19 +83,31 @@ export type SyncRequestEventListener<O = unknown, S = unknown> = (
 // Server Config
 // ============================================================================
 
+export type Validators<S extends object, O extends object> = {
+  serializedDoc(input: unknown): S;
+  operations(input: unknown): O;
+};
+
+export type AuthenticatedSocketData<TContext extends object = object> = {
+  userId: string;
+  deviceId: string;
+  /** Client-generated id for presence (set from auth or socket.id in connection flow) */
+  clientId: string;
+  context: TContext;
+};
+
 /**
  * Server configuration with generic context type.
  *
  * @typeParam TContext - Application-defined context shape returned by authenticate
- *                       and passed to authorize. Defaults to empty object.
+ *                       and passed to authorize.
  */
 export type ServerConfig<
-  TContext extends object = object,
-  D extends object = object,
-  S extends object = object,
-  O extends object = object,
+  TContext extends object,
+  S extends object,
+  O extends object,
 > = {
-  docBinding: DocBinding<D, S, O>;
+  validators: Validators<S, O>;
   port?: number;
   provider: ServerProvider<NoInfer<S>, NoInfer<O>>;
 
@@ -128,15 +155,25 @@ export type ServerProvider<S extends object, O extends object> = {
 // Socket (server)
 // ============================================================================
 
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- type-only reference to socket.io
-export type ServerSocket<S, O> = import("socket.io").Server<
+export type ServerSocket<
+  TContext extends object = object,
+  S extends object = object,
+  O extends object = object,
+> = Server<
   ClientToServerEvents<S, O>,
-  ServerToClientEvents
+  ServerToClientEvents,
+  Record<string, never>,
+  AuthenticatedSocketData<TContext>
 >;
 
 /** Per-connection socket on the server (has .id, .join, .emit, .on, etc.). */
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- type-only reference to socket.io
-export type ServerConnectionSocket<S, O> = import("socket.io").Socket<
+export type ServerConnectionSocket<
+  TContext extends object = object,
+  S extends object = object,
+  O extends object = object,
+> = Socket<
   ClientToServerEvents<S, O>,
-  ServerToClientEvents
+  ServerToClientEvents,
+  Record<string, never>,
+  AuthenticatedSocketData<TContext>
 >;
