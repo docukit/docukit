@@ -1,14 +1,9 @@
 import * as v from "valibot";
-import type { SyncResponse } from "../../../shared/types.js";
+import type { SyncRequest, SyncResponse } from "../../../shared/types.js";
 import type { DocSyncServer } from "../../index.js";
 import type { ServerConnectionSocket } from "../../types.js";
-
-const syncEnvelopeSchema = v.object({
-  type: v.string(),
-  docId: v.string(),
-  operations: v.optional(v.array(v.unknown())),
-  clock: v.number(),
-});
+import { syncRequestSchema } from "../../../shared/validators/socketProtocol.js";
+import { createValidationError } from "../validation.js";
 
 type SyncValidationContext<
   TContext extends object,
@@ -32,21 +27,13 @@ export const createSyncValidation = <
   return {
     envelope() {
       try {
-        const envelope = v.parse(syncEnvelopeSchema, context.req);
-        return {
-          type: envelope.type,
-          docId: envelope.docId,
-          ...(envelope.operations !== undefined
-            ? { operations: envelope.operations }
-            : {}),
-          clock: envelope.clock,
-        };
+        return v.parse(syncRequestSchema, context.req);
       } catch (error) {
         respondValidationError(context, error);
       }
     },
 
-    operations(req: v.InferOutput<typeof syncEnvelopeSchema>) {
+    operations(req: SyncRequest) {
       try {
         return (req.operations ?? []).map((operation) =>
           context.server["_validators"].operations(operation),
@@ -98,10 +85,7 @@ const respondValidationError = <
   error: unknown,
 ) => {
   const { userId, deviceId } = socket.data;
-  const errorEvent = {
-    type: "ValidationError" as const,
-    message: error instanceof Error ? error.message : String(error),
-  };
+  const errorEvent = createValidationError(error);
 
   server["_emit"](server["_syncRequestEventListeners"], {
     userId,

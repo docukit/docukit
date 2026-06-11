@@ -1,7 +1,10 @@
 import type { PresenceRequest, PresenceResponse } from "../../shared/types.js";
 import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
+import * as v from "valibot";
 import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
+import { createValidationError } from "./validation.js";
+import { presenceRequestSchema } from "../../shared/validators/socketProtocol.js";
 
 export type PresenceHandler = (
   payload: PresenceRequest,
@@ -22,11 +25,19 @@ export function handlePresence<
   socket.on(
     "presence",
     async (
-      { docId, presence }: PresenceRequest,
+      rawReq: unknown,
       cb: (res: PresenceResponse) => void,
     ): Promise<void> => {
+      let req: PresenceRequest;
+      try {
+        req = v.parse(presenceRequestSchema, rawReq);
+      } catch (error) {
+        cb({ error: createValidationError(error) });
+        return;
+      }
+
+      const { docId, presence } = req;
       const { userId, context } = socket.data;
-      const req: PresenceRequest = { docId, presence };
       const authorized = server["_authorize"]
         ? await server["_authorize"]({ type: "presence", req, userId, context })
         : true;

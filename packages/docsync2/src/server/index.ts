@@ -1,4 +1,5 @@
 import { Server } from "socket.io";
+import * as v from "valibot";
 import type { Presence } from "../shared/types.js";
 import type {
   AuthenticatedSocketData,
@@ -16,6 +17,7 @@ import { handlePresence } from "./handlers/presence.js";
 import { handleSync } from "./handlers/sync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
 import { startupLog } from "./utils/startupLog.js";
+import { socketAuthSchema } from "../shared/validators/socketProtocol.js";
 
 export class DocSyncServer<
   TContext extends object = object,
@@ -61,22 +63,13 @@ export class DocSyncServer<
   private _setupSocketServer() {
     // Middleware: authenticate before allowing connection
     this._io.use((socket, next) => {
-      const { token, deviceId, clientId } = socket.handshake.auth;
-      if (!token || typeof token !== "string") {
-        next(new Error("Authentication required: no token provided"));
+      const parsedAuth = v.safeParse(socketAuthSchema, socket.handshake.auth);
+      if (!parsedAuth.success) {
+        next(new Error("Authentication required"));
         return;
       }
 
-      if (!deviceId || typeof deviceId !== "string") {
-        next(new Error("Device ID required"));
-        return;
-      }
-
-      // TODO: should I check that no one is using an already taken ID, presumably intentionally?
-      if (!clientId || typeof clientId !== "string" || clientId.length === 0) {
-        next(new Error("Client ID required"));
-        return;
-      }
+      const { token, deviceId, clientId } = parsedAuth.output;
 
       Promise.resolve(this._authenticate({ token }))
         .then((authResult) => {

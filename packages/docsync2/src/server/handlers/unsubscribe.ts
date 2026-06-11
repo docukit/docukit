@@ -4,8 +4,11 @@ import type {
 } from "../../shared/types.js";
 import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
+import * as v from "valibot";
 import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
 import { broadcastCollaborationState } from "../utils/broadcastCollaborationState.js";
+import { unsubscribeDocRequestSchema } from "../../shared/validators/socketProtocol.js";
+import { createValidationError } from "./validation.js";
 
 export type UnsubscribeDocHandler = (
   payload: UnsubscribeDocRequest,
@@ -29,9 +32,18 @@ export function handleUnsubscribeDoc<
   socket.on(
     "unsubscribe-doc",
     async (
-      { docId }: UnsubscribeDocRequest,
+      rawReq: unknown,
       cb: (res: UnsubscribeDocResponse) => void,
     ): Promise<void> => {
+      let req: UnsubscribeDocRequest;
+      try {
+        req = v.parse(unsubscribeDocRequestSchema, rawReq);
+      } catch (error) {
+        cb({ error: createValidationError(error) });
+        return;
+      }
+
+      const { docId } = req;
       await socket.leave(`doc:${docId}`);
 
       const subscribedDocs = socketToDocsMap.get(socket.id);
@@ -45,7 +57,7 @@ export function handleUnsubscribeDoc<
       applyPresenceUpdate(presenceByDoc, socket, { docId, presence: null });
       broadcastCollaborationState(server, docId);
 
-      cb({ success: true });
+      cb({ data: void undefined });
     },
   );
 }
