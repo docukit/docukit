@@ -16,6 +16,7 @@ import {
   type ClientEventName,
   type ClientEventEmitter,
 } from "./utils/events.js";
+import { getDeviceId } from "./utils/getDeviceId.js";
 import { setupQueryClient } from "./utils/setupQueryClient/setupQueryClient.js";
 import type { ClientConfig } from "./types.js";
 
