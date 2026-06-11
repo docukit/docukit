@@ -1,4 +1,10 @@
-import type { MaybePromise, SerializedDocPayload } from "../shared/types.js";
+import type {
+  ClientToServerEvents,
+  MaybePromise,
+  ServerToClientEvents,
+  SerializedDocPayload,
+} from "../shared/types.js";
+import type { Socket } from "socket.io-client";
 import type { DocBinding } from "./bindings/types.js";
 
 export type Identity = { userId: string; secret: string };
@@ -62,3 +68,13 @@ export type ClientProvider<S extends object, O extends object> = {
     callback: (ctx: ClientProviderContext<S, O>) => Promise<T>,
   ): Promise<T>;
 };
+
+export type LocalResolved<S extends object, O extends object> = {
+  provider: ClientProvider<S, O>;
+  identity: Identity;
+};
+
+export type ClientSocket<S extends object, O extends object> = Socket<
+  ServerToClientEvents,
+  ClientToServerEvents<S, O>
+>;

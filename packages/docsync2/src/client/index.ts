@@ -16,9 +16,12 @@ import {
   type ClientEventName,
   type ClientEventEmitter,
 } from "./utils/events.js";
+import { handleConnect } from "./handlers/connection/connect.js";
+import { handleDirty } from "./handlers/serverInitiated/dirty.js";
+import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
 import { setupQueryClient } from "./utils/setupQueryClient/setupQueryClient.js";
-import type { ClientConfig } from "./types.js";
+import type { ClientConfig, ClientSocket, LocalResolved } from "./types.js";
 
 export type DocSyncClientConfig<
   D extends object = object,
@@ -31,11 +34,16 @@ export class DocSyncClient<
   S extends object = object,
   O extends object = object,
 > {
-  protected _connected = false;
+  protected _localPromise: Promise<LocalResolved<S, O>>;
+  protected _socket: ClientSocket<S, O>;
+  /** Client-generated id for presence (works offline; sent in auth so server uses same key) */
+  protected _clientId = crypto.randomUUID();
+  protected _deviceId = getDeviceId();
+  protected _changeOrigin: "local" | "network" = "local";
   protected _events: ClientEventEmitter<O, S> = createClientEventEmitter();
 
   readonly queries = {
-    getDoc: (args: GetDocArgs) => getDoc(args),
+    getDoc: (args: GetDocArgs) => getDoc(this, args),
     docPresence: (args: DocPresenceArgs) => docPresence(args),
   };
 
@@ -45,7 +53,28 @@ export class DocSyncClient<
   };
 
   constructor(public readonly config: DocSyncClientConfig<D, S, O>) {
+    this._localPromise = (async () => {
+      const identity = await config.local.getIdentity();
+      const provider = config.local.provider(identity);
+
+      // this._bcHelper = new BCHelper(this, identity.userId);
+
+      return { provider, identity };
+    })();
+
+    this._socket = io(config.server.url, {
+      auth: (cb) => {
+        void Promise.resolve(config.server.auth.getToken()).then((token) => {
+          cb({ token, deviceId: this._deviceId, clientId: this._clientId });
+        });
+      },
+      transports: ["websocket"],
+    });
+
     setupQueryClient(this);
+    handleConnect({ client: this });
+    handleDisconnect({ client: this });
+    handleDirty({ client: this });
   }
 
   connect(): void {
