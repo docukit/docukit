@@ -1,4 +1,5 @@
 import type { QueryClient } from "@tanstack/query-core";
+import { io } from "socket.io-client";
 import { createDoc, type CreateDocArgs } from "./mutations/createDoc.js";
 import {
   setDocPresence,
@@ -47,11 +48,11 @@ export class DocSyncClient<
   }
 
   connect(): void {
-    this._connected = true;
+    this._socket.connect();
   }
 
   disconnect(): void {
-    this._connected = false;
+    this._socket.disconnect();
   }
 
   dispose(): void {
