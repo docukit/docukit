@@ -56,7 +56,7 @@ const applyOperationsToStoredDoc = async <
   const { docBinding } = client.config;
   const { provider } = await client["_localPromise"];
 
-  await provider.transaction("readwrite", async (ctx) => {
+  return await provider.transaction("readwrite", async (ctx) => {
     const stored = await ctx.getSerializedDoc({ docId: args.id });
     const serializedDoc = args.serverSerializedDoc ?? stored?.serializedDoc;
     if (serializedDoc === undefined) return;
@@ -77,6 +77,7 @@ const applyOperationsToStoredDoc = async <
         count: args.deleteOperationBatchCount,
       });
     }
+    return doc;
   });
 };
 
@@ -88,10 +89,9 @@ const applyServerOperationsToCachedDoc = <
   client: DocSyncClient<D, S, O>,
   args: GetDocKeyArgs & { serverOperations: O[] },
 ) => {
-  if (args.serverOperations.length === 0) return;
-
   const data = client.config.queryClient.getQueryData(getDocKey(args));
   if (!isExistingGetDocData(data, client.config.docBinding)) return;
+  if (args.serverOperations.length === 0) return data;
 
   client["_changeOrigin"] = "network";
   try {
@@ -103,6 +103,7 @@ const applyServerOperationsToCachedDoc = <
   } finally {
     client["_changeOrigin"] = "local";
   }
+  return data;
 };
 
 export const syncDocWithServer = async <
@@ -163,8 +164,15 @@ export const syncDocWithServer = async <
         ? { serverSerializedDoc: response.data.serializedDoc }
         : {}),
     };
-    await applyOperationsToStoredDoc(client, applyOperationsArgs);
-    applyServerOperationsToCachedDoc(client, { ...args, serverOperations });
+    const syncedDoc = await applyOperationsToStoredDoc(
+      client,
+      applyOperationsArgs,
+    );
+    const cachedData = applyServerOperationsToCachedDoc(client, {
+      ...args,
+      serverOperations,
+    });
+    return cachedData ?? { docId: args.id, doc: syncedDoc };
   } catch (error) {
     if (error instanceof SyncResponseError) throw error;
 
