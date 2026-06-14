@@ -16,7 +16,7 @@ const loadOrCreateDoc = async <
   docSync: DocSyncClient<D, S, O>,
   args: CreateDocArgs,
 ) => {
-  const { docBinding } = docSync["_config"];
+  const docBinding = docSync["_docBinding"];
   const queryClient = docSync["_queryClient"];
 
   const existingData = queryClient.getQueryData(getDocKey(args));

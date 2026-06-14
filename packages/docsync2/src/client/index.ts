@@ -20,6 +20,7 @@ import { handlePresence } from "./handlers/serverInitiated/presence.js";
 import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
 import { setupQueryClient } from "./utils/setupQueryClient/setupQueryClient.js";
+import type { DocBinding } from "./bindings/types.js";
 import type {
   ClientConfig,
   ClientSocket,
@@ -37,18 +38,24 @@ export class DocSyncClient<
   S extends object = object,
   O extends object = object,
 > {
-  protected _localPromise: Promise<LocalResolved<S, O>>;
-  protected _socket: ClientSocket<S, O>;
-  protected _config: ClientConfig<D, S, O>;
+  protected _docBinding: DocBinding<D, S, O>;
   protected _queryClient: QueryClient;
-  /** Client-generated id for presence (works offline; sent in auth so server uses same key) */
-  protected _clientId = crypto.randomUUID();
+  protected _localPromise: Promise<LocalResolved<S, O>>;
   protected _deviceId = getDeviceId();
+  // Client-generated id for presence (works offline; sent in auth so server uses same key)
+  protected _clientId = crypto.randomUUID();
+  protected _socket: ClientSocket<S, O>;
   protected _changeOrigin: "local" | "network" = "local";
-  protected _events: ClientEventEmitter<O, S> = createClientEventEmitter();
+
+  // Flow control state (batching, debouncing, push queueing)
   protected _localOpsBatchState = new Map<string, LocalOpsBatchState<O>>();
-  protected _presenceDebounceState = new Map<string, PresenceDebounceState>();
+  protected _collabMaxDebounce: number;
+  protected _singleClientMaxDebounce: number;
   protected _collabDocIds = new Set<string>();
+  protected _presenceDebounceState = new Map<string, PresenceDebounceState>();
+
+  // TODO: see comment in /docsync/src/client/index.ts
+  protected _events: ClientEventEmitter<O, S> = createClientEventEmitter();
 
   readonly queries = {
     getDoc: (args: GetDocArgs) => getDoc(this, args),
@@ -61,13 +68,18 @@ export class DocSyncClient<
   };
 
   constructor(config: ClientConfig<D, S, O> & { queryClient: QueryClient }) {
-    const { queryClient, ...clientConfig } = config;
-    this._config = clientConfig;
+    const { docBinding, local, queryClient, timing } = config;
+    this._docBinding = docBinding;
     // TODO: should be queryClient a param or be created here?
     this._queryClient = queryClient;
+    this._collabMaxDebounce = Math.max(0, timing?.collabMaxDebounce ?? 50);
+    this._singleClientMaxDebounce = Math.max(
+      0,
+      timing?.singleClientMaxDebounce ?? 3000,
+    );
     this._localPromise = (async () => {
-      const identity = await clientConfig.local.getIdentity();
-      const provider = clientConfig.local.provider(identity);
+      const identity = await local.getIdentity();
+      const provider = local.provider(identity);
 
       // this._bcHelper = new BCHelper(this, identity.userId);
 

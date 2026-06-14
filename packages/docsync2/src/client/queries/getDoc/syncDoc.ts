@@ -56,7 +56,7 @@ const applyOperationsToStoredDoc = async <
   client: DocSyncClient<D, S, O>,
   args: ApplyOperationsToStoredDocArgs<S, O>,
 ) => {
-  const { docBinding } = client["_config"];
+  const docBinding = client["_docBinding"];
   const { provider } = await client["_localPromise"];
 
   return await provider.transaction("readwrite", async (ctx) => {
@@ -92,7 +92,7 @@ const applyServerOperationsToCachedDoc = <
   client: DocSyncClient<D, S, O>,
   args: GetDocKeyArgs & { serverOperations: O[] },
 ) => {
-  const { docBinding } = client["_config"];
+  const docBinding = client["_docBinding"];
   const queryClient = client["_queryClient"];
   const data = queryClient.getQueryData(getDocKey(args));
   if (!isExistingGetDocData(data, docBinding)) return;

@@ -1,10 +1,6 @@
 import type { DocSyncClient } from "../../../index.js";
 import type { GetDocArgs } from "../../../queries/getDoc/getDoc.js";
 import { flushLocalOperations } from "../../flushLocalOperations.js";
-import {
-  getCollabMaxDebounce,
-  getSingleClientMaxDebounce,
-} from "../../timing.js";
 
 const queueLocalOperations = <
   D extends object,
@@ -24,8 +20,8 @@ const queueLocalOperations = <
   client["_localOpsBatchState"].set(args.docId, state);
 
   const maxDebounce = client["_collabDocIds"].has(args.docId)
-    ? getCollabMaxDebounce(client)
-    : getSingleClientMaxDebounce(client);
+    ? client["_collabMaxDebounce"]
+    : client["_singleClientMaxDebounce"];
   const elapsed = now - state.startedAt;
   if (maxDebounce === 0 || elapsed >= maxDebounce) {
     void flushLocalOperations(client, args.docId);

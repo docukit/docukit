@@ -2,7 +2,6 @@ import type { PresenceRequest } from "../../shared/types.js";
 import type { DocSyncClient } from "../index.js";
 import { getDocArgsFromKey } from "../queries/getDoc/getDocKey.js";
 import { request } from "../utils/request.js";
-import { getCollabMaxDebounce } from "../utils/timing.js";
 
 export type SetDocPresenceArgs<TPresence = unknown> = {
   docId: string;
@@ -94,7 +93,7 @@ export const setDocPresence = async <
 ): Promise<void> => {
   ensureActiveDocQuery(docSync, args.docId);
 
-  const maxDebounce = getCollabMaxDebounce(docSync);
+  const maxDebounce = docSync["_collabMaxDebounce"];
   if (maxDebounce === 0) {
     await sendDocPresence(docSync, args);
     return;

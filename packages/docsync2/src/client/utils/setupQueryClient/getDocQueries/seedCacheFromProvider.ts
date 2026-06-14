@@ -12,7 +12,7 @@ export const seedCacheFromProvider = async <
   args: GetDocArgs,
 ) => {
   const { provider } = await docSync["_localPromise"];
-  const { docBinding } = docSync["_config"];
+  const docBinding = docSync["_docBinding"];
   const queryClient = docSync["_queryClient"];
 
   // Load the doc from IndexedDB
