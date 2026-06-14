@@ -13,7 +13,8 @@ export const observeActiveGetDocQueries = <
 ): void => {
   const observedQueries = new WeakSet<object>();
   const seededQueries = new WeakSet<object>();
-  const { docBinding, queryClient } = client["_config"];
+  const { docBinding } = client["_config"];
+  const queryClient = client["_queryClient"];
 
   void queryClient.getQueryCache().subscribe((event) => {
     if (event.type !== "observerAdded" && event.type !== "updated") return;

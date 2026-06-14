@@ -32,7 +32,6 @@ export type {
 } from "../shared/validators/getDocData.js";
 export type { GetDocKey } from "../shared/validators/getDocKey.js";
 export type { PresenceQueryKey } from "../shared/validators/presenceQueryKey.js";
-export type { DocSyncClientConfig } from "../client/index.js";
 export type {
   ClientConfig,
   ClientProvider,

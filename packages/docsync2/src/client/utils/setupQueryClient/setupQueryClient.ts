@@ -13,7 +13,7 @@ export const setupQueryClient = <
   // onlineManager is global and may affect other TanStack Query clients in the app.
   // If this becomes a problem, consider a TanStack Query PR for per-client online managers.
   // https://github.com/TanStack/query/blob/v5.101.0/packages/query-core/src/queryClient.ts
-  client["_config"].queryClient.mount();
+  client["_queryClient"].mount();
 
   observeActiveGetDocQueries(client);
 };

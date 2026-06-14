@@ -16,7 +16,8 @@ const loadOrCreateDoc = async <
   docSync: DocSyncClient<D, S, O>,
   args: CreateDocArgs,
 ) => {
-  const { queryClient, docBinding } = docSync["_config"];
+  const { docBinding } = docSync["_config"];
+  const queryClient = docSync["_queryClient"];
 
   const existingData = queryClient.getQueryData(getDocKey(args));
   if (isExistingGetDocData(existingData, docBinding)) return existingData;
@@ -57,7 +58,7 @@ export const createDoc = <D extends object, S extends object, O extends object>(
   docSync: DocSyncClient<D, S, O>,
   args: CreateDocArgs,
 ): Promise<{ docId: string }> => {
-  const { queryClient } = docSync["_config"];
+  const queryClient = docSync["_queryClient"];
   const mutation = queryClient.getMutationCache().build(queryClient, {
     mutationKey: ["docsync", "createDoc", args.type, args.id],
     // createDoc is a write. It seeds getDoc, but callers should read the doc

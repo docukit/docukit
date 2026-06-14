@@ -13,7 +13,7 @@ export const handleConnect = <
 }) => {
   client["_socket"].on("connect", () => {
     onlineManager.setOnline(true);
-    void client["_config"].queryClient.resumePausedMutations();
+    void client["_queryClient"].resumePausedMutations();
     client["_events"].emit("connect");
     void invalidateDocs(client);
   });

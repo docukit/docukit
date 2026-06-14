@@ -23,12 +23,6 @@ import { getDeviceId } from "./utils/getDeviceId.js";
 import { setupQueryClient } from "./utils/setupQueryClient/setupQueryClient.js";
 import type { ClientConfig, ClientSocket, LocalResolved } from "./types.js";
 
-export type DocSyncClientConfig<
-  D extends object = object,
-  S extends object = object,
-  O extends object = object,
-> = ClientConfig<D, S, O> & { queryClient: QueryClient };
-
 export class DocSyncClient<
   D extends object = object,
   S extends object = object,
@@ -36,6 +30,8 @@ export class DocSyncClient<
 > {
   protected _localPromise: Promise<LocalResolved<S, O>>;
   protected _socket: ClientSocket<S, O>;
+  protected _config: ClientConfig<D, S, O>;
+  protected _queryClient: QueryClient;
   /** Client-generated id for presence (works offline; sent in auth so server uses same key) */
   protected _clientId = crypto.randomUUID();
   protected _deviceId = getDeviceId();
@@ -52,10 +48,14 @@ export class DocSyncClient<
     setDocPresence: (args: SetDocPresenceArgs) => setDocPresence(this, args),
   };
 
-  constructor(public readonly config: DocSyncClientConfig<D, S, O>) {
+  constructor(config: ClientConfig<D, S, O> & { queryClient: QueryClient }) {
+    const { queryClient, ...clientConfig } = config;
+    this._config = clientConfig;
+    // TODO: should be queryClient a param or be created here?
+    this._queryClient = queryClient;
     this._localPromise = (async () => {
-      const identity = await config.local.getIdentity();
-      const provider = config.local.provider(identity);
+      const identity = await clientConfig.local.getIdentity();
+      const provider = clientConfig.local.provider(identity);
 
       // this._bcHelper = new BCHelper(this, identity.userId);
 
@@ -87,8 +87,8 @@ export class DocSyncClient<
 
   dispose(): void {
     // this._events.emit("dispose"); // Maybe needed in the future
-    this.config.queryClient.removeQueries({ queryKey: ["docsync"] });
-    this.config.queryClient.unmount();
+    this._queryClient.removeQueries({ queryKey: ["docsync"] });
+    this._queryClient.unmount();
   }
 
   /**
