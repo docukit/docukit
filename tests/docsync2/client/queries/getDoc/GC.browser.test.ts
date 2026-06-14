@@ -1,17 +1,14 @@
 import { describe, expect, test } from "vitest";
-import { createTestClient, tick } from "../../utils/index.js";
+import { tick } from "../../utils/async.js";
+import { createTestClient } from "../../utils/client.js";
+import { createTestDoc } from "../../utils/doc.js";
 
 declare const gc: (() => void) | undefined;
-
-const createDocNodeTestDoc = ({
-  docSync,
-  docArgs,
-}: ReturnType<typeof createTestClient>) => docSync.mutations.createDoc(docArgs);
 
 const forceGc = async () => {
   if (typeof gc !== "function") {
     throw new Error(
-      "Tests in this file require Node started with --expose-gc to validate GC behavior.",
+      "Tests in this file require the browser started with --expose-gc to validate GC behavior.",
     );
   }
 
@@ -23,7 +20,7 @@ const forceGc = async () => {
 
 const createDocNodeWeakRefAfterTanStackClear = async () => {
   const testClient = createTestClient();
-  const created = await createDocNodeTestDoc(testClient);
+  const created = await createTestDoc(testClient);
   const weakRef = new WeakRef(created.doc);
 
   testClient.queryClient.clear();
@@ -33,7 +30,7 @@ const createDocNodeWeakRefAfterTanStackClear = async () => {
 
 const createDocNodeWeakRefAfterTanStackRemove = async () => {
   const testClient = createTestClient();
-  const created = await createDocNodeTestDoc(testClient);
+  const created = await createTestDoc(testClient);
   const weakRef = new WeakRef(created.doc);
 
   testClient.queryClient.removeQueries({

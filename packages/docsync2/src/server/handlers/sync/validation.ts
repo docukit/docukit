@@ -1,9 +1,11 @@
 import * as v from "valibot";
-import type { SyncRequest, SyncResponse } from "../../../shared/types.js";
+import type { SyncResponse } from "../../../shared/types.js";
 import type { DocSyncServer } from "../../index.js";
 import type { ServerConnectionSocket } from "../../types.js";
 import { syncRequestSchema } from "../../../shared/validators/socketProtocol.js";
 import { createValidationError } from "../validation.js";
+
+type SyncEnvelope = v.InferOutput<typeof syncRequestSchema>;
 
 type SyncValidationContext<
   TContext extends object,
@@ -33,11 +35,21 @@ export const createSyncValidation = <
       }
     },
 
-    operations(req: SyncRequest) {
+    operations(req: SyncEnvelope) {
       try {
         return (req.operations ?? []).map((operation) =>
           context.server["_validators"].operations(operation),
         );
+      } catch (error) {
+        respondValidationError(context, error);
+      }
+    },
+
+    serializedDoc(req: SyncEnvelope) {
+      try {
+        return req.serializedDoc === undefined
+          ? undefined
+          : context.server["_validators"].serializedDoc(req.serializedDoc);
       } catch (error) {
         respondValidationError(context, error);
       }

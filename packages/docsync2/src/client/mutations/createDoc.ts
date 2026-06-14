@@ -1,4 +1,5 @@
 import {
+  type ExistingGetDocData,
   isExistingGetDocData,
   isGetDocData,
 } from "../../shared/validators/getDocData.js";
@@ -7,27 +8,71 @@ import { getDocKey } from "../queries/getDoc/getDocKey.js";
 
 export type CreateDocArgs = { type: string; id: string };
 
-export const createDoc = <D extends object, S extends object, O extends object>(
+const loadOrCreateDoc = async <
+  D extends object,
+  S extends object,
+  O extends object,
+>(
   docSync: DocSyncClient<D, S, O>,
   args: CreateDocArgs,
 ) => {
   const { queryClient, docBinding } = docSync.config;
 
   const existingData = queryClient.getQueryData(getDocKey(args));
-  if (isExistingGetDocData(existingData, docBinding))
-    return Promise.resolve(existingData);
+  if (isExistingGetDocData(existingData, docBinding)) return existingData;
   if (existingData !== undefined && !isGetDocData(existingData))
-    return Promise.reject(new Error("Invalid getDoc query data"));
+    throw new Error("Invalid getDoc query data");
 
-  if (!docBinding)
-    return Promise.reject(
-      new Error("DocSyncClient requires docBinding to create docs"),
-    );
+  const { provider } = await docSync["_localPromise"];
+  const loaded = await provider.transaction("readwrite", async (ctx) => {
+    const stored = await ctx.getSerializedDoc({ docId: args.id });
+    if (stored) {
+      const doc = docBinding.deserialize(stored.serializedDoc);
+      const operationsBatches = await ctx.getOperations({ docId: args.id });
+      for (const operations of operationsBatches) {
+        for (const operation of operations) {
+          docBinding.applyOperations(doc, operation);
+        }
+      }
+      return { docId: args.id, doc };
+    }
 
-  const { doc, docId } = docBinding.create(args.type, args.id);
-  const data = { docId, doc };
+    const { doc, docId } = docBinding.create(args.type, args.id);
+    await ctx.saveSerializedDoc({
+      docId,
+      serializedDoc: docBinding.serialize(doc),
+      clock: 0,
+    });
+    return { docId, doc };
+  });
 
-  queryClient.setQueryData(getDocKey(args), data);
+  const currentData = queryClient.getQueryData(getDocKey(args));
+  if (isExistingGetDocData(currentData, docBinding)) return currentData;
 
-  return Promise.resolve(data);
+  queryClient.setQueryData(getDocKey(args), loaded);
+  return loaded;
+};
+
+export const createDoc = <D extends object, S extends object, O extends object>(
+  docSync: DocSyncClient<D, S, O>,
+  args: CreateDocArgs,
+) => {
+  const mutation = docSync.config.queryClient
+    .getMutationCache()
+    .build(docSync.config.queryClient, {
+      mutationKey: ["docsync", "createDoc", args.type, args.id],
+      // createDoc is a write. It seeds getDoc, but callers should read the doc
+      // through getDoc so TanStack Query remains the single source of truth.
+      networkMode: "always",
+      mutationFn: async () => {
+        const data: ExistingGetDocData<D> = await loadOrCreateDoc(
+          docSync,
+          args,
+        );
+        return { docId: data.docId };
+      },
+      scope: { id: `docsync:doc:${args.id}` },
+    });
+
+  return mutation.execute(undefined);
 };

@@ -1,8 +1,35 @@
 import { QueryClient } from "@tanstack/query-core";
-import { DocSyncClient, type DocBinding } from "@docukit/docsync2/client";
+import {
+  DocSyncClient,
+  indexedDBProvider,
+  type ClientProvider,
+  type DocBinding,
+} from "@docukit/docsync2/client";
 import { DocNodeBinding } from "@docukit/docsync2/docnode";
+import {
+  defineNode,
+  type Doc,
+  type JsonDoc,
+  type Operations,
+} from "@docukit/docnode";
+import { inject } from "vitest";
 import { createTestDocArgs, generateTestUserId } from "./generators.js";
-import { createTestProvider } from "./provider.js";
+
+export const TestNode = defineNode({ type: "test" });
+
+declare global {
+  var __DOCSYNC2_TEST_SERVER_PORT__: number | undefined;
+  var __TEST_SERVER_PORT__: number | undefined;
+}
+
+const getTestServerUrl = () => {
+  const port: number | undefined =
+    inject("docsync2TestServerPort") ??
+    globalThis.__DOCSYNC2_TEST_SERVER_PORT__;
+  if (port === undefined) throw new Error("Missing DocSync2 test server port");
+
+  return `ws://localhost:${port}`;
+};
 
 export const createTestDocSyncClient = <
   D extends object,
@@ -12,26 +39,35 @@ export const createTestDocSyncClient = <
   docBinding: DocBinding<D, S, O>,
 ) => {
   const queryClient = new QueryClient();
+  const userId = generateTestUserId();
+  const identity = { userId, secret: "test-secret" };
+  const provider: ClientProvider<S, O> = indexedDBProvider(identity);
   const docSync = new DocSyncClient({
     queryClient,
     docBinding,
-    server: { url: "ws://localhost", auth: { getToken: () => "token" } },
-    local: {
-      provider: () => createTestProvider(docBinding),
-      getIdentity: () => ({
-        userId: generateTestUserId(),
-        secret: "test-secret",
-      }),
+    server: {
+      url: getTestServerUrl(),
+      auth: { getToken: () => `test-token-${userId}` },
     },
+    local: { provider: () => provider, getIdentity: () => identity },
   });
 
-  return { queryClient, docSync };
+  return { queryClient, docSync, provider };
 };
 
-export const createTestClient = () => {
-  const docArgs = createTestDocArgs();
-  const binding = DocNodeBinding([{ type: docArgs.type, extensions: [] }]);
-  const { queryClient, docSync } = createTestDocSyncClient(binding);
+export type TestClient = {
+  queryClient: QueryClient;
+  docSync: DocSyncClient<Doc, JsonDoc, Operations>;
+  docArgs: ReturnType<typeof createTestDocArgs>;
+  provider: ClientProvider<JsonDoc, Operations>;
+};
 
-  return { queryClient, docSync, docArgs };
+export const createTestClient = (): TestClient => {
+  const docArgs = createTestDocArgs();
+  const binding = DocNodeBinding([
+    { type: docArgs.type, extensions: [{ nodes: [TestNode] }] },
+  ]);
+  const { queryClient, docSync, provider } = createTestDocSyncClient(binding);
+
+  return { queryClient, docSync, docArgs, provider };
 };

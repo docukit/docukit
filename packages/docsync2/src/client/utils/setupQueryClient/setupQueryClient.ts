@@ -10,10 +10,12 @@ export const setupQueryClient = <
 ): void => {
   const { queryClient } = client.config;
 
-  queryClient.setQueryDefaults(["docsync"], {
-    // We update queries in real-time via ws, so we don't need to re-fetch.
-    staleTime: Infinity,
-  });
+  // query-core has no framework provider here; mount wires this client to
+  // onlineManager so paused queries resume when the socket reconnects.
+  // onlineManager is global and may affect other TanStack Query clients in the app.
+  // If this becomes a problem, consider a TanStack Query PR for per-client online managers.
+  // https://github.com/TanStack/query/blob/v5.101.0/packages/query-core/src/queryClient.ts
+  queryClient.mount();
 
-  observeActiveGetDocQueries(queryClient, client.config.docBinding);
+  observeActiveGetDocQueries(client);
 };

@@ -52,13 +52,13 @@ type SyncRequestEventError<T extends string> = {
 export type SyncRequestEvent<O = unknown, S = unknown> =
   | (SyncRequestEventBase & {
       status: "success";
-      req: SyncRequest<O>;
+      req: SyncRequest<S, O>;
       res?: { operations?: O[]; clock?: number; serializedDoc?: S };
       error?: never;
     })
   | (SyncRequestEventBase & {
       status: "error";
-      req: SyncRequest<O>;
+      req: SyncRequest<S, O>;
       error: SyncRequestEventError<"AuthorizationError" | "DatabaseError">;
       res?: { operations?: O[]; clock?: number; serializedDoc?: S };
     })
@@ -135,7 +135,7 @@ export type ServerConfig<
 export type ServerProviderContext<S extends object, O extends object> = {
   getSerializedDoc(arg: { docId: string }): Promise<{ serializedDoc: S; clock: number } | undefined>;
   getOperations(arg: { docId: string; clock: number }): Promise<O[][]>;
-  deleteOperations(arg: { docId: string; count: number }): Promise<void>;
+  deleteOperationsUntil(arg: { docId: string; clock: number }): Promise<void>;
   saveOperations(arg: { docId: string; operations: O[] }): Promise<number>;
   saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
 };

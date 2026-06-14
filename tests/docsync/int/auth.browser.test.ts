@@ -1,6 +1,6 @@
 // TODO: move to unit tests
 
-import { describe, test, expect, vi } from "vitest";
+import { describe, expect, inject, test, vi } from "vitest";
 import { DocSyncClient, indexedDBProvider } from "@docukit/docsync/client";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { defineNode, string } from "@docukit/docnode";
@@ -14,11 +14,15 @@ const docBinding = DocNodeBinding([
   },
 ]);
 
-const url = `ws://localhost:${globalThis.__TEST_SERVER_PORT__ ?? 8082}`;
+const getTestServerUrl = () => {
+  const injectedPort: number | undefined = inject("testServerPort");
+  const port = injectedPort ?? globalThis.__TEST_SERVER_PORT__ ?? 8082;
+  return `ws://localhost:${port}`;
+};
 
 const createClient = (token: string) =>
   new DocSyncClient({
-    server: { url, auth: { getToken: () => token } },
+    server: { url: getTestServerUrl(), auth: { getToken: () => token } },
     docBinding,
     local: {
       provider: indexedDBProvider,

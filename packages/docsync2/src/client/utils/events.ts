@@ -1,7 +1,30 @@
+import type { SyncRequest, SyncResponse } from "../../shared/types.js";
+
+export type DisconnectEvent = { reason: string };
+
+export type ChangeEvent<O = unknown> = {
+  docId: string;
+  origin: "local" | "network";
+  operation: O;
+};
+
+export type SyncEvent<O = unknown, S = unknown> = {
+  req: SyncRequest<S, O>;
+  attempt: number;
+} & (
+  | SyncResponse<S, O>
+  | { error: { type: "NetworkError"; message: string }; data?: never }
+);
+
 export type ClientEventMap<
-  _O extends object = object,
-  _S extends object = object,
-> = { todo: undefined };
+  O extends object = object,
+  S extends object = object,
+> = {
+  connect: undefined;
+  disconnect: DisconnectEvent;
+  change: ChangeEvent<O>;
+  sync: SyncEvent<O, S>;
+};
 
 export type ClientEventName = keyof ClientEventMap;
 
@@ -28,7 +51,12 @@ export function createClientEventEmitter<
 >(): ClientEventEmitter<O, S> {
   const listeners: {
     [K in ClientEventName]: Set<(payload: ClientEventMap<O, S>[K]) => void>;
-  } = { todo: new Set() };
+  } = {
+    connect: new Set(),
+    disconnect: new Set(),
+    change: new Set(),
+    sync: new Set(),
+  };
 
   function on<K extends ClientEventName>(
     event: K,

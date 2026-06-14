@@ -14,13 +14,15 @@ export const existingGetDocDataSchema = v.object({
   doc: docValueSchema,
 });
 
-export type GetDocData<D extends object = object> = v.InferOutput<
-  typeof getDocDataSchema
-> & { doc: D | undefined };
+export type GetDocData<D extends object = object> = {
+  docId: string;
+  doc: D | undefined;
+};
 
-export type ExistingGetDocData<D extends object = object> = v.InferOutput<
-  typeof existingGetDocDataSchema
-> & { doc: D };
+export type ExistingGetDocData<D extends object = object> = {
+  docId: string;
+  doc: D;
+};
 
 export const isGetDocData = (value: unknown): value is GetDocData => {
   return v.safeParse(getDocDataSchema, value).success;

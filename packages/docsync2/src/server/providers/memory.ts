@@ -1,12 +1,12 @@
 import type { ServerProvider, ServerProviderContext } from "../types.js";
 
-interface StoredDoc {
-  serializedDoc: object;
+interface StoredDoc<S extends object> {
+  serializedDoc: S;
   clock: number;
 }
 
-interface StoredOperation {
-  operations: object;
+interface StoredOperation<O extends object> {
+  operations: O;
   clock: number;
 }
 
@@ -14,9 +14,12 @@ interface StoredOperation {
  * In-memory server provider for testing.
  * Stores documents and operations in memory - data is lost when the process ends.
  */
-export function inMemoryServerProvider(): ServerProvider<object, object> {
-  const docs = new Map<string, StoredDoc>();
-  const operationsMap = new Map<string, StoredOperation[]>();
+export function inMemoryServerProvider<
+  S extends object = object,
+  O extends object = object,
+>(): ServerProvider<S, O> {
+  const docs = new Map<string, StoredDoc<S>>();
+  const operationsMap = new Map<string, StoredOperation<O>[]>();
   const clockCounterByDocId = new Map<string, number>();
 
   function nextClock(docId: string): number {
@@ -29,9 +32,9 @@ export function inMemoryServerProvider(): ServerProvider<object, object> {
   return {
     async transaction<T>(
       _mode: "readonly" | "readwrite",
-      callback: (ctx: ServerProviderContext<object, object>) => Promise<T>,
+      callback: (ctx: ServerProviderContext<S, O>) => Promise<T>,
     ): Promise<T> {
-      const ctx: ServerProviderContext<object, object> = {
+      const ctx: ServerProviderContext<S, O> = {
         // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
         getSerializedDoc: async ({ docId }) => {
           return docs.get(docId);
@@ -47,23 +50,20 @@ export function inMemoryServerProvider(): ServerProvider<object, object> {
         },
 
         // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
-        deleteOperations: async ({ docId, count }) => {
+        deleteOperationsUntil: async ({ docId, clock }) => {
           const allOps = operationsMap.get(docId) ?? [];
-          allOps.splice(0, count);
-          if (allOps.length === 0) {
+          const remainingOps = allOps.filter((op) => op.clock > clock);
+          if (remainingOps.length === 0) {
             operationsMap.delete(docId);
           } else {
-            operationsMap.set(docId, allOps);
+            operationsMap.set(docId, remainingOps);
           }
         },
 
         // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
         saveOperations: async ({ docId, operations }) => {
           if (operations.length === 0) {
-            const allOps = operationsMap.get(docId) ?? [];
-            return allOps.length > 0
-              ? Math.max(...allOps.map((op) => op.clock))
-              : 0;
+            return clockCounterByDocId.get(docId) ?? 0;
           }
 
           const newClock = nextClock(docId);
@@ -78,6 +78,9 @@ export function inMemoryServerProvider(): ServerProvider<object, object> {
         // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
         saveSerializedDoc: async ({ docId, serializedDoc, clock }) => {
           docs.set(docId, { serializedDoc, clock });
+          if (clock > (clockCounterByDocId.get(docId) ?? 0)) {
+            clockCounterByDocId.set(docId, clock);
+          }
         },
       };
 

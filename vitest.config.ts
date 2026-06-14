@@ -44,7 +44,9 @@ const project = (name: string, browser: boolean): TestProjectConfiguration => ({
       screenshotFailures: false,
       headless: true,
       enabled: browser,
-      provider: playwright(),
+      provider: playwright({
+        launchOptions: { args: ["--js-flags=--expose-gc"] },
+      }),
       instances: [{ browser: "chromium" }],
     },
   },

@@ -88,6 +88,7 @@ export class DocSyncClient<
   dispose(): void {
     // this._events.emit("dispose"); // Maybe needed in the future
     this.config.queryClient.removeQueries({ queryKey: ["docsync"] });
+    this.config.queryClient.unmount();
   }
 
   /**

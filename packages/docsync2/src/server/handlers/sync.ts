@@ -76,6 +76,9 @@ export function handleSync<
 
       const operations = validation.operations(envelope);
       if (!operations) return;
+      const serializedDoc = validation.serializedDoc(envelope);
+      if (envelope.serializedDoc !== undefined && serializedDoc === undefined)
+        return;
 
       const room = io.sockets.adapter.rooms.get(`doc:${docId}`);
       if (!room?.has(socket.id)) {
@@ -95,11 +98,24 @@ export function handleSync<
         const stored = await provider.transaction("readwrite", async (ctx) => {
           const serverOps = await ctx.getOperations({ docId, clock });
           const serverDoc = await ctx.getSerializedDoc({ docId });
+
+          // Doc snapshots are accepted after authorization. Apps that need
+          // stricter edit rules should enforce them in authorize().
+          if (serializedDoc !== undefined && (serverDoc?.clock ?? 0) <= clock) {
+            await ctx.saveSerializedDoc({ docId, serializedDoc, clock });
+            await ctx.deleteOperationsUntil({ docId, clock });
+          }
+
+          const responseSerializedDoc =
+            serverDoc !== undefined &&
+            (serializedDoc === undefined || serverDoc.clock > clock)
+              ? serverDoc.serializedDoc
+              : undefined;
           const validatedStored = validation.stored({
             docId,
             operations: serverOps.flat(),
-            serializedDoc: serverDoc?.serializedDoc,
-            clock,
+            serializedDoc: responseSerializedDoc,
+            clock: serverDoc?.clock ?? clock,
           });
           if (!validatedStored) return;
 
