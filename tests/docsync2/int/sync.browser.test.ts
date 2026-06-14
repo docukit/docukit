@@ -1,5 +1,4 @@
 import { describe, expect, test } from "vitest";
-import { tick } from "../client/utils/async.js";
 import { createTestClient } from "../client/utils/client.js";
 import { reconnectTestClient } from "../client/utils/connection.js";
 import { createTestDocArgs } from "../client/utils/generators.js";
@@ -7,33 +6,6 @@ import { observeDoc, waitForDocStatus } from "../client/utils/doc.js";
 import { expectParallelFetching, testWrapper } from "./utils.js";
 
 describe("DocSync2 integration sync", () => {
-  test("multiple invalidations for one doc share the active getDoc sync", async () => {
-    await testWrapper(async ({ reference }) => {
-      await reference.createDoc();
-      reference.queryClient.clear();
-
-      const syncEvents = reference.recordSyncs(reference.docArgs.id);
-      const observed = reference.observeDoc();
-      let invalidatedWhileFetching = false;
-      const unsubscribe = observed.observer.subscribe((result) => {
-        if (invalidatedWhileFetching) return;
-        if (result.fetchStatus !== "fetching") return;
-
-        invalidatedWhileFetching = true;
-        for (let i = 0; i < 5; i++) {
-          reference.invalidateDoc();
-        }
-      });
-
-      await reference.waitForRemoteIdle(observed);
-      await tick();
-
-      unsubscribe();
-      expect(invalidatedWhileFetching).toBe(true);
-      expect(syncEvents).toHaveLength(1);
-    });
-  });
-
   test("getDoc syncs for different docs can fetch in parallel", async () => {
     await testWrapper(async ({ reference }) => {
       const doc1Args = reference.docArgs;

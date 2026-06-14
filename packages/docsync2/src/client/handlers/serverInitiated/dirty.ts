@@ -1,5 +1,5 @@
 import type { DocSyncClient } from "../../index.js";
-import { invalidateActiveGetDocQueries } from "../../utils/setupQueryClient/invalidateActiveGetDocQueries.js";
+import { invalidateDoc } from "../../utils/invalidateDoc.js";
 
 export const handleDirty = <
   D extends object,
@@ -11,6 +11,6 @@ export const handleDirty = <
   client: DocSyncClient<D, S, O>;
 }) => {
   client["_socket"].on("dirty", ({ docId }) => {
-    invalidateActiveGetDocQueries(client, (args) => args.id === docId);
+    void invalidateDoc(client, docId);
   });
 };

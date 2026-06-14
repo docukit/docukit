@@ -18,7 +18,10 @@
  * proves that TanStack Query dedupe is not strong enough for per-doc sync, we
  * can evaluate an explicit queue or an internal mutation then.
  */
-import { isExistingGetDocData } from "../../../shared/validators/getDocData.js";
+import {
+  type GetDocData,
+  isExistingGetDocData,
+} from "../../../shared/validators/getDocData.js";
 import type { DocSyncClient } from "../../index.js";
 import { requestSync } from "../../utils/request.js";
 import { getDocKey, type GetDocKeyArgs } from "./getDocKey.js";
@@ -53,7 +56,7 @@ const applyOperationsToStoredDoc = async <
   client: DocSyncClient<D, S, O>,
   args: ApplyOperationsToStoredDocArgs<S, O>,
 ) => {
-  const { docBinding } = client.config;
+  const { docBinding } = client["_config"];
   const { provider } = await client["_localPromise"];
 
   return await provider.transaction("readwrite", async (ctx) => {
@@ -89,16 +92,15 @@ const applyServerOperationsToCachedDoc = <
   client: DocSyncClient<D, S, O>,
   args: GetDocKeyArgs & { serverOperations: O[] },
 ) => {
-  const data = client.config.queryClient.getQueryData(getDocKey(args));
-  if (!isExistingGetDocData(data, client.config.docBinding)) return;
+  const { queryClient, docBinding } = client["_config"];
+  const data = queryClient.getQueryData(getDocKey(args));
+  if (!isExistingGetDocData(data, docBinding)) return;
   if (args.serverOperations.length === 0) return data;
 
   client["_changeOrigin"] = "network";
   try {
     for (const operation of args.serverOperations) {
-      client.config.docBinding.applyOperations(data.doc, operation, {
-        skipUndo: true,
-      });
+      docBinding.applyOperations(data.doc, operation, { skipUndo: true });
     }
   } finally {
     client["_changeOrigin"] = "local";
@@ -113,7 +115,8 @@ export const syncDocWithServer = async <
 >(
   client: DocSyncClient<D, S, O>,
   args: GetDocKeyArgs,
-) => {
+): Promise<GetDocData<D>> => {
+  const { queryClient } = client["_config"];
   const { provider } = await client["_localPromise"];
   const [operationsBatches, stored] = await provider.transaction(
     "readonly",
@@ -133,8 +136,7 @@ export const syncDocWithServer = async <
     clock,
   };
   const getAttempt = () =>
-    (client.config.queryClient.getQueryState(getDocKey(args))
-      ?.fetchFailureCount ?? 0) + 1;
+    (queryClient.getQueryState(getDocKey(args))?.fetchFailureCount ?? 0) + 1;
 
   try {
     const response = await requestSync(client["_socket"], req);

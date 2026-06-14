@@ -7,10 +7,10 @@ export const createTestDoc = async (
   testClient: TestClient,
   docArgs = testClient.docArgs,
 ) => {
-  const { queryClient, docSync } = testClient;
+  const { queryClient, docSync, docBinding } = testClient;
   await docSync.mutations.createDoc(docArgs);
   const data = queryClient.getQueryData(getDocKey(docArgs));
-  if (!isExistingGetDocData(data, docSync.config.docBinding)) {
+  if (!isExistingGetDocData(data, docBinding)) {
     throw new Error("Expected createDoc to seed getDoc data");
   }
 
@@ -80,10 +80,10 @@ export const waitForDocStatus = async (
     observed,
     (result) =>
       result.fetchStatus === fetchStatus &&
-      isExistingGetDocData(result.data, testClient.docSync.config.docBinding),
+      isExistingGetDocData(result.data, testClient.docBinding),
   );
   const { data } = result;
-  if (!isExistingGetDocData(data, testClient.docSync.config.docBinding)) {
+  if (!isExistingGetDocData(data, testClient.docBinding)) {
     throw new Error(`Expected existing getDoc data while ${fetchStatus}`);
   }
 

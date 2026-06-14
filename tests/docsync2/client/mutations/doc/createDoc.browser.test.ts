@@ -10,7 +10,7 @@ import { createTestDoc } from "../../utils/doc.js";
 describe("createDoc", () => {
   test("returns the doc id and seeds getDoc", async () => {
     const testClient = createTestClient();
-    const { queryClient, docSync } = testClient;
+    const { queryClient, docSync, docBinding } = testClient;
 
     const result = await docSync.mutations.createDoc(testClient.docArgs);
     const created = queryClient.getQueryData(
@@ -21,8 +21,8 @@ describe("createDoc", () => {
     );
 
     expect(result).toStrictEqual({ docId: testClient.docArgs.id });
-    expect(isExistingGetDocData(created, docSync.config.docBinding)).toBe(true);
-    if (!isExistingGetDocData(created, docSync.config.docBinding)) return;
+    expect(isExistingGetDocData(created, docBinding)).toBe(true);
+    if (!isExistingGetDocData(created, docBinding)) return;
     expect(queried.doc).toBe(created.doc);
     expect(queried).toStrictEqual(created);
   });
@@ -42,7 +42,7 @@ describe("createDoc", () => {
 
   test("persists the created doc so getDoc can load it from the local provider", async () => {
     const testClient = createTestClient();
-    const { queryClient, docSync, docArgs } = testClient;
+    const { queryClient, docSync, docBinding, docArgs } = testClient;
 
     const created = await createTestDoc(testClient);
     queryClient.clear();
@@ -51,15 +51,15 @@ describe("createDoc", () => {
       docSync.queries.getDoc(docArgs),
     );
 
-    expect(isExistingGetDocData(queried, docSync.config.docBinding)).toBe(true);
-    if (!isExistingGetDocData(queried, docSync.config.docBinding)) return;
+    expect(isExistingGetDocData(queried, docBinding)).toBe(true);
+    if (!isExistingGetDocData(queried, docBinding)) return;
     expect(queried.doc).not.toBe(created.doc);
     expect(queried.doc.toJSON()).toStrictEqual(created.doc.toJSON());
   });
 
   test("disconnected client creates a local doc and seeds getDoc", async () => {
     const testClient = createTestClient();
-    const { queryClient, docSync, docArgs } = testClient;
+    const { queryClient, docSync, docBinding, docArgs } = testClient;
     await reconnectTestClient(testClient);
     await disconnectTestClient(testClient);
 
@@ -69,6 +69,6 @@ describe("createDoc", () => {
     );
 
     expect(result).toStrictEqual({ docId: docArgs.id });
-    expect(isExistingGetDocData(created, docSync.config.docBinding)).toBe(true);
+    expect(isExistingGetDocData(created, docBinding)).toBe(true);
   });
 });

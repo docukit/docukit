@@ -16,7 +16,7 @@ const loadOrCreateDoc = async <
   docSync: DocSyncClient<D, S, O>,
   args: CreateDocArgs,
 ) => {
-  const { queryClient, docBinding } = docSync.config;
+  const { queryClient, docBinding } = docSync["_config"];
 
   const existingData = queryClient.getQueryData(getDocKey(args));
   if (isExistingGetDocData(existingData, docBinding)) return existingData;
@@ -56,23 +56,19 @@ const loadOrCreateDoc = async <
 export const createDoc = <D extends object, S extends object, O extends object>(
   docSync: DocSyncClient<D, S, O>,
   args: CreateDocArgs,
-) => {
-  const mutation = docSync.config.queryClient
-    .getMutationCache()
-    .build(docSync.config.queryClient, {
-      mutationKey: ["docsync", "createDoc", args.type, args.id],
-      // createDoc is a write. It seeds getDoc, but callers should read the doc
-      // through getDoc so TanStack Query remains the single source of truth.
-      networkMode: "always",
-      mutationFn: async () => {
-        const data: ExistingGetDocData<D> = await loadOrCreateDoc(
-          docSync,
-          args,
-        );
-        return { docId: data.docId };
-      },
-      scope: { id: `docsync:doc:${args.id}` },
-    });
+): Promise<{ docId: string }> => {
+  const { queryClient } = docSync["_config"];
+  const mutation = queryClient.getMutationCache().build(queryClient, {
+    mutationKey: ["docsync", "createDoc", args.type, args.id],
+    // createDoc is a write. It seeds getDoc, but callers should read the doc
+    // through getDoc so TanStack Query remains the single source of truth.
+    networkMode: "always",
+    mutationFn: async () => {
+      const data: ExistingGetDocData<D> = await loadOrCreateDoc(docSync, args);
+      return { docId: data.docId };
+    },
+    scope: { id: `docsync:doc:${args.id}` },
+  });
 
   return mutation.execute(undefined);
 };

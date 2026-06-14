@@ -1,6 +1,6 @@
 import { onlineManager } from "@tanstack/query-core";
 import type { DocSyncClient } from "../../index.js";
-import { invalidateActiveGetDocQueries } from "../../utils/setupQueryClient/invalidateActiveGetDocQueries.js";
+import { invalidateDocs } from "../../utils/invalidateDoc.js";
 
 export const handleConnect = <
   D extends object,
@@ -13,8 +13,8 @@ export const handleConnect = <
 }) => {
   client["_socket"].on("connect", () => {
     onlineManager.setOnline(true);
-    void client.config.queryClient.resumePausedMutations();
+    void client["_config"].queryClient.resumePausedMutations();
     client["_events"].emit("connect");
-    invalidateActiveGetDocQueries(client);
+    void invalidateDocs(client);
   });
 };

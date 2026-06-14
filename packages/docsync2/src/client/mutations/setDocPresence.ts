@@ -6,8 +6,13 @@ export type SetDocPresenceArgs<TPresence = unknown> = {
   presence: TPresence;
 };
 
-export const setDocPresence = <TPresence = unknown>(
-  _docSync: DocSyncClient,
+export const setDocPresence = <
+  D extends object,
+  S extends object,
+  O extends object,
+  TPresence = unknown,
+>(
+  _docSync: DocSyncClient<D, S, O>,
   _args: SetDocPresenceArgs<TPresence>,
 ): Promise<void> => {
   return Promise.reject(notImplemented());

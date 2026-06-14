@@ -1,6 +1,6 @@
 import type { DocSyncClient } from "../../../index.js";
 import type { GetDocArgs } from "../../../queries/getDoc/getDoc.js";
-import { invalidateActiveGetDocQueries } from "../invalidateActiveGetDocQueries.js";
+import { invalidateDoc } from "../../invalidateDoc.js";
 
 export const onDocChanged = <
   D extends object,
@@ -25,10 +25,6 @@ export const onDocChanged = <
       .transaction("readwrite", (ctx) =>
         ctx.saveOperations({ docId: args.id, operations: [operations] }),
       )
-      .then(() =>
-        invalidateActiveGetDocQueries(client, (queryArgs) => {
-          return queryArgs.id === args.id;
-        }),
-      ),
+      .then(() => invalidateDoc(client, args.id)),
   );
 };

@@ -58,6 +58,7 @@ export const createTestDocSyncClient = <
 export type TestClient = {
   queryClient: QueryClient;
   docSync: DocSyncClient<Doc, JsonDoc, Operations>;
+  docBinding: DocBinding<Doc, JsonDoc, Operations>;
   docArgs: ReturnType<typeof createTestDocArgs>;
   provider: ClientProvider<JsonDoc, Operations>;
 };
@@ -69,5 +70,5 @@ export const createTestClient = (): TestClient => {
   ]);
   const { queryClient, docSync, provider } = createTestDocSyncClient(binding);
 
-  return { queryClient, docSync, docArgs, provider };
+  return { queryClient, docSync, docBinding: binding, docArgs, provider };
 };

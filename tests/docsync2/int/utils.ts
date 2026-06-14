@@ -26,7 +26,6 @@ type ClientUtils = TestClient & {
   createDoc(docArgs?: TestClient["docArgs"]): ReturnType<typeof createTestDoc>;
   observeDoc(docArgs?: TestClient["docArgs"]): ObservedDoc;
   invalidateDoc(docArgs?: TestClient["docArgs"]): void;
-  recordSyncs(docId: string): string[];
   waitForRemoteIdle(
     observed: ObservedDoc,
     previousUpdatedAt?: number,
@@ -48,22 +47,9 @@ const createClientUtils = (): ClientUtils => {
       return observed;
     },
     invalidateDoc: (docArgs = testClient.docArgs) => {
-      void testClient.queryClient.invalidateQueries(
-        {
-          queryKey: testClient.docSync.queries.getDoc(docArgs).queryKey,
-          exact: true,
-          refetchType: "active",
-        },
-        { cancelRefetch: false },
-      );
-    },
-    recordSyncs: (docId: string) => {
-      const events: string[] = [];
-      const off = testClient.docSync.on("sync", (event) => {
-        if (event.req.docId === docId) events.push(event.req.docId);
+      void testClient.queryClient.invalidateQueries({
+        queryKey: testClient.docSync.queries.getDoc(docArgs).queryKey,
       });
-      unsubscribes.push(off);
-      return events;
     },
     waitForRemoteIdle: (
       observed: ReturnType<typeof observeDoc>,
