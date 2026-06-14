@@ -1,9 +1,9 @@
-import { isExistingGetDocData } from "../../../shared/validators/getDocData.js";
-import type { DocSyncClient } from "../../index.js";
-import type { GetDocArgs } from "./getDoc.js";
-import { getDocKey } from "./getDocKey.js";
+import { isExistingGetDocData } from "../../../../shared/validators/getDocData.js";
+import type { DocSyncClient } from "../../../index.js";
+import type { GetDocArgs } from "../../../queries/getDoc/getDoc.js";
+import { getDocKey } from "../../../queries/getDoc/getDocKey.js";
 
-export const loadLocalGetDocData = async <
+const loadLocalGetDocData = async <
   D extends object,
   S extends object,
   O extends object,
@@ -29,7 +29,7 @@ export const loadLocalGetDocData = async <
   return { docId: args.id, doc };
 };
 
-export const seedLocalGetDocData = async <
+export const seedCacheFromProvider = async <
   D extends object,
   S extends object,
   O extends object,

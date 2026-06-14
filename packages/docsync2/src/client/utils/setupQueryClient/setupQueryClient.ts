@@ -1,5 +1,5 @@
 import type { DocSyncClient } from "../../index.js";
-import { observeActiveGetDocQueries } from "./observeActiveGetDocQueries.js";
+import { observeActiveGetDocQueries } from "./getDocQueries/observeActiveGetDocQueries.js";
 
 export const setupQueryClient = <
   D extends object,
