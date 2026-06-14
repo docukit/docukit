@@ -219,7 +219,7 @@ describe("getDocPresence", () => {
           presence: { cursor: "blocked" },
         }),
       ).rejects.toMatchObject({
-        name: "AuthorizationError",
+        type: "AuthorizationError",
         message: "Access denied",
       });
     } finally {

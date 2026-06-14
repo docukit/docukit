@@ -23,7 +23,7 @@ import {
   isExistingGetDocData,
 } from "../../../shared/validators/getDocData.js";
 import type { DocSyncClient } from "../../index.js";
-import { requestSync } from "../../utils/request.js";
+import { request } from "../../utils/request.js";
 import { getDocKey, type GetDocKeyArgs } from "./getDocKey.js";
 
 class SyncResponseError extends Error {
@@ -140,7 +140,7 @@ export const syncDocWithServer = async <
     (queryClient.getQueryState(getDocKey(args))?.fetchFailureCount ?? 0) + 1;
 
   try {
-    const response = await requestSync(client["_socket"], req);
+    const response = await request(client["_socket"], "sync", req);
     if (response.error) {
       client["_events"].emit("sync", {
         req,
