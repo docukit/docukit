@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { tick } from "../../utils/async.js";
 import { createTestClient, type TestClient } from "../../utils/client.js";
 import { reconnectTestClient } from "../../utils/connection.js";
 import {
@@ -225,6 +226,107 @@ describe("getDocPresence", () => {
     } finally {
       observedDoc.unsubscribe();
       cleanupClient(testClient);
+    }
+  });
+
+  test("setDocPresence sends only the latest presence after collab debounce", async () => {
+    const reference = createTestClient();
+    const peer = createTestClient({ timing: { collabMaxDebounce: 30 } });
+    const unsubscribes: (() => void)[] = [];
+
+    try {
+      await createTestDoc(reference);
+      unsubscribes.push(
+        (await observeSyncedDoc(reference, reference.docArgs)).unsubscribe,
+      );
+      unsubscribes.push(
+        (await observeSyncedDoc(peer, reference.docArgs)).unsubscribe,
+      );
+
+      const referencePresence = observePresence(
+        reference,
+        reference.docArgs.id,
+      );
+      unsubscribes.push(referencePresence.unsubscribe);
+      const peerClientId = peer.docSync["_clientId"];
+
+      const firstPresence = peer.docSync.mutations.setDocPresence({
+        docId: reference.docArgs.id,
+        presence: { cursor: "first" },
+      });
+      const secondPresence = peer.docSync.mutations.setDocPresence({
+        docId: reference.docArgs.id,
+        presence: { cursor: "second" },
+      });
+
+      await tick(10);
+      expect(
+        referencePresence.observer.getCurrentResult().data?.[peerClientId],
+      ).toBeUndefined();
+
+      await Promise.all([firstPresence, secondPresence]);
+      const result = await waitForObservedPresenceResult(
+        referencePresence,
+        (result) => result.data?.[peerClientId] !== undefined,
+      );
+
+      expect(result.data?.[peerClientId]).toStrictEqual({ cursor: "second" });
+      expect(
+        referencePresence.results.some((result) => {
+          const peerPresence = result.data?.[peerClientId];
+          return (
+            typeof peerPresence === "object" &&
+            peerPresence !== null &&
+            "cursor" in peerPresence &&
+            peerPresence.cursor === "first"
+          );
+        }),
+      ).toBe(false);
+    } finally {
+      for (const unsubscribe of unsubscribes) unsubscribe();
+      cleanupClient(reference);
+      cleanupClient(peer);
+    }
+  });
+
+  test("setDocPresence sends immediately when collab debounce is zero", async () => {
+    const reference = createTestClient();
+    const peer = createTestClient({ timing: { collabMaxDebounce: 0 } });
+    const unsubscribes: (() => void)[] = [];
+
+    try {
+      await createTestDoc(reference);
+      unsubscribes.push(
+        (await observeSyncedDoc(reference, reference.docArgs)).unsubscribe,
+      );
+      unsubscribes.push(
+        (await observeSyncedDoc(peer, reference.docArgs)).unsubscribe,
+      );
+
+      const referencePresence = observePresence(
+        reference,
+        reference.docArgs.id,
+      );
+      unsubscribes.push(referencePresence.unsubscribe);
+
+      await peer.docSync.mutations.setDocPresence({
+        docId: reference.docArgs.id,
+        presence: { cursor: "immediate" },
+      });
+
+      const peerClientId = peer.docSync["_clientId"];
+      const result = await waitForObservedPresenceResult(
+        referencePresence,
+        (result) => result.data?.[peerClientId] !== undefined,
+      );
+
+      expect(result.data?.[peerClientId]).toStrictEqual({
+        cursor: "immediate",
+      });
+    } finally {
+      for (const unsubscribe of unsubscribes) unsubscribe();
+      cleanupClient(reference);
+      cleanupClient(peer);
     }
   });
 });

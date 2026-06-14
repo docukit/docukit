@@ -2,6 +2,7 @@ import { QueryClient } from "@tanstack/query-core";
 import {
   DocSyncClient,
   indexedDBProvider,
+  type ClientConfig,
   type ClientProvider,
   type DocBinding,
 } from "@docukit/docsync2/client";
@@ -37,6 +38,7 @@ export const createTestDocSyncClient = <
   O extends object,
 >(
   docBinding: DocBinding<D, S, O>,
+  options?: { timing?: ClientConfig<D, S, O>["timing"] },
 ) => {
   const queryClient = new QueryClient();
   const userId = generateTestUserId();
@@ -50,6 +52,7 @@ export const createTestDocSyncClient = <
       auth: { getToken: () => `test-token-${userId}` },
     },
     local: { provider: () => provider, getIdentity: () => identity },
+    ...(options?.timing ? { timing: options.timing } : {}),
   });
 
   return { queryClient, docSync, provider };
@@ -63,12 +66,17 @@ export type TestClient = {
   provider: ClientProvider<JsonDoc, Operations>;
 };
 
-export const createTestClient = (): TestClient => {
+export const createTestClient = (options?: {
+  timing?: ClientConfig<Doc, JsonDoc, Operations>["timing"];
+}): TestClient => {
   const docArgs = createTestDocArgs();
   const binding = DocNodeBinding([
     { type: docArgs.type, extensions: [{ nodes: [TestNode] }] },
   ]);
-  const { queryClient, docSync, provider } = createTestDocSyncClient(binding);
+  const { queryClient, docSync, provider } = createTestDocSyncClient(
+    binding,
+    options,
+  );
 
   return { queryClient, docSync, docBinding: binding, docArgs, provider };
 };

@@ -6,10 +6,7 @@ import {
   type SetDocPresenceArgs,
 } from "./mutations/setDocPresence.js";
 import { getDoc, type GetDocArgs } from "./queries/getDoc/getDoc.js";
-import {
-  getDocPresence,
-  type DocPresenceArgs,
-} from "./queries/getDocPresence/getDocPresence.js";
+import { getDocPresence } from "./queries/getDocPresence/getDocPresence.js";
 import {
   createClientEventEmitter,
   type ClientEventMap,
@@ -17,12 +14,23 @@ import {
   type ClientEventEmitter,
 } from "./utils/events.js";
 import { handleConnect } from "./handlers/connection/connect.js";
+import { handleCollaboration } from "./handlers/serverInitiated/collaboration.js";
 import { handleDirty } from "./handlers/serverInitiated/dirty.js";
 import { handlePresence } from "./handlers/serverInitiated/presence.js";
 import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
 import { setupQueryClient } from "./utils/setupQueryClient/setupQueryClient.js";
-import type { ClientConfig, ClientSocket, LocalResolved } from "./types.js";
+import type {
+  ClientConfig,
+  ClientSocket,
+  DeferredState,
+  LocalResolved,
+  PresenceDebounceState,
+} from "./types.js";
+
+type LocalOpsBatchState<O extends object> = DeferredState<O[]> & {
+  startedAt: number;
+};
 
 export class DocSyncClient<
   D extends object = object,
@@ -38,10 +46,13 @@ export class DocSyncClient<
   protected _deviceId = getDeviceId();
   protected _changeOrigin: "local" | "network" = "local";
   protected _events: ClientEventEmitter<O, S> = createClientEventEmitter();
+  protected _localOpsBatchState = new Map<string, LocalOpsBatchState<O>>();
+  protected _presenceDebounceState = new Map<string, PresenceDebounceState>();
+  protected _collabDocIds = new Set<string>();
 
   readonly queries = {
     getDoc: (args: GetDocArgs) => getDoc(this, args),
-    getDocPresence: (args: DocPresenceArgs) => getDocPresence(args),
+    getDocPresence,
   };
 
   readonly mutations = {
@@ -75,6 +86,7 @@ export class DocSyncClient<
     setupQueryClient(this);
     handleConnect({ client: this });
     handleDisconnect({ client: this });
+    handleCollaboration({ client: this });
     handleDirty({ client: this });
     handlePresence({ client: this });
   }

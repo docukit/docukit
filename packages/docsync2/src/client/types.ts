@@ -9,6 +9,16 @@ import type { DocBinding } from "./bindings/types.js";
 
 export type Identity = { userId: string; secret: string };
 
+export type DeferredState<T> = {
+  data: T;
+  timeout?: ReturnType<typeof setTimeout>;
+};
+
+export type PresenceDebounceState = DeferredState<unknown> & {
+  resolves: Set<() => void>;
+  rejects: Set<(error: unknown) => void>;
+};
+
 export type ClientConfig<
   D extends object = object,
   S extends object = object,

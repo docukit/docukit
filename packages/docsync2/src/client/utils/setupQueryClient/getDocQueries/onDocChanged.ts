@@ -1,6 +1,43 @@
 import type { DocSyncClient } from "../../../index.js";
 import type { GetDocArgs } from "../../../queries/getDoc/getDoc.js";
-import { invalidateDoc } from "../../invalidateDoc.js";
+import { flushLocalOperations } from "../../flushLocalOperations.js";
+import {
+  getCollabMaxDebounce,
+  getSingleClientMaxDebounce,
+} from "../../timing.js";
+
+const queueLocalOperations = <
+  D extends object,
+  S extends object,
+  O extends object,
+>(
+  client: DocSyncClient<D, S, O>,
+  args: { docId: string; operations: O[] },
+) => {
+  const now = Date.now();
+  const state = client["_localOpsBatchState"].get(args.docId) ?? {
+    data: [],
+    startedAt: now,
+  };
+
+  state.data.push(...args.operations);
+  client["_localOpsBatchState"].set(args.docId, state);
+
+  const maxDebounce = client["_collabDocIds"].has(args.docId)
+    ? getCollabMaxDebounce(client)
+    : getSingleClientMaxDebounce(client);
+  const elapsed = now - state.startedAt;
+  if (maxDebounce === 0 || elapsed >= maxDebounce) {
+    void flushLocalOperations(client, args.docId);
+    return;
+  }
+
+  if (state.timeout !== undefined) return;
+
+  state.timeout = setTimeout(() => {
+    void flushLocalOperations(client, args.docId);
+  }, maxDebounce - elapsed);
+};
 
 export const onDocChanged = <
   D extends object,
@@ -20,11 +57,5 @@ export const onDocChanged = <
 
   if (origin !== "local") return;
 
-  void client["_localPromise"].then(({ provider }) =>
-    provider
-      .transaction("readwrite", (ctx) =>
-        ctx.saveOperations({ docId: args.id, operations: [operations] }),
-      )
-      .then(() => invalidateDoc(client, args.id)),
-  );
+  queueLocalOperations(client, { docId: args.id, operations: [operations] });
 };

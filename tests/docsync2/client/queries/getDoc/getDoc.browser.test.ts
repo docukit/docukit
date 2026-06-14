@@ -9,6 +9,7 @@ import {
   createTestDoc,
   getTestDocOperationBatchCount,
   getTestDocKey,
+  observeDoc,
   observeTestDoc,
   waitForNextDocResult,
   waitForDocStatus,
@@ -134,7 +135,9 @@ describe("getDoc", () => {
   });
 
   test("doc changes are persisted as local operations while observed", async () => {
-    const testClient = createTestClient();
+    const testClient = createTestClient({
+      timing: { singleClientMaxDebounce: 0 },
+    });
     const created = await createTestDoc(testClient);
     await reconnectTestClient(testClient);
     await disconnectTestClient(testClient);
@@ -152,7 +155,9 @@ describe("getDoc", () => {
   });
 
   test("local doc changes refetch the active getDoc query", async () => {
-    const testClient = createTestClient();
+    const testClient = createTestClient({
+      timing: { singleClientMaxDebounce: 0 },
+    });
     await createTestDoc(testClient);
     await reconnectTestClient(testClient);
     testClient.queryClient.clear();
@@ -217,7 +222,9 @@ describe("getDoc", () => {
   });
 
   test("connecting pushes pending local operations and clears the local queue", async () => {
-    const testClient = createTestClient();
+    const testClient = createTestClient({
+      timing: { singleClientMaxDebounce: 0 },
+    });
     const created = await createTestDoc(testClient);
     await reconnectTestClient(testClient);
     await disconnectTestClient(testClient);
@@ -239,6 +246,105 @@ describe("getDoc", () => {
 
     testClient.docSync.disconnect();
     observed.unsubscribe();
+  });
+
+  test("local doc changes use single-client debounce before persisting", async () => {
+    const testClient = createTestClient({
+      timing: { singleClientMaxDebounce: 30 },
+    });
+    const created = await createTestDoc(testClient);
+    await reconnectTestClient(testClient);
+    await disconnectTestClient(testClient);
+    const observed = observeTestDoc(testClient);
+
+    await tick();
+    created.doc.root.append(created.doc.createNode(TestNode));
+    created.doc.forceCommit();
+
+    await tick(10);
+    expect(await getTestDocOperationBatchCount(testClient, created.docId)).toBe(
+      0,
+    );
+
+    await expect
+      .poll(() => getTestDocOperationBatchCount(testClient, created.docId))
+      .toBe(1);
+
+    observed.unsubscribe();
+  });
+
+  test("local doc changes use collaborative debounce for collaborator docs", async () => {
+    const testClient = createTestClient({
+      timing: { collabMaxDebounce: 10, singleClientMaxDebounce: 1000 },
+    });
+    const created = await createTestDoc(testClient);
+    await reconnectTestClient(testClient);
+    await disconnectTestClient(testClient);
+    const observed = observeTestDoc(testClient);
+    testClient.docSync["_collabDocIds"].add(created.docId);
+
+    await tick();
+    created.doc.root.append(created.doc.createNode(TestNode));
+    created.doc.forceCommit();
+
+    await tick();
+    expect(await getTestDocOperationBatchCount(testClient, created.docId)).toBe(
+      0,
+    );
+
+    await expect
+      .poll(() => getTestDocOperationBatchCount(testClient, created.docId))
+      .toBe(1);
+
+    observed.unsubscribe();
+  });
+
+  test("collaboration flushes pending local operations", async () => {
+    const reference = createTestClient({
+      timing: { collabMaxDebounce: 10, singleClientMaxDebounce: 1000 },
+    });
+    const peer = createTestClient();
+    const unsubscribes: (() => void)[] = [];
+
+    try {
+      const created = await createTestDoc(reference);
+      await reconnectTestClient(reference);
+      const referenceObserved = observeTestDoc(reference);
+      await waitForDocStatus(reference, referenceObserved, "idle");
+      unsubscribes.push(referenceObserved.unsubscribe);
+
+      created.doc.root.append(created.doc.createNode(TestNode));
+      created.doc.forceCommit();
+      await tick(20);
+      expect(
+        await getTestDocOperationBatchCount(reference, created.docId),
+      ).toBe(0);
+
+      const syncedPendingOperations = new Promise<void>((resolve, reject) => {
+        const off = reference.docSync.on("sync", (event) => {
+          if (event.req.docId !== created.docId) return;
+          if ((event.req.operations?.length ?? 0) === 0) return;
+
+          off();
+          if (event.error) {
+            reject(new Error(event.error.message));
+            return;
+          }
+          resolve();
+        });
+      });
+
+      const peerObserved = observeDoc(peer, reference.docArgs);
+      unsubscribes.push(peerObserved.unsubscribe);
+      await waitForDocStatus(peer, peerObserved, "idle");
+      await syncedPendingOperations;
+    } finally {
+      for (const unsubscribe of unsubscribes) unsubscribe();
+      reference.docSync.disconnect();
+      reference.docSync.dispose();
+      peer.docSync.disconnect();
+      peer.docSync.dispose();
+    }
   });
 
   test("disposing the client removes doc queries", async () => {
