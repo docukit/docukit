@@ -1,6 +1,7 @@
 import { onlineManager } from "@tanstack/query-core";
 import type { DocSyncClient } from "../../index.js";
 import { invalidateDocs } from "../../utils/invalidateDoc.js";
+import { flushLocalOperations } from "../../utils/flushLocalOperations.js";
 
 export const handleConnect = <
   D extends object,
@@ -15,6 +16,13 @@ export const handleConnect = <
     onlineManager.setOnline(true);
     void client["_queryClient"].resumePausedMutations();
     client["_events"].emit("connect");
-    void invalidateDocs(client);
+    void (async () => {
+      await Promise.all(
+        [...client["_localOpsBatchState"].keys()].map((docId) =>
+          flushLocalOperations(client, docId, { invalidate: false }),
+        ),
+      );
+      await invalidateDocs(client);
+    })();
   });
 };
