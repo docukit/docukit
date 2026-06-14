@@ -9,7 +9,7 @@ export type DocPresenceOptions<TPresence = unknown> = {
   queryFn: () => Promise<Presence<TPresence>>;
 };
 
-export const docPresence = <TPresence = unknown>({
+export const getDocPresence = <TPresence = unknown>({
   docId,
 }: DocPresenceArgs): DocPresenceOptions<TPresence> => {
   return {

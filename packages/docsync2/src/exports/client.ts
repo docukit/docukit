@@ -52,6 +52,6 @@ export type { GetDocKeyArgs } from "../client/queries/getDoc/getDocKey.js";
 export type {
   DocPresenceArgs,
   DocPresenceOptions,
-} from "../client/queries/presence/presence.js";
+} from "../client/queries/getDocPresence/getDocPresence.js";
 export type { CreateDocArgs } from "../client/mutations/createDoc.js";
 export type { SetDocPresenceArgs } from "../client/mutations/setDocPresence.js";

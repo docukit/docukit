@@ -7,9 +7,9 @@ import {
 } from "./mutations/setDocPresence.js";
 import { getDoc, type GetDocArgs } from "./queries/getDoc/getDoc.js";
 import {
-  docPresence,
+  getDocPresence,
   type DocPresenceArgs,
-} from "./queries/presence/presence.js";
+} from "./queries/getDocPresence/getDocPresence.js";
 import {
   createClientEventEmitter,
   type ClientEventMap,
@@ -44,7 +44,7 @@ export class DocSyncClient<
 
   readonly queries = {
     getDoc: (args: GetDocArgs) => getDoc(this, args),
-    docPresence: (args: DocPresenceArgs) => docPresence(args),
+    getDocPresence: (args: DocPresenceArgs) => getDocPresence(args),
   };
 
   readonly mutations = {
