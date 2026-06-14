@@ -3,6 +3,7 @@ export {
   getDocArgsFromKey,
   getDocKey,
 } from "../client/queries/getDoc/getDocKey.js";
+export { getDocPresenceKey } from "../client/queries/getDocPresence/getDocPresence.js";
 export { indexedDBProvider } from "../client/providers/indexeddb.js";
 export { createDocBinding } from "../client/bindings/index.js";
 export {

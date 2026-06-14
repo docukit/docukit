@@ -18,6 +18,7 @@ import {
 } from "./utils/events.js";
 import { handleConnect } from "./handlers/connection/connect.js";
 import { handleDirty } from "./handlers/serverInitiated/dirty.js";
+import { handlePresence } from "./handlers/serverInitiated/presence.js";
 import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
 import { setupQueryClient } from "./utils/setupQueryClient/setupQueryClient.js";
@@ -75,6 +76,7 @@ export class DocSyncClient<
     handleConnect({ client: this });
     handleDisconnect({ client: this });
     handleDirty({ client: this });
+    handlePresence({ client: this });
   }
 
   connect(): void {
