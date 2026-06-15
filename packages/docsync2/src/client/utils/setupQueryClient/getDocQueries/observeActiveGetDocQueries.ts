@@ -16,13 +16,16 @@ export const observeActiveGetDocQueries = <
   const docBinding = client["_docBinding"];
   const queryClient = client["_queryClient"];
 
-  void queryClient.getQueryCache().subscribe((event) => {
-    if (event.type !== "observerAdded" && event.type !== "updated") return;
-
-    const { query } = event;
-    if (query.getObserversCount() === 0) return;
+  void queryClient.getQueryCache().subscribe(({ query, type }) => {
     const args = getDocArgsFromKey(query.queryKey);
     if (!args) return;
+
+    if (query.getObserversCount() === 0) {
+      client["_presenceStateByDocId"].delete(args.id);
+      return;
+    }
+
+    if (type !== "observerAdded" && type !== "updated") return;
 
     if (!seededQueries.has(query)) {
       seededQueries.add(query);

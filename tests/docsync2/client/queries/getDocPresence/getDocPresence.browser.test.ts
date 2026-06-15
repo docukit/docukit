@@ -31,17 +31,24 @@ const observeSyncedDoc = async (
 };
 
 describe("getDocPresence", () => {
-  test("starts with empty presence", () => {
+  test("starts with empty presence", async () => {
     const testClient = createTestClient();
-    const observedPresence = observePresence(testClient, testClient.docArgs.id);
+    const unsubscribes: (() => void)[] = [];
 
     try {
-      const result = observedPresence.observer.getCurrentResult();
+      await createTestDoc(testClient);
+      unsubscribes.push(
+        (await observeSyncedDoc(testClient, testClient.docArgs)).unsubscribe,
+      );
+      const observedPresence = observePresence(
+        testClient,
+        testClient.docArgs.id,
+      );
+      unsubscribes.push(observedPresence.unsubscribe);
 
-      expect(result.fetchStatus).toBe("idle");
-      expect(result.data).toStrictEqual({});
+      expect(observedPresence.getCurrentPresence()).toStrictEqual({});
     } finally {
-      observedPresence.unsubscribe();
+      for (const unsubscribe of unsubscribes) unsubscribe();
       cleanupClient(testClient);
     }
   });
@@ -78,13 +85,11 @@ describe("getDocPresence", () => {
       const peerClientId = peer.docSync["_clientId"];
       const result = await waitForObservedPresenceResult(
         referencePresence,
-        (result) => result.data?.[peerClientId] !== undefined,
+        (presence) => presence[peerClientId] !== undefined,
       );
 
-      expect(result.data?.[peerClientId]).toStrictEqual({ cursor: "peer" });
-      expect(
-        peerPresence.observer.getCurrentResult().data?.[peerClientId],
-      ).toBeUndefined();
+      expect(result[peerClientId]).toStrictEqual({ cursor: "peer" });
+      expect(peerPresence.getCurrentPresence()[peerClientId]).toBeUndefined();
     } finally {
       for (const unsubscribe of unsubscribes) unsubscribe();
       cleanupClient(reference);
@@ -119,14 +124,13 @@ describe("getDocPresence", () => {
       });
       const added = await waitForObservedPresenceResult(
         referencePresence,
-        (result) => result.data?.[peerClientId] !== undefined,
+        (presence) => presence[peerClientId] !== undefined,
       );
 
       const removedPresence = waitForNextPresenceResult(
         referencePresence,
-        (result) =>
-          result.data !== added.data &&
-          result.data?.[peerClientId] === undefined,
+        (presence) =>
+          presence !== added && presence[peerClientId] === undefined,
       );
       await peer.docSync.mutations.setDocPresence({
         docId: reference.docArgs.id,
@@ -134,7 +138,7 @@ describe("getDocPresence", () => {
       });
       const removed = await removedPresence;
 
-      expect(removed.data).toStrictEqual({});
+      expect(removed).toStrictEqual({});
     } finally {
       for (const unsubscribe of unsubscribes) unsubscribe();
       cleanupClient(reference);
@@ -169,20 +173,61 @@ describe("getDocPresence", () => {
       });
       const added = await waitForObservedPresenceResult(
         referencePresence,
-        (result) => result.data?.[peerClientId] !== undefined,
+        (presence) => presence[peerClientId] !== undefined,
       );
 
       const removedPresence = waitForNextPresenceResult(
         referencePresence,
-        (result) =>
-          result.data !== added.data &&
-          result.data?.[peerClientId] === undefined,
+        (presence) =>
+          presence !== added && presence[peerClientId] === undefined,
       );
       peer.docSync.disconnect();
       const removed = await removedPresence;
 
-      expect(removed.data).toStrictEqual({});
+      expect(removed).toStrictEqual({});
     } finally {
+      for (const unsubscribe of unsubscribes) unsubscribe();
+      cleanupClient(reference);
+      cleanupClient(peer);
+    }
+  });
+
+  test("clears cached presence when the doc is no longer observed", async () => {
+    const reference = createTestClient();
+    const peer = createTestClient();
+    const unsubscribes: (() => void)[] = [];
+    let referenceDoc: Awaited<ReturnType<typeof observeSyncedDoc>> | undefined;
+    let referencePresence: ReturnType<typeof observePresence> | undefined;
+
+    try {
+      await createTestDoc(reference);
+      referenceDoc = await observeSyncedDoc(reference, reference.docArgs);
+      unsubscribes.push(
+        (await observeSyncedDoc(peer, reference.docArgs)).unsubscribe,
+      );
+
+      referencePresence = observePresence(reference, reference.docArgs.id);
+
+      await peer.docSync.mutations.setDocPresence({
+        docId: reference.docArgs.id,
+        presence: { cursor: "peer" },
+      });
+      const peerClientId = peer.docSync["_clientId"];
+      await waitForObservedPresenceResult(
+        referencePresence,
+        (presence) => presence[peerClientId] !== undefined,
+      );
+
+      referencePresence.unsubscribe();
+      referenceDoc.unsubscribe();
+      await tick();
+
+      expect(
+        reference.docSync["_presenceStateByDocId"].has(reference.docArgs.id),
+      ).toBe(false);
+    } finally {
+      referencePresence?.unsubscribe();
+      referenceDoc?.unsubscribe();
       for (const unsubscribe of unsubscribes) unsubscribe();
       cleanupClient(reference);
       cleanupClient(peer);
@@ -261,19 +306,19 @@ describe("getDocPresence", () => {
 
       await tick(10);
       expect(
-        referencePresence.observer.getCurrentResult().data?.[peerClientId],
+        referencePresence.getCurrentPresence()[peerClientId],
       ).toBeUndefined();
 
       await Promise.all([firstPresence, secondPresence]);
       const result = await waitForObservedPresenceResult(
         referencePresence,
-        (result) => result.data?.[peerClientId] !== undefined,
+        (presence) => presence[peerClientId] !== undefined,
       );
 
-      expect(result.data?.[peerClientId]).toStrictEqual({ cursor: "second" });
+      expect(result[peerClientId]).toStrictEqual({ cursor: "second" });
       expect(
-        referencePresence.results.some((result) => {
-          const peerPresence = result.data?.[peerClientId];
+        referencePresence.results.some((presence) => {
+          const peerPresence = presence[peerClientId];
           return (
             typeof peerPresence === "object" &&
             peerPresence !== null &&
@@ -317,12 +362,10 @@ describe("getDocPresence", () => {
       const peerClientId = peer.docSync["_clientId"];
       const result = await waitForObservedPresenceResult(
         referencePresence,
-        (result) => result.data?.[peerClientId] !== undefined,
+        (presence) => presence[peerClientId] !== undefined,
       );
 
-      expect(result.data?.[peerClientId]).toStrictEqual({
-        cursor: "immediate",
-      });
+      expect(result[peerClientId]).toStrictEqual({ cursor: "immediate" });
     } finally {
       for (const unsubscribe of unsubscribes) unsubscribe();
       cleanupClient(reference);

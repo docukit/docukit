@@ -36,6 +36,25 @@ const server = new DocSyncServer({
 - This rewrite aims to squash on the client, keeping the server CRDT-agnostic.
 - The server validates and persists opaque serialized docs/operations.
 
+## Why Presence Does Not Use TanStack Query
+
+Presence is intentionally kept outside TanStack Query.
+
+We evaluated modeling presence as its own query, but it did not provide enough
+benefit for the complexity it added. Presence is short-lived, connection-scoped
+state. It is only meaningful while a document is actively open, and it should not
+behave like durable cached document data.
+
+Using TanStack Query for presence removed some local state, but introduced a
+similar amount of complexity elsewhere: custom query keys, exported validators,
+cache writes for server-pushed patches, and extra public API surface for state
+that should stay internal.
+
+DocSync still uses TanStack Query for document data, fetch status, observers,
+cache lifecycle, and mutations where those tools fit well. Presence stays on the
+client because that model is simpler, closer to the original DocSync design, and
+avoids treating ephemeral collaboration metadata as cached query data.
+
 ## Freshness Model
 
 - IndexedDB stores DocSync domain data: serialized docs and queued operations.

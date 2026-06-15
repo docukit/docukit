@@ -1,6 +1,7 @@
 import type {
   ClientToServerEvents,
   MaybePromise,
+  Presence,
   ServerToClientEvents,
   SerializedDocPayload,
 } from "../shared/types.js";
@@ -17,6 +18,11 @@ export type DeferredState<T> = {
 export type PresenceDebounceState = DeferredState<unknown> & {
   resolves: Set<() => void>;
   rejects: Set<(error: unknown) => void>;
+};
+
+export type PresenceState = {
+  presence: Presence;
+  listeners: Set<(presence: Presence) => void>;
 };
 
 export type ClientConfig<

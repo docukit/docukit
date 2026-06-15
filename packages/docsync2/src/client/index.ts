@@ -27,6 +27,7 @@ import type {
   DeferredState,
   LocalResolved,
   PresenceDebounceState,
+  PresenceState,
 } from "./types.js";
 
 type LocalOpsBatchState<O extends object> = DeferredState<O[]> & {
@@ -53,13 +54,14 @@ export class DocSyncClient<
   protected _singleClientMaxDebounce: number;
   protected _collabDocIds = new Set<string>();
   protected _presenceDebounceState = new Map<string, PresenceDebounceState>();
+  protected _presenceStateByDocId = new Map<string, PresenceState>();
 
   // TODO: see comment in /docsync/src/client/index.ts
   protected _events: ClientEventEmitter<O, S> = createClientEventEmitter();
 
   readonly queries = {
     getDoc: (args: GetDocArgs) => getDoc(this, args),
-    getDocPresence,
+    getDocPresence: getDocPresence(this),
   };
 
   readonly mutations = {

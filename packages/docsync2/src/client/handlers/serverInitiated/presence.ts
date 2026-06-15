@@ -2,7 +2,7 @@ import * as v from "valibot";
 import type { Presence } from "../../../shared/types.js";
 import { presenceSchema } from "../../../shared/validators/socketProtocol.js";
 import type { DocSyncClient } from "../../index.js";
-import { getDocPresenceKey } from "../../queries/getDocPresence/getDocPresence.js";
+import { hasActiveDocQuery } from "../../utils/activeDocQuery.js";
 
 const getCachedPresence = (value: unknown): Presence => {
   const parsed = v.safeParse(presenceSchema, value);
@@ -53,14 +53,26 @@ export const handlePresence = <
   client: DocSyncClient<D, S, O>;
 }) => {
   client["_socket"].on("presence", ({ docId, presence }) => {
-    const queryKey = getDocPresenceKey({ docId });
+    if (!hasActiveDocQuery(client, docId)) return;
+
+    const presenceByDoc = client["_presenceStateByDocId"];
+    const currentState = presenceByDoc.get(docId);
     const nextPresence = applyPresencePatch(
       client["_clientId"],
-      client["_queryClient"].getQueryData(queryKey),
+      currentState?.presence,
       presence,
     );
     if (nextPresence === undefined) return;
 
-    client["_queryClient"].setQueryData(queryKey, nextPresence);
+    if (!currentState) {
+      presenceByDoc.set(docId, {
+        presence: nextPresence,
+        listeners: new Set(),
+      });
+      return;
+    }
+
+    currentState.presence = nextPresence;
+    for (const listener of currentState.listeners) listener(nextPresence);
   });
 };
