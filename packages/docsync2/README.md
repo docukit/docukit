@@ -3,14 +3,11 @@
 ## Example
 
 ```ts
-import { QueryClient } from "@tanstack/query-core";
 import { DocSyncClient, indexedDBProvider } from "@docukit/docsync2/client";
 import { DocNodeBinding, DocNodeValidators } from "@docukit/docsync2/docnode";
 import { DocSyncServer } from "@docukit/docsync2/server";
 
-const queryClient = new QueryClient(); // dedicated to DocSync
 const docSync = new DocSyncClient({
-  queryClient,
   docBinding: DocNodeBinding([{ type: "note", extensions: [] }]),
   server: { url: "ws://localhost:3000", auth: { getToken } },
   local: { provider: indexedDBProvider, getIdentity },

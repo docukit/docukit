@@ -1,7 +1,5 @@
-import { DocNodeBinding } from "@docukit/docsync-react/docnode";
-import { DocSyncServer } from "@docukit/docsync-react/server";
-import { createLexicalDocNodeConfig } from "@docukit/docnode-lexical";
-import { indexDocConfig } from "../src/components/examples/shared-config.ts";
+import { DocNodeValidators } from "@docukit/docsync2/docnode";
+import { DocSyncServer } from "@docukit/docsync2/server";
 import { sqliteProvider } from "./sqlite-provider.ts";
 
 const port = Number(process.env.PORT ?? process.env.DOCSYNC_PORT ?? "8081");
@@ -10,10 +8,7 @@ if (!Number.isInteger(port) || port <= 0) {
 }
 
 new DocSyncServer({
-  docBinding: DocNodeBinding([
-    indexDocConfig,
-    createLexicalDocNodeConfig({ undoManager: { maxUndoSteps: 100 } }),
-  ]),
+  validators: DocNodeValidators(),
   port,
   provider: sqliteProvider({
     ttlMs: Number(process.env.DOCSYNC_DOC_TTL_MS ?? 7 * 24 * 60 * 60 * 1000),

@@ -3,7 +3,7 @@ import type { JsonDoc, Operations } from "@docukit/docnode";
 import type {
   ServerProvider,
   ServerProviderContext,
-} from "@docukit/docsync-react/server";
+} from "@docukit/docsync2/server";
 import { db, sqlite } from "./sqlite-db.ts";
 import * as schema from "./sqlite-schema.ts";
 
@@ -126,17 +126,11 @@ export function sqliteProvider({
           },
 
           // eslint-disable-next-line @typescript-eslint/require-await -- sync SQLite implementation of async provider interface
-          deleteOperations: async ({ docId, count }) => {
+          deleteOperationsUntil: async ({ docId, clock }) => {
             db.run(sql`
               delete from ${schema.operations}
               where ${schema.operations.docId} = ${docId}
-                and ${schema.operations.clock} in (
-                  select ${schema.operations.clock}
-                  from ${schema.operations}
-                  where ${schema.operations.docId} = ${docId}
-                  order by ${schema.operations.clock}
-                  limit ${count}
-                )
+                and ${schema.operations.clock} <= ${clock}
             `);
           },
 

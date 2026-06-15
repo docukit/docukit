@@ -240,6 +240,7 @@ export function SubdocsExample({
               clientId={clientId}
               docId={docId}
               shouldInitialize={shouldInitialize && meta.instance === "primary"}
+              createDoc={clients.createReferenceDoc}
               useDocHook={clients.useReferenceDoc}
             />
           );
@@ -250,6 +251,7 @@ export function SubdocsExample({
             <SubDocContent
               clientId={clientId}
               docId={docId}
+              createDoc={clients.createOtherTabDoc}
               useDocHook={clients.useOtherTabDoc}
             />
           );
@@ -259,6 +261,7 @@ export function SubdocsExample({
           <SubDocContent
             clientId={clientId}
             docId={docId}
+            createDoc={clients.createOtherDeviceDoc}
             useDocHook={clients.useOtherDeviceDoc}
           />
         );

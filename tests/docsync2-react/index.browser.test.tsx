@@ -1,5 +1,4 @@
 import { expect, inject, test } from "vitest";
-import { QueryClient } from "@tanstack/react-query";
 import {
   createDocSyncClient,
   indexedDBProvider,
@@ -20,9 +19,7 @@ const testServerUrl = () => {
 };
 
 test("useDoc reads a DocSync2 getDoc query through React Query", async () => {
-  const queryClient = new QueryClient();
   const { client, useDoc } = createDocSyncClient({
-    queryClient,
     server: {
       url: testServerUrl(),
       auth: { getToken: () => "test-token-docsync2-react" },
@@ -54,6 +51,5 @@ test("useDoc reads a DocSync2 getDoc query through React Query", async () => {
   } finally {
     client.disconnect();
     client.dispose();
-    queryClient.clear();
   }
 });

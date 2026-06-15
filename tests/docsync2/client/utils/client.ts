@@ -40,12 +40,10 @@ export const createTestDocSyncClient = <
   docBinding: DocBinding<D, S, O>,
   options?: { timing?: ClientConfig<D, S, O>["timing"]; userId?: string },
 ) => {
-  const queryClient = new QueryClient();
   const userId = options?.userId ?? generateTestUserId();
   const identity = { userId, secret: "test-secret" };
   const provider: ClientProvider<S, O> = indexedDBProvider(identity);
   const docSync = new DocSyncClient({
-    queryClient,
     docBinding,
     server: {
       url: getTestServerUrl(),
@@ -54,6 +52,7 @@ export const createTestDocSyncClient = <
     local: { provider: () => provider, getIdentity: () => identity },
     ...(options?.timing ? { timing: options.timing } : {}),
   });
+  const queryClient = docSync["_queryClient"];
 
   return { queryClient, docSync, provider };
 };

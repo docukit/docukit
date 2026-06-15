@@ -1,4 +1,4 @@
-import type { QueryClient } from "@tanstack/query-core";
+import { QueryClient } from "@tanstack/query-core";
 import { io } from "socket.io-client";
 import { createDoc, type CreateDocArgs } from "./mutations/createDoc.js";
 import {
@@ -72,11 +72,10 @@ export class DocSyncClient<
     setDocPresence: (args: SetDocPresenceArgs) => setDocPresence(this, args),
   };
 
-  constructor(config: ClientConfig<D, S, O> & { queryClient: QueryClient }) {
-    const { docBinding, local, queryClient, timing } = config;
+  constructor(config: ClientConfig<D, S, O>) {
+    const { docBinding, local, timing } = config;
     this._docBinding = docBinding;
-    // TODO: should be queryClient a param or be created here?
-    this._queryClient = queryClient;
+    this._queryClient = new QueryClient();
     this._collabMaxDebounce = Math.max(0, timing?.collabMaxDebounce ?? 50);
     this._singleClientMaxDebounce = Math.max(
       0,
