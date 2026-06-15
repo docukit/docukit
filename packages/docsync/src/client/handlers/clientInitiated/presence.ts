@@ -1,10 +1,13 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { PresenceRequest } from "../../../shared/types.js";
 import type { DocSyncClient } from "../../index.js";
 import { request } from "../../utils/request.js";
 
 /** Set presence for a document: debounce outgoing updates, then emit to active channels. */
-export function handlePresence<D extends {}, S extends {}, O extends {}>(
+export function handlePresence<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
   client: DocSyncClient<D, S, O>,
   args: { docId: string; presence: unknown },
 ): void {
@@ -45,7 +48,11 @@ export function handlePresence<D extends {}, S extends {}, O extends {}>(
   client["_presenceDebounceState"].set(docId, state);
 }
 
-export function flushPresenceDebounce<D extends {}, S extends {}, O extends {}>(
+export function flushPresenceDebounce<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
   client: DocSyncClient<D, S, O>,
   docId: string,
   args?: { timeoutBeforeChange: ReturnType<typeof setTimeout> | undefined },
@@ -60,9 +67,9 @@ export function flushPresenceDebounce<D extends {}, S extends {}, O extends {}>(
 }
 
 export function emitCurrentServerPresence<
-  D extends {},
-  S extends {},
-  O extends {},
+  D extends object,
+  S extends object,
+  O extends object,
 >(client: DocSyncClient<D, S, O>, docId: string): void {
   if (!client["_collabDocIds"].has(docId)) return;
 
@@ -73,7 +80,7 @@ export function emitCurrentServerPresence<
   emitServerPresence(client, { docId, presence: state.data });
 }
 
-function emitPresence<D extends {}, S extends {}, O extends {}>(
+function emitPresence<D extends object, S extends object, O extends object>(
   client: DocSyncClient<D, S, O>,
   args: { docId: string; presence: unknown },
 ): void {
@@ -85,7 +92,11 @@ function emitPresence<D extends {}, S extends {}, O extends {}>(
   emitServerPresence(client, { docId, presence });
 }
 
-function emitServerPresence<D extends {}, S extends {}, O extends {}>(
+function emitServerPresence<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
   client: DocSyncClient<D, S, O>,
   args: { docId: string; presence: unknown },
 ): void {

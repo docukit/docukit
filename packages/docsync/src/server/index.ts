@@ -1,7 +1,12 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import { Server } from "socket.io";
-import type { DocBinding, Presence } from "../shared/types.js";
 import type {
+  ClientToServerEvents,
+  DocBinding,
+  Presence,
+  ServerToClientEvents,
+} from "../shared/types.js";
+import type {
+  AuthenticatedSocketData,
   ClientConnectEventListener,
   ClientDisconnectEventListener,
   ServerConfig,
@@ -16,21 +21,13 @@ import { handleSync } from "./handlers/sync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
 import { startupLog } from "./utils/startupLog.js";
 
-type AuthenticatedContext<TContext = {}> = {
-  userId: string;
-  deviceId: string;
-  /** Client-generated id for presence (set from auth or socket.id in connection flow) */
-  clientId: string;
-  context: TContext;
-};
-
 export class DocSyncServer<
-  TContext = {},
-  D extends {} = {},
-  S extends {} = {},
-  O extends {} = {},
+  TContext = unknown,
+  D extends object = object,
+  S extends object = object,
+  O extends object = object,
 > {
-  private _io: ServerSocket<S, O>;
+  private _io: ServerSocket<TContext, S, O>;
   private _docBinding: DocBinding<D, S, O>;
   private _provider: ServerProvider<S, O>;
   private _authenticate: ServerConfig<TContext, D, S, O>["authenticate"];
@@ -52,7 +49,12 @@ export class DocSyncServer<
   constructor(config: ServerConfig<TContext, D, S, O>) {
     const port = config.port ?? 8080;
 
-    this._io = new Server(port, {
+    this._io = new Server<
+      ClientToServerEvents<S, O>,
+      ServerToClientEvents,
+      Record<string, never>,
+      AuthenticatedSocketData<TContext>
+    >(port, {
       cors: { origin: "*" },
       // Performance: Only WebSocket transport, no polling
       transports: ["websocket"],
@@ -99,7 +101,7 @@ export class DocSyncServer<
             deviceId,
             clientId,
             context: authResult.context ?? ({} as TContext),
-          } satisfies AuthenticatedContext<TContext>;
+          } satisfies AuthenticatedSocketData<TContext>;
 
           next();
         })
@@ -124,8 +126,7 @@ export class DocSyncServer<
     );
 
     this._io.on("connection", (socket) => {
-      const { userId, deviceId, clientId, context } =
-        socket.data as AuthenticatedContext;
+      const { userId, deviceId, clientId, context } = socket.data;
 
       // Emit client connect event
       this._emit(this._clientConnectEventListeners, {
@@ -135,7 +136,7 @@ export class DocSyncServer<
         context,
       });
 
-      const server = this as DocSyncServer;
+      const server = this;
       handleDisconnect({ server, socket, userId, deviceId, clientId });
       // prettier-ignore
       handleSync({ server, socket, userId, deviceId, context });

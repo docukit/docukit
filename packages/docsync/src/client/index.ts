@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import { io } from "socket.io-client";
 import type {
   DocBinding,
@@ -34,19 +33,19 @@ import { getDeviceId } from "./utils/getDeviceId.js";
 import { getOwnPresencePatch } from "./utils/getOwnPresencePatch.js";
 
 // TODO: review this type!
-type LocalResolved<S extends {}, O extends {}> = {
+type LocalResolved<S extends object, O extends object> = {
   provider: ClientProvider<S, O>;
   identity: Identity;
 };
 
-type LocalOpsBatchState<O extends {}> = DeferredState<O[]> & {
+type LocalOpsBatchState<O extends object> = DeferredState<O[]> & {
   startedAt: number;
 };
 
 type PushStatus = "idle" | "pushing" | "pushing-with-pending";
 type ChangeOrigin = "local" | "network" | "local-broadcast";
 type LocalLoadMode = "load" | "loadOrCreate";
-type QueryListener = (result: QueryResult<DocData<{}> | undefined>) => void;
+type QueryListener = (result: QueryResult<DocData<object> | undefined>) => void;
 type DocCacheEntry<D> = {
   promisedDoc: Promise<D | undefined>;
   refCount: number;
@@ -59,9 +58,9 @@ type DocCacheEntry<D> = {
 };
 
 export class DocSyncClient<
-  D extends {} = {},
-  S extends {} = {},
-  O extends {} = {},
+  D extends object = object,
+  S extends object = object,
+  O extends object = object,
 > {
   protected _docBinding: DocBinding<D, S, O>;
   protected _docsCache = new Map<string, DocCacheEntry<D>>();

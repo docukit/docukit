@@ -1,11 +1,14 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { SyncRequest, SyncResponse } from "../../../shared/types.js";
 import type { DocSyncClient } from "../../index.js";
 import { getOwnPresencePatch } from "../../utils/getOwnPresencePatch.js";
 import { request } from "../../utils/request.js";
 
 /** Applies server operations to the cached doc. */
-async function applyServerOperations<D extends {}, S extends {}, O extends {}>(
+async function applyServerOperations<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
   client: DocSyncClient<D, S, O>,
   args: { docId: string; operations: O[] },
 ): Promise<void> {
@@ -24,7 +27,11 @@ async function applyServerOperations<D extends {}, S extends {}, O extends {}>(
  * TODO: Replaces the cached document (e.g. when server responds with a squashed doc).
  * Keeps refCount, presence, and presenceListeners unchanged.
  */
-function _replaceDocInCache<D extends {}, S extends {}, O extends {}>(
+function _replaceDocInCache<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
   client: DocSyncClient<D, S, O>,
   args: { docId: string; doc?: D; serializedDoc?: S },
 ): void {
@@ -53,7 +60,11 @@ function _replaceDocInCache<D extends {}, S extends {}, O extends {}>(
  * Sync (push) a document to the server. Queues if already pushing (sets
  * pushing-with-pending), otherwise sets pushing and runs the sync.
  */
-export const handleSync = async <D extends {}, S extends {}, O extends {}>(
+export const handleSync = async <
+  D extends object,
+  S extends object,
+  O extends object,
+>(
   client: DocSyncClient<D, S, O>,
   docId: string,
 ): Promise<void> => {

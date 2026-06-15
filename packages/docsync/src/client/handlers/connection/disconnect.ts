@@ -1,10 +1,9 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { DocSyncClient } from "../../index.js";
 
 export function handleDisconnect<
-  D extends {} = {},
-  S extends {} = {},
-  O extends {} = {},
+  D extends object = object,
+  S extends object = object,
+  O extends object = object,
 >({ client }: { client: DocSyncClient<D, S, O> }): void {
   client["_socket"].on("disconnect", (reason) => {
     client["_pushStatusByDocId"].clear();

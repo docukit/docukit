@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { SyncRequest, SyncResponse } from "../../shared/types.js";
 import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
@@ -12,10 +11,10 @@ export type SyncHandler<S = unknown, O = unknown> = (
 ) => void | Promise<void>;
 
 export function handleSync<
-  TContext = {},
-  D extends {} = {},
-  S extends {} = {},
-  O extends {} = {},
+  TContext = unknown,
+  D extends object = object,
+  S extends object = object,
+  O extends object = object,
 >({
   server,
   socket,
@@ -24,7 +23,7 @@ export function handleSync<
   context,
 }: {
   server: DocSyncServer<TContext, D, S, O>;
-  socket: ServerConnectionSocket<S, O>;
+  socket: ServerConnectionSocket<TContext, S, O>;
   userId: string;
   deviceId: string;
   context: TContext;
