@@ -23,6 +23,8 @@ describe("createDoc", () => {
     expect(result).toStrictEqual({ docId: testClient.docArgs.id });
     expect(isExistingGetDocData(created, docBinding)).toBe(true);
     if (!isExistingGetDocData(created, docBinding)) return;
+    expect(isExistingGetDocData(queried, docBinding)).toBe(true);
+    if (!isExistingGetDocData(queried, docBinding)) return;
     expect(queried.doc).toBe(created.doc);
     expect(queried).toStrictEqual(created);
   });

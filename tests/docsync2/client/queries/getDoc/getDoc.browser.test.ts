@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { isExistingGetDocData } from "@docukit/docsync2/client";
 import { tick } from "../../utils/async.js";
 import { createTestClient, TestNode } from "../../utils/client.js";
 import {
@@ -27,10 +28,16 @@ describe("getDoc", () => {
 
     const result1 = observed1.observer.getCurrentResult();
     const result2 = observed2.observer.getCurrentResult();
+    const result1Data: unknown = result1.data;
+    const result2Data: unknown = result2.data;
 
-    expect(result1.data?.doc).toBe(created.doc);
-    expect(result2.data?.doc).toBe(created.doc);
-    expect(result1.data?.doc).toBe(result2.data?.doc);
+    expect(isExistingGetDocData(result1Data, testClient.docBinding)).toBe(true);
+    expect(isExistingGetDocData(result2Data, testClient.docBinding)).toBe(true);
+    if (!isExistingGetDocData(result1Data, testClient.docBinding)) return;
+    if (!isExistingGetDocData(result2Data, testClient.docBinding)) return;
+    expect(result1Data.doc).toBe(created.doc);
+    expect(result2Data.doc).toBe(created.doc);
+    expect(result1Data.doc).toBe(result2Data.doc);
 
     observed1.unsubscribe();
     observed2.unsubscribe();

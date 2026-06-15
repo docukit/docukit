@@ -68,7 +68,10 @@ avoids treating ephemeral collaboration metadata as cached query data.
 
 ## TODO
 
-- Add the original DocSync debounce model for collaborative and single-client sync.
+- Finish the delete-doc flow in both DocSync and DocSync2. The protocol exists,
+  but the public client API and local/cache cleanup semantics still need to be
+  completed. That comparison should also show whether TanStack Query simplifies
+  delete handling in DocSync2.
 
 Types: `D` is the live client doc, `S` is the serialized doc, and `O` is the
 operation/update. `object` includes arrays, class instances, and `Uint8Array`.

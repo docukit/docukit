@@ -1,0 +1,55 @@
+{
+  "name": "@docukit/docsync2-react",
+  "version": "0.0.0-alpha.0",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "type": "module",
+  "homepage": "https://docukit.dev/docsync",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/docukit/docukit.git",
+    "directory": "packages/docsync2-react"
+  },
+  "files": [
+    "dist",
+    "LICENSE.md",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf .next node_modules .turbo dist tsconfig.build.tsbuildinfo || rmdir /s /q .next node_modules .turbo dist tsconfig.build.tsbuildinfo",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@docukit/docsync2": "workspace:*"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.101.0",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tanstack/react-query": "^5.101.0",
+    "@types/react": "19.1.8",
+    "react": "19.1.0"
+  },
+  "exports": {
+    ".": {
+      "vitest": "./src/exports/index.ts",
+      "types": "./src/exports/index.ts",
+      "default": "./dist/src/exports/index.js"
+    },
+    "./*": {
+      "vitest": "./src/exports/*.ts",
+      "types": "./src/exports/*.ts",
+      "default": "./dist/src/exports/*.js"
+    }
+  },
+  "keywords": [
+    "sync",
+    "react",
+    "tanstack-query",
+    "local-first",
+    "offline-first",
+    "document"
+  ]
+}

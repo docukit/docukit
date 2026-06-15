@@ -1,6 +1,7 @@
 import { isExistingGetDocData } from "../../../../shared/validators/getDocData.js";
 import type { DocSyncClient } from "../../../index.js";
 import { getDocArgsFromKey } from "../../../queries/getDoc/getDocKey.js";
+import { unsubscribeDoc } from "../../unsubscribeDoc.js";
 import { onDocChanged } from "./onDocChanged.js";
 import { seedCacheFromProvider } from "./seedCacheFromProvider.js";
 
@@ -13,6 +14,7 @@ export const observeActiveGetDocQueries = <
 ): void => {
   const observedQueries = new WeakSet<object>();
   const seededQueries = new WeakSet<object>();
+  const unsubscribedQueries = new WeakSet<object>();
   const docBinding = client["_docBinding"];
   const queryClient = client["_queryClient"];
 
@@ -22,8 +24,13 @@ export const observeActiveGetDocQueries = <
 
     if (query.getObserversCount() === 0) {
       client["_presenceStateByDocId"].delete(args.id);
+      if (!unsubscribedQueries.has(query)) {
+        unsubscribedQueries.add(query);
+        void unsubscribeDoc(client, args.id);
+      }
       return;
     }
+    unsubscribedQueries.delete(query);
 
     if (type !== "observerAdded" && type !== "updated") return;
 

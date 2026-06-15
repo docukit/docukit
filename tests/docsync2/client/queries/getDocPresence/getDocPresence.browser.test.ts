@@ -238,6 +238,50 @@ describe("getDocPresence", () => {
     }
   });
 
+  test("removes server presence when the doc is no longer observed", async () => {
+    const reference = createTestClient();
+    const peer = createTestClient();
+    const unsubscribes: (() => void)[] = [];
+    let referenceDoc: Awaited<ReturnType<typeof observeSyncedDoc>> | undefined;
+
+    try {
+      await createTestDoc(reference);
+      referenceDoc = await observeSyncedDoc(reference, reference.docArgs);
+      unsubscribes.push(
+        (await observeSyncedDoc(peer, reference.docArgs)).unsubscribe,
+      );
+
+      const peerPresence = observePresence(peer, reference.docArgs.id);
+      unsubscribes.push(peerPresence.unsubscribe);
+      await reference.docSync.mutations.setDocPresence({
+        docId: reference.docArgs.id,
+        presence: { cursor: "reference" },
+      });
+
+      const referenceClientId = reference.docSync["_clientId"];
+      const added = await waitForObservedPresenceResult(
+        peerPresence,
+        (presence) => presence[referenceClientId] !== undefined,
+      );
+
+      const removedPresence = waitForNextPresenceResult(
+        peerPresence,
+        (presence) =>
+          presence !== added && presence[referenceClientId] === undefined,
+      );
+      referenceDoc.unsubscribe();
+      referenceDoc = undefined;
+      const removed = await removedPresence;
+
+      expect(removed).toStrictEqual({});
+    } finally {
+      referenceDoc?.unsubscribe();
+      for (const unsubscribe of unsubscribes) unsubscribe();
+      cleanupClient(reference);
+      cleanupClient(peer);
+    }
+  });
+
   test("receives same-user presence through BroadcastChannel", async () => {
     const userId = generateTestUserId();
     const reference = createTestClient({
