@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/query-core";
+import type { QueryClient } from "@tanstack/query-core";
 import {
   DocSyncClient,
   indexedDBProvider,
