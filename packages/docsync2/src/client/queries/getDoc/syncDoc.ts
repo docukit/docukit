@@ -24,6 +24,7 @@ import {
 } from "../../../shared/validators/getDocData.js";
 import type { DocSyncClient } from "../../index.js";
 import { request } from "../../utils/request.js";
+import { getOwnPresencePatch } from "../../utils/getOwnPresencePatch.js";
 import { getDocKey, type GetDocKeyArgs } from "./getDocKey.js";
 
 class SyncResponseError extends Error {
@@ -175,6 +176,18 @@ export const syncDocWithServer = async <
       ...args,
       serverOperations,
     });
+    if (serverOperations.length > 0) {
+      const presencePatch = getOwnPresencePatch(client, args.id);
+      for (const operation of serverOperations) {
+        client["_bcHelper"]?.broadcast({
+          type: "OPERATIONS",
+          source: "network",
+          operations: operation,
+          docId: args.id,
+          ...(presencePatch ? { presence: presencePatch } : {}),
+        });
+      }
+    }
     return cachedData ?? { docId: args.id, doc: syncedDoc };
   } catch (error) {
     if (error instanceof SyncResponseError) throw error;

@@ -18,6 +18,12 @@ const sendDocPresence = async <
 ) => {
   ensureActiveDocQuery(docSync, args.docId);
 
+  docSync["_bcHelper"]?.broadcast({
+    type: "PRESENCE",
+    docId: args.docId,
+    presence: { [docSync["_clientId"]]: args.presence },
+  });
+
   const payload: PresenceRequest = {
     docId: args.docId,
     presence: args.presence,

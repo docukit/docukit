@@ -12,6 +12,7 @@ export const handleDisconnect = <
 }) => {
   client["_socket"].on("disconnect", (reason) => {
     onlineManager.setOnline(false);
+    client["_bcHelper"]?.broadcastPresenceRemoval(client, client["_clientId"]);
     client["_events"].emit("disconnect", { reason });
   });
   client["_socket"].on("connect_error", (error) => {

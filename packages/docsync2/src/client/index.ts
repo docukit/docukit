@@ -12,6 +12,7 @@ import {
   type ClientEventMap,
   type ClientEventName,
   type ClientEventEmitter,
+  type ChangeOrigin,
 } from "./utils/events.js";
 import { handleConnect } from "./handlers/connection/connect.js";
 import { handleCollaboration } from "./handlers/serverInitiated/collaboration.js";
@@ -20,6 +21,7 @@ import { handlePresence } from "./handlers/serverInitiated/presence.js";
 import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
 import { setupQueryClient } from "./utils/setupQueryClient/setupQueryClient.js";
+import { BCHelper } from "./utils/BCHelper.js";
 import type { DocBinding } from "./bindings/types.js";
 import type {
   ClientConfig,
@@ -45,8 +47,9 @@ export class DocSyncClient<
   protected _deviceId = getDeviceId();
   // Client-generated id for presence (works offline; sent in auth so server uses same key)
   protected _clientId = crypto.randomUUID();
+  protected _bcHelper?: BCHelper<D, S, O>;
   protected _socket: ClientSocket<S, O>;
-  protected _changeOrigin: "local" | "network" = "local";
+  protected _changeOrigin: ChangeOrigin = "local";
 
   // Flow control state (batching, debouncing, push queueing)
   protected _localOpsBatchState = new Map<string, LocalOpsBatchState<O>>();
@@ -83,7 +86,7 @@ export class DocSyncClient<
       const identity = await local.getIdentity();
       const provider = local.provider(identity);
 
-      // this._bcHelper = new BCHelper(this, identity.userId);
+      this._bcHelper = new BCHelper(this, identity.userId);
 
       return { provider, identity };
     })();
@@ -115,6 +118,7 @@ export class DocSyncClient<
 
   dispose(): void {
     // this._events.emit("dispose"); // Maybe needed in the future
+    this._bcHelper?.close();
     this._queryClient.removeQueries({ queryKey: ["docsync"] });
     this._queryClient.unmount();
   }

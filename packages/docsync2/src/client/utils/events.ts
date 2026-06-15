@@ -2,9 +2,11 @@ import type { SyncRequest, SyncResponse } from "../../shared/types.js";
 
 export type DisconnectEvent = { reason: string };
 
+export type ChangeOrigin = "local" | "network" | "local-broadcast";
+
 export type ChangeEvent<O = unknown> = {
   docId: string;
-  origin: "local" | "network";
+  origin: ChangeOrigin;
   operation: O;
 };
 

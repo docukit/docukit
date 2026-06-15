@@ -15,6 +15,7 @@ import {
   waitForDocStatus,
   waitForObservedTestDocResult,
 } from "../../utils/doc.js";
+import { generateTestUserId } from "../../utils/generators.js";
 
 describe("getDoc", () => {
   test("two observers for the same doc id receive the same in-memory doc", async () => {
@@ -33,6 +34,45 @@ describe("getDoc", () => {
 
     observed1.unsubscribe();
     observed2.unsubscribe();
+  });
+
+  test("applies same-user local operations through BroadcastChannel", async () => {
+    const userId = generateTestUserId();
+    const source = createTestClient({
+      timing: { singleClientMaxDebounce: 1000 },
+      userId,
+    });
+    const target = createTestClient({ userId });
+    const unsubscribes: (() => void)[] = [];
+
+    try {
+      const created = await createTestDoc(source);
+      const sourceObserved = observeTestDoc(source);
+      unsubscribes.push(sourceObserved.unsubscribe);
+      await waitForDocStatus(source, sourceObserved, "idle");
+
+      const targetObserved = observeDoc(target, source.docArgs);
+      unsubscribes.push(targetObserved.unsubscribe);
+      const { data: targetData } = await waitForDocStatus(
+        target,
+        targetObserved,
+        "idle",
+      );
+      await disconnectTestClient(target);
+
+      created.doc.root.append(created.doc.createNode(TestNode));
+      created.doc.forceCommit();
+
+      await expect
+        .poll(() => targetData.doc.toJSON())
+        .toStrictEqual(created.doc.toJSON());
+    } finally {
+      for (const unsubscribe of unsubscribes) unsubscribe();
+      source.docSync.disconnect();
+      target.docSync.disconnect();
+      source.docSync.dispose();
+      target.docSync.dispose();
+    }
   });
 
   test("unsubscribing one observer keeps the doc alive while another observer is active", async () => {

@@ -38,10 +38,10 @@ export const createTestDocSyncClient = <
   O extends object,
 >(
   docBinding: DocBinding<D, S, O>,
-  options?: { timing?: ClientConfig<D, S, O>["timing"] },
+  options?: { timing?: ClientConfig<D, S, O>["timing"]; userId?: string },
 ) => {
   const queryClient = new QueryClient();
-  const userId = generateTestUserId();
+  const userId = options?.userId ?? generateTestUserId();
   const identity = { userId, secret: "test-secret" };
   const provider: ClientProvider<S, O> = indexedDBProvider(identity);
   const docSync = new DocSyncClient({
@@ -68,6 +68,7 @@ export type TestClient = {
 
 export const createTestClient = (options?: {
   timing?: ClientConfig<Doc, JsonDoc, Operations>["timing"];
+  userId?: string;
 }): TestClient => {
   const docArgs = createTestDocArgs();
   const binding = DocNodeBinding([

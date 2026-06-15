@@ -1,12 +1,16 @@
 import { describe, expect, test } from "vitest";
 import { tick } from "../../utils/async.js";
 import { createTestClient, type TestClient } from "../../utils/client.js";
-import { reconnectTestClient } from "../../utils/connection.js";
+import {
+  disconnectTestClient,
+  reconnectTestClient,
+} from "../../utils/connection.js";
 import {
   createTestDoc,
   observeDoc,
   waitForDocStatus,
 } from "../../utils/doc.js";
+import { generateTestUserId } from "../../utils/generators.js";
 import {
   observePresence,
   waitForNextPresenceResult,
@@ -228,6 +232,50 @@ describe("getDocPresence", () => {
     } finally {
       referencePresence?.unsubscribe();
       referenceDoc?.unsubscribe();
+      for (const unsubscribe of unsubscribes) unsubscribe();
+      cleanupClient(reference);
+      cleanupClient(peer);
+    }
+  });
+
+  test("receives same-user presence through BroadcastChannel", async () => {
+    const userId = generateTestUserId();
+    const reference = createTestClient({
+      timing: { collabMaxDebounce: 0 },
+      userId,
+    });
+    const peer = createTestClient({ timing: { collabMaxDebounce: 0 }, userId });
+    const unsubscribes: (() => void)[] = [];
+
+    try {
+      await createTestDoc(reference);
+      unsubscribes.push(
+        (await observeSyncedDoc(reference, reference.docArgs)).unsubscribe,
+      );
+      unsubscribes.push(
+        (await observeSyncedDoc(peer, reference.docArgs)).unsubscribe,
+      );
+
+      const referencePresence = observePresence(
+        reference,
+        reference.docArgs.id,
+      );
+      unsubscribes.push(referencePresence.unsubscribe);
+      await disconnectTestClient(reference);
+
+      const peerClientId = peer.docSync["_clientId"];
+      const receivedPresence = waitForObservedPresenceResult(
+        referencePresence,
+        (presence) => presence[peerClientId] !== undefined,
+      );
+      await peer.docSync.mutations.setDocPresence({
+        docId: reference.docArgs.id,
+        presence: { cursor: "broadcast" },
+      });
+
+      const result = await receivedPresence;
+      expect(result[peerClientId]).toStrictEqual({ cursor: "broadcast" });
+    } finally {
       for (const unsubscribe of unsubscribes) unsubscribe();
       cleanupClient(reference);
       cleanupClient(peer);
