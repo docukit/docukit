@@ -11,6 +11,7 @@ jobs:
   validate:
     if: "github.event_name == 'pull_request' && startsWith(github.event.pull_request.title, 'chore: release v')"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -35,6 +36,7 @@ jobs:
   publish:
     if: "github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: release v')"
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     concurrency:

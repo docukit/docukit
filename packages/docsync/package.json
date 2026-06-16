@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "@docukit/docnode": "workspace:*",
-    "concurrently": "^9.1.2"
+    "concurrently": "^10.0.3"
   },
   "peerDependencies": {
     "@docukit/docnode": "workspace:*"
