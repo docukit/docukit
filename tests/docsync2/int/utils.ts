@@ -23,7 +23,9 @@ const cleanupClient = async (
 type ObservedDoc = ReturnType<typeof observeDoc>;
 
 type ClientUtils = TestClient & {
-  createDoc(docArgs?: TestClient["docArgs"]): ReturnType<typeof createTestDoc>;
+  createMissingDoc(
+    docArgs?: TestClient["docArgs"],
+  ): ReturnType<typeof createTestDoc>;
   observeDoc(docArgs?: TestClient["docArgs"]): ObservedDoc;
   invalidateDoc(docArgs?: TestClient["docArgs"]): void;
   waitForRemoteIdle(
@@ -39,7 +41,7 @@ const createClientUtils = (): ClientUtils => {
 
   return {
     ...testClient,
-    createDoc: (docArgs = testClient.docArgs) =>
+    createMissingDoc: (docArgs = testClient.docArgs) =>
       createTestDoc(testClient, docArgs),
     observeDoc: (docArgs = testClient.docArgs) => {
       const observed = observeDoc(testClient, docArgs);

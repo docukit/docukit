@@ -1,27 +1,33 @@
 import { QueryObserver } from "@tanstack/query-core";
 import type { FetchStatus } from "@tanstack/query-core";
-import { getDocKey, isExistingGetDocData } from "@docukit/docsync2/client";
+import {
+  getDocKey,
+  isExistingGetDocData,
+  type GetDocArgs,
+} from "@docukit/docsync2/client";
 import type { TestClient } from "./client.js";
 
 export const createTestDoc = async (
   testClient: TestClient,
   docArgs = testClient.docArgs,
 ) => {
-  const { queryClient, docSync, docBinding } = testClient;
-  await docSync.mutations.createDoc(docArgs);
-  const data = queryClient.getQueryData(getDocKey(docArgs));
-  if (!isExistingGetDocData(data, docBinding)) {
-    throw new Error("Expected createDoc to seed getDoc data");
+  const observed = observeDoc(testClient, {
+    ...docArgs,
+    createIfMissing: true,
+  });
+  try {
+    const { data } = await waitForDocStatus(testClient, observed, "idle");
+    return data;
+  } finally {
+    observed.unsubscribe();
   }
-
-  return data;
 };
 
 export const getTestDocKey = ({ docArgs }: TestClient) => getDocKey(docArgs);
 
 export const observeDoc = (
   { queryClient, docSync }: TestClient,
-  docArgs: TestClient["docArgs"],
+  docArgs: GetDocArgs,
 ) => {
   const observer = new QueryObserver(
     queryClient,

@@ -18,10 +18,7 @@ export type SyncEvent<O = unknown, S = unknown> = {
   | { error: { type: "NetworkError"; message: string }; data?: never }
 );
 
-export type ClientEventMap<
-  O extends object = object,
-  S extends object = object,
-> = {
+export type ClientEventMap<O = unknown, S = unknown> = {
   connect: undefined;
   disconnect: DisconnectEvent;
   change: ChangeEvent<O>;
@@ -30,10 +27,7 @@ export type ClientEventMap<
 
 export type ClientEventName = keyof ClientEventMap;
 
-export type ClientEventEmitter<
-  O extends object = object,
-  S extends object = object,
-> = {
+export type ClientEventEmitter<O = unknown, S = unknown> = {
   listeners: {
     [K in ClientEventName]: Set<(payload: ClientEventMap<O, S>[K]) => void>;
   };
@@ -48,8 +42,8 @@ export type ClientEventEmitter<
 };
 
 export function createClientEventEmitter<
-  O extends object = object,
-  S extends object = object,
+  O = unknown,
+  S = unknown,
 >(): ClientEventEmitter<O, S> {
   const listeners: {
     [K in ClientEventName]: Set<(payload: ClientEventMap<O, S>[K]) => void>;

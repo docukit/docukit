@@ -12,15 +12,19 @@ export const observeActiveGetDocQueries = <
 >(
   client: DocSyncClient<D, S, O>,
 ): void => {
-  const observedQueries = new WeakSet<object>();
-  const seededQueries = new WeakSet<object>();
+  const observedDocsByQuery = new WeakMap<object, D>();
+  const seededCreateByQuery = new WeakMap<object, boolean>();
   const unsubscribedQueries = new WeakSet<object>();
   const docBinding = client["_docBinding"];
   const queryClient = client["_queryClient"];
 
   void queryClient.getQueryCache().subscribe(({ query, type }) => {
-    const args = getDocArgsFromKey(query.queryKey);
-    if (!args) return;
+    const keyArgs = getDocArgsFromKey(query.queryKey);
+    if (!keyArgs) return;
+    const args = {
+      ...keyArgs,
+      createIfMissing: query.options.meta?.createIfMissing === true,
+    };
 
     if (query.getObserversCount() === 0) {
       client["_presenceStateByDocId"].delete(args.id);
@@ -34,17 +38,17 @@ export const observeActiveGetDocQueries = <
 
     if (type !== "observerAdded" && type !== "updated") return;
 
-    if (!seededQueries.has(query)) {
-      seededQueries.add(query);
+    const seededCreate = seededCreateByQuery.get(query);
+    if (seededCreate === undefined || (args.createIfMissing && !seededCreate)) {
+      seededCreateByQuery.set(query, args.createIfMissing);
       void seedCacheFromProvider(client, args);
     }
 
-    if (observedQueries.has(query)) return;
-
     const data: unknown = query.state.data;
     if (!isExistingGetDocData(data, docBinding)) return;
+    if (observedDocsByQuery.get(query) === data.doc) return;
 
-    observedQueries.add(query);
+    observedDocsByQuery.set(query, data.doc);
     void docBinding.onChange(data.doc, (event) => {
       onDocChanged(client, args, event);
     });

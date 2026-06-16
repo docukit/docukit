@@ -1,10 +1,10 @@
 "use client";
 
-import { DocNodeBinding } from "@docukit/docsync-react/docnode";
+import { DocNodeBinding } from "@docukit/docsync2-react/docnode";
 import {
   indexedDBProvider,
   createDocSyncClient,
-} from "@docukit/docsync-react/client";
+} from "@docukit/docsync2-react/client";
 import type { DocConfig } from "@docukit/docnode";
 import { env } from "@/env";
 
@@ -30,6 +30,7 @@ const createClientForUser = (
       provider: indexedDBProvider,
       getIdentity: () => ({ userId, secret: "docs-demo" }),
     },
+    timing: { collabMaxDebounce: 10, singleClientMaxDebounce: 10 },
     docBinding: DocNodeBinding(docConfigs),
   });
 };

@@ -13,8 +13,11 @@ const docSync = new DocSyncClient({
   local: { provider: indexedDBProvider, getIdentity },
 });
 
-const query = docSync.queries.getDoc({ type: "note", id: "note-1" });
-await docSync.mutations.createDoc({ type: "note", id: "note-1" });
+const query = docSync.queries.getDoc({
+  type: "note",
+  id: "note-1",
+  createIfMissing: true,
+});
 const server = new DocSyncServer({
   validators: DocNodeValidators(),
   provider,
@@ -24,10 +27,11 @@ const server = new DocSyncServer({
 
 ## Differences From `@docukit/docsync`
 
-- Uses TanStack Query for status, observers, cache, and mutations.
+- Uses TanStack Query for status, observers, and cache.
 - The `QueryClient` is owned by DocSync and follows socket online state.
-- Uses `docSync.queries.getDoc` and `docSync.mutations.createDoc`.
-- `createDoc` returns `{ docId }`; read the live doc through `getDoc`.
+- Uses `docSync.queries.getDoc`.
+- `getDoc({ createIfMissing: true })` creates the doc while seeding from the
+  local provider if IndexedDB does not already have that doc.
 - No React hooks, callback APIs, `QueryResult`, `FetchStatus`, or reducer state.
 - Original DocSync squashes operations on the server.
 - This rewrite aims to squash on the client, keeping the server CRDT-agnostic.
@@ -62,6 +66,16 @@ avoids treating ephemeral collaboration metadata as cached query data.
   `fetching` or `paused` while local data is visible.
 - Sync can send a client snapshot; the server stores it only up to the request
   clock and keeps newer operations the client has not seen.
+
+## `createIfMissing` Requires Observers
+
+`createIfMissing` is handled by the active `getDoc` observer flow. It is intended
+for React usage through `@docukit/docsync2-react`'s `useDoc`, or for code that
+creates a real TanStack Query observer.
+
+Calling `queryClient.fetchQuery(docSync.queries.getDoc({ createIfMissing: true,
+... }))` directly is not the intended API. That call can run the query function
+without the observer setup that seeds IndexedDB and the query cache.
 
 ## TODO
 

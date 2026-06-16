@@ -94,14 +94,24 @@ function InitialContentPlugin({
 
   useEffect(() => {
     if (!editor) return;
-    editor.update(
-      () => {
-        const root = $getRoot();
-        if (root.getChildrenSize() !== 0) return;
-        initializeEditor(root);
-      },
-      { tag: SKIP_UNDO_TAG },
-    );
+    let cancelled = false;
+    const frame = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        editor.update(
+          () => {
+            const root = $getRoot();
+            if (root.getChildrenSize() !== 0) return;
+            initializeEditor(root);
+          },
+          { tag: SKIP_UNDO_TAG },
+        );
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
   }, [editor, initializeEditor]);
 
   return null;

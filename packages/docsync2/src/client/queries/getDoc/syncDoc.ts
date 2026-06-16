@@ -188,6 +188,14 @@ export const syncDocWithServer = async <
         });
       }
     }
+    if (cachedData) return cachedData;
+
+    if (response.data.serializedDoc !== undefined && syncedDoc !== undefined) {
+      const syncedData = { docId: args.id, doc: syncedDoc };
+      queryClient.setQueryData(getDocKey(args), syncedData);
+      return syncedData;
+    }
+
     return cachedData ?? { docId: args.id, doc: syncedDoc };
   } catch (error) {
     if (error instanceof SyncResponseError) throw error;

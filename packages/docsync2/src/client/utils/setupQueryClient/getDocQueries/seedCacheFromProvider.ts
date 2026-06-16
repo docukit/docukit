@@ -15,20 +15,32 @@ export const seedCacheFromProvider = async <
   const docBinding = docSync["_docBinding"];
   const queryClient = docSync["_queryClient"];
 
-  // Load the doc from IndexedDB
-  const doc = await provider.transaction("readonly", async (ctx) => {
-    const stored = await ctx.getSerializedDoc({ docId: args.id });
-    if (!stored) return undefined;
+  const loaded = await provider.transaction(
+    args.createIfMissing ? "readwrite" : "readonly",
+    async (ctx) => {
+      const stored = await ctx.getSerializedDoc({ docId: args.id });
+      if (!stored) {
+        if (!args.createIfMissing) return { docId: args.id };
 
-    const doc = docBinding.deserialize(stored.serializedDoc);
-    const operationsBatches = await ctx.getOperations({ docId: args.id });
-    for (const operations of operationsBatches) {
-      for (const operation of operations) {
-        docBinding.applyOperations(doc, operation);
+        const created = docBinding.create(args.type, args.id);
+        await ctx.saveSerializedDoc({
+          docId: created.docId,
+          serializedDoc: docBinding.serialize(created.doc),
+          clock: 0,
+        });
+        return created;
       }
-    }
-    return doc;
-  });
+
+      const doc = docBinding.deserialize(stored.serializedDoc);
+      const operationsBatches = await ctx.getOperations({ docId: args.id });
+      for (const operations of operationsBatches) {
+        for (const operation of operations) {
+          docBinding.applyOperations(doc, operation);
+        }
+      }
+      return { docId: args.id, doc };
+    },
+  );
 
   const queryKey = getDocKey(args);
   const currentData = queryClient.getQueryData(queryKey);
@@ -36,5 +48,5 @@ export const seedCacheFromProvider = async <
 
   // IndexedDB lets the UI paint fast, but it does not prove remote freshness.
   // https://tanstack.com/query/v5/docs/reference/QueryClient#queryclientsetquerydata
-  queryClient.setQueryData(queryKey, { docId: args.id, doc }, { updatedAt: 0 });
+  queryClient.setQueryData(queryKey, loaded, { updatedAt: 0 });
 };

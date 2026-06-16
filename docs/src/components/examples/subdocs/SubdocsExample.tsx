@@ -131,11 +131,13 @@ function SubdocsPanelFrame({
 
 function SubDocContent({
   clientId,
+  createIfMissing,
   docId,
   shouldInitialize,
   useDocHook,
 }: {
   clientId: string;
+  createIfMissing?: boolean;
   docId: string;
   shouldInitialize?: boolean;
   useDocHook: typeof clients.useReferenceDoc;
@@ -143,7 +145,7 @@ function SubDocContent({
   const { status, data, error } = useDocHook({
     type: "indexDoc",
     id: docId,
-    createIfMissing: true,
+    ...(createIfMissing === undefined ? {} : { createIfMissing }),
   });
   const [activeDoc, setActiveDoc] = useState<string | undefined>();
 
@@ -155,8 +157,9 @@ function SubDocContent({
   const secondaryResult = useDocHook({
     type: "indexDoc",
     id: secondaryDocId,
-    createIfMissing: true,
+    ...(createIfMissing === undefined ? {} : { createIfMissing }),
   });
+
   const secondaryDocReady =
     activeDoc &&
     secondaryResult.status === "success" &&
@@ -165,26 +168,38 @@ function SubDocContent({
 
   useEffect(() => {
     if (!shouldInitialize) return;
-    const indexDoc = data?.doc;
-    if (!indexDoc || indexDoc.root.first) return;
+    let cancelled = false;
+    const frame = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        const indexDoc = data?.doc;
+        if (!indexDoc || indexDoc.root.first) return;
 
-    const one = createIndexNode(indexDoc, { value: "1" });
-    const two = createIndexNode(indexDoc, { value: "2" });
-    const three = createIndexNode(indexDoc, { value: "3" });
-    const four = createIndexNode(indexDoc, { value: "4" });
+        const one = createIndexNode(indexDoc, { value: "1" });
+        const two = createIndexNode(indexDoc, { value: "2" });
+        const three = createIndexNode(indexDoc, { value: "3" });
+        const four = createIndexNode(indexDoc, { value: "4" });
 
-    indexDoc.root.append(one, two, three, four);
-    two.append(
-      createIndexNode(indexDoc, { value: "2.1" }),
-      createIndexNode(indexDoc, { value: "2.2" }),
-    );
+        indexDoc.root.append(one, two, three, four);
+        two.append(
+          createIndexNode(indexDoc, { value: "2.1" }),
+          createIndexNode(indexDoc, { value: "2.2" }),
+        );
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
   }, [data, shouldInitialize]);
 
-  const isReady = status === "success" && data.docId === docId;
+  const isReady =
+    status === "success" && data.docId === docId && data.doc !== undefined;
   const indexDoc = isReady ? data.doc : undefined;
 
   if (status === "error") {
-    return <div className="text-destructive">Error: {error.message}</div>;
+    const message = error instanceof Error ? error.message : String(error);
+    return <div className="text-destructive">Error: {message}</div>;
   }
 
   return (
@@ -238,9 +253,9 @@ export function SubdocsExample({
           return (
             <SubDocContent
               clientId={clientId}
+              createIfMissing
               docId={docId}
               shouldInitialize={shouldInitialize && meta.instance === "primary"}
-              createDoc={clients.createReferenceDoc}
               useDocHook={clients.useReferenceDoc}
             />
           );
@@ -251,7 +266,6 @@ export function SubdocsExample({
             <SubDocContent
               clientId={clientId}
               docId={docId}
-              createDoc={clients.createOtherTabDoc}
               useDocHook={clients.useOtherTabDoc}
             />
           );
@@ -261,7 +275,6 @@ export function SubdocsExample({
           <SubDocContent
             clientId={clientId}
             docId={docId}
-            createDoc={clients.createOtherDeviceDoc}
             useDocHook={clients.useOtherDeviceDoc}
           />
         );

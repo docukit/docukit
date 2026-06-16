@@ -35,8 +35,7 @@ test("useDoc reads a DocSync2 getDoc query through React Query", async () => {
   });
 
   try {
-    const docArgs = { type: "test", id: id.ending("6") };
-    await client.mutations.createDoc(docArgs);
+    const docArgs = { type: "test", id: id.ending("6"), createIfMissing: true };
 
     const { result } = await renderHook(() => useDoc(docArgs));
 

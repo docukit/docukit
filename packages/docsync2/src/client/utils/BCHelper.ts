@@ -7,15 +7,17 @@ import { applyPresencePatch } from "./applyPresencePatch.js";
 
 type BroadcastSource = "network" | "local-broadcast";
 
+type OperationsBroadcastMessage<O> = {
+  type: "OPERATIONS";
+  source: BroadcastSource;
+  operations: O;
+  docId: string;
+  flags?: TransactionFlags;
+  presence?: Record<string, unknown>;
+};
+
 export type BroadcastMessage<O> =
-  | {
-      type: "OPERATIONS";
-      source: BroadcastSource;
-      operations: O;
-      docId: string;
-      flags?: TransactionFlags;
-      presence?: Record<string, unknown>;
-    }
+  | OperationsBroadcastMessage<O>
   | { type: "PRESENCE"; docId: string; presence: Record<string, unknown> };
 
 export class BCHelper<D extends object, S extends object, O extends object> {
@@ -40,7 +42,7 @@ export class BCHelper<D extends object, S extends object, O extends object> {
 
   private _applyOperations(
     client: DocSyncClient<D, S, O>,
-    message: Extract<BroadcastMessage<O>, { type: "OPERATIONS" }>,
+    message: OperationsBroadcastMessage<O>,
   ) {
     const docBinding = client["_docBinding"];
 

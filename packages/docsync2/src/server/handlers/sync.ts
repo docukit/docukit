@@ -101,7 +101,10 @@ export function handleSync<
 
           // Doc snapshots are accepted after authorization. Apps that need
           // stricter edit rules should enforce them in authorize().
-          if (serializedDoc !== undefined && (serverDoc?.clock ?? 0) <= clock) {
+          if (
+            serializedDoc !== undefined &&
+            (serverDoc === undefined || serverDoc.clock < clock)
+          ) {
             await ctx.saveSerializedDoc({ docId, serializedDoc, clock });
             await ctx.deleteOperationsUntil({ docId, clock });
           }

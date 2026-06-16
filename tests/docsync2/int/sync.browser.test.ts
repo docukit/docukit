@@ -10,8 +10,8 @@ describe("DocSync2 integration sync", () => {
     await testWrapper(async ({ reference }) => {
       const doc1Args = reference.docArgs;
       const doc2Args = createTestDocArgs();
-      await reference.createDoc(doc1Args);
-      await reference.createDoc(doc2Args);
+      await reference.createMissingDoc(doc1Args);
+      await reference.createMissingDoc(doc2Args);
       reference.queryClient.clear();
 
       const observed1 = reference.observeDoc(doc1Args);
@@ -23,7 +23,7 @@ describe("DocSync2 integration sync", () => {
 
   test("created docs sync their initial serialized doc before local edits", async () => {
     await testWrapper(async ({ reference }) => {
-      const created = await reference.createDoc();
+      const created = await reference.createMissingDoc();
       await reconnectTestClient(reference);
       reference.observeDoc();
       const synced = new Promise<void>((resolve, reject) => {

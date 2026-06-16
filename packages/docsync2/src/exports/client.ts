@@ -43,5 +43,4 @@ export type {
   GetDocOptions,
 } from "../client/queries/getDoc/getDoc.js";
 export type { GetDocKeyArgs } from "../client/queries/getDoc/getDocKey.js";
-export type { CreateDocArgs } from "../client/mutations/createDoc.js";
 export type { SetDocPresenceArgs } from "../client/mutations/setDocPresence.js";

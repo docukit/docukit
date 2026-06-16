@@ -1,7 +1,6 @@
 "use client";
 
 import { type ReactNode, useState } from "react";
-import type { Doc, JsonDoc, Operations } from "@docukit/docnode";
 import type { DocSyncClient } from "@docukit/docsync2-react/client";
 import { cn } from "@/lib/cn";
 

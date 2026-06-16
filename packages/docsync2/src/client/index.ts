@@ -1,6 +1,5 @@
 import { QueryClient } from "@tanstack/query-core";
 import { io } from "socket.io-client";
-import { createDoc, type CreateDocArgs } from "./mutations/createDoc.js";
 import {
   setDocPresence,
   type SetDocPresenceArgs,
@@ -11,7 +10,6 @@ import {
   createClientEventEmitter,
   type ClientEventMap,
   type ClientEventName,
-  type ClientEventEmitter,
   type ChangeOrigin,
 } from "./utils/events.js";
 import { handleConnect } from "./handlers/connection/connect.js";
@@ -59,8 +57,8 @@ export class DocSyncClient<
   protected _presenceDebounceState = new Map<string, PresenceDebounceState>();
   protected _presenceStateByDocId = new Map<string, PresenceState>();
 
-  // TODO: see comment in /docsync/src/client/index.ts
-  protected _events: ClientEventEmitter<O, S> = createClientEventEmitter();
+  /** Typed as unknown so DocSyncClient remains covariant in O, S (assignable to DocSyncClient base). */
+  protected _events = createClientEventEmitter();
 
   readonly queries = {
     getDoc: (args: GetDocArgs) => getDoc(this, args),
@@ -68,7 +66,6 @@ export class DocSyncClient<
   };
 
   readonly mutations = {
-    createDoc: (args: CreateDocArgs) => createDoc(this, args),
     setDocPresence: (args: SetDocPresenceArgs) => setDocPresence(this, args),
   };
 
@@ -133,6 +130,9 @@ export class DocSyncClient<
     event: K,
     listener: (payload: ClientEventMap<O, S>[K]) => void,
   ): () => void {
-    return this._events.on(event, listener);
+    return this._events.on(
+      event,
+      listener as (payload: ClientEventMap<unknown, unknown>[K]) => void,
+    );
   }
 }
