@@ -5,7 +5,6 @@ import type { PresenceHandler } from "../server/handlers/presence.js";
 import type { SyncHandler } from "../server/handlers/sync.js";
 import type { UnsubscribeDocHandler } from "../server/handlers/unsubscribe.js";
 
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 /**
  * DocSync Type Definitions
  *
@@ -14,9 +13,9 @@ import type { UnsubscribeDocHandler } from "../server/handlers/unsubscribe.js";
 
 // TO-DECIDE: should params in fn's be objects?
 export interface DocBinding<
-  D extends {} = {},
-  S extends {} = {},
-  O extends {} = {},
+  D extends object = object,
+  S extends object = object,
+  O extends object = object,
 > {
   // method syntax is required to avoid type errors
   create(type: string, id?: string): { doc: D; docId: string };

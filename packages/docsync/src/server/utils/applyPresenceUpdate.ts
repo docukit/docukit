@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { Presence } from "../../shared/types.js";
 import type { ServerConnectionSocket } from "../types.js";
 
@@ -6,9 +5,13 @@ import type { ServerConnectionSocket } from "../types.js";
  * Updates server presence state for a document and broadcasts the change
  * to other clients in the doc room. Handlers import and call this directly.
  */
-export function applyPresenceUpdate(
+export function applyPresenceUpdate<
+  TContext,
+  S extends object,
+  O extends object,
+>(
   presenceByDoc: Map<string, Presence>,
-  socket: ServerConnectionSocket<{}, {}>,
+  socket: ServerConnectionSocket<TContext, S, O>,
   clientId: string,
   args: { docId: string; presence: unknown },
 ): void {

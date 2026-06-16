@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
-
 import type { DocSyncClient } from "../index.js";
 import { applyPresencePatch } from "./applyPresencePatch.js";
 
@@ -16,7 +14,11 @@ type BroadcastMessage<O> =
     }
   | { type: "PRESENCE"; docId: string; presence: Record<string, unknown> };
 
-export class BCHelper<D extends {}, S extends {}, O extends {} = {}> {
+export class BCHelper<
+  D extends object,
+  S extends object,
+  O extends object = object,
+> {
   private _channel: BroadcastChannel;
   private _closed = false;
 
