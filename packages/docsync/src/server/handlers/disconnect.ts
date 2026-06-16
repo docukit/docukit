@@ -1,18 +1,22 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
 import { applyPresenceUpdate } from "../utils/applyPresenceUpdate.js";
 import { broadcastCollaborationState } from "../utils/broadcastCollaborationState.js";
 
-export function handleDisconnect({
+export function handleDisconnect<
+  TContext = unknown,
+  D extends object = object,
+  S extends object = object,
+  O extends object = object,
+>({
   server,
   socket,
   userId,
   deviceId,
   clientId,
 }: {
-  server: DocSyncServer;
-  socket: ServerConnectionSocket<{}, {}>;
+  server: DocSyncServer<TContext, D, S, O>;
+  socket: ServerConnectionSocket<TContext, S, O>;
   userId: string;
   deviceId: string;
   clientId: string;

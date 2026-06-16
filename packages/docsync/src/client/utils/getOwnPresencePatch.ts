@@ -1,7 +1,10 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type { DocSyncClient } from "../index.js";
 
-export function getOwnPresencePatch<D extends {}, S extends {}, O extends {}>(
+export function getOwnPresencePatch<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
   client: DocSyncClient<D, S, O>,
   docId: string,
 ): Record<string, unknown> | undefined {

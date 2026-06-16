@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import type {
   DeleteDocRequest,
   DeleteDocResponse,
@@ -11,14 +10,19 @@ export type DeleteDocHandler = (
   cb: (res: DeleteDocResponse) => void,
 ) => void | Promise<void>;
 
-export const handleDeleteDoc = <TContext = {}>({
+export const handleDeleteDoc = <
+  TContext = unknown,
+  D extends object = object,
+  S extends object = object,
+  O extends object = object,
+>({
   server,
   socket,
   userId,
   context,
 }: {
-  server: DocSyncServer<TContext>;
-  socket: ServerConnectionSocket<{}, {}>;
+  server: DocSyncServer<TContext, D, S, O>;
+  socket: ServerConnectionSocket<TContext, S, O>;
   userId: string;
   context: TContext;
 }): void => {
