@@ -36,12 +36,12 @@
     }
   },
   "dependencies": {
-    "@lexical/selection": "^0.38.2",
-    "@docukit/docnode": "workspace:*",
-    "lexical": "^0.38.2"
+    "@docukit/docnode": "workspace:*"
   },
   "peerDependencies": {
-    "@lexical/react": "^0.38.2",
+    "@lexical/react": ">=0.38.2",
+    "@lexical/selection": ">=0.38.2",
+    "lexical": ">=0.38.2",
     "react": "^19.0.0"
   },
   "peerDependenciesMeta": {
@@ -53,7 +53,10 @@
     }
   },
   "devDependencies": {
-    "@types/react": "^19.0.0"
+    "@lexical/react": "0.45.0",
+    "@lexical/selection": "0.45.0",
+    "@types/react": "^19.0.0",
+    "lexical": "0.45.0"
   },
   "keywords": [
     "lexical",
