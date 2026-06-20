@@ -32,6 +32,10 @@ const capture = (cmd: string): string | undefined => {
     return undefined;
   }
 };
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolveSleep) => {
+    setTimeout(resolveSleep, ms);
+  });
 
 function readWorkspaceGlobs(): string[] {
   const yaml = readFileSync(join(ROOT, "pnpm-workspace.yaml"), "utf8");
@@ -122,13 +126,33 @@ for (const { dir, pkg } of loaded) {
   }
 }
 
-const verifyFailed: string[] = [];
-for (const spec of [...results.published, ...results.skipped]) {
+const verifySpec = async (spec: string): Promise<string | undefined> => {
   const parts = spec.split("@");
   const expected = parts[parts.length - 1];
-  const actual = capture(`npm view ${spec} version 2>/dev/null`);
-  if (actual !== expected)
-    verifyFailed.push(`${spec} (registry: ${actual ?? "not found"})`);
+  const attempts = 8;
+  const delayMs = 5_000;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const actual = capture(`npm view ${spec} version 2>/dev/null`);
+    if (actual === expected) return undefined;
+
+    if (attempt < attempts) {
+      console.log(
+        `Waiting for ${spec} to appear on npm (${attempt}/${attempts})...`,
+      );
+      await sleep(delayMs);
+    } else {
+      return `${spec} (registry: ${actual ?? "not found"})`;
+    }
+  }
+
+  return `${spec} (registry: not found)`;
+};
+
+const verifyFailed: string[] = [];
+for (const spec of [...results.published, ...results.skipped]) {
+  const failure = await verifySpec(spec);
+  if (failure) verifyFailed.push(failure);
 }
 
 console.log("\n=== Publish summary ===");
