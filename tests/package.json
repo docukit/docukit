@@ -11,7 +11,7 @@
     "@docukit/docnode-lexical": "workspace:*",
     "@docukit/docsync": "workspace:*",
     "@docukit/docsync-react": "workspace:*",
-    "lexical": "^0.38.2",
+    "lexical": "0.45.0",
     "ulid": "^2.3.0",
     "valibot": "^1.0.0"
   },
