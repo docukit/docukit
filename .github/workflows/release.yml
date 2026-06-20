@@ -1,6 +1,7 @@
 name: Release
 
 on:
+  workflow_dispatch:
   pull_request:
     types: [opened, edited, synchronize, reopened]
     branches: [main]
@@ -34,11 +35,12 @@ jobs:
         run: node scripts/validate-release-pr.ts
 
   publish:
-    if: "github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: release v')"
+    if: "github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: release v'))"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
+      id-token: write
     concurrency:
       group: release-publish
       cancel-in-progress: false
@@ -58,6 +60,9 @@ jobs:
           cache: "pnpm"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Update npm
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -68,8 +73,6 @@ jobs:
 
       - name: Publish to npm
         id: publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: node scripts/publish.ts
 
       - name: Create GitHub Release
