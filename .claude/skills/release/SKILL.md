@@ -80,10 +80,6 @@ Attribute each bullet to a PR number (squash-merge titles often end with `(#123)
 ```
 # <tag> — YYYY-MM-DD
 
-## Highlights
-
-- **[Major release headline.]** [Why users should care.] (#123) Optional docs: [Doc title](https://docukit.dev/...)
-
 ## Breaking changes
 
 - [Short description.] **Migration:** [what the consumer changes]. (#123)
@@ -109,24 +105,19 @@ Rules:
 
 - If no breaking changes were found, write `_No breaking changes in this release._` under that section. **Do not omit the section** — explicit emptiness lets a reviewer catch a false negative.
 - Keep bullets user-facing. "Renamed `foo` → `bar`" — not "refactored internal foo helpers".
-- Open with a market-facing **Highlights** section. Put the most important story first, not the biggest diff. Make the top bullets attractive and clear for readers who will only skim.
-- Order bullets by user impact, not by commit order.
-- Link to documentation when it helps users adopt or understand the change.
-- Group related breaking changes by product area and shared migration so the section stays readable, but do not omit any real breaking change.
+- Group bullets that share a migration.
 - Omit empty Features/Fixes/Docs/Internal sections silently — only Breaking is mandatory.
 
 Use today's date from the environment.
 
 ### Discord sibling — `changelog/<tag>_DISCORD.md`
 
-Same story, transformed for Discord:
+Same content, transformed:
 
 - **No `#` headings.** Use `**BREAKING CHANGES**`, `**FEATURES**`, etc. in bold+caps.
-- Emojis per section: ✨ Highlights/Features, 🚨 Breaking, 🐛 Fixes, 📚 Docs, 🛠 Internal.
-- Do **not** include PR links in the Discord file. The committed changelog has the PR attribution.
-- Include documentation links as plain text only when they are useful to readers. **No `[text](url)` markdown link syntax.**
+- Emojis per section: 🚨 Breaking, ✨ Features, 🐛 Fixes, 📚 Docs, 🛠 Internal.
+- URLs as plain text — paste `https://github.com/docukit/docukit/pull/123` literally. **No `[text](url)` markdown link syntax.**
 - Open with a one-line summary: `🚀 DocuKit <tag> released!` then a blank line.
-- End with this line: `Full release notes with PRs: https://github.com/docukit/docukit/releases/`
 - Keep it skimmable.
 
 This file is gitignored (`changelog/*_DISCORD.md`) — never let it be committed.
