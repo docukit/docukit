@@ -5,9 +5,11 @@ import {
   statSync,
   existsSync,
   appendFileSync,
+  mkdtempSync,
 } from "node:fs";
 import { execSync } from "node:child_process";
 import { join, resolve, dirname } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -18,6 +20,10 @@ type Loaded = { dir: string; pkg: Package };
 const run = (cmd: string) => {
   console.log(`$ ${cmd}`);
   execSync(cmd, { cwd: ROOT, stdio: "inherit" });
+};
+const captureRequired = (cmd: string, cwd = ROOT): string => {
+  console.log(`$ ${cmd}`);
+  return execSync(cmd, { cwd, encoding: "utf8" }).trim();
 };
 const capture = (cmd: string): string | undefined => {
   try {
@@ -78,8 +84,7 @@ if (loaded.length === 0) {
   process.exit(1);
 }
 
-console.log("Fail-fast npm auth check...");
-run("npm whoami");
+const packDir = mkdtempSync(join(tmpdir(), "docukit-publish-"));
 
 const results: { published: string[]; skipped: string[]; failed: string[] } = {
   published: [],
@@ -87,7 +92,7 @@ const results: { published: string[]; skipped: string[]; failed: string[] } = {
   failed: [],
 };
 
-for (const { pkg } of loaded) {
+for (const { dir, pkg } of loaded) {
   const version = pkg.version;
   if (!version) continue;
   const spec = `${pkg.name}@${version}`;
@@ -101,13 +106,15 @@ for (const { pkg } of loaded) {
   }
 
   try {
-    const tagFlag = isAlpha ? " --tag alpha" : "";
-    run(
-      `pnpm publish --filter ${pkg.name} --access public --no-git-checks${tagFlag}`,
+    const packedPath = captureRequired(
+      `pnpm pack --pack-destination ${JSON.stringify(packDir)}`,
+      dir,
     );
-    if (isAlpha) {
-      run(`npm dist-tag add ${spec} latest`);
-    }
+    const tarball = resolve(dir, packedPath);
+    const tagFlag = isAlpha ? " --tag latest" : "";
+    run(
+      `npm publish ${JSON.stringify(tarball)} --access public --provenance${tagFlag}`,
+    );
     results.published.push(spec);
   } catch (err) {
     results.failed.push(spec);
