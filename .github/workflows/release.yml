@@ -102,7 +102,6 @@ jobs:
         run: pnpm dlx @railway/cli up --service "$RAILWAY_SERVICE" --environment production --ci
 
       - name: Deploy docs to Vercel
-        working-directory: docs
         env:
           VERCEL_ORG_ID: team_fCh184rIrqEO1RmklNmEH6dR
           VERCEL_PROJECT_ID: prj_6hZQc795Nzc7Vuh7CTpS4yJhbblR
