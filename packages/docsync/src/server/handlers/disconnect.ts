@@ -33,6 +33,14 @@ export function handleDisconnect<
           presence: null,
         });
         broadcastCollaborationState(server, docId);
+        server["_emit"](server["_docUnsubscribeEventListeners"], {
+          userId,
+          deviceId,
+          clientId,
+          socketId: socket.id,
+          docId,
+          reason,
+        });
       }
 
       socketToDocsMap.delete(socket.id);

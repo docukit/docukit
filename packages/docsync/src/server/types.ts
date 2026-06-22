@@ -33,6 +33,25 @@ export type ClientDisconnectEvent = {
   reason: string;
 };
 
+/** Emitted when a connected client subscribes to a document. */
+export type DocSubscribeEvent = {
+  userId: string;
+  deviceId: string;
+  clientId: string;
+  socketId: string;
+  docId: string;
+};
+
+/** Emitted when a connected client unsubscribes from a document. */
+export type DocUnsubscribeEvent = {
+  userId: string;
+  deviceId: string;
+  clientId: string;
+  socketId: string;
+  docId: string;
+  reason: string;
+};
+
 /** Emitted once after sync request completes. */
 export type SyncRequestEvent<O = unknown, S = unknown> = {
   userId: string;
@@ -61,6 +80,8 @@ export type ClientConnectEventListener<TContext = unknown> = (
 export type ClientDisconnectEventListener = (
   event: ClientDisconnectEvent,
 ) => void;
+export type DocSubscribeEventListener = (event: DocSubscribeEvent) => void;
+export type DocUnsubscribeEventListener = (event: DocUnsubscribeEvent) => void;
 export type SyncRequestEventListener<O = unknown, S = unknown> = (
   event: SyncRequestEvent<O, S>,
 ) => void;

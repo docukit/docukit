@@ -20,12 +20,14 @@ export function handleSync<
   socket,
   userId,
   deviceId,
+  clientId,
   context,
 }: {
   server: DocSyncServer<TContext, D, S, O>;
   socket: ServerConnectionSocket<TContext, S, O>;
   userId: string;
   deviceId: string;
+  clientId: string;
   context: TContext;
 }): void {
   socket.on(
@@ -72,10 +74,20 @@ export function handleSync<
       if (!room?.has(socket.id)) {
         await socket.join(`doc:${docId}`);
 
-        if (!socketToDocsMap.has(socket.id)) {
-          socketToDocsMap.set(socket.id, new Set());
+        let subscribedDocs = socketToDocsMap.get(socket.id);
+        if (!subscribedDocs) {
+          subscribedDocs = new Set();
+          socketToDocsMap.set(socket.id, subscribedDocs);
         }
-        socketToDocsMap.get(socket.id)!.add(docId);
+        subscribedDocs.add(docId);
+
+        server["_emit"](server["_docSubscribeEventListeners"], {
+          userId,
+          deviceId,
+          clientId,
+          socketId: socket.id,
+          docId,
+        });
 
         const presence = presenceByDoc.get(docId);
         if (presence) socket.emit("presence", { docId, presence });

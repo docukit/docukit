@@ -5,6 +5,8 @@ import { DocNodeBinding } from "@docukit/docsync/docnode";
 import type {
   ClientConnectEvent,
   ClientDisconnectEvent,
+  DocSubscribeEvent,
+  DocUnsubscribeEvent,
   SyncRequestEvent,
 } from "@docukit/docsync/server";
 
@@ -224,6 +226,139 @@ describe("Server Events", () => {
         expect(capturedEvent).toBeDefined();
         expect(capturedEvent?.reason).toBeDefined();
         expect(typeof capturedEvent?.reason).toBe("string");
+      });
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // onDocSubscribe / onDocUnsubscribe
+  // ──────────────────────────────────────────────────────────────────────────
+
+  describe("document subscription events", () => {
+    test("should emit when client subscribes to a document", async () => {
+      const auth = { getToken: () => "valid-user-doc-subscribe" };
+      await testWrapper({ auth }, async (T) => {
+        let capturedEvent: DocSubscribeEvent | undefined;
+
+        T.server.onDocSubscribe((event) => {
+          capturedEvent = event;
+        });
+
+        await T.waitForConnect();
+        await T.sync({
+          type: "test",
+          docId: "doc-subscribe",
+          operations: [{ type: "insert" }],
+          clock: 0,
+        });
+
+        expect(capturedEvent).toMatchObject({
+          userId: "user-doc-subscribe",
+          docId: "doc-subscribe",
+          socketId: T.socket.id,
+        });
+        expect(capturedEvent?.deviceId).toBeDefined();
+        expect(capturedEvent?.clientId).toBeDefined();
+      });
+    });
+
+    test("should emit once per socket and document subscription", async () => {
+      const auth = { getToken: () => "valid-user-doc-subscribe-once" };
+      await testWrapper({ auth }, async (T) => {
+        const docIds: string[] = [];
+
+        T.server.onDocSubscribe((event) => {
+          docIds.push(event.docId);
+        });
+
+        await T.waitForConnect();
+        await T.sync({ type: "test", docId: "doc-subscribe-once", clock: 0 });
+        await T.sync({ type: "test", docId: "doc-subscribe-once", clock: 0 });
+
+        expect(docIds).toStrictEqual(["doc-subscribe-once"]);
+      });
+    });
+
+    test("should emit when client explicitly unsubscribes from a document", async () => {
+      const auth = { getToken: () => "valid-user-doc-unsubscribe" };
+      await testWrapper({ auth }, async (T) => {
+        let capturedEvent: DocUnsubscribeEvent | undefined;
+
+        T.server.onDocUnsubscribe((event) => {
+          capturedEvent = event;
+        });
+
+        await T.waitForConnect();
+        await T.sync({ type: "test", docId: "doc-unsubscribe", clock: 0 });
+        await new Promise<void>((resolve) => {
+          T.socket.emit("unsubscribe-doc", { docId: "doc-unsubscribe" }, () => {
+            resolve();
+          });
+        });
+
+        expect(capturedEvent).toMatchObject({
+          userId: "user-doc-unsubscribe",
+          docId: "doc-unsubscribe",
+          socketId: T.socket.id,
+          reason: "unsubscribe-doc",
+        });
+        expect(capturedEvent?.deviceId).toBeDefined();
+        expect(capturedEvent?.clientId).toBeDefined();
+      });
+    });
+
+    test("should emit for each subscribed document on disconnect", async () => {
+      const auth = { getToken: () => "valid-user-doc-disconnect" };
+      await testWrapper({ auth }, async (T) => {
+        const capturedEvents: DocUnsubscribeEvent[] = [];
+
+        T.server.onDocUnsubscribe((event) => {
+          capturedEvents.push(event);
+        });
+
+        await T.waitForConnect();
+        await T.sync({ type: "test", docId: "doc-disconnect-a", clock: 0 });
+        await T.sync({ type: "test", docId: "doc-disconnect-b", clock: 0 });
+
+        const socketId = T.socket.id;
+        T.socket.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        expect(capturedEvents.map((event) => event.docId)).toStrictEqual([
+          "doc-disconnect-a",
+          "doc-disconnect-b",
+        ]);
+        expect(capturedEvents).toMatchObject([
+          { userId: "user-doc-disconnect", socketId },
+          { userId: "user-doc-disconnect", socketId },
+        ]);
+        expect(capturedEvents[0]?.reason).toBeDefined();
+        expect(capturedEvents[1]?.reason).toBeDefined();
+      });
+    });
+
+    test("should allow unsubscribing document event listeners", async () => {
+      const auth = { getToken: () => "valid-user-doc-listener" };
+      await testWrapper({ auth }, async (T) => {
+        let subscribeCalled = false;
+        let unsubscribeCalled = false;
+
+        const removeSubscribeListener = T.server.onDocSubscribe(() => {
+          subscribeCalled = true;
+        });
+        const removeUnsubscribeListener = T.server.onDocUnsubscribe(() => {
+          unsubscribeCalled = true;
+        });
+        removeSubscribeListener();
+        removeUnsubscribeListener();
+
+        await T.waitForConnect();
+        await T.sync({ type: "test", docId: "doc-listener", clock: 0 });
+        T.socket.disconnect();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        expect(subscribeCalled).toBe(false);
+        expect(unsubscribeCalled).toBe(false);
       });
     });
   });
