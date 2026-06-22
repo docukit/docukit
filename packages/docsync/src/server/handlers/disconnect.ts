@@ -37,7 +37,6 @@ export function handleDisconnect<
           userId,
           deviceId,
           clientId,
-          socketId: socket.id,
           docId,
           reason,
         });
@@ -49,7 +48,7 @@ export function handleDisconnect<
     server["_emit"](server["_clientDisconnectEventListeners"], {
       userId,
       deviceId,
-      socketId: socket.id,
+      clientId,
       reason,
     });
   });

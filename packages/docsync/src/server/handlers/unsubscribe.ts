@@ -59,7 +59,6 @@ export function handleUnsubscribeDoc<
         userId,
         deviceId,
         clientId,
-        socketId: socket.id,
         docId,
         reason: "unsubscribe-doc",
       });

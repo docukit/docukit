@@ -16,7 +16,7 @@ import type { Server, Socket } from "socket.io";
 export type ClientConnectEvent<TContext = unknown> = {
   userId: string;
   deviceId: string;
-  socketId: string;
+  clientId: string;
   context: TContext;
 };
 
@@ -24,12 +24,12 @@ export type ClientConnectEvent<TContext = unknown> = {
  * Emitted when client disconnects.
  *
  * Also emitted when a connection attempt fails (e.g., authentication failure).
- * In that case, userId and deviceId may not be available.
+ * In that case, userId, deviceId, and clientId may not be available.
  */
 export type ClientDisconnectEvent = {
   userId: string;
   deviceId: string;
-  socketId: string;
+  clientId: string;
   reason: string;
 };
 
@@ -38,7 +38,6 @@ export type DocSubscribeEvent = {
   userId: string;
   deviceId: string;
   clientId: string;
-  socketId: string;
   docId: string;
 };
 
@@ -47,7 +46,6 @@ export type DocUnsubscribeEvent = {
   userId: string;
   deviceId: string;
   clientId: string;
-  socketId: string;
   docId: string;
   reason: string;
 };
@@ -56,7 +54,7 @@ export type DocUnsubscribeEvent = {
 export type SyncRequestEvent<O = unknown, S = unknown> = {
   userId: string;
   deviceId: string;
-  socketId: string;
+  clientId: string;
   status: "success" | "error";
 
   req: { type: string; docId: string; operations?: O[]; clock: number };

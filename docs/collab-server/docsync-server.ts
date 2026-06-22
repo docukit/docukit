@@ -24,16 +24,14 @@ const server = new DocSyncServer({
   authenticate: ({ token }) => ({ userId: token }), // Use token as userId
 });
 
-server.onDocSubscribe(({ docId, userId, deviceId, clientId, socketId }) => {
+server.onDocSubscribe(({ docId, userId, deviceId, clientId }) => {
   console.log(
-    `[docsync] doc connect docId=${docId} userId=${userId} deviceId=${deviceId} clientId=${clientId} socketId=${socketId}`,
+    `[docsync] doc connect docId=${docId} userId=${userId} deviceId=${deviceId} clientId=${clientId}`,
   );
 });
 
-server.onDocUnsubscribe(
-  ({ docId, userId, deviceId, clientId, socketId, reason }) => {
-    console.log(
-      `[docsync] doc disconnect docId=${docId} userId=${userId} deviceId=${deviceId} clientId=${clientId} socketId=${socketId} reason=${reason}`,
-    );
-  },
-);
+server.onDocUnsubscribe(({ docId, userId, deviceId, clientId, reason }) => {
+  console.log(
+    `[docsync] doc disconnect docId=${docId} userId=${userId} deviceId=${deviceId} clientId=${clientId} reason=${reason}`,
+  );
+});

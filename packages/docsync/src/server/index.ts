@@ -124,7 +124,7 @@ export class DocSyncServer<
         this._emit(this._clientDisconnectEventListeners, {
           userId: "unknown",
           deviceId,
-          socketId: "unknown",
+          clientId: "unknown",
           reason: `Authentication failed: ${err.message}`,
         });
       },
@@ -137,7 +137,7 @@ export class DocSyncServer<
       this._emit(this._clientConnectEventListeners, {
         userId,
         deviceId,
-        socketId: socket.id,
+        clientId,
         context,
       });
 

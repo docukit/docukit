@@ -53,7 +53,7 @@ export function handleSync<
         server["_emit"](server["_syncRequestEventListeners"], {
           userId,
           deviceId,
-          socketId: socket.id,
+          clientId,
           status: "error",
           req,
           error: errorEvent,
@@ -85,7 +85,6 @@ export function handleSync<
           userId,
           deviceId,
           clientId,
-          socketId: socket.id,
           docId,
         });
 
@@ -148,7 +147,7 @@ export function handleSync<
         server["_emit"](server["_syncRequestEventListeners"], {
           userId,
           deviceId,
-          socketId: socket.id,
+          clientId,
           status: "success",
           req,
           ...(result.operations || result.serializedDoc
@@ -208,7 +207,7 @@ export function handleSync<
         server["_emit"](server["_syncRequestEventListeners"], {
           userId,
           deviceId,
-          socketId: socket.id,
+          clientId,
           status: "error",
           req,
           error: {
