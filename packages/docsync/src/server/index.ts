@@ -9,6 +9,8 @@ import type {
   AuthenticatedSocketData,
   ClientConnectEventListener,
   ClientDisconnectEventListener,
+  DocSubscribeEventListener,
+  DocUnsubscribeEventListener,
   ServerConfig,
   ServerProvider,
   ServerSocket,
@@ -44,6 +46,9 @@ export class DocSyncServer<
   private _clientConnectEventListeners = new Set<ClientConnectEventListener>();
   private _clientDisconnectEventListeners =
     new Set<ClientDisconnectEventListener>();
+  private _docSubscribeEventListeners = new Set<DocSubscribeEventListener>();
+  private _docUnsubscribeEventListeners =
+    new Set<DocUnsubscribeEventListener>();
   private _syncRequestEventListeners = new Set<SyncRequestEventListener>();
 
   constructor(config: ServerConfig<TContext, D, S, O>) {
@@ -119,7 +124,7 @@ export class DocSyncServer<
         this._emit(this._clientDisconnectEventListeners, {
           userId: "unknown",
           deviceId,
-          socketId: "unknown",
+          clientId: "unknown",
           reason: `Authentication failed: ${err.message}`,
         });
       },
@@ -132,15 +137,15 @@ export class DocSyncServer<
       this._emit(this._clientConnectEventListeners, {
         userId,
         deviceId,
-        socketId: socket.id,
+        clientId,
         context,
       });
 
       const server = this;
       handleDisconnect({ server, socket, userId, deviceId, clientId });
       // prettier-ignore
-      handleSync({ server, socket, userId, deviceId, context });
-      handleUnsubscribeDoc({ server, socket, clientId });
+      handleSync({ server, socket, userId, deviceId, clientId, context });
+      handleUnsubscribeDoc({ server, socket, userId, deviceId, clientId });
       handlePresence({ server, socket, userId, clientId, context });
       handleDeleteDoc({ server, socket, userId, context });
     });
@@ -180,6 +185,28 @@ export class DocSyncServer<
     this._clientDisconnectEventListeners.add(listener);
     return () => {
       this._clientDisconnectEventListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Register a listener for document subscription events.
+   * @returns Unsubscribe function
+   */
+  onDocSubscribe(listener: DocSubscribeEventListener): () => void {
+    this._docSubscribeEventListeners.add(listener);
+    return () => {
+      this._docSubscribeEventListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Register a listener for document unsubscription events.
+   * @returns Unsubscribe function
+   */
+  onDocUnsubscribe(listener: DocUnsubscribeEventListener): () => void {
+    this._docUnsubscribeEventListeners.add(listener);
+    return () => {
+      this._docUnsubscribeEventListeners.delete(listener);
     };
   }
 

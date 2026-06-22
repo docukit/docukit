@@ -9,7 +9,7 @@ if (!Number.isInteger(port) || port <= 0) {
   throw new Error("PORT/DOCSYNC_PORT must be a positive integer");
 }
 
-new DocSyncServer({
+const server = new DocSyncServer({
   docBinding: DocNodeBinding([
     indexDocConfig,
     createLexicalDocNodeConfig({ undoManager: { maxUndoSteps: 100 } }),
@@ -22,4 +22,16 @@ new DocSyncServer({
     ),
   }),
   authenticate: ({ token }) => ({ userId: token }), // Use token as userId
+});
+
+server.onDocSubscribe(({ docId, userId, deviceId, clientId }) => {
+  console.log(
+    `[docsync] doc connect docId=${docId} userId=${userId} deviceId=${deviceId} clientId=${clientId}`,
+  );
+});
+
+server.onDocUnsubscribe(({ docId, userId, deviceId, clientId, reason }) => {
+  console.log(
+    `[docsync] doc disconnect docId=${docId} userId=${userId} deviceId=${deviceId} clientId=${clientId} reason=${reason}`,
+  );
 });

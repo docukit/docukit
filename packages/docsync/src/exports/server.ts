@@ -5,6 +5,8 @@ export type {
   ServerProviderContext,
   ClientConnectEvent,
   ClientDisconnectEvent,
+  DocSubscribeEvent,
+  DocUnsubscribeEvent,
   SyncRequestEvent,
 } from "../server/types.js";
 export { inMemoryServerProvider } from "../server/providers/memory.js";

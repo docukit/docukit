@@ -180,7 +180,10 @@ server.onClientConnect((event) => {
   type={{
     userId: { description: "Authenticated user ID.", type: "string" },
     deviceId: { description: "Unique device identifier.", type: "string" },
-    socketId: { description: "Socket.IO socket ID.", type: "string" },
+    clientId: {
+      description: "Client instance identifier used for presence.",
+      type: "string",
+    },
     context: {
       description: "Context object from authenticate().",
       type: "TContext",
@@ -208,13 +211,70 @@ server.onClientDisconnect((event) => {
       description: 'Device ID (or "unknown" if auth failed).',
       type: "string",
     },
-    socketId: {
-      description: 'Socket ID (or "unknown" if auth failed).',
+    clientId: {
+      description: 'Client ID (or "unknown" if auth failed).',
       type: "string",
     },
     reason: {
       description:
         'Disconnect reason (e.g., "transport close", "Authentication failed: invalid token").',
+      type: "string",
+    },
+  }}
+/>
+
+### onDocSubscribe
+
+Called when a connected client starts syncing a document.
+
+```ts
+server.onDocSubscribe((event) => {
+  console.log(`Client ${event.clientId} opened doc ${event.docId}`);
+});
+```
+
+<TypeTable
+  type={{
+    userId: { description: "Authenticated user ID.", type: "string" },
+    deviceId: {
+      description: "Device that opened the document.",
+      type: "string",
+    },
+    clientId: {
+      description: "Client instance identifier used for presence.",
+      type: "string",
+    },
+    docId: { description: "Document ID.", type: "string" },
+  }}
+/>
+
+### onDocUnsubscribe
+
+Called when a connected client stops syncing a document, either by unsubscribing or disconnecting.
+
+```ts
+server.onDocUnsubscribe((event) => {
+  console.log(
+    `Client ${event.clientId} closed doc ${event.docId}: ${event.reason}`,
+  );
+});
+```
+
+<TypeTable
+  type={{
+    userId: { description: "Authenticated user ID.", type: "string" },
+    deviceId: {
+      description: "Device that closed the document.",
+      type: "string",
+    },
+    clientId: {
+      description: "Client instance identifier used for presence.",
+      type: "string",
+    },
+    docId: { description: "Document ID.", type: "string" },
+    reason: {
+      description:
+        'Reason the client stopped syncing the document, such as "unsubscribe-doc" or a disconnect reason.',
       type: "string",
     },
   }}
@@ -236,7 +296,10 @@ server.onSyncRequest((event) => {
   type={{
     userId: { description: "User who made the request.", type: "string" },
     deviceId: { description: "Device that made the request.", type: "string" },
-    socketId: { description: "Socket ID.", type: "string" },
+    clientId: {
+      description: "Client instance that made the request.",
+      type: "string",
+    },
     status: { description: "Request outcome.", type: '"success" | "error"' },
     durationMs: {
       description: "Processing time in milliseconds.",

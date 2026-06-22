@@ -16,7 +16,7 @@ import type { Server, Socket } from "socket.io";
 export type ClientConnectEvent<TContext = unknown> = {
   userId: string;
   deviceId: string;
-  socketId: string;
+  clientId: string;
   context: TContext;
 };
 
@@ -24,12 +24,29 @@ export type ClientConnectEvent<TContext = unknown> = {
  * Emitted when client disconnects.
  *
  * Also emitted when a connection attempt fails (e.g., authentication failure).
- * In that case, userId and deviceId may not be available.
+ * In that case, userId, deviceId, and clientId may not be available.
  */
 export type ClientDisconnectEvent = {
   userId: string;
   deviceId: string;
-  socketId: string;
+  clientId: string;
+  reason: string;
+};
+
+/** Emitted when a connected client subscribes to a document. */
+export type DocSubscribeEvent = {
+  userId: string;
+  deviceId: string;
+  clientId: string;
+  docId: string;
+};
+
+/** Emitted when a connected client unsubscribes from a document. */
+export type DocUnsubscribeEvent = {
+  userId: string;
+  deviceId: string;
+  clientId: string;
+  docId: string;
   reason: string;
 };
 
@@ -37,7 +54,7 @@ export type ClientDisconnectEvent = {
 export type SyncRequestEvent<O = unknown, S = unknown> = {
   userId: string;
   deviceId: string;
-  socketId: string;
+  clientId: string;
   status: "success" | "error";
 
   req: { type: string; docId: string; operations?: O[]; clock: number };
@@ -61,6 +78,8 @@ export type ClientConnectEventListener<TContext = unknown> = (
 export type ClientDisconnectEventListener = (
   event: ClientDisconnectEvent,
 ) => void;
+export type DocSubscribeEventListener = (event: DocSubscribeEvent) => void;
+export type DocUnsubscribeEventListener = (event: DocUnsubscribeEvent) => void;
 export type SyncRequestEventListener<O = unknown, S = unknown> = (
   event: SyncRequestEvent<O, S>,
 ) => void;
