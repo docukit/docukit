@@ -174,7 +174,10 @@ const createClientWithConfig = (config: {
   docBinding: ReturnType<typeof createDocBinding>;
 }): DocSyncClient<Doc, JsonDoc, Operations> => {
   const clientConfig: ClientConfig<Doc, JsonDoc, Operations> = {
-    server: { url: getTestServerUrl(), auth: { getToken: () => config.token } },
+    server: {
+      url: getTestServerUrl(),
+      auth: { mode: "token", getToken: () => config.token },
+    },
     timing: { collabMaxDebounce: 50, singleClientMaxDebounce: 50 },
     docBinding: config.docBinding,
     local: {

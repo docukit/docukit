@@ -67,7 +67,7 @@ export const createClient = async () => {
   const config: ClientConfig<Doc, JsonDoc, Operations> = {
     server: {
       url: "ws://localhost:8081",
-      auth: { getToken: () => "test-token" },
+      auth: { mode: "token", getToken: () => "test-token" },
     },
     docBinding,
     local: {

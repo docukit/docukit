@@ -18,7 +18,7 @@ const url = `ws://localhost:${globalThis.__TEST_SERVER_PORT__ ?? 8082}`;
 
 const createClient = (token: string) =>
   new DocSyncClient({
-    server: { url, auth: { getToken: () => token } },
+    server: { url, auth: { mode: "token", getToken: () => token } },
     docBinding,
     local: {
       provider: indexedDBProvider,

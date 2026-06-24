@@ -23,6 +23,7 @@ const createClientForUser = (
     server: {
       url: env.NEXT_PUBLIC_DOCSYNC_SERVER_URL,
       auth: {
+        mode: "token",
         getToken: () => userId, // Use userId as token
       },
     },
