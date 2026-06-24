@@ -59,7 +59,7 @@ export type ClientConfig = {
      */
     getToken: () => Promise<string>;
   };
-  local?: {
+  local: {
     /**
      * Resolves the local storage identity.
      *
@@ -71,7 +71,7 @@ export type ClientConfig = {
      */
     getIdentity: () => Promise<{ userId: string; secret: string }>;
 
-    provider: new () => Provider;
+    provider: (identity: Identity) => ClientProvider;
   };
 };
 ````
@@ -94,7 +94,7 @@ DocSync does **not** call `getToken` per operation.
 ```ts
 export type ServerConfig<TContext = {}> = {
   port?: number;
-  provider: new () => ServerProvider;
+  provider: ServerProvider;
 
   /**
    * Authenticates a WebSocket connection.
