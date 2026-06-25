@@ -33,32 +33,56 @@ Authorization (document sharing, ACLs, permissions) is intentionally left to the
 
 ## Client-Side Authentication
 
+DocSync supports two client auth modes.
+
+For normal browser apps with an existing `HttpOnly` session cookie, prefer
+request auth:
+
+```ts
+createDocSyncClient({ server: { url, auth: { mode: "request" } } });
+```
+
+Request auth means the server authenticates from the WebSocket handshake
+request. In browsers, the common case is an `HttpOnly` session cookie sent by
+the browser during the handshake. JavaScript does not need to read the session
+secret, and DocSync does not need an extra token request.
+
+Same-origin setups are the easiest path. Cross-origin cookie sessions can also
+work, but the application must configure cookie domain, `SameSite`, `Secure`,
+and credential/CORS settings correctly.
+
+Use token auth when the client already has a safe token to present, or when
+cookies are not the right tool:
+
+```ts
+createDocSyncClient({
+  server: {
+    url,
+    auth: { mode: "token", getToken: async () => authStore.accessToken },
+  },
+});
+```
+
+If a browser app stores its main session in an `HttpOnly` cookie and DocSync
+requires a JavaScript-readable token, the app usually needs either:
+
+- an extra request to exchange the cookie-backed session for a sync token; or
+- a server-rendered bootstrap that embeds a sync token in the initial page.
+
+The bootstrap path avoids an extra request, but the sync token is readable by
+JavaScript. For most browser apps with `HttpOnly` session cookies, request auth
+is the recommended pattern.
+
 ### Client Configuration
 
-````ts
+```ts
+type ClientAuthConfig =
+  | { mode: "request" }
+  | { mode: "token"; getToken: () => MaybePromise<string> };
+
 export type ClientConfig = {
-  url: string;
-  userId: string;
-  docConfigs: DocConfig[];
-  auth: {
-    /**
-     * Server authentication token.
-     *
-     * - Passed verbatim to the server on connection.
-     * - Validation is delegated to the server via `authenticate`.
-     * - This library does not issue, refresh, rotate, or persist tokens.
-     *
-     * `getToken` is expected to be a **cheap read** from existing auth state, not a network login flow.
-     *
-     * @example
-     * ```
-     * auth: {
-     *   getToken: async () => authStore.accessToken
-     * }
-     * ```
-     */
-    getToken: () => Promise<string>;
-  };
+  docBinding: DocBinding;
+  server: { url: string; auth: ClientAuthConfig };
   local: {
     /**
      * Resolves the local storage identity.
@@ -74,16 +98,22 @@ export type ClientConfig = {
     provider: (identity: Identity) => ClientProvider;
   };
 };
-````
+```
 
 ---
 
 ### When `getToken` Is Called
 
+`getToken` is only used in token mode.
+
 - On initial WebSocket connection
 - On reconnection after disconnect
 
 DocSync does **not** call `getToken` per operation.
+
+In request mode, DocSync does not call `getToken` at all. The server receives
+the real handshake request and can authenticate cookies, headers, or other
+request-level credentials.
 
 ---
 
@@ -100,12 +130,14 @@ export type ServerConfig<TContext = {}> = {
    * Authenticates a WebSocket connection.
    *
    * - Called once per connection attempt.
-   * - Must validate the provided token.
+   * - Can validate cookies from the handshake request.
+   * - Can validate an optional token.
    * - Must resolve the canonical userId.
    * - May optionally return a context object passed to authorize.
    */
   authenticate: (ev: {
-    token: string;
+    request: IncomingMessage;
+    token?: string;
   }) => Promise<{ userId: string; context?: TContext } | undefined>;
 
   /**
@@ -113,13 +145,6 @@ export type ServerConfig<TContext = {}> = {
    * Receives cached context from authenticate.
    */
   authorize?: (ev: AuthorizeEvent<TContext>) => Promise<boolean>;
-
-  /**
-   * Optional revalidation policy used when `expiresAt` is not provided.
-   */
-  authRevalidation?: {
-    intervalMs?: number; // default: 30_000
-  };
 };
 ```
 
@@ -130,13 +155,33 @@ Authentication is **connection-level**, not per-operation.
 Flow:
 
 1. Client establishes a WebSocket connection
-2. Client provides a token via `auth.getToken()`
-3. Server calls `authenticate(token)`
-4. Server resolves `{ userId, expiresAt? }`
-5. Identity is attached to the socket
-6. Operations are accepted while the connection is trusted
+2. Browser cookies are included in the WebSocket handshake when applicable
+3. Token clients provide a token via `auth.getToken()`
+4. Server calls `authenticate({ request, token })`
+5. Server resolves `{ userId, context? }`
+6. Identity is attached to the socket
+7. Operations are accepted while the connection is trusted
 
 If authentication fails, the connection is rejected immediately.
+
+Recommended server pattern:
+
+```ts
+authenticate: async ({ request, token }) => {
+  // Authenticate via request, commonly with cookies.
+  const cookieIdentity = await getCookieIdentity(request.headers);
+  if (cookieIdentity) return cookieIdentity;
+
+  // Or authenticate via token.
+  if (token) return getTokenIdentity(token);
+
+  return undefined;
+};
+```
+
+This keeps the browser path fast and secure while preserving token support for
+non-browser clients, scoped document grants, tests, CLIs, workers, mobile apps,
+and server-to-server sync.
 
 ---
 
@@ -175,10 +220,27 @@ type AuthorizeEvent<TContext> =
 `authenticate` can return a `context` that's cached and passed to `authorize`:
 
 ```ts
-authenticate: async ({ token }) => ({
-  userId: user.id,
-  context: { roles: user.roles }, // cached at connection time
-}),
+authenticate: async ({ request, token }) => {
+  // Authenticate via request, commonly with cookies.
+  const user = await getUserFromCookie(request.headers);
+  if (user) {
+    return {
+      userId: user.id,
+      context: { roles: user.roles }, // cached at connection time
+    };
+  }
+
+  // Or authenticate via token.
+  if (!token) return undefined;
+
+  const tokenUser = await getUserFromToken(token);
+  if (!tokenUser) return undefined;
+
+  return {
+    userId: tokenUser.id,
+    context: { roles: tokenUser.roles },
+  };
+},
 
 authorize: async ({ type, userId, context }) => {
   // Option 1: Use cached context (fast, might be stale)
@@ -221,13 +283,14 @@ Local persistence never validates identity and never calls `getToken`.
 
 ### How the Local Namespace Is Chosen
 
-The local storage namespace is derived from the **server-resolved userId**, not from the token.
+The local storage namespace is derived from the **server-resolved userId**, not
+from a client claim, cookie value, or token value.
 
 Flow:
 
-1. Client obtains a token via `auth.getToken()`
-2. Token is sent to the server
-3. `authenticate` validates the token and resolves `{ userId }`
+1. Client connects with request auth or token auth
+2. `authenticate` validates the request and optional token
+3. `authenticate` resolves `{ userId }`
 4. The resolved `userId` is returned to the client
 5. Local persistence is initialized using that `userId` as a namespace
 
@@ -239,7 +302,7 @@ IndexedDB name = `DocSync:${userId}`
 
 This ensures:
 
-- Tokens may rotate or expire without affecting local data
+- Tokens, cookies, and sessions may rotate or expire without affecting local data
 - Local data is correctly partitioned per account
 - Identity authority remains server-side
 
@@ -350,7 +413,7 @@ Authentication and encryption are intentionally separate.
 
 ### Online
 
-- Token is provided
+- Browser cookies or a token are provided during connection
 - Server authenticates
 - `userId` is resolved
 - Sync proceeds normally
@@ -434,6 +497,7 @@ However, this event is not supported in DocSync, at least not at the moment. Rec
 ## Security Model Summary
 
 - Tokens are **presented**, not derived
+- Cookies are **sent by the browser**, not read by DocSync client JavaScript
 - Secrets are **derived**, not presented
 - Authentication happens per connection
 - Authorization is application-defined

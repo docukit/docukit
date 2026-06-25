@@ -19,10 +19,19 @@ const server = new DocSyncServer({
   port: 8080,
   docBinding,
   provider: inMemoryServerProvider(),
-  async authenticate({ token }) {
-    const user = await verifyToken(token);
-    if (!user) return undefined;
-    return { userId: user.id, context: { role: user.role } };
+  async authenticate({ request, token }) {
+    // Authenticate via request, commonly with cookies.
+    const session = await getSessionFromCookie(request.headers);
+    if (session) {
+      return { userId: session.user.id, context: { role: session.user.role } };
+    }
+
+    // Or authenticate via token.
+    if (!token) return undefined;
+
+    const tokenUser = await verifyToken(token);
+    if (!tokenUser) return undefined;
+    return { userId: tokenUser.id, context: { role: tokenUser.role } };
   },
   async authorize({ type, req, userId, context }) {
     return true;
@@ -55,8 +64,8 @@ See [Providers](./providers) to bring your own storage backend (Postgres, MySQL,
     },
     authenticate: {
       description:
-        "Async function called once per connection attempt. Must validate the token and return userId with optional context, or undefined to reject.",
-      type: "(ev: { token: string }) => Promise<{ userId: string; context?: TContext } | undefined>",
+        "Async function called once per connection attempt. Must validate the handshake request and optional token, then return userId with optional context, or undefined to reject.",
+      type: "(ev: { request: IncomingMessage; token?: string }) => Promise<{ userId: string; context?: TContext } | undefined>",
       required: true,
     },
     authorize: {
@@ -71,15 +80,27 @@ See [Providers](./providers) to bring your own storage backend (Postgres, MySQL,
 
 ## authenticate
 
-Called once per WebSocket connection attempt. Must validate the provided token and resolve the canonical userId.
+Called once per WebSocket connection attempt. Must validate the handshake request, optional token, or both, and resolve the canonical userId.
+
+For browser apps with `HttpOnly` session cookies, prefer reading the cookie from
+`request.headers` first. Keep the token branch for non-browser clients and
+short-lived scoped grants.
 
 ```ts
-async authenticate({ token }) {
-  const user = await verifyToken(token);
-  if (!user) return undefined;
+async authenticate({ request, token }) {
+  // Authenticate via request, commonly with cookies.
+  const session = await getSessionFromCookie(request.headers);
+  if (session) return { userId: session.user.id };
+
+  // Or authenticate via token.
+  if (!token) return undefined;
+
+  const tokenUser = await verifyToken(token);
+  if (!tokenUser) return undefined;
+
   return {
-    userId: user.id,
-    context: { role: user.role, orgId: user.orgId },
+    userId: tokenUser.id,
+    context: { role: tokenUser.role, orgId: tokenUser.orgId },
   };
 }
 ```
@@ -88,10 +109,16 @@ async authenticate({ token }) {
 
 <TypeTable
   type={{
-    token: {
-      description: "Authentication token sent by the client via getToken().",
-      type: "string",
+    request: {
+      description:
+        "The real HTTP request used for the WebSocket handshake. Use request.headers to authenticate HttpOnly cookie sessions.",
+      type: "IncomingMessage",
       required: true,
+    },
+    token: {
+      description:
+        "Optional authentication token sent by token-mode clients via getToken().",
+      type: "string | undefined",
     },
   }}
 />
@@ -217,7 +244,7 @@ server.onClientDisconnect((event) => {
     },
     reason: {
       description:
-        'Disconnect reason (e.g., "transport close", "Authentication failed: invalid token").',
+        'Disconnect reason (e.g., "transport close", "Authentication failed: invalid credentials").',
       type: "string",
     },
   }}

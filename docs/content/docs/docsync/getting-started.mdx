@@ -28,14 +28,11 @@ import { DocNodeBinding } from "@docukit/docsync-react/docnode";
 // Refer to the DocNode documentation for more information
 // on how to define a DocConfig
 import { yourDocConfigs } from "./shared.ts";
-import { fetchAuthToken, fetchIdentity } from "./utils.ts";
+import { fetchIdentity } from "./utils.ts";
 
 export const { useDoc, usePresence, client } = createDocSyncClient({
   docBinding: DocNodeBinding([...yourDocConfigs]),
-  server: {
-    url: "http://localhost:8080",
-    auth: { getToken: async () => await fetchAuthToken() },
-  },
+  server: { url: "http://localhost:8080", auth: { mode: "request" } },
   local: {
     provider: indexedDBProvider,
     getIdentity: async () => await fetchIdentity(),
@@ -50,14 +47,11 @@ import { DocNodeBinding } from "@docukit/docsync/docnode";
 // Refer to the DocNode documentation for more information
 // on how to define a DocConfig
 import { yourDocConfigs } from "./shared.ts";
-import { fetchAuthToken, fetchIdentity } from "./utils.ts";
+import { fetchIdentity } from "./utils.ts";
 
 export const client = new DocSyncClient({
   docBinding: DocNodeBinding([...yourDocConfigs]),
-  server: {
-    url: "http://localhost:8080",
-    auth: { getToken: async () => await fetchAuthToken() },
-  },
+  server: { url: "http://localhost:8080", auth: { mode: "request" } },
   local: {
     provider: indexedDBProvider,
     getIdentity: async () => await fetchIdentity(),
@@ -77,13 +71,18 @@ import { DocNodeBinding } from "@docukit/docsync-react/docnode";
 // Refer to the DocNode documentation for more information
 // on how to define a DocConfig
 import { yourDocConfigs } from "./shared.ts";
+import { getSessionFromCookie } from "./auth.ts";
 
 // this will start the server on port 8080
 const server = new DocSyncServer({
   docBinding: DocNodeBinding([...yourDocConfigs]),
   port: 8080,
   provider: inMemoryServerProvider(), // don't use in production
-  authenticate: async ({ token }) => ({ userId: token }),
+  authenticate: async ({ request }) => {
+    const session = await getSessionFromCookie(request.headers);
+    if (!session) return undefined;
+    return { userId: session.user.id };
+  },
 });
 ```
 
