@@ -430,67 +430,87 @@ DocSync does not attempt to validate identity while offline.
 
 ## Token Expiry, Revalidation, and Disconnects
 
-DocSync treats tokens as **opaque**.
+DocSync treats cookies and tokens as **opaque**.
 
-It does not parse tokens, infer expiry, or manage refresh.
+It does not parse tokens, infer expiry, refresh credentials, or poll the auth
+provider. The application owns session refresh, token rotation, and revocation.
 
 ### Token Expiry Handling
 
-There are two supported strategies:
+There are two possible future strategies.
 
 #### 1) Authoritative Expiry (`expiresAt`)
 
-If `authenticate` returns `expiresAt`:
+If `authenticate` eventually returns `expiresAt`, DocSync could schedule a
+disconnect exactly at that time.
 
-- The server schedules a disconnect exactly at that time
-- No periodic revalidation is performed
-- This is the most efficient path
+- The server would schedule a disconnect with `setTimeout`
+- No periodic revalidation would be performed
+- The next connection would run the normal handshake again
 
-This is strongly recommended when the auth system knows the token TTL (e.g. JWT `exp`).
+This is the simplest path when the auth system knows the credential TTL, such as
+a JWT `exp` claim or a session expiration timestamp.
 
-#### 2) Defensive Revalidation (Polling)
+#### 2) In-Place Reauthentication Event
 
-If `expiresAt` is **not** provided:
+DocSync could add an internal event, for example `refresh-auth`, that lets token
+clients send a fresh token without closing the socket.
 
-- DocSync periodically re-calls `authenticate`
-- If authentication fails, the socket is disconnected
-- The interval is controlled via `authRevalidation.intervalMs`
+- The client would call `auth.getToken()` again before expiry
+- The server would re-run `authenticate`
+- The server would update `socket.data.context` if the same `userId` is returned
+- The server would disconnect the socket if refresh fails or changes users
 
-This is required for:
+This is more complex, but avoids a real disconnect for token auth.
 
-- opaque tokens
-- manually revocable sessions
-- external identity providers
+<!-- TODO: Evaluate this on demand. The two realistic implementation paths are
+`expiresAt` + `setTimeout` disconnect/reconnect, or an in-place `refresh-auth`
+event. The event path only works for token auth; it does not work for request
+auth because an already-open WebSocket does not receive fresh request headers or
+updated cookie headers. Request auth needs a new handshake to observe current
+request credentials. -->
 
-### Why These Are Different
+### Current Userland Pattern
 
-- `expiresAt` represents **authoritative knowledge**: a guaranteed upper bound.
-- Revalidation represents **uncertainty management**: checking in case revocation occurred.
+DocSync does **not** currently provide built-in `expiresAt`,
+`authRevalidation.intervalMs`, or a `refresh-auth` event.
 
-They may be implemented with similar timers internally, but they have different semantics and guarantees.
+Applications that already know when credentials expire can schedule a reconnect
+themselves:
 
-### Client Reconnection
+```ts
+function reconnectDocSyncBeforeExpiry(expiresAtMs: number) {
+  const reconnectMs = Math.max(0, expiresAtMs - Date.now() - 5_000);
 
-When a socket is disconnected (e.g. due to token expiry):
+  window.setTimeout(() => {
+    client.disconnect();
+    client.connect();
+  }, reconnectMs);
+}
+```
+
+On reconnect:
 
 - Pending operations remain local
-- Socket.IO reconnects automatically
-- `auth.getToken()` is called again
-- A new authenticated connection is established
+- Token auth calls `auth.getToken()` again
+- Request auth sends matching request credentials again in the new handshake
+- The server calls `authenticate({ request, token })` again
 
-This ensures DocSync works correctly with:
+This works with:
 
-- short-lived tokens
-- refresh and rotation
-- long-lived sessions
+- short-lived access tokens
+- rotated tokens
+- long-lived cookie sessions
+- revoked sessions, once the app or transport forces a reconnect
 
-### Proactive Token Refresh (Optional)
+For stricter per-operation checks, applications can also use `authorize`, but
+that is authorization, not reauthentication. It can reject an operation after a
+session is revoked, but it does not refresh credentials or update the
+connection's authenticated context.
 
-By default, DocSync relies on **disconnect + reconnect** when a token expires.
-
-If an application wanted to update a token **without losing the connection**, an explicit re-authentication flow could be implemented on DocSync (for example, a custom `refresh_auth` event that re-executes `authenticate` and reschedules the expiration).
-
-However, this event is not supported in DocSync, at least not at the moment. Reconnection happens very quickly, so this procedure doesn't seem worthwhile.
+For most apps, request auth plus normal session handling is the recommended
+browser pattern. Token auth remains the recommended pattern for non-browser
+clients and scoped grants.
 
 ---
 
