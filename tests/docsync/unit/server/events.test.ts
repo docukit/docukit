@@ -2,6 +2,7 @@ import { describe, test, expect } from "vitest";
 import { testWrapper, testPort } from "./utils.js";
 import { DocSyncServer, inMemoryServerProvider } from "@docukit/docsync/server";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
+import type { ClientAuthConfig } from "@docukit/docsync/client";
 import type {
   ClientConnectEvent,
   ClientDisconnectEvent,
@@ -10,6 +11,11 @@ import type {
   SyncRequestEvent,
 } from "@docukit/docsync/server";
 
+const tokenAuth = (token: string): ClientAuthConfig => ({
+  mode: "token",
+  getToken: () => token,
+});
+
 describe("Server Events", () => {
   // ──────────────────────────────────────────────────────────────────────────
   // onClientConnect
@@ -17,7 +23,7 @@ describe("Server Events", () => {
 
   describe("onClientConnect", () => {
     test("should emit when client successfully authenticates and connects", async () => {
-      const auth = { getToken: () => "valid-user1" };
+      const auth = tokenAuth("valid-user1");
       await testWrapper({ auth }, async (T) => {
         let called = false;
         T.server.onClientConnect(() => {
@@ -51,7 +57,7 @@ describe("Server Events", () => {
         capturedContext = event.context;
       });
 
-      const auth = { getToken: () => "admin-token" };
+      const auth = tokenAuth("admin-token");
       await testWrapper(
         { auth, url: `ws://localhost:${testPort(1)}` },
         async (T) => {
@@ -68,7 +74,7 @@ describe("Server Events", () => {
     });
 
     test("should support multiple handlers", async () => {
-      const auth = { getToken: () => "valid-user2" };
+      const auth = tokenAuth("valid-user2");
       await testWrapper({ auth }, async (T) => {
         let called1 = false;
         let called2 = false;
@@ -93,7 +99,7 @@ describe("Server Events", () => {
         port: testPort(2),
         provider: inMemoryServerProvider(),
         authenticate: ({ token }) => {
-          if (token.startsWith("valid-")) {
+          if (token?.startsWith("valid-")) {
             return { userId: token.replace("valid-", "") };
           }
           return undefined;
@@ -106,7 +112,7 @@ describe("Server Events", () => {
       });
       unsubscribe();
 
-      const auth = { getToken: () => "valid-user3" };
+      const auth = tokenAuth("valid-user3");
       await testWrapper(
         { auth, url: `ws://localhost:${testPort(2)}` },
         async (T) => {
@@ -122,7 +128,7 @@ describe("Server Events", () => {
     });
 
     test("should include clientId", async () => {
-      const auth = { getToken: () => "valid-user4" };
+      const auth = tokenAuth("valid-user4");
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: ClientConnectEvent | undefined;
         const clientId = T.client["_clientId"];
@@ -145,7 +151,7 @@ describe("Server Events", () => {
 
   describe("onClientDisconnect", () => {
     test("should emit when client disconnects normally", async () => {
-      const auth = { getToken: () => "valid-user5" };
+      const auth = tokenAuth("valid-user5");
       await testWrapper({ auth }, async (T) => {
         let disconnectReason: string | undefined;
 
@@ -170,7 +176,7 @@ describe("Server Events", () => {
     });
 
     test("should support multiple handlers", async () => {
-      const auth = { getToken: () => "valid-user6" };
+      const auth = tokenAuth("valid-user6");
       await testWrapper({ auth }, async (T) => {
         let called1 = false;
         let called2 = false;
@@ -193,7 +199,7 @@ describe("Server Events", () => {
     });
 
     test("should allow unsubscribing", async () => {
-      const auth = { getToken: () => "valid-user7" };
+      const auth = tokenAuth("valid-user7");
       await testWrapper({ auth }, async (T) => {
         let called = false;
 
@@ -211,7 +217,7 @@ describe("Server Events", () => {
     });
 
     test("should include disconnect reason", async () => {
-      const auth = { getToken: () => "valid-user8" };
+      const auth = tokenAuth("valid-user8");
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: ClientDisconnectEvent | undefined;
         const clientId = T.client["_clientId"];
@@ -239,7 +245,7 @@ describe("Server Events", () => {
 
   describe("document subscription events", () => {
     test("should emit when client subscribes to a document", async () => {
-      const auth = { getToken: () => "valid-user-doc-subscribe" };
+      const auth = tokenAuth("valid-user-doc-subscribe");
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: DocSubscribeEvent | undefined;
         const clientId = T.client["_clientId"];
@@ -266,7 +272,7 @@ describe("Server Events", () => {
     });
 
     test("should emit once per socket and document subscription", async () => {
-      const auth = { getToken: () => "valid-user-doc-subscribe-once" };
+      const auth = tokenAuth("valid-user-doc-subscribe-once");
       await testWrapper({ auth }, async (T) => {
         const docIds: string[] = [];
 
@@ -283,7 +289,7 @@ describe("Server Events", () => {
     });
 
     test("should emit when client explicitly unsubscribes from a document", async () => {
-      const auth = { getToken: () => "valid-user-doc-unsubscribe" };
+      const auth = tokenAuth("valid-user-doc-unsubscribe");
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: DocUnsubscribeEvent | undefined;
         const clientId = T.client["_clientId"];
@@ -311,7 +317,7 @@ describe("Server Events", () => {
     });
 
     test("should emit for each subscribed document on disconnect", async () => {
-      const auth = { getToken: () => "valid-user-doc-disconnect" };
+      const auth = tokenAuth("valid-user-doc-disconnect");
       await testWrapper({ auth }, async (T) => {
         const capturedEvents: DocUnsubscribeEvent[] = [];
         const clientId = T.client["_clientId"];
@@ -341,7 +347,7 @@ describe("Server Events", () => {
     });
 
     test("should allow unsubscribing document event listeners", async () => {
-      const auth = { getToken: () => "valid-user-doc-listener" };
+      const auth = tokenAuth("valid-user-doc-listener");
       await testWrapper({ auth }, async (T) => {
         let subscribeCalled = false;
         let unsubscribeCalled = false;
@@ -372,7 +378,7 @@ describe("Server Events", () => {
 
   describe("onSyncRequest", () => {
     test("should emit on successful sync request", async () => {
-      const auth = { getToken: () => "valid-user9" };
+      const auth = tokenAuth("valid-user9");
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
         T.server.onSyncRequest((event) => {
@@ -408,7 +414,7 @@ describe("Server Events", () => {
         port: testPort(4),
         provider: inMemoryServerProvider(),
         authenticate: ({ token }) => {
-          if (token.startsWith("valid-")) {
+          if (token?.startsWith("valid-")) {
             return { userId: token.replace("valid-", "") };
           }
           return undefined;
@@ -421,7 +427,7 @@ describe("Server Events", () => {
         capturedStatus = event.status;
       });
 
-      const auth = { getToken: () => "valid-user10" };
+      const auth = tokenAuth("valid-user10");
       await testWrapper(
         { auth, url: `ws://localhost:${testPort(4)}` },
         async (T) => {
@@ -441,7 +447,7 @@ describe("Server Events", () => {
     });
 
     test("should include request context in all cases", async () => {
-      const auth = { getToken: () => "valid-user11" };
+      const auth = tokenAuth("valid-user11");
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
         T.server.onSyncRequest((event) => {
@@ -467,7 +473,7 @@ describe("Server Events", () => {
     });
 
     test("should include duration when available", async () => {
-      const auth = { getToken: () => "valid-user12" };
+      const auth = tokenAuth("valid-user12");
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
         T.server.onSyncRequest((event) => {
@@ -499,7 +505,7 @@ describe("Server Events", () => {
     });
 
     test("should support multiple handlers", async () => {
-      const auth = { getToken: () => "valid-user15" };
+      const auth = tokenAuth("valid-user15");
       await testWrapper({ auth }, async (T) => {
         let called1 = false;
         let called2 = false;
@@ -525,7 +531,7 @@ describe("Server Events", () => {
     });
 
     test("should allow unsubscribing", async () => {
-      const auth = { getToken: () => "valid-user16" };
+      const auth = tokenAuth("valid-user16");
       await testWrapper({ auth }, async (T) => {
         let called = false;
         const unsubscribe = T.server.onSyncRequest(() => {
@@ -546,7 +552,7 @@ describe("Server Events", () => {
     });
 
     test("should include response data on success", async () => {
-      const auth = { getToken: () => "valid-user17" };
+      const auth = tokenAuth("valid-user17");
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
         T.server.onSyncRequest((event) => {
@@ -569,7 +575,7 @@ describe("Server Events", () => {
     });
 
     test("should handle sync without operations (fetch only)", async () => {
-      const auth = { getToken: () => "valid-user18" };
+      const auth = tokenAuth("valid-user18");
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
         T.server.onSyncRequest((event) => {
@@ -596,7 +602,7 @@ describe("Server Events", () => {
 
   describe("Event Order", () => {
     test("should emit events in correct order during connection lifecycle", async () => {
-      const auth = { getToken: () => "valid-user19" };
+      const auth = tokenAuth("valid-user19");
       await testWrapper({ auth }, async (T) => {
         const events: string[] = [];
 
@@ -631,7 +637,7 @@ describe("Server Events", () => {
     });
 
     test("should emit multiple sync events in order", async () => {
-      const auth = { getToken: () => "valid-user20" };
+      const auth = tokenAuth("valid-user20");
       await testWrapper({ auth }, async (T) => {
         const docIds: string[] = [];
 
@@ -676,7 +682,7 @@ describe("Server Events", () => {
         port: testPort(5),
         provider: inMemoryServerProvider(),
         authenticate: ({ token }) => {
-          if (token.startsWith("valid-")) {
+          if (token?.startsWith("valid-")) {
             return { userId: token.replace("valid-", "") };
           }
           return undefined;
@@ -689,7 +695,7 @@ describe("Server Events", () => {
         capturedEvent = event;
       });
 
-      const auth = { getToken: () => "valid-user21" };
+      const auth = tokenAuth("valid-user21");
       await testWrapper(
         { auth, url: `ws://localhost:${testPort(5)}` },
         async (T) => {
@@ -715,7 +721,7 @@ describe("Server Events", () => {
     });
 
     test("onSyncRequest should accumulate optional fields as they become available", async () => {
-      const auth = { getToken: () => "valid-user22" };
+      const auth = tokenAuth("valid-user22");
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
         T.server.onSyncRequest((event) => {

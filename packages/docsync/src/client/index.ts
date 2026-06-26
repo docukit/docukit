@@ -109,10 +109,21 @@ export class DocSyncClient<
     this._deviceId = getDeviceId();
     this._socket = io(config.server.url, {
       auth: (cb) => {
+        const authPayload = {
+          deviceId: this._deviceId,
+          clientId: this._clientId,
+        };
+
+        if (config.server.auth.mode === "request") {
+          cb(authPayload);
+          return;
+        }
+
         void Promise.resolve(config.server.auth.getToken()).then((token) => {
-          cb({ token, deviceId: this._deviceId, clientId: this._clientId });
+          cb({ ...authPayload, token });
         });
       },
+      withCredentials: config.server.auth.mode === "request",
       // Performance optimizations for testing
       transports: ["websocket"], // Skip polling, go straight to WebSocket
     });

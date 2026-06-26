@@ -33,33 +33,57 @@ Authorization (document sharing, ACLs, permissions) is intentionally left to the
 
 ## Client-Side Authentication
 
+DocSync supports two client auth modes.
+
+For normal browser apps with an existing `HttpOnly` session cookie, prefer
+request auth:
+
+```ts
+createDocSyncClient({ server: { url, auth: { mode: "request" } } });
+```
+
+Request auth means the server authenticates from the WebSocket handshake
+request. In browsers, the common case is an `HttpOnly` session cookie sent by
+the browser during the handshake. JavaScript does not need to read the session
+secret, and DocSync does not need an extra token request.
+
+Same-origin setups are the easiest path. Cross-origin cookie sessions can also
+work, but the application must configure cookie domain, `SameSite`, `Secure`,
+and credential/CORS settings correctly.
+
+Use token auth when the client already has a safe token to present, or when
+cookies are not the right tool:
+
+```ts
+createDocSyncClient({
+  server: {
+    url,
+    auth: { mode: "token", getToken: async () => authStore.accessToken },
+  },
+});
+```
+
+If a browser app stores its main session in an `HttpOnly` cookie and DocSync
+requires a JavaScript-readable token, the app usually needs either:
+
+- an extra request to exchange the cookie-backed session for a sync token; or
+- a server-rendered bootstrap that embeds a sync token in the initial page.
+
+The bootstrap path avoids an extra request, but the sync token is readable by
+JavaScript. For most browser apps with `HttpOnly` session cookies, request auth
+is the recommended pattern.
+
 ### Client Configuration
 
-````ts
+```ts
+type ClientAuthConfig =
+  | { mode: "request" }
+  | { mode: "token"; getToken: () => MaybePromise<string> };
+
 export type ClientConfig = {
-  url: string;
-  userId: string;
-  docConfigs: DocConfig[];
-  auth: {
-    /**
-     * Server authentication token.
-     *
-     * - Passed verbatim to the server on connection.
-     * - Validation is delegated to the server via `authenticate`.
-     * - This library does not issue, refresh, rotate, or persist tokens.
-     *
-     * `getToken` is expected to be a **cheap read** from existing auth state, not a network login flow.
-     *
-     * @example
-     * ```
-     * auth: {
-     *   getToken: async () => authStore.accessToken
-     * }
-     * ```
-     */
-    getToken: () => Promise<string>;
-  };
-  local?: {
+  docBinding: DocBinding;
+  server: { url: string; auth: ClientAuthConfig };
+  local: {
     /**
      * Resolves the local storage identity.
      *
@@ -71,19 +95,25 @@ export type ClientConfig = {
      */
     getIdentity: () => Promise<{ userId: string; secret: string }>;
 
-    provider: new () => Provider;
+    provider: (identity: Identity) => ClientProvider;
   };
 };
-````
+```
 
 ---
 
 ### When `getToken` Is Called
 
+`getToken` is only used in token mode.
+
 - On initial WebSocket connection
 - On reconnection after disconnect
 
 DocSync does **not** call `getToken` per operation.
+
+In request mode, DocSync does not call `getToken` at all. The server receives
+the real handshake request and can authenticate cookies, headers, or other
+request-level credentials.
 
 ---
 
@@ -94,18 +124,20 @@ DocSync does **not** call `getToken` per operation.
 ```ts
 export type ServerConfig<TContext = {}> = {
   port?: number;
-  provider: new () => ServerProvider;
+  provider: ServerProvider;
 
   /**
    * Authenticates a WebSocket connection.
    *
    * - Called once per connection attempt.
-   * - Must validate the provided token.
+   * - Can validate cookies from the handshake request.
+   * - Can validate an optional token.
    * - Must resolve the canonical userId.
    * - May optionally return a context object passed to authorize.
    */
   authenticate: (ev: {
-    token: string;
+    request: IncomingMessage;
+    token?: string;
   }) => Promise<{ userId: string; context?: TContext } | undefined>;
 
   /**
@@ -113,13 +145,6 @@ export type ServerConfig<TContext = {}> = {
    * Receives cached context from authenticate.
    */
   authorize?: (ev: AuthorizeEvent<TContext>) => Promise<boolean>;
-
-  /**
-   * Optional revalidation policy used when `expiresAt` is not provided.
-   */
-  authRevalidation?: {
-    intervalMs?: number; // default: 30_000
-  };
 };
 ```
 
@@ -130,13 +155,33 @@ Authentication is **connection-level**, not per-operation.
 Flow:
 
 1. Client establishes a WebSocket connection
-2. Client provides a token via `auth.getToken()`
-3. Server calls `authenticate(token)`
-4. Server resolves `{ userId, expiresAt? }`
-5. Identity is attached to the socket
-6. Operations are accepted while the connection is trusted
+2. Browser cookies are included in the WebSocket handshake when applicable
+3. Token clients provide a token via `auth.getToken()`
+4. Server calls `authenticate({ request, token })`
+5. Server resolves `{ userId, context? }`
+6. Identity is attached to the socket
+7. Operations are accepted while the connection is trusted
 
 If authentication fails, the connection is rejected immediately.
+
+Recommended server pattern:
+
+```ts
+authenticate: async ({ request, token }) => {
+  // Authenticate via request, commonly with cookies.
+  const cookieIdentity = await getCookieIdentity(request.headers);
+  if (cookieIdentity) return cookieIdentity;
+
+  // Or authenticate via token.
+  if (token) return getTokenIdentity(token);
+
+  return undefined;
+};
+```
+
+This keeps the browser path fast and secure while preserving token support for
+non-browser clients, scoped document grants, tests, CLIs, workers, mobile apps,
+and server-to-server sync.
 
 ---
 
@@ -175,10 +220,27 @@ type AuthorizeEvent<TContext> =
 `authenticate` can return a `context` that's cached and passed to `authorize`:
 
 ```ts
-authenticate: async ({ token }) => ({
-  userId: user.id,
-  context: { roles: user.roles }, // cached at connection time
-}),
+authenticate: async ({ request, token }) => {
+  // Authenticate via request, commonly with cookies.
+  const user = await getUserFromCookie(request.headers);
+  if (user) {
+    return {
+      userId: user.id,
+      context: { roles: user.roles }, // cached at connection time
+    };
+  }
+
+  // Or authenticate via token.
+  if (!token) return undefined;
+
+  const tokenUser = await getUserFromToken(token);
+  if (!tokenUser) return undefined;
+
+  return {
+    userId: tokenUser.id,
+    context: { roles: tokenUser.roles },
+  };
+},
 
 authorize: async ({ type, userId, context }) => {
   // Option 1: Use cached context (fast, might be stale)
@@ -221,13 +283,14 @@ Local persistence never validates identity and never calls `getToken`.
 
 ### How the Local Namespace Is Chosen
 
-The local storage namespace is derived from the **server-resolved userId**, not from the token.
+The local storage namespace is derived from the **server-resolved userId**, not
+from a client claim, cookie value, or token value.
 
 Flow:
 
-1. Client obtains a token via `auth.getToken()`
-2. Token is sent to the server
-3. `authenticate` validates the token and resolves `{ userId }`
+1. Client connects with request auth or token auth
+2. `authenticate` validates the request and optional token
+3. `authenticate` resolves `{ userId }`
 4. The resolved `userId` is returned to the client
 5. Local persistence is initialized using that `userId` as a namespace
 
@@ -239,7 +302,7 @@ IndexedDB name = `DocSync:${userId}`
 
 This ensures:
 
-- Tokens may rotate or expire without affecting local data
+- Tokens, cookies, and sessions may rotate or expire without affecting local data
 - Local data is correctly partitioned per account
 - Identity authority remains server-side
 
@@ -350,7 +413,7 @@ Authentication and encryption are intentionally separate.
 
 ### Online
 
-- Token is provided
+- Browser cookies or a token are provided during connection
 - Server authenticates
 - `userId` is resolved
 - Sync proceeds normally
@@ -367,73 +430,94 @@ DocSync does not attempt to validate identity while offline.
 
 ## Token Expiry, Revalidation, and Disconnects
 
-DocSync treats tokens as **opaque**.
+DocSync treats cookies and tokens as **opaque**.
 
-It does not parse tokens, infer expiry, or manage refresh.
+It does not parse tokens, infer expiry, refresh credentials, or poll the auth
+provider. The application owns session refresh, token rotation, and revocation.
 
 ### Token Expiry Handling
 
-There are two supported strategies:
+There are two possible future strategies.
 
 #### 1) Authoritative Expiry (`expiresAt`)
 
-If `authenticate` returns `expiresAt`:
+If `authenticate` eventually returns `expiresAt`, DocSync could schedule a
+disconnect exactly at that time.
 
-- The server schedules a disconnect exactly at that time
-- No periodic revalidation is performed
-- This is the most efficient path
+- The server would schedule a disconnect with `setTimeout`
+- No periodic revalidation would be performed
+- The next connection would run the normal handshake again
 
-This is strongly recommended when the auth system knows the token TTL (e.g. JWT `exp`).
+This is the simplest path when the auth system knows the credential TTL, such as
+a JWT `exp` claim or a session expiration timestamp.
 
-#### 2) Defensive Revalidation (Polling)
+#### 2) In-Place Reauthentication Event
 
-If `expiresAt` is **not** provided:
+DocSync could add an internal event, for example `refresh-auth`, that lets token
+clients send a fresh token without closing the socket.
 
-- DocSync periodically re-calls `authenticate`
-- If authentication fails, the socket is disconnected
-- The interval is controlled via `authRevalidation.intervalMs`
+- The client would call `auth.getToken()` again before expiry
+- The server would re-run `authenticate`
+- The server would update `socket.data.context` if the same `userId` is returned
+- The server would disconnect the socket if refresh fails or changes users
 
-This is required for:
+This is more complex, but avoids a real disconnect for token auth.
 
-- opaque tokens
-- manually revocable sessions
-- external identity providers
+<!-- TODO: Evaluate this on demand. The two realistic implementation paths are
+`expiresAt` + `setTimeout` disconnect/reconnect, or an in-place `refresh-auth`
+event. The event path only works for token auth; it does not work for request
+auth because an already-open WebSocket does not receive fresh request headers or
+updated cookie headers. Request auth needs a new handshake to observe current
+request credentials. -->
 
-### Why These Are Different
+### Current Userland Pattern
 
-- `expiresAt` represents **authoritative knowledge**: a guaranteed upper bound.
-- Revalidation represents **uncertainty management**: checking in case revocation occurred.
+DocSync does **not** currently provide built-in `expiresAt`,
+`authRevalidation.intervalMs`, or a `refresh-auth` event.
 
-They may be implemented with similar timers internally, but they have different semantics and guarantees.
+Applications that already know when credentials expire can schedule a reconnect
+themselves:
 
-### Client Reconnection
+```ts
+function reconnectDocSyncBeforeExpiry(expiresAtMs: number) {
+  const reconnectMs = Math.max(0, expiresAtMs - Date.now() - 5_000);
 
-When a socket is disconnected (e.g. due to token expiry):
+  window.setTimeout(() => {
+    client.disconnect();
+    client.connect();
+  }, reconnectMs);
+}
+```
+
+On reconnect:
 
 - Pending operations remain local
-- Socket.IO reconnects automatically
-- `auth.getToken()` is called again
-- A new authenticated connection is established
+- Token auth calls `auth.getToken()` again
+- Request auth sends matching request credentials again in the new handshake
+- The server calls `authenticate({ request, token })` again
 
-This ensures DocSync works correctly with:
+This works with:
 
-- short-lived tokens
-- refresh and rotation
-- long-lived sessions
+- short-lived access tokens
+- rotated tokens
+- long-lived cookie sessions
+- revoked sessions, once the app or transport forces a reconnect
 
-### Proactive Token Refresh (Optional)
+For stricter per-operation checks, applications can also use `authorize`, but
+that is authorization, not reauthentication. It can reject an operation after a
+session is revoked, but it does not refresh credentials or update the
+connection's authenticated context.
 
-By default, DocSync relies on **disconnect + reconnect** when a token expires.
-
-If an application wanted to update a token **without losing the connection**, an explicit re-authentication flow could be implemented on DocSync (for example, a custom `refresh_auth` event that re-executes `authenticate` and reschedules the expiration).
-
-However, this event is not supported in DocSync, at least not at the moment. Reconnection happens very quickly, so this procedure doesn't seem worthwhile.
+For most apps, request auth plus normal session handling is the recommended
+browser pattern. Token auth remains the recommended pattern for non-browser
+clients and scoped grants.
 
 ---
 
 ## Security Model Summary
 
 - Tokens are **presented**, not derived
+- Cookies are **sent by the browser**, not read by DocSync client JavaScript
 - Secrets are **derived**, not presented
 - Authentication happens per connection
 - Authorization is application-defined

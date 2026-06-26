@@ -23,6 +23,15 @@ import { handleSync } from "./handlers/sync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
 import { startupLog } from "./utils/startupLog.js";
 
+type HandshakeAuth = {
+  token?: unknown;
+  deviceId?: unknown;
+  clientId?: unknown;
+};
+
+const isHandshakeAuth = (value: unknown): value is HandshakeAuth =>
+  typeof value === "object" && value !== null;
+
 export class DocSyncServer<
   TContext = unknown,
   D extends object = object,
@@ -76,9 +85,15 @@ export class DocSyncServer<
   private _setupSocketServer() {
     // Middleware: authenticate before allowing connection
     this._io.use((socket, next) => {
-      const { token, deviceId, clientId } = socket.handshake.auth;
-      if (!token || typeof token !== "string") {
-        next(new Error("Authentication required: no token provided"));
+      const handshakeAuth: unknown = socket.handshake.auth;
+      if (!isHandshakeAuth(handshakeAuth)) {
+        next(new Error("Authentication required"));
+        return;
+      }
+
+      const { token, deviceId, clientId } = handshakeAuth;
+      if (token !== undefined && typeof token !== "string") {
+        next(new Error("Authentication failed: invalid token"));
         return;
       }
 
@@ -93,10 +108,15 @@ export class DocSyncServer<
         return;
       }
 
-      Promise.resolve(this._authenticate({ token }))
+      const authenticateInput =
+        token === undefined
+          ? { request: socket.request }
+          : { request: socket.request, token };
+
+      Promise.resolve(this._authenticate(authenticateInput))
         .then((authResult) => {
           if (!authResult) {
-            next(new Error("Authentication failed: invalid token"));
+            next(new Error("Authentication failed: invalid credentials"));
             return;
           }
 

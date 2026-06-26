@@ -7,33 +7,71 @@ import { testWrapper, testPort } from "./utils.js";
 import { DocSyncServer, inMemoryServerProvider } from "@docukit/docsync/server";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { DocSyncClient } from "@docukit/docsync/client";
-import type { ClientProvider } from "@docukit/docsync/client";
+import type { ClientAuthConfig, ClientProvider } from "@docukit/docsync/client";
 import { Doc, type Operations } from "@docukit/docnode";
 import { testDocConfig } from "../../int/utils.js";
 
 describe("authentication", () => {
-  test("rejects without token", async () => {
-    const auth = { getToken: () => "" };
+  test("rejects when credentials do not resolve an identity", async () => {
+    const auth: ClientAuthConfig = { mode: "token", getToken: () => "" };
     await testWrapper({ auth }, async (T) => {
       const error = await T.waitForError();
-      expect(error.message).toContain("no token provided");
+      expect(error.message).toContain("invalid credentials");
     });
   });
 
   test("rejects invalid token0", async () => {
-    const auth = { getToken: () => "test-token" };
+    const auth: ClientAuthConfig = {
+      mode: "token",
+      getToken: () => "test-token",
+    };
     await testWrapper({ auth }, async (T) => {
       const error = await T.waitForError();
-      expect(error.message).toContain("invalid token");
+      expect(error.message).toContain("invalid credentials");
     });
   });
 
   test("accepts valid token", async () => {
-    const auth = { getToken: () => "valid-user1" };
+    const auth: ClientAuthConfig = {
+      mode: "token",
+      getToken: () => "valid-user1",
+    };
     await testWrapper({ auth }, async (T) => {
       await T.waitForConnect();
       expect(T.socket.connected).toBe(true);
     });
+  });
+
+  test("accepts request auth without token", async () => {
+    const port = testPort(12);
+    mockBrowserGlobals("device-id");
+
+    let sawRequest = false;
+    let sawToken = false;
+    const server = new DocSyncServer({
+      docBinding: DocNodeBinding([]),
+      port,
+      provider: inMemoryServerProvider(),
+      authenticate: ({ request, token }) => {
+        sawRequest = request.headers !== undefined;
+        sawToken = token !== undefined;
+        return { userId: "request-user" };
+      },
+    });
+
+    const client = createMockDocSyncClient(port, "request-user", {
+      mode: "request",
+    });
+    const socket = client["_socket"];
+
+    await new Promise<void>((resolve) => socket.on("connect", resolve));
+
+    expect(socket.connected).toBe(true);
+    expect(sawRequest).toBe(true);
+    expect(sawToken).toBe(false);
+
+    client.disconnect();
+    await server.close();
   });
 });
 
@@ -47,7 +85,7 @@ describe("collaboration", () => {
       port,
       provider: inMemoryServerProvider(),
       authenticate: ({ token }) => {
-        if (token.startsWith("valid-")) {
+        if (token?.startsWith("valid-")) {
           return { userId: token.replace("valid-", "") };
         }
       },
@@ -183,7 +221,7 @@ describe("presence", () => {
       port,
       provider: inMemoryServerProvider(),
       authenticate: ({ token }) => {
-        if (token.startsWith("valid-")) {
+        if (token?.startsWith("valid-")) {
           return { userId: token.replace("valid-", "") };
         }
       },
@@ -300,7 +338,7 @@ describe("presence", () => {
       port,
       provider: inMemoryServerProvider(),
       authenticate: ({ token }) => {
-        if (token.startsWith("valid-")) {
+        if (token?.startsWith("valid-")) {
           return { userId: token.replace("valid-", "") };
         }
       },
@@ -362,9 +400,13 @@ describe("presence", () => {
 });
 
 // Helper to create a mock client for testing
-function createMockDocSyncClient(port: number, token: string): DocSyncClient {
+function createMockDocSyncClient(
+  port: number,
+  token: string,
+  auth: ClientAuthConfig = { mode: "token", getToken: () => token },
+): DocSyncClient {
   return new DocSyncClient({
-    server: { url: `ws://localhost:${port}`, auth: { getToken: () => token } },
+    server: { url: `ws://localhost:${port}`, auth },
     local: {
       // TODO: review this. ServerProvider in the client?
       provider: inMemoryServerProvider as unknown as (
@@ -400,7 +442,10 @@ describe("sync", () => {
   }
 
   test("returns incremented clock", async () => {
-    const auth = { getToken: () => "valid-user1" };
+    const auth: ClientAuthConfig = {
+      mode: "token",
+      getToken: () => "valid-user1",
+    };
     await testWrapper({ auth }, async (T) => {
       await T.waitForConnect();
       expect(T.socket.connected).toBe(true);
@@ -419,7 +464,10 @@ describe("sync", () => {
   });
 
   test("squashes operations after threshold", async () => {
-    const auth = { getToken: () => "valid-user1" };
+    const auth: ClientAuthConfig = {
+      mode: "token",
+      getToken: () => "valid-user1",
+    };
     await testWrapper({ auth }, async (T) => {
       await T.waitForConnect();
 

@@ -44,13 +44,54 @@ export type DeferredState<T> = {
 
 export type Identity = { userId: string; secret: string };
 
+export type TokenClientAuthConfig = {
+  /**
+   * Token authentication mode.
+   */
+  mode: "token";
+
+  /**
+   * Server authentication token.
+   *
+   * - Passed verbatim to the server on connection.
+   * - Validation is delegated to the server via `authenticate`.
+   * - This library does not issue, refresh, rotate, or persist tokens.
+   *
+   * `getToken` is expected to be a cheap read from existing auth state, not a
+   * network login flow.
+   *
+   * @example
+   * ```ts
+   * auth: {
+   *   mode: "token",
+   *   getToken: async () => authStore.accessToken,
+   * }
+   * ```
+   */
+  getToken: () => MaybePromise<string>;
+};
+
+export type RequestClientAuthConfig = {
+  /**
+   * Request authentication mode.
+   *
+   * Use this when the server authenticates from the WebSocket handshake
+   * request. In browser apps, this is the recommended mode for existing
+   * HttpOnly session cookies because JavaScript does not need to read the
+   * session secret.
+   */
+  mode: "request";
+};
+
+export type ClientAuthConfig = TokenClientAuthConfig | RequestClientAuthConfig;
+
 export type ClientConfig<
   D extends object = object,
   S extends object = object,
   O extends object = object,
 > = {
   docBinding: DocBinding<D, S, O>;
-  server: { url: string; auth: { getToken: () => MaybePromise<string> } };
+  server: { url: string; auth: ClientAuthConfig };
   timing?: {
     /**
      * Maximum time to batch local operation updates while another user is

@@ -14,11 +14,14 @@ export type {
   SyncEvent,
 } from "../client/utils/events.js";
 export type {
+  ClientAuthConfig,
   ClientConfig,
   ClientProvider,
+  RequestClientAuthConfig,
   FetchStatus,
   GetDocArgs,
   DocData,
   Identity,
   QueryResult,
+  TokenClientAuthConfig,
 } from "../client/types.js";

@@ -6,6 +6,7 @@ import type {
   ServerToClientEvents,
   SerializedDocPayload,
 } from "../shared/types.js";
+import type { IncomingMessage } from "node:http";
 import type { Server, Socket } from "socket.io";
 
 // ============================================================================
@@ -84,6 +85,20 @@ export type SyncRequestEventListener<O = unknown, S = unknown> = (
   event: SyncRequestEvent<O, S>,
 ) => void;
 
+export type AuthenticateInput = {
+  /**
+   * The real HTTP request used for the WebSocket handshake.
+   *
+   * Server apps can read cookies from `request.headers.cookie` without
+   * exposing HttpOnly session secrets to browser JavaScript.
+   */
+  request: IncomingMessage;
+  /**
+   * Optional token sent by token-based clients.
+   */
+  token?: string;
+};
+
 // ============================================================================
 // Server Config
 // ============================================================================
@@ -104,9 +119,9 @@ export type ServerConfig<
   port?: number;
   provider: ServerProvider<NoInfer<S>, NoInfer<O>>;
 
-  authenticate(ev: {
-    token: string;
-  }): MaybePromise<{ userId: string; context?: TContext } | undefined>;
+  authenticate(
+    ev: AuthenticateInput,
+  ): MaybePromise<{ userId: string; context?: TContext } | undefined>;
 
   authorize?(ev: {
     type: DocSyncEventName;

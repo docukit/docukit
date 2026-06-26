@@ -3,6 +3,7 @@ import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { DocSyncServer, inMemoryServerProvider } from "@docukit/docsync/server";
 import {
   DocSyncClient,
+  type ClientAuthConfig,
   type ClientProvider,
   type Identity,
 } from "@docukit/docsync/client";
@@ -21,7 +22,7 @@ export const testPort = (offset = 0) => BASE_PORT + offset;
 
 const createMockDocSyncClient = (serverOverrides?: {
   url?: string;
-  auth?: { getToken: () => string | Promise<string> };
+  auth?: ClientAuthConfig;
 }): DocSyncClient => {
   // mock window
   globalThis.window = {} as Window & typeof globalThis;
@@ -31,7 +32,10 @@ const createMockDocSyncClient = (serverOverrides?: {
   return new DocSyncClient({
     server: {
       url: serverOverrides?.url ?? `ws://localhost:${BASE_PORT}`,
-      auth: serverOverrides?.auth ?? { getToken: () => "test-token" },
+      auth: serverOverrides?.auth ?? {
+        mode: "token",
+        getToken: () => "test-token",
+      },
     },
     local: {
       // TODO: review this. ServerProvider in the client?
@@ -51,7 +55,7 @@ const createServer = (port = BASE_PORT) => {
     port,
     provider: inMemoryServerProvider(),
     authenticate: ({ token }) => {
-      if (token.startsWith("valid-")) {
+      if (token?.startsWith("valid-")) {
         return { userId: token.replace("valid-", "") };
       }
     },
@@ -59,11 +63,7 @@ const createServer = (port = BASE_PORT) => {
 };
 
 export async function testWrapper(
-  serverOverrides: {
-    url?: string;
-    auth?: { getToken: () => string | Promise<string> };
-    port?: number;
-  },
+  serverOverrides: { url?: string; auth?: ClientAuthConfig; port?: number },
   fn: (args: {
     server: DocSyncServer;
     client: DocSyncClient;

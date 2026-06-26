@@ -3,17 +3,134 @@ title: Auth
 description: Authentication model for DocSync
 ---
 
-## Authentication
+## Recommended Browser Pattern
 
-DocSync uses a simple authentication model.
+For browser apps that already use an `HttpOnly` session cookie, prefer request
+auth:
 
 ```ts
-const client = new DocSyncClient({
-  server: {
-    url: "http://localhost:8080",
-    auth: { getToken: async () => await fetchAuthToken() },
+const { client, useDoc, usePresence } = createDocSyncClient({
+  docBinding,
+  server: { url: "http://localhost:8080", auth: { mode: "request" } },
+  local,
+});
+```
+
+Then authenticate from the WebSocket handshake request on the server:
+
+```ts
+const server = new DocSyncServer({
+  docBinding,
+  provider,
+  async authenticate({ request, token }) {
+    // Authenticate via request, commonly with cookies.
+    const session = await getSessionFromCookie(request.headers);
+    if (session) return { userId: session.user.id };
+
+    // Or authenticate via token.
+    if (token) return await verifySyncToken(token);
+
+    return undefined;
   },
 });
 ```
 
+This is the best default for normal browser apps because the server
+authenticates from the WebSocket handshake request. When the app uses an
+`HttpOnly` session cookie, the browser can send that cookie during the
+handshake. JavaScript does not need to read the session secret, and DocSync does
+not need an extra token request.
+
+Same-origin cookie sessions are the simplest setup. Cross-origin cookie sessions
+require the app to configure cookie domain, `SameSite`, `Secure`, and
+credential/CORS settings correctly.
+
+## Token Auth
+
+Use token auth when cookies are not the right tool:
+
+```ts
+const { client, useDoc, usePresence } = createDocSyncClient({
+  docBinding,
+  server: {
+    url: "http://localhost:8080",
+    auth: { mode: "token", getToken: async () => authStore.accessToken },
+  },
+  local,
+});
+```
+
+Token auth is a good fit for CLIs, tests, workers, mobile apps,
+server-to-server sync, API keys, and short-lived scoped document grants.
+
+## Does Token Auth Require An Extra Request?
+
+Not always.
+
+Token auth only needs an extra request when all of these are true:
+
+- the app's existing session is stored in an `HttpOnly` cookie;
+- JavaScript cannot read that cookie;
+- DocSync needs a JavaScript-readable sync token after the page has loaded.
+
+You can avoid that request by embedding a sync token in the initial
+server-rendered page. That is faster, but the sync token is then readable by
+JavaScript.
+
+For most browser apps with `HttpOnly` session cookies, request auth is the safer
+and simpler pattern.
+
+## Server Auth Input
+
+`authenticate` receives the real handshake request and an optional token:
+
+```ts
+type AuthenticateInput = { request: IncomingMessage; token?: string };
+```
+
+Recommended precedence:
+
+```ts
+async authenticate({ request, token }) {
+  // Authenticate via request, commonly with cookies.
+  const cookieIdentity = await getCookieIdentity(request.headers);
+  if (cookieIdentity) return cookieIdentity;
+
+  // Or authenticate via token.
+  if (token) return await getTokenIdentity(token);
+
+  return undefined;
+}
+```
+
+DocSync does not choose whether cookies or tokens win. Your app decides inside
+`authenticate`.
+
 ## Authorization
+
+Authentication answers who the connection belongs to. Authorization answers what
+that user can do.
+
+Use `authorize` for document-level access control:
+
+```ts
+const server = new DocSyncServer({
+  docBinding,
+  provider,
+  async authenticate({ request }) {
+    const session = await getSessionFromCookie(request.headers);
+    if (!session) return undefined;
+    return { userId: session.user.id, context: { orgId: session.user.orgId } };
+  },
+  async authorize({ type, req, userId, context }) {
+    if (type === "sync") {
+      return await canUserEditDocument(userId, req, context.orgId);
+    }
+
+    return true;
+  },
+});
+```
+
+Keep authorization application-defined. DocSync does not inspect document
+contents, operation structure, roles, ACLs, or sharing rules.

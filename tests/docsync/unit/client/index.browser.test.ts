@@ -29,34 +29,48 @@ import {
   getErrorResult,
 } from "./utils.js";
 
+type SocketAuthPayload = { deviceId: string; clientId: string; token?: string };
+
 // Mock socket.io-client to avoid real connections
-vi.mock("socket.io-client", () => ({
-  io: vi.fn(() => ({
-    connected: true,
-    on: vi.fn(),
-    emit: vi.fn(
-      (
-        _event: string,
-        _payload: unknown,
-        callback?: (response: unknown) => void,
-      ) => {
-        if (!callback) return;
-        if (
-          _event === "sync" &&
-          typeof _payload === "object" &&
-          _payload !== null &&
-          "docId" in _payload &&
-          "clock" in _payload
-        ) {
-          callback({ data: { docId: _payload.docId, clock: _payload.clock } });
-          return;
-        }
-        callback({ data: undefined, success: true });
+const ioMock = vi.hoisted(() =>
+  vi.fn(
+    (
+      _url: string,
+      _options?: {
+        auth?: (callback: (payload: SocketAuthPayload) => void) => void;
+        withCredentials?: boolean;
       },
-    ),
-    disconnect: vi.fn(),
-  })),
-}));
+    ) => ({
+      connected: true,
+      on: vi.fn(),
+      emit: vi.fn(
+        (
+          _event: string,
+          _payload: unknown,
+          callback?: (response: unknown) => void,
+        ) => {
+          if (!callback) return;
+          if (
+            _event === "sync" &&
+            typeof _payload === "object" &&
+            _payload !== null &&
+            "docId" in _payload &&
+            "clock" in _payload
+          ) {
+            callback({
+              data: { docId: _payload.docId, clock: _payload.clock },
+            });
+            return;
+          }
+          callback({ data: undefined, success: true });
+        },
+      ),
+      disconnect: vi.fn(),
+    }),
+  ),
+);
+
+vi.mock("socket.io-client", () => ({ io: ioMock }));
 
 // ============================================================================
 // DocSyncClient Tests
@@ -116,7 +130,7 @@ describe("DocSyncClient", () => {
     > = {
       server: {
         url: "ws://localhost:8081",
-        auth: { getToken: () => "test-token" },
+        auth: { mode: "token", getToken: () => "test-token" },
       },
       docBinding,
       local: {
@@ -140,6 +154,38 @@ describe("DocSyncClient", () => {
     await Promise.resolve();
     await Promise.resolve();
   };
+
+  test("request auth sends handshake metadata without reading a token", () => {
+    ioMock.mockClear();
+
+    const client = new DocSyncClient({
+      server: { url: "ws://localhost:8081", auth: { mode: "request" } },
+      docBinding: DocNodeBinding([]),
+      local: {
+        provider: indexedDBProvider,
+        getIdentity: () => ({ userId: "request-user", secret: "test-secret" }),
+      },
+    });
+
+    const options = ioMock.mock.calls.at(-1)?.[1];
+    if (!options || typeof options.auth !== "function") {
+      throw new Error("Expected socket auth callback");
+    }
+
+    let authPayload: SocketAuthPayload | undefined;
+    options.auth((payload) => {
+      authPayload = payload;
+    });
+
+    expect(options.withCredentials).toBe(true);
+    expect(authPayload).toBeDefined();
+    if (!authPayload) {
+      throw new Error("Expected socket auth payload");
+    }
+    expect(typeof authPayload.deviceId).toBe("string");
+    expect(authPayload).toMatchObject({ clientId: client["_clientId"] });
+    expect(authPayload).not.toHaveProperty("token");
+  });
 
   type DebounceTestClient = DocSyncClient<
     DebounceTestDoc,
@@ -507,7 +553,7 @@ describe("DocSyncClient", () => {
       const config: ClientConfig<FakeDoc, FakeSerializedDoc, FakeOperation> = {
         server: {
           url: "ws://localhost:8081",
-          auth: { getToken: () => "test-token" },
+          auth: { mode: "token", getToken: () => "test-token" },
         },
         docBinding,
         local: {

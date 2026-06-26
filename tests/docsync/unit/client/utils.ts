@@ -48,7 +48,7 @@ const createValidConfig = (userId?: string) =>
   createClientConfig({
     server: {
       url: "ws://localhost:8081",
-      auth: { getToken: () => "test-token" },
+      auth: { mode: "token", getToken: () => "test-token" },
     },
     docBinding: createMockDocBinding(),
     local: {
@@ -78,7 +78,7 @@ export const createClientWithDisposeSpy = (userId?: string) => {
   const config = createClientConfig({
     server: {
       url: "ws://localhost:8081",
-      auth: { getToken: () => "test-token" },
+      auth: { mode: "token", getToken: () => "test-token" },
     },
     docBinding,
     local: {
@@ -139,7 +139,7 @@ export const createClientWithProvider = (
   const config = createClientConfig({
     server: {
       url: "ws://localhost:8081",
-      auth: { getToken: () => "test-token" },
+      auth: { mode: "token", getToken: () => "test-token" },
     },
     docBinding: createMockDocBinding(),
     local: {

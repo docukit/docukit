@@ -1,5 +1,6 @@
 export { DocSyncServer } from "../server/index.js";
 export type {
+  AuthenticateInput,
   ServerConfig,
   ServerProvider,
   ServerProviderContext,

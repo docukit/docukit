@@ -20,7 +20,7 @@ test("createDocSyncClient", async () => {
   const { useDoc } = createDocSyncClient({
     server: {
       url: testServerUrl(),
-      auth: { getToken: () => "test-token-John" },
+      auth: { mode: "token", getToken: () => "test-token-John" },
     },
     local: {
       provider: indexedDBProvider,
@@ -123,7 +123,7 @@ test("client keeps own presence for debounced outgoing sync", async () => {
   const { useDoc, usePresence, client } = createDocSyncClient({
     server: {
       url: testServerUrl(),
-      auth: { getToken: () => "test-token-John" },
+      auth: { mode: "token", getToken: () => "test-token-John" },
     },
     local: {
       provider: indexedDBProvider,
