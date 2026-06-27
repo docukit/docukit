@@ -83,20 +83,7 @@ type ClientAuthConfig =
 export type ClientConfig = {
   docBinding: DocBinding;
   server: { url: string; auth: ClientAuthConfig };
-  local: {
-    /**
-     * Resolves the local storage identity.
-     *
-     * Used exclusively for:
-     * - Namespacing local persistence (userId)
-     * - Deriving encryption keys for data at rest (secret)
-     *
-     * This is NOT authentication and is not authoritative.
-     */
-    getIdentity: () => Promise<{ userId: string; secret: string }>;
-
-    provider: (identity: Identity) => ClientProvider;
-  };
+  local: { provider: (identity: Identity) => ClientProvider };
 };
 ```
 
@@ -376,32 +363,14 @@ This avoids an additional roundtrip to the server and preserves fast startup and
 
 ---
 
-### Convenience Helpers (Recommended)
+### DocSync-Managed Local Identity
 
-While DocSync keeps secret management application-defined, it is recommended to provide **official helper utilities** for common setups.
+DocSync manages local identity and secret caching internally.
 
-For example, a server-backed secret helper can encapsulate best practices:
-
-```ts
-import { serverBackedSecret } from "@docukit/auth-helpers";
-
-local: {
-  getIdentity: serverBackedSecret({
-    fetchSecret: () => fetch("/DocSync/secret"),
-    storage: "secure-cookie",
-    cookieTtlDays: 365,
-  }),
-}
-```
-
-Such helpers:
-
-- Fetch the secret once after authentication
-- Store it in secure local storage (e.g. secure cookies with app-bound encryption when available)
-- Reuse the locally stored secret on subsequent startups
-- Avoid unnecessary network roundtrips
-
-This provides a batteries-included path for most users while keeping the DocSync core minimal, flexible, and honest about its security boundaries.
+Applications provide the local provider factory, but they do not provide
+`getIdentity`, `userId`, or the local encryption secret. The server returns the
+verified `userId` and optional `localEncryptionSecret` from `authenticate`, and
+DocSync stores that verified pair locally for later offline starts.
 
 For most applications, this trade-off provides the best balance between security, usability, and performance.
 
