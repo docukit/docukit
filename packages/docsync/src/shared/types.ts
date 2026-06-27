@@ -109,6 +109,11 @@ export type SerializedDocPayload<S> = {
   clock: number;
 };
 
+export type IdentityPayload = {
+  userId: string;
+  localEncryptionSecret?: string;
+};
+
 // ============================================================================
 // Socket.IO Types
 // ============================================================================
@@ -125,6 +130,8 @@ export type ClientToServerEvents<S, O> = {
 };
 
 export type ServerToClientEvents = {
+  // Server sends the verified identity for local persistence.
+  identity: (payload: IdentityPayload) => void;
   // Server notifies clients that a document has been modified
   dirty: (payload: { docId: string }) => void;
   // Server notifies clients whether another user is online in the same document
