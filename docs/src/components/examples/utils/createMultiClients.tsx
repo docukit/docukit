@@ -27,10 +27,7 @@ const createClientForUser = (
         getToken: () => userId, // Use userId as token
       },
     },
-    local: {
-      provider: indexedDBProvider,
-      getIdentity: () => ({ userId, secret: "docs-demo" }),
-    },
+    local: { provider: indexedDBProvider },
     docBinding: DocNodeBinding(docConfigs),
   });
 };
