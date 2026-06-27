@@ -2,6 +2,7 @@ import { Server } from "socket.io";
 import type {
   ClientToServerEvents,
   DocBinding,
+  IdentityPayload,
   Presence,
   ServerToClientEvents,
 } from "../shared/types.js";
@@ -23,12 +24,13 @@ import { handleSync } from "./handlers/sync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
 import { startupLog } from "./utils/startupLog.js";
 
+// TODO: valibot schema
 type HandshakeAuth = {
   token?: unknown;
   deviceId?: unknown;
   clientId?: unknown;
+  claimedUserId?: unknown;
 };
-
 const isHandshakeAuth = (value: unknown): value is HandshakeAuth =>
   typeof value === "object" && value !== null;
 
@@ -83,6 +85,8 @@ export class DocSyncServer<
   }
 
   private _setupSocketServer() {
+    const identityPayloadsBySocket = new WeakMap<object, IdentityPayload>();
+
     // Middleware: authenticate before allowing connection
     this._io.use((socket, next) => {
       const handshakeAuth: unknown = socket.handshake.auth;
@@ -91,9 +95,14 @@ export class DocSyncServer<
         return;
       }
 
-      const { token, deviceId, clientId } = handshakeAuth;
+      const { token, deviceId, clientId, claimedUserId } = handshakeAuth;
       if (token !== undefined && typeof token !== "string") {
         next(new Error("Authentication failed: invalid token"));
+        return;
+      }
+
+      if (claimedUserId !== undefined && typeof claimedUserId !== "string") {
+        next(new Error("Authentication failed: invalid claimed user id"));
         return;
       }
 
@@ -108,10 +117,10 @@ export class DocSyncServer<
         return;
       }
 
-      const authenticateInput =
-        token === undefined
-          ? { request: socket.request }
-          : { request: socket.request, token };
+      const authenticateInput = {
+        request: socket.request,
+        ...(token === undefined ? {} : { token }),
+      };
 
       Promise.resolve(this._authenticate(authenticateInput))
         .then((authResult) => {
@@ -127,6 +136,12 @@ export class DocSyncServer<
             clientId,
             context: authResult.context ?? ({} as TContext),
           } satisfies AuthenticatedSocketData<TContext>;
+          identityPayloadsBySocket.set(socket, {
+            userId: authResult.userId,
+            ...(authResult.localEncryptionSecret === undefined
+              ? {}
+              : { localEncryptionSecret: authResult.localEncryptionSecret }),
+          });
 
           next();
         })
@@ -152,6 +167,12 @@ export class DocSyncServer<
 
     this._io.on("connection", (socket) => {
       const { userId, deviceId, clientId, context } = socket.data;
+
+      socket.emit(
+        "identity",
+        identityPayloadsBySocket.get(socket) ?? { userId },
+      );
+      identityPayloadsBySocket.delete(socket);
 
       // Emit client connect event
       this._emit(this._clientConnectEventListeners, {
