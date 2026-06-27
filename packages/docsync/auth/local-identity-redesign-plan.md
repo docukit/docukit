@@ -21,7 +21,7 @@ new DocSyncClient({
 Remove `local.getIdentity`. Do not add `local: false`; memory-only mode breaks
 the normal offline and cross-tab model.
 
-Server auth returns identity plus the server-backed local secret:
+Server auth returns identity plus an optional server-backed local secret:
 
 ```ts
 type AuthenticateResult<TContext> = {
@@ -31,9 +31,9 @@ type AuthenticateResult<TContext> = {
 };
 ```
 
-`localEncryptionSecret` is optional in the type for migration, but encrypted
-offline persistence requires either a cached secret or a secret returned by the
-server.
+`localEncryptionSecret` is optional. If it is present, DocSync encrypts local
+persistence. If it is omitted, DocSync uses plaintext local persistence for that
+user.
 
 ## Correct Flow
 
@@ -42,16 +42,17 @@ First login on a device:
 1. Client has no cached verified identity.
 2. Client connects online with request auth or token auth.
 3. Server authenticates from `request` or `token`.
-4. Server returns `{ userId, localEncryptionSecret }` from `authenticate`.
+4. Server returns `{ userId, localEncryptionSecret }` from `authenticate`, or
+   `{ userId }` if local encryption is disabled for that user.
 5. Server emits `identity` to the client immediately after successful auth.
-6. Client stores `{ userId, localEncryptionSecret }` internally.
+6. Client stores the verified identity internally.
 7. Client opens `local.provider` using the verified `userId`.
-8. Offline persistence is enabled only if a secret exists.
+8. Local persistence is encrypted when a secret exists and plaintext otherwise.
 
 Subsequent app start with cached identity:
 
-1. Client reads cached `{ userId, localEncryptionSecret }` first.
-2. If both exist, client opens `local.provider` immediately.
+1. Client reads cached `{ userId, localEncryptionSecret? }` first.
+2. If found, client opens `local.provider` immediately.
 3. UI can render from local data before network auth completes.
 4. Client connects in the background and sends `claimedUserId`.
 5. Server authenticates and emits authoritative `identity`.
@@ -63,7 +64,7 @@ Subsequent app start with cached identity:
 
 Offline refresh:
 
-1. Client reads cached `{ userId, localEncryptionSecret }`.
+1. Client reads cached `{ userId, localEncryptionSecret? }`.
 2. If found, local persistence starts without contacting the server.
 3. Sync stays paused until connection returns.
 4. No authentication happens offline.
@@ -73,8 +74,7 @@ No cached identity:
 - If online, wait for server `identity` before opening persistent local storage.
 - If offline, persistent local storage cannot start.
 - If server authenticates but does not provide `localEncryptionSecret`, DocSync
-  may sync online but must not enable encrypted offline persistence for that
-  user.
+  opens plaintext local persistence for that user.
 
 ## Implementation Details
 
@@ -84,17 +84,21 @@ No cached identity:
 - DocSync handles `claimedUserId` internally and does not expose it to
   `authenticate`.
 - The client must not generate `localEncryptionSecret` by default.
-- The server should generate the secret with high entropy, store it encrypted
-  under real user credentials, and return it after successful auth.
+- If the server returns a secret, it should generate it with high entropy, store
+  it encrypted under real user credentials, and return it after successful auth.
 - DocSync stores only server-verified identity records.
 - If cached and verified identities differ, DocSync clears runtime state and
   opens the verified namespace. It does not delete, migrate, or sync pending
   operations from the old namespace under the new user.
+- If cached and verified identities have the same `userId` but a different
+  secret or encryption mode, DocSync logs a warning, clears that user's local
+  namespace, and opens a fresh namespace with the verified identity.
 - DocSync prefers JS-readable secure cookies for the local secret, following the
   Y-Sweet approach. Do not use `HttpOnly` because the client must read the
   secret to decrypt IndexedDB.
 - Built-in IndexedDB persistence namespaces by verified/cached `userId` and
-  encrypts serialized docs and operation batches with AES-GCM.
+  encrypts serialized docs and operation batches with AES-GCM when a secret is
+  present. Without a secret, it stores plaintext local data.
 
 ## Y-Sweet Research Incorporated
 
@@ -122,5 +126,8 @@ No cached identity:
 - cache + online matching identity keeps provider.
 - cache + online mismatch switches namespace and does not sync stale ops.
 - client stores server-provided secret and does not generate one by default.
-- IndexedDB does not store plaintext docs or operations.
+- no server secret opens plaintext local persistence.
+- secret or encryption-mode changes clear the user namespace and warn about
+  possible unsynced data loss.
+- encrypted IndexedDB mode does not store plaintext docs or operations.
 - `local.provider` remains required and no `local: false` path exists.

@@ -322,9 +322,18 @@ Results consistently showed:
 
 DocSync uses **separate databases per user** for local persistence.
 
-### Local Encryption Secret Management (Recommended Pattern)
+### Local Encryption Secret Management
 
-DocSync does not manage encryption secrets. However, for most applications, the following **server-backed secret** flow is recommended, as it provides good security, excellent UX, and optimal Core Web Vitals (CWV).
+DocSync can run local persistence with or without encryption.
+
+- If `authenticate` returns `localEncryptionSecret`, DocSync encrypts local
+  docs and operation batches.
+- If `authenticate` omits `localEncryptionSecret`, DocSync persists local data
+  in plaintext for that user.
+
+For most applications that care about protecting local IndexedDB data, the
+following **server-backed secret** flow is recommended. It provides good
+security, excellent UX, and optimal Core Web Vitals (CWV).
 
 #### Secret Creation (Server)
 
@@ -370,7 +379,13 @@ DocSync manages local identity and secret caching internally.
 Applications provide the local provider factory, but they do not provide
 `getIdentity`, `userId`, or the local encryption secret. The server returns the
 verified `userId` and optional `localEncryptionSecret` from `authenticate`, and
-DocSync stores that verified pair locally for later offline starts.
+DocSync stores that verified identity locally for later offline starts.
+
+If the verified identity changes from encrypted to plaintext, plaintext to
+encrypted, or one secret to another secret for the same `userId`, DocSync treats
+the previous local namespace as invalid. It logs a warning, clears that user's
+local cache, and reloads from the server. Unsynced local data may be lost in
+that case.
 
 For most applications, this trade-off provides the best balance between security, usability, and performance.
 
