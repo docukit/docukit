@@ -410,13 +410,9 @@ function createMockDocSyncClient(
     local: {
       // TODO: review this. ServerProvider in the client?
       provider: inMemoryServerProvider as unknown as (
-        identity: { userId: string; secret: string },
+        identity: Identity,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ) => ClientProvider<any, any>,
-      getIdentity: () => ({
-        userId: token.replace("valid-", ""),
-        secret: "test-secret",
-      }),
     },
     docBinding: DocNodeBinding([]),
   }) as unknown as DocSyncClient;
