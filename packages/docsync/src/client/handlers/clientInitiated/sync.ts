@@ -68,6 +68,8 @@ export const handleSync = async <
   client: DocSyncClient<D, S, O>,
   docId: string,
 ): Promise<void> => {
+  if (!client["_socket"].connected) return;
+
   const pushStatusByDocId = client["_pushStatusByDocId"];
   const status = pushStatusByDocId.get(docId) ?? "idle";
   if (status !== "idle") {
@@ -75,6 +77,10 @@ export const handleSync = async <
     return;
   }
   pushStatusByDocId.set(docId, "pushing");
+
+  if (client["_localOpsBatchState"].has(docId)) {
+    await client["_flushLocalOperations"](docId, { sync: false });
+  }
 
   const { provider } = await client["_localPromise"];
   const socket = client["_socket"];
