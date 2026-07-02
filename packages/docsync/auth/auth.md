@@ -88,8 +88,7 @@ DocSync does not switch users inside a live client instance. Logout/login should
 create a new `DocSyncClient` through navigation, unmounting, or app-level
 recreation.
 
-Offline-capable web apps should call `client.clearLocalIdentity()` when the app
-logs out:
+Call `client.clearLocalIdentity()` when the app logs out or switches accounts:
 
 ```ts
 async function logout() {
@@ -101,9 +100,18 @@ async function logout() {
 }
 ```
 
+This matters even if the app is not fully offline-capable. DocSync reads the
+cached verified `userId` on the next client startup to choose the local storage
+namespace and to send `claimedUserId` during authentication. If the cache still
+contains the previous user, the server will reject the next connection for a
+different authenticated user.
+
 `clearLocalIdentity()` only clears DocSync's local identity cache. It does not
 log out Better Auth, NextAuth, Clerk, or any other auth library. It does not
 clear IndexedDB, reset the live client, or disconnect the socket.
+
+Offline-capable apps need this especially because logout may happen while the
+network request to the auth provider fails.
 
 ## Authorization
 
