@@ -28,15 +28,11 @@ import { DocNodeBinding } from "@docukit/docsync-react/docnode";
 // Refer to the DocNode documentation for more information
 // on how to define a DocConfig
 import { yourDocConfigs } from "./shared.ts";
-import { fetchIdentity } from "./utils.ts";
 
 export const { useDoc, usePresence, client } = createDocSyncClient({
   docBinding: DocNodeBinding([...yourDocConfigs]),
   server: { url: "http://localhost:8080", auth: { mode: "request" } },
-  local: {
-    provider: indexedDBProvider,
-    getIdentity: async () => await fetchIdentity(),
-  },
+  local: { provider: indexedDBProvider },
 });
 ```
 
@@ -47,15 +43,11 @@ import { DocNodeBinding } from "@docukit/docsync/docnode";
 // Refer to the DocNode documentation for more information
 // on how to define a DocConfig
 import { yourDocConfigs } from "./shared.ts";
-import { fetchIdentity } from "./utils.ts";
 
 export const client = new DocSyncClient({
   docBinding: DocNodeBinding([...yourDocConfigs]),
   server: { url: "http://localhost:8080", auth: { mode: "request" } },
-  local: {
-    provider: indexedDBProvider,
-    getIdentity: async () => await fetchIdentity(),
-  },
+  local: { provider: indexedDBProvider },
 });
 ```
 
