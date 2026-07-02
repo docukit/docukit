@@ -42,7 +42,7 @@ export type DeferredState<T> = {
   data: T;
 };
 
-export type Identity = { userId: string; secret?: string };
+export type Identity = { userId: string };
 
 export type TokenClientAuthConfig = {
   /**
@@ -146,7 +146,6 @@ export type ClientProvider<S extends object, O extends object> = {
     mode: "readonly" | "readwrite",
     callback: (ctx: ClientProviderContext<S, O>) => Promise<T>,
   ): Promise<T>;
-  clear(): Promise<void>;
 };
 
 // ============================================================================
