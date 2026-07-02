@@ -102,7 +102,6 @@ export type AuthenticateInput = {
 export type AuthenticateResult<TContext = unknown> = {
   userId: string;
   context?: TContext;
-  localEncryptionSecret?: string;
 };
 
 // ============================================================================

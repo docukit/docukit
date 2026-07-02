@@ -2,7 +2,6 @@ import { Server } from "socket.io";
 import type {
   ClientToServerEvents,
   DocBinding,
-  IdentityPayload,
   Presence,
   ServerToClientEvents,
 } from "../shared/types.js";
@@ -85,8 +84,6 @@ export class DocSyncServer<
   }
 
   private _setupSocketServer() {
-    const identityPayloadsBySocket = new WeakMap<object, IdentityPayload>();
-
     // Middleware: authenticate before allowing connection
     this._io.use((socket, next) => {
       const handshakeAuth: unknown = socket.handshake.auth;
@@ -102,7 +99,7 @@ export class DocSyncServer<
       }
 
       if (claimedUserId !== undefined && typeof claimedUserId !== "string") {
-        next(new Error("Authentication failed: invalid claimed user id"));
+        next(new Error("Authentication failed: invalid claimed user ID"));
         return;
       }
 
@@ -129,6 +126,14 @@ export class DocSyncServer<
             return;
           }
 
+          if (
+            claimedUserId !== undefined &&
+            authResult.userId !== claimedUserId
+          ) {
+            next(new Error("Authentication failed: claimed user ID mismatch"));
+            return;
+          }
+
           // Attach authenticated context to socket data
           socket.data = {
             userId: authResult.userId,
@@ -136,12 +141,6 @@ export class DocSyncServer<
             clientId,
             context: authResult.context ?? ({} as TContext),
           } satisfies AuthenticatedSocketData<TContext>;
-          identityPayloadsBySocket.set(socket, {
-            userId: authResult.userId,
-            ...(authResult.localEncryptionSecret === undefined
-              ? {}
-              : { localEncryptionSecret: authResult.localEncryptionSecret }),
-          });
 
           next();
         })
@@ -168,11 +167,7 @@ export class DocSyncServer<
     this._io.on("connection", (socket) => {
       const { userId, deviceId, clientId, context } = socket.data;
 
-      socket.emit(
-        "identity",
-        identityPayloadsBySocket.get(socket) ?? { userId },
-      );
-      identityPayloadsBySocket.delete(socket);
+      socket.emit("identity", { userId });
 
       // Emit client connect event
       this._emit(this._clientConnectEventListeners, {

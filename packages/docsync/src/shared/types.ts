@@ -109,10 +109,7 @@ export type SerializedDocPayload<S> = {
   clock: number;
 };
 
-export type IdentityPayload = {
-  userId: string;
-  localEncryptionSecret?: string;
-};
+export type IdentityPayload = { userId: string };
 
 // ============================================================================
 // Socket.IO Types
