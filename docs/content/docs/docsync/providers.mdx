@@ -330,16 +330,18 @@ type ClientProviderContext<S, O> = {
 
 The shape mirrors `ServerProviderContext` with two differences: `getOperations` does not take a `clock` (the client always loads everything it has locally), and `saveOperations` returns `void` (the client doesn't assign clocks — those come from the server).
 
-In the client config, `provider` is a **factory** that receives an `Identity` (resolved from `getIdentity()`) and returns the provider instance:
+In the client config, `provider` is a **factory** that receives an `Identity` and returns the provider instance:
 
 ```ts
 local: {
   provider: (identity: Identity) => ClientProvider<S, O>;
-  getIdentity: () => MaybePromise<Identity>;
 }
 ```
 
-This lets you scope storage per-user (e.g. `indexedDBProvider` opens a separate database per `userId`).
+DocSync passes a user identity to the provider. If DocSync has a cached
+server-verified `userId`, it can open local storage before the network
+connection completes. After the server authenticates the socket, the
+server-verified `userId` remains authoritative.
 
 ### IndexedDB provider
 
@@ -348,14 +350,14 @@ import { DocSyncClient, indexedDBProvider } from "@docukit/docsync/client";
 
 new DocSyncClient({
   /* ... */
-  local: {
-    provider: indexedDBProvider,
-    getIdentity: async () => ({ userId, secret }),
-  },
+  local: { provider: indexedDBProvider },
 });
 ```
 
-Each user gets an isolated IndexedDB database (`docsync-${userId}`). Reads and writes happen inside an IDB transaction so partial failures roll back cleanly.
+Each user gets an isolated IndexedDB database (`docsync-${userId}`). The built-in provider stores plaintext local docs and operations.
+
+If your app needs local encryption, implement or wrap a `ClientProvider` that
+encrypts before writes and decrypts after reads. See [Encryption](./encryption).
 
 ### Custom client provider
 
