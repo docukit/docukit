@@ -20,10 +20,7 @@ const createClient = (token: string) =>
   new DocSyncClient({
     server: { url, auth: { mode: "token", getToken: () => token } },
     docBinding,
-    local: {
-      provider: indexedDBProvider,
-      getIdentity: () => ({ userId: "u", secret: "s" }),
-    },
+    local: { provider: indexedDBProvider },
   });
 
 describe("Authentication", () => {

@@ -133,13 +133,7 @@ describe("DocSyncClient", () => {
         auth: { mode: "token", getToken: () => "test-token" },
       },
       docBinding,
-      local: {
-        provider: () => provider,
-        getIdentity: () => ({
-          userId: `debounce-test-${ulid().toLowerCase()}`,
-          secret: "test-secret",
-        }),
-      },
+      local: { provider: () => provider },
     };
 
     if (timing !== undefined) {
@@ -161,10 +155,7 @@ describe("DocSyncClient", () => {
     const client = new DocSyncClient({
       server: { url: "ws://localhost:8081", auth: { mode: "request" } },
       docBinding: DocNodeBinding([]),
-      local: {
-        provider: indexedDBProvider,
-        getIdentity: () => ({ userId: "request-user", secret: "test-secret" }),
-      },
+      local: { provider: indexedDBProvider },
     });
 
     const options = ioMock.mock.calls.at(-1)?.[1];
@@ -556,13 +547,7 @@ describe("DocSyncClient", () => {
           auth: { mode: "token", getToken: () => "test-token" },
         },
         docBinding,
-        local: {
-          provider: indexedDBProvider,
-          getIdentity: () => ({
-            userId: `presence-flush-${ulid().toLowerCase()}`,
-            secret: "test-secret",
-          }),
-        },
+        local: { provider: indexedDBProvider },
       };
       const client = new DocSyncClient(config);
       await client["_localPromise"];
