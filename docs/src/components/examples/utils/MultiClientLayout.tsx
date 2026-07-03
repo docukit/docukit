@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, useState } from "react";
-import type { DocSyncClient } from "@docukit/docsync2-react/client";
+import type { DocSyncClient } from "@docukit/docsync-react/client";
 import { cn } from "@/lib/cn";
 
 export type MultiClientInstance = "primary" | "duplicate";

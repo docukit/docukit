@@ -237,14 +237,10 @@ function EditorContent({
     createIfMissing: true,
   });
   const [presence, setPresence] = usePresenceHook({ docId });
-
-  const doc =
-    status === "success" && data.docId === docId ? data.doc : undefined;
-  const isReady = doc !== undefined;
+  const isReady = status === "success" && data.docId === docId;
 
   if (status === "error") {
-    const message = error instanceof Error ? error.message : String(error);
-    return <div className="text-destructive">Error: {message}</div>;
+    return <div className="text-destructive">Error: {error.message}</div>;
   }
 
   return (
@@ -255,7 +251,7 @@ function EditorContent({
       {isReady ? (
         <EditorPanel
           key={`${clientId}:${docId}`}
-          doc={doc}
+          doc={data.doc}
           clientId={clientId}
           initializeEditor={
             clientId === "reference" ? initializeEditor : undefined
