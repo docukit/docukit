@@ -6,7 +6,7 @@ import { broadcastCollaborationState } from "../utils/broadcastCollaborationStat
 const OPERATION_THRESHOLD = 100;
 
 export type SyncHandler<S = unknown, O = unknown> = (
-  payload: SyncRequest<O>,
+  payload: SyncRequest<S, O>,
   cb: (res: SyncResponse<S, O>) => void,
 ) => void | Promise<void>;
 
@@ -33,10 +33,10 @@ export function handleSync<
   socket.on(
     "sync",
     async (
-      req: SyncRequest<O>,
+      req: SyncRequest<S, O>,
       cb: (res: SyncResponse<S, O>) => void,
     ): Promise<void> => {
-      const { type, docId, operations, clock } = req;
+      const { type, docId, operations, serializedDoc, clock } = req;
       const startTime = Date.now();
 
       // TODO: we should validate req with Valibot here
@@ -95,14 +95,32 @@ export function handleSync<
 
       try {
         const result = await provider.transaction("readwrite", async (ctx) => {
-          const serverOps = await ctx.getOperations({ docId, clock });
           const serverDoc = await ctx.getSerializedDoc({ docId });
+
+          if (serverDoc === undefined && serializedDoc !== null) {
+            await ctx.saveSerializedDoc({ docId, serializedDoc, clock });
+          }
+
+          let responseSerializedDoc: S | null = null;
+          let operationsClock = clock;
+          if (
+            serverDoc !== undefined &&
+            (serializedDoc === null || serverDoc.clock >= clock)
+          ) {
+            responseSerializedDoc = serverDoc.serializedDoc;
+            operationsClock = serverDoc.clock;
+          }
+
+          const serverOps = await ctx.getOperations({
+            docId,
+            clock: operationsClock,
+          });
           const newClock = await ctx.saveOperations({ docId, operations });
 
           return {
             docId,
             operations: serverOps.flat(),
-            serializedDoc: serverDoc?.serializedDoc ?? null,
+            serializedDoc: responseSerializedDoc,
             clock: newClock,
           };
         });
@@ -164,9 +182,10 @@ export function handleSync<
             clock: resultClock,
           } = result;
           const allOperations = [...serverOps, ...operations];
-          const doc = serializedDoc
-            ? docBinding.deserialize(serializedDoc)
-            : docBinding.create(type, resultDocId).doc;
+          const doc =
+            serializedDoc !== null
+              ? docBinding.deserialize(serializedDoc)
+              : docBinding.create(type, resultDocId).doc;
           allOperations.forEach((operation) => {
             docBinding.applyOperations(doc, operation);
           });

@@ -393,7 +393,12 @@ describe("Server Events", () => {
           deviceId: expect.any(String) as string,
           clientId: expect.any(String) as string,
           status: "success",
-          req: { docId: "doc-1", operations: [operation], clock: 0 },
+          req: {
+            docId: "doc-1",
+            operations: [operation],
+            serializedDoc: null,
+            clock: 0,
+          },
           durationMs: expect.any(Number) as number,
           clientsCount: expect.any(Number) as number,
           devicesCount: expect.any(Number) as number,
@@ -452,6 +457,7 @@ describe("Server Events", () => {
           type: "test",
           docId: "test-doc",
           operations: [operation],
+          serializedDoc: null,
           clock: 5,
         });
       });

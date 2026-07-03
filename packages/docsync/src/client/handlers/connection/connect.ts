@@ -1,5 +1,6 @@
 import type { DocSyncClient } from "../../index.js";
-import { handleSync } from "../clientInitiated/sync.js";
+import { dispatchDocQueryConnected } from "../../utils/dispatchDocQueryAction.js";
+import { handleSync } from "../clientInitiated/sync/sync.js";
 
 export function handleConnect<
   D extends object = object,
@@ -24,7 +25,11 @@ export function handleConnect<
       );
 
       for (const docId of client["_docsCache"].keys()) {
-        if (!syncedDocIds.has(docId)) void handleSync(client, docId);
+        dispatchDocQueryConnected(client, docId);
+        const pushStatus = client["_pushStatusByDocId"].get(docId) ?? "idle";
+        if (!syncedDocIds.has(docId) && pushStatus === "idle") {
+          void handleSync(client, docId);
+        }
       }
     })();
   });

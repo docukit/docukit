@@ -231,10 +231,7 @@ describe("Local-First", () => {
       otherDevice.connect();
       await reference.assertMemoryDoc(["A", "B"]);
       await otherTab.assertMemoryDoc(["A", "B"]);
-      // otherDevice added B locally first, then received A from server
-      // CRDT ordering may differ based on insertion order vs deterministic ID ordering
-      // TODO: find a way to deterministically insert with conflicts
-      await otherDevice.assertMemoryDoc(["B", "A"]);
+      await otherDevice.assertMemoryDoc(["A", "B"]);
 
       await reference.assertIDBDoc({ doc: ["A", "B"], ops: [] });
       await otherTab.assertIDBDoc({ doc: ["A", "B"], ops: [] });
@@ -280,10 +277,7 @@ describe("Local-First", () => {
       otherDevice.connect();
       await reference.assertMemoryDoc(["A", "B", "C"]);
       await otherTab.assertMemoryDoc(["B", "A", "C"]);
-      // otherDevice added B locally first, then received A from server
-      // CRDT ordering may differ based on insertion order vs deterministic ID ordering
-      // TODO: find a way to deterministically insert with conflicts
-      await otherDevice.assertMemoryDoc(["C", "A", "B"]);
+      await otherDevice.assertMemoryDoc(["A", "B", "C"]);
 
       await reference.assertIDBDoc({ doc: ["A", "B", "C"], ops: [] });
       await otherTab.assertIDBDoc({ doc: ["A", "B", "C"], ops: [] });
