@@ -98,7 +98,9 @@ export class DocSyncServer<
         return;
       }
 
-      if (claimedUserId !== undefined && typeof claimedUserId !== "string") {
+      const hasClaimedUserId =
+        claimedUserId !== null && claimedUserId !== undefined;
+      if (hasClaimedUserId && typeof claimedUserId !== "string") {
         next(new Error("Authentication failed: invalid claimed user ID"));
         return;
       }
@@ -126,10 +128,7 @@ export class DocSyncServer<
             return;
           }
 
-          if (
-            claimedUserId !== undefined &&
-            authResult.userId !== claimedUserId
-          ) {
+          if (hasClaimedUserId && authResult.userId !== claimedUserId) {
             next(new Error("Authentication failed: claimed user ID mismatch"));
             return;
           }

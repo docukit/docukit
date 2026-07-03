@@ -256,10 +256,8 @@ describe("Server Events", () => {
 
         await T.waitForConnect();
         await T.sync({
-          type: "test",
           docId: "doc-subscribe",
           operations: [createTestOperation()],
-          clock: 0,
         });
 
         expect(capturedEvent).toMatchObject({
@@ -281,8 +279,8 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.sync({ type: "test", docId: "doc-subscribe-once", clock: 0 });
-        await T.sync({ type: "test", docId: "doc-subscribe-once", clock: 0 });
+        await T.sync({ docId: "doc-subscribe-once" });
+        await T.sync({ docId: "doc-subscribe-once" });
 
         expect(docIds).toStrictEqual(["doc-subscribe-once"]);
       });
@@ -299,7 +297,7 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.sync({ type: "test", docId: "doc-unsubscribe", clock: 0 });
+        await T.sync({ docId: "doc-unsubscribe" });
         await new Promise<void>((resolve) => {
           T.socket.emit("unsubscribe-doc", { docId: "doc-unsubscribe" }, () => {
             resolve();
@@ -327,8 +325,8 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.sync({ type: "test", docId: "doc-disconnect-a", clock: 0 });
-        await T.sync({ type: "test", docId: "doc-disconnect-b", clock: 0 });
+        await T.sync({ docId: "doc-disconnect-a" });
+        await T.sync({ docId: "doc-disconnect-b" });
 
         T.socket.disconnect();
         await new Promise((resolve) => setTimeout(resolve, 20));
@@ -362,7 +360,7 @@ describe("Server Events", () => {
         removeUnsubscribeListener();
 
         await T.waitForConnect();
-        await T.sync({ type: "test", docId: "doc-listener", clock: 0 });
+        await T.sync({ docId: "doc-listener" });
         T.socket.disconnect();
         await new Promise((resolve) => setTimeout(resolve, 20));
 
@@ -387,12 +385,7 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.sync({
-          type: "test",
-          docId: "doc-1",
-          operations: [operation],
-          clock: 0,
-        });
+        await T.sync({ docId: "doc-1", operations: [operation] });
 
         expect(capturedEvent).toBeDefined();
         expect(capturedEvent).toMatchObject({
@@ -401,10 +394,10 @@ describe("Server Events", () => {
           clientId: expect.any(String) as string,
           status: "success",
           req: { docId: "doc-1", operations: [operation], clock: 0 },
-          // res is optional - only present if operations/serializedDoc returned
           durationMs: expect.any(Number) as number,
           clientsCount: expect.any(Number) as number,
           devicesCount: expect.any(Number) as number,
+          res: { operations: [], serializedDoc: null, clock: 1 },
         });
       });
     });
@@ -433,12 +426,7 @@ describe("Server Events", () => {
         { auth, url: `ws://localhost:${testPort(4)}` },
         async (T) => {
           await T.waitForConnect();
-          await T.sync({
-            type: "test",
-            docId: "doc-1",
-            operations: [createTestOperation()],
-            clock: 0,
-          });
+          await T.sync({ docId: "doc-1", operations: [createTestOperation()] });
 
           expect(capturedStatus).toBe("error");
         },
@@ -457,12 +445,7 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.sync({
-          type: "test",
-          docId: "test-doc",
-          operations: [operation],
-          clock: 5,
-        });
+        await T.sync({ docId: "test-doc", operations: [operation], clock: 5 });
 
         expect(capturedEvent).toBeDefined();
         expect(capturedEvent?.req).toStrictEqual({
@@ -483,12 +466,7 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.sync({
-          type: "test",
-          docId: "doc-2",
-          operations: [createTestOperation()],
-          clock: 0,
-        });
+        await T.sync({ docId: "doc-2", operations: [createTestOperation()] });
 
         expect(capturedEvent).toBeDefined();
         expect(capturedEvent?.durationMs).toBeDefined();
@@ -520,12 +498,7 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.sync({
-          type: "test",
-          docId: "doc-3",
-          operations: [createTestOperation()],
-          clock: 0,
-        });
+        await T.sync({ docId: "doc-3", operations: [createTestOperation()] });
 
         expect(called1).toBe(true);
         expect(called2).toBe(true);
@@ -542,12 +515,7 @@ describe("Server Events", () => {
         unsubscribe();
 
         await T.waitForConnect();
-        await T.sync({
-          type: "test",
-          docId: "doc-4",
-          operations: [createTestOperation()],
-          clock: 0,
-        });
+        await T.sync({ docId: "doc-4", operations: [createTestOperation()] });
 
         expect(called).toBe(false);
       });
@@ -562,12 +530,7 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.sync({
-          type: "test",
-          docId: "doc-5",
-          operations: [createTestOperation()],
-          clock: 0,
-        });
+        await T.sync({ docId: "doc-5", operations: [createTestOperation()] });
 
         expect(capturedEvent).toBeDefined();
         expect(capturedEvent?.status).toBe("success");
@@ -585,14 +548,10 @@ describe("Server Events", () => {
         });
 
         await T.waitForConnect();
-        await T.sync({ type: "test", docId: "doc-6", clock: 0 });
+        await T.sync({ docId: "doc-6" });
 
         expect(capturedEvent).toBeDefined();
-        // When no operations are sent, the server receives an empty array
-        expect(
-          capturedEvent?.req.operations === undefined ||
-            capturedEvent?.req.operations.length === 0,
-        ).toBe(true);
+        expect(capturedEvent?.req.operations).toStrictEqual([]);
         expect(capturedEvent?.status).toBe("success");
       });
     });
@@ -617,12 +576,7 @@ describe("Server Events", () => {
         await T.waitForConnect();
 
         // Do a sync
-        await T.sync({
-          type: "test",
-          docId: "doc-7",
-          operations: [createTestOperation()],
-          clock: 0,
-        });
+        await T.sync({ docId: "doc-7", operations: [createTestOperation()] });
 
         // Disconnect
         T.socket.disconnect();
@@ -649,24 +603,9 @@ describe("Server Events", () => {
 
         await T.waitForConnect();
 
-        await T.sync({
-          type: "test",
-          docId: "doc-a",
-          operations: [createTestOperation()],
-          clock: 0,
-        });
-        await T.sync({
-          type: "test",
-          docId: "doc-b",
-          operations: [createTestOperation()],
-          clock: 0,
-        });
-        await T.sync({
-          type: "test",
-          docId: "doc-c",
-          operations: [createTestOperation()],
-          clock: 0,
-        });
+        await T.sync({ docId: "doc-a", operations: [createTestOperation()] });
+        await T.sync({ docId: "doc-b", operations: [createTestOperation()] });
+        await T.sync({ docId: "doc-c", operations: [createTestOperation()] });
 
         expect(docIds).toStrictEqual(["doc-a", "doc-b", "doc-c"]);
       });
@@ -702,12 +641,7 @@ describe("Server Events", () => {
         { auth, url: `ws://localhost:${testPort(5)}` },
         async (T) => {
           await T.waitForConnect();
-          await T.sync({
-            type: "test",
-            docId: "doc-8",
-            operations: [createTestOperation()],
-            clock: 0,
-          });
+          await T.sync({ docId: "doc-8", operations: [createTestOperation()] });
 
           expect(capturedEvent).toBeDefined();
           expect(capturedEvent?.status).toBe("error");
@@ -732,12 +666,7 @@ describe("Server Events", () => {
 
         await T.waitForConnect();
 
-        await T.sync({
-          type: "test",
-          docId: "doc-9",
-          operations: [createTestOperation()],
-          clock: 0,
-        });
+        await T.sync({ docId: "doc-9", operations: [createTestOperation()] });
 
         expect(capturedEvent).toBeDefined();
 

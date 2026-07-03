@@ -197,7 +197,7 @@ export const rootEslintConfig = tseslint.config(
         },
       ],
     },
-    ignores: ["**/*.test.ts"],
+    ignores: ["**/*.test.ts", "**/docsync*/**"],
   },
   ...nextVitals.map((config) => ({ ...config, files: ["**/*.{jsx,tsx}"] })),
   {

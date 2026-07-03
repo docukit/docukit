@@ -109,7 +109,7 @@ export class DocSyncClient<
         const authPayload = {
           deviceId: this._deviceId,
           clientId: this._clientId,
-          ...(cachedIdentity && { claimedUserId: cachedIdentity.userId }),
+          claimedUserId: cachedIdentity?.userId ?? null,
         };
 
         if (config.server.auth.mode === "request") {
@@ -387,14 +387,13 @@ export class DocSyncClient<
       // include is the new cursor. Two frames so setPresence (from selection change) has run.
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          const presencePatch = getOwnPresencePatch(this, docId);
           this._bcHelper?.broadcast({
             type: "OPERATIONS",
             source: "local-broadcast",
             operations,
             docId,
-            ...(flags?.skipUndo && { flags: { skipUndo: true } }),
-            ...(presencePatch && { presence: presencePatch }),
+            flags: flags?.skipUndo ? { skipUndo: true } : {},
+            presence: getOwnPresencePatch(this, docId),
           });
         });
       });

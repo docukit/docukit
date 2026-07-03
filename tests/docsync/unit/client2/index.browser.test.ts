@@ -244,7 +244,12 @@ describe("Client 2", () => {
       // Mock API to return server operations
       const requestSpy = spyOnRequest(client);
       requestSpy.mockResolvedValue({
-        data: { docId, operations: serverOperations, clock: 1 },
+        data: {
+          docId,
+          operations: serverOperations,
+          serializedDoc: null,
+          clock: 1,
+        },
       });
 
       await setupDocWithOperations(client, docId, {
@@ -317,7 +322,12 @@ describe("Client 2", () => {
       // Mock API to return server operations
       const requestSpy = spyOnRequest(client);
       requestSpy.mockResolvedValue({
-        data: { docId, operations: serverOperations, clock: 1 },
+        data: {
+          docId,
+          operations: serverOperations,
+          serializedDoc: null,
+          clock: 1,
+        },
       });
 
       // Setup a document without pending operations (pure pull scenario)
@@ -488,7 +498,9 @@ describe("Client 2", () => {
       requestSpy.mockImplementation(() => {
         callCount++;
         if (callCount === 1) return Promise.reject(new Error("Network error"));
-        return Promise.resolve({ data: { docId, operations: [], clock: 1 } });
+        return Promise.resolve({
+          data: { docId, operations: [], serializedDoc: null, clock: 1 },
+        });
       });
 
       await setupDocWithOperations(client, docId);
@@ -508,7 +520,9 @@ describe("Client 2", () => {
         statusHistory.push(client["_pushStatusByDocId"].get(docId));
         if (statusHistory.length === 1)
           return Promise.reject(new Error("Network error"));
-        return Promise.resolve({ data: { docId, operations: [], clock: 1 } });
+        return Promise.resolve({
+          data: { docId, operations: [], serializedDoc: null, clock: 1 },
+        });
       });
 
       await setupDocWithOperations(client, docId);
