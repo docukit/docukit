@@ -15,7 +15,7 @@
     "@docukit/docsync-react": "workspace:*",
     "@tanstack/query-core": "^5.101.0",
     "@tanstack/react-query": "^5.101.0",
-    "lexical": "^0.38.2",
+    "lexical": "0.45.0",
     "ulid": "^2.3.0",
     "valibot": "^1.0.0"
   },

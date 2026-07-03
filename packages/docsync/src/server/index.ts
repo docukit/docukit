@@ -9,6 +9,8 @@ import type {
   AuthenticatedSocketData,
   ClientConnectEventListener,
   ClientDisconnectEventListener,
+  DocSubscribeEventListener,
+  DocUnsubscribeEventListener,
   ServerConfig,
   ServerProvider,
   ServerSocket,
@@ -20,6 +22,16 @@ import { handlePresence } from "./handlers/presence.js";
 import { handleSync } from "./handlers/sync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
 import { startupLog } from "./utils/startupLog.js";
+
+// TODO: valibot schema
+type HandshakeAuth = {
+  token?: unknown;
+  deviceId?: unknown;
+  clientId?: unknown;
+  claimedUserId?: unknown;
+};
+const isHandshakeAuth = (value: unknown): value is HandshakeAuth =>
+  typeof value === "object" && value !== null;
 
 export class DocSyncServer<
   TContext = unknown,
@@ -44,6 +56,9 @@ export class DocSyncServer<
   private _clientConnectEventListeners = new Set<ClientConnectEventListener>();
   private _clientDisconnectEventListeners =
     new Set<ClientDisconnectEventListener>();
+  private _docSubscribeEventListeners = new Set<DocSubscribeEventListener>();
+  private _docUnsubscribeEventListeners =
+    new Set<DocUnsubscribeEventListener>();
   private _syncRequestEventListeners = new Set<SyncRequestEventListener>();
 
   constructor(config: ServerConfig<TContext, D, S, O>) {
@@ -71,9 +86,22 @@ export class DocSyncServer<
   private _setupSocketServer() {
     // Middleware: authenticate before allowing connection
     this._io.use((socket, next) => {
-      const { token, deviceId, clientId } = socket.handshake.auth;
-      if (!token || typeof token !== "string") {
-        next(new Error("Authentication required: no token provided"));
+      const handshakeAuth: unknown = socket.handshake.auth;
+      if (!isHandshakeAuth(handshakeAuth)) {
+        next(new Error("Authentication required"));
+        return;
+      }
+
+      const { token, deviceId, clientId, claimedUserId } = handshakeAuth;
+      if (token !== undefined && typeof token !== "string") {
+        next(new Error("Authentication failed: invalid token"));
+        return;
+      }
+
+      const hasClaimedUserId =
+        claimedUserId !== null && claimedUserId !== undefined;
+      if (hasClaimedUserId && typeof claimedUserId !== "string") {
+        next(new Error("Authentication failed: invalid claimed user ID"));
         return;
       }
 
@@ -88,10 +116,20 @@ export class DocSyncServer<
         return;
       }
 
-      Promise.resolve(this._authenticate({ token }))
+      const authenticateInput = {
+        request: socket.request,
+        ...(token === undefined ? {} : { token }),
+      };
+
+      Promise.resolve(this._authenticate(authenticateInput))
         .then((authResult) => {
           if (!authResult) {
-            next(new Error("Authentication failed: invalid token"));
+            next(new Error("Authentication failed: invalid credentials"));
+            return;
+          }
+
+          if (hasClaimedUserId && authResult.userId !== claimedUserId) {
+            next(new Error("Authentication failed: claimed user ID mismatch"));
             return;
           }
 
@@ -119,7 +157,7 @@ export class DocSyncServer<
         this._emit(this._clientDisconnectEventListeners, {
           userId: "unknown",
           deviceId,
-          socketId: "unknown",
+          clientId: "unknown",
           reason: `Authentication failed: ${err.message}`,
         });
       },
@@ -128,19 +166,21 @@ export class DocSyncServer<
     this._io.on("connection", (socket) => {
       const { userId, deviceId, clientId, context } = socket.data;
 
+      socket.emit("identity", { userId });
+
       // Emit client connect event
       this._emit(this._clientConnectEventListeners, {
         userId,
         deviceId,
-        socketId: socket.id,
+        clientId,
         context,
       });
 
       const server = this;
       handleDisconnect({ server, socket, userId, deviceId, clientId });
       // prettier-ignore
-      handleSync({ server, socket, userId, deviceId, context });
-      handleUnsubscribeDoc({ server, socket, clientId });
+      handleSync({ server, socket, userId, deviceId, clientId, context });
+      handleUnsubscribeDoc({ server, socket, userId, deviceId, clientId });
       handlePresence({ server, socket, userId, clientId, context });
       handleDeleteDoc({ server, socket, userId, context });
     });
@@ -180,6 +220,28 @@ export class DocSyncServer<
     this._clientDisconnectEventListeners.add(listener);
     return () => {
       this._clientDisconnectEventListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Register a listener for document subscription events.
+   * @returns Unsubscribe function
+   */
+  onDocSubscribe(listener: DocSubscribeEventListener): () => void {
+    this._docSubscribeEventListeners.add(listener);
+    return () => {
+      this._docSubscribeEventListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Register a listener for document unsubscription events.
+   * @returns Unsubscribe function
+   */
+  onDocUnsubscribe(listener: DocUnsubscribeEventListener): () => void {
+    this._docUnsubscribeEventListeners.add(listener);
+    return () => {
+      this._docUnsubscribeEventListeners.delete(listener);
     };
   }
 

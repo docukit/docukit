@@ -1,4 +1,4 @@
-export function ArrowLink(props: React.SVGProps<SVGSVGElement>) {
+export function ArrowLink(props: { className?: string }) {
   return (
     <svg
       width="8"

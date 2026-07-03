@@ -55,13 +55,13 @@ export type Result<D, E = Error> =
 export type SyncRequest<O = unknown> = {
   type: string;
   docId: string;
-  operations?: O[];
+  operations: O[];
   clock: number;
 };
 
 /** Shared response for the sync event (server sends, client receives). */
 export type SyncResponse<S = unknown, O = unknown> = Result<
-  { docId: string; operations?: O[]; serializedDoc?: S; clock: number },
+  { docId: string; operations: O[]; serializedDoc: S | null; clock: number },
   {
     type: "AuthorizationError" | "DatabaseError" | "ValidationError";
     message: string;
@@ -109,6 +109,8 @@ export type SerializedDocPayload<S> = {
   clock: number;
 };
 
+export type IdentityPayload = { userId: string };
+
 // ============================================================================
 // Socket.IO Types
 // ============================================================================
@@ -125,6 +127,8 @@ export type ClientToServerEvents<S, O> = {
 };
 
 export type ServerToClientEvents = {
+  // Server sends the verified identity for local persistence.
+  identity: (payload: IdentityPayload) => void;
   // Server notifies clients that a document has been modified
   dirty: (payload: { docId: string }) => void;
   // Server notifies clients whether another user is online in the same document

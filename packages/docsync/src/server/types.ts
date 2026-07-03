@@ -6,6 +6,7 @@ import type {
   ServerToClientEvents,
   SerializedDocPayload,
 } from "../shared/types.js";
+import type { IncomingMessage } from "node:http";
 import type { Server, Socket } from "socket.io";
 
 // ============================================================================
@@ -16,7 +17,7 @@ import type { Server, Socket } from "socket.io";
 export type ClientConnectEvent<TContext = unknown> = {
   userId: string;
   deviceId: string;
-  socketId: string;
+  clientId: string;
   context: TContext;
 };
 
@@ -24,12 +25,29 @@ export type ClientConnectEvent<TContext = unknown> = {
  * Emitted when client disconnects.
  *
  * Also emitted when a connection attempt fails (e.g., authentication failure).
- * In that case, userId and deviceId may not be available.
+ * In that case, userId, deviceId, and clientId may not be available.
  */
 export type ClientDisconnectEvent = {
   userId: string;
   deviceId: string;
-  socketId: string;
+  clientId: string;
+  reason: string;
+};
+
+/** Emitted when a connected client subscribes to a document. */
+export type DocSubscribeEvent = {
+  userId: string;
+  deviceId: string;
+  clientId: string;
+  docId: string;
+};
+
+/** Emitted when a connected client unsubscribes from a document. */
+export type DocUnsubscribeEvent = {
+  userId: string;
+  deviceId: string;
+  clientId: string;
+  docId: string;
   reason: string;
 };
 
@@ -37,12 +55,12 @@ export type ClientDisconnectEvent = {
 export type SyncRequestEvent<O = unknown, S = unknown> = {
   userId: string;
   deviceId: string;
-  socketId: string;
+  clientId: string;
   status: "success" | "error";
 
-  req: { type: string; docId: string; operations?: O[]; clock: number };
+  req: { type: string; docId: string; operations: O[]; clock: number };
 
-  res?: { operations?: O[]; clock?: number; serializedDoc?: S };
+  res?: { operations: O[]; clock: number | null; serializedDoc: S | null };
 
   durationMs?: number;
   devicesCount?: number;
@@ -51,7 +69,7 @@ export type SyncRequestEvent<O = unknown, S = unknown> = {
   error?: {
     type: "AuthorizationError" | "DatabaseError" | "ValidationError";
     message: string;
-    stack?: string;
+    stack: string | null;
   };
 };
 
@@ -61,9 +79,30 @@ export type ClientConnectEventListener<TContext = unknown> = (
 export type ClientDisconnectEventListener = (
   event: ClientDisconnectEvent,
 ) => void;
+export type DocSubscribeEventListener = (event: DocSubscribeEvent) => void;
+export type DocUnsubscribeEventListener = (event: DocUnsubscribeEvent) => void;
 export type SyncRequestEventListener<O = unknown, S = unknown> = (
   event: SyncRequestEvent<O, S>,
 ) => void;
+
+export type AuthenticateInput = {
+  /**
+   * The real HTTP request used for the WebSocket handshake.
+   *
+   * Server apps can read cookies from `request.headers.cookie` without
+   * exposing HttpOnly session secrets to browser JavaScript.
+   */
+  request: IncomingMessage;
+  /**
+   * Optional token sent by token-based clients.
+   */
+  token?: string;
+};
+
+export type AuthenticateResult<TContext = unknown> = {
+  userId: string;
+  context?: TContext;
+};
 
 // ============================================================================
 // Server Config
@@ -85,9 +124,9 @@ export type ServerConfig<
   port?: number;
   provider: ServerProvider<NoInfer<S>, NoInfer<O>>;
 
-  authenticate(ev: {
-    token: string;
-  }): MaybePromise<{ userId: string; context?: TContext } | undefined>;
+  authenticate(
+    ev: AuthenticateInput,
+  ): MaybePromise<AuthenticateResult<TContext> | undefined>;
 
   authorize?(ev: {
     type: DocSyncEventName;

@@ -9,7 +9,12 @@ import {
   type Identity,
 } from "@docukit/docsync/client";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
-import { type Doc, defineNode } from "@docukit/docnode";
+import {
+  type Doc,
+  type JsonDoc,
+  type Operations,
+  defineNode,
+} from "@docukit/docnode";
 
 // ============================================================================
 // Node Definitions
@@ -32,62 +37,56 @@ const createClientConfig = <D extends {}, S extends {}, O extends {}>(
   config: ClientConfig<D, S, O>,
 ): ClientConfig<D, S, O> => config;
 
-const createMockDocBinding = () =>
+const createDocBinding = () =>
   DocNodeBinding([
     { type: "test", extensions: [{ nodes: [TestNode, ChildNode] }] },
   ]);
 
-/**
- * Generates a unique userId for test isolation.
- * Each test can use its own userId to get an isolated IndexedDB database.
- */
-let testUserCounter = 0;
-const generateTestUserId = () => `test-user-${++testUserCounter}`;
+export const LOCAL_IDENTITY_KEY = "docsync:localUserId";
 
-const createValidConfig = (userId?: string) =>
+export const cacheLocalIdentity = (userId: string) => {
+  localStorage.setItem(LOCAL_IDENTITY_KEY, userId);
+};
+
+export const clearCachedLocalIdentity = () => {
+  localStorage.removeItem(LOCAL_IDENTITY_KEY);
+};
+
+const createValidConfig = () =>
   createClientConfig({
     server: {
       url: "ws://localhost:8081",
-      auth: { getToken: () => "test-token" },
+      auth: { mode: "token", getToken: () => "test-token" },
     },
-    docBinding: createMockDocBinding(),
-    local: {
-      provider: indexedDBProvider,
-      getIdentity: () => ({
-        userId: userId ?? generateTestUserId(),
-        secret: "test-secret",
-      }),
-    },
+    docBinding: createDocBinding(),
+    local: { provider: indexedDBProvider },
   });
 
 // ============================================================================
 // Client Factory
 // ============================================================================
 
-export const createClient = (userId?: string) =>
-  new DocSyncClient(createValidConfig(userId));
+export const createClient = (userId = "mock-user") => {
+  cacheLocalIdentity(userId);
+  return new DocSyncClient(createValidConfig());
+};
 
 /**
  * Creates a client with a spy on docBinding.dispose.
  * Useful for testing that listeners are properly cleaned up.
  */
-export const createClientWithDisposeSpy = (userId?: string) => {
-  const docBinding = createMockDocBinding();
+export const createClientWithDisposeSpy = (userId = "mock-user") => {
+  const docBinding = createDocBinding();
   const disposeSpy = vi.spyOn(docBinding, "dispose");
+  cacheLocalIdentity(userId);
 
   const config = createClientConfig({
     server: {
       url: "ws://localhost:8081",
-      auth: { getToken: () => "test-token" },
+      auth: { mode: "token", getToken: () => "test-token" },
     },
     docBinding,
-    local: {
-      provider: indexedDBProvider,
-      getIdentity: () => ({
-        userId: userId ?? generateTestUserId(),
-        secret: "test-secret",
-      }),
-    },
+    local: { provider: indexedDBProvider },
   });
 
   const client = new DocSyncClient(config);
@@ -118,7 +117,7 @@ export const getErrorResult = (callback: DocCallback) =>
   callback.mock.calls.find((c) => c[0].status === "error")?.[0];
 
 /**
- * Creates a mock provider that throws on transaction.
+ * Creates a provider that throws on transaction.
  */
 export const createFailingProvider = (errorMessage: string) => {
   return (_identity: Identity) => ({
@@ -133,19 +132,20 @@ export const createFailingProvider = (errorMessage: string) => {
  * Creates a client with a custom provider class.
  */
 export const createClientWithProvider = (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ProviderClass: (identity: Identity) => any,
+  ProviderClass: ClientConfig<Doc, JsonDoc, Operations>["local"]["provider"],
+  localUserId?: string,
 ) => {
+  if (localUserId !== undefined) {
+    cacheLocalIdentity(localUserId);
+  }
+
   const config = createClientConfig({
     server: {
       url: "ws://localhost:8081",
-      auth: { getToken: () => "test-token" },
+      auth: { mode: "token", getToken: () => "test-token" },
     },
-    docBinding: createMockDocBinding(),
-    local: {
-      provider: ProviderClass,
-      getIdentity: () => ({ userId: "test-user", secret: "test-secret" }),
-    },
+    docBinding: createDocBinding(),
+    local: { provider: ProviderClass },
   });
   return new DocSyncClient(config);
 };

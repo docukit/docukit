@@ -88,6 +88,7 @@ export async function setup(project: TestProject) {
     port: serverPort,
     provider: inMemoryServerProvider(),
     authenticate: ({ token }) => {
+      if (!token) return undefined;
       const userId = parseTestToken(token);
       if (!userId) return undefined;
       return { userId };

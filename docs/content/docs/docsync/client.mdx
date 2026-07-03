@@ -14,20 +14,17 @@ import { createDocSyncClient } from "@docukit/docsync-react/client";
 
 const { client, useDoc, usePresence } = createDocSyncClient({
   docBinding,
-  server: {
-    url: "http://localhost:8080",
-    auth: { getToken: async () => await fetchAuthToken() },
-  },
-  local: {
-    provider: indexedDBProvider,
-    getIdentity: async () => ({
-      userId: "user-123",
-      secret: await fetchUserSecret(),
-    }),
-  },
+  server: { url: "http://localhost:8080", auth: { mode: "request" } },
+  local: { provider: indexedDBProvider },
   timing: { collabMaxDebounce: 50, singleClientMaxDebounce: 3000 },
 });
 ```
+
+For browser apps with `HttpOnly` session cookies, `auth: { mode: "request" }`
+is the recommended path. The server authenticates from the handshake request,
+and JavaScript does not need to read the session secret. Use token auth for
+non-browser clients, tests, workers, server-to-server sync, API keys, and scoped
+document grants.
 
 ### Props
 
@@ -51,8 +48,13 @@ const { client, useDoc, usePresence } = createDocSyncClient({
     },
     "server.auth.getToken": {
       description:
-        "Async function called on every connection attempt to retrieve the authentication token. The token is passed verbatim to the server.",
+        "Required when mode is token. Called on every token-mode connection attempt. The token is passed verbatim to the server. Prefer request auth for normal browser apps with HttpOnly session cookies.",
       type: "() => Promise<string>",
+    },
+    "server.auth.mode": {
+      description:
+        'Required authentication mode. Use "request" when the server should authenticate from the handshake request, usually for browser apps with HttpOnly session cookies. Use "token" for CLIs, tests, workers, mobile apps, server-to-server sync, API keys, and scoped document grants.',
+      type: '"request" | "token"',
       required: true,
     },
     local: {
@@ -62,14 +64,8 @@ const { client, useDoc, usePresence } = createDocSyncClient({
     },
     "local.provider": {
       description:
-        "Storage provider factory (e.g., indexedDBProvider) for persistent local storage.",
+        "Storage provider factory (e.g., indexedDBProvider) for persistent local storage. DocSync passes the cached or server-verified identity to the provider.",
       type: "(identity: Identity) => ClientProvider<S, O>",
-      required: true,
-    },
-    "local.getIdentity": {
-      description:
-        "Async function that resolves the local storage identity. Returns userId (for namespacing) and secret (for encryption). The secret must never be persisted client-side.",
-      type: "() => Promise<Identity>",
       required: true,
     },
     timing: {

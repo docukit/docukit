@@ -9,9 +9,6 @@ DocSync can be used with subdocuments.
 
 ```ts
 const client = new DocSyncClient({
-  server: {
-    url: "http://localhost:8080",
-    auth: { getToken: async () => await fetchAuthToken() },
-  },
+  server: { url: "http://localhost:8080", auth: { mode: "request" } },
 });
 ```

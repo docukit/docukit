@@ -216,10 +216,10 @@ If a client was offline for a long time and accumulated many operations:
 
 ```typescript
 // Request
-{ docId: string; operations: O[] | null; clock: number }
+{ docId: string; operations: O[]; clock: number }
 
 // Response
-{ docId: string; operations: O[] | null; serializedDoc: S; clock: number }
+{ docId: string; operations: O[]; serializedDoc: S | null; clock: number }
 ```
 
 This simplifies error handling and transaction scope.

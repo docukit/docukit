@@ -16,5 +16,8 @@ new DocSyncServer({
       process.env.DOCSYNC_CLEANUP_INTERVAL_MS ?? 60_000,
     ),
   }),
-  authenticate: ({ token }) => ({ userId: token }), // Use token as userId
+  authenticate: ({ token }) => {
+    if (!token) return undefined;
+    return { userId: token }; // Demo only: use token as userId
+  },
 });

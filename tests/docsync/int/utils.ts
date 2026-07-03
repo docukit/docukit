@@ -174,14 +174,16 @@ const createClientWithConfig = (config: {
   token: string;
   docBinding: ReturnType<typeof createDocBinding>;
 }): DocSyncClient<Doc, JsonDoc, Operations> => {
+  localStorage.setItem("docsync:localUserId", config.userId);
+
   const clientConfig: ClientConfig<Doc, JsonDoc, Operations> = {
-    server: { url: getTestServerUrl(), auth: { getToken: () => config.token } },
+    server: {
+      url: getTestServerUrl(),
+      auth: { mode: "token", getToken: () => config.token },
+    },
     timing: { collabMaxDebounce: 50, singleClientMaxDebounce: 50 },
     docBinding: config.docBinding,
-    local: {
-      provider: indexedDBProvider,
-      getIdentity: () => ({ userId: config.userId, secret: "test-secret" }),
-    },
+    local: { provider: indexedDBProvider },
   };
 
   return new DocSyncClient(clientConfig);
@@ -257,6 +259,12 @@ const createClientUtils = async (
       payload: { docId: string; [key: string]: unknown },
     ) => Promise<unknown>
   >;
+  await expect
+    .poll(async () => ({
+      connected: client["_socket"].connected,
+      userId: (await client["_localPromise"]).identity.userId,
+    }))
+    .toStrictEqual({ connected: true, userId });
   const local = await client["_localPromise"];
 
   return {

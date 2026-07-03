@@ -5,9 +5,11 @@ import {
   statSync,
   existsSync,
   appendFileSync,
+  mkdtempSync,
 } from "node:fs";
 import { execSync } from "node:child_process";
 import { join, resolve, dirname } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -19,6 +21,10 @@ const run = (cmd: string) => {
   console.log(`$ ${cmd}`);
   execSync(cmd, { cwd: ROOT, stdio: "inherit" });
 };
+const captureRequired = (cmd: string, cwd = ROOT): string => {
+  console.log(`$ ${cmd}`);
+  return execSync(cmd, { cwd, encoding: "utf8" }).trim();
+};
 const capture = (cmd: string): string | undefined => {
   try {
     return execSync(cmd, { cwd: ROOT, encoding: "utf8" }).trim();
@@ -26,6 +32,10 @@ const capture = (cmd: string): string | undefined => {
     return undefined;
   }
 };
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolveSleep) => {
+    setTimeout(resolveSleep, ms);
+  });
 
 function readWorkspaceGlobs(): string[] {
   const yaml = readFileSync(join(ROOT, "pnpm-workspace.yaml"), "utf8");
@@ -78,8 +88,7 @@ if (loaded.length === 0) {
   process.exit(1);
 }
 
-console.log("Fail-fast npm auth check...");
-run("npm whoami");
+const packDir = mkdtempSync(join(tmpdir(), "docukit-publish-"));
 
 const results: { published: string[]; skipped: string[]; failed: string[] } = {
   published: [],
@@ -87,7 +96,7 @@ const results: { published: string[]; skipped: string[]; failed: string[] } = {
   failed: [],
 };
 
-for (const { pkg } of loaded) {
+for (const { dir, pkg } of loaded) {
   const version = pkg.version;
   if (!version) continue;
   const spec = `${pkg.name}@${version}`;
@@ -101,13 +110,15 @@ for (const { pkg } of loaded) {
   }
 
   try {
-    const tagFlag = isAlpha ? " --tag alpha" : "";
-    run(
-      `pnpm publish --filter ${pkg.name} --access public --no-git-checks${tagFlag}`,
+    const packedPath = captureRequired(
+      `pnpm pack --pack-destination ${JSON.stringify(packDir)}`,
+      dir,
     );
-    if (isAlpha) {
-      run(`npm dist-tag add ${spec} latest`);
-    }
+    const tarball = resolve(dir, packedPath);
+    const tagFlag = isAlpha ? " --tag latest" : "";
+    run(
+      `npm publish ${JSON.stringify(tarball)} --access public --provenance${tagFlag}`,
+    );
     results.published.push(spec);
   } catch (err) {
     results.failed.push(spec);
@@ -115,13 +126,33 @@ for (const { pkg } of loaded) {
   }
 }
 
-const verifyFailed: string[] = [];
-for (const spec of [...results.published, ...results.skipped]) {
+const verifySpec = async (spec: string): Promise<string | undefined> => {
   const parts = spec.split("@");
   const expected = parts[parts.length - 1];
-  const actual = capture(`npm view ${spec} version 2>/dev/null`);
-  if (actual !== expected)
-    verifyFailed.push(`${spec} (registry: ${actual ?? "not found"})`);
+  const attempts = 8;
+  const delayMs = 5_000;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const actual = capture(`npm view ${spec} version 2>/dev/null`);
+    if (actual === expected) return undefined;
+
+    if (attempt < attempts) {
+      console.log(
+        `Waiting for ${spec} to appear on npm (${attempt}/${attempts})...`,
+      );
+      await sleep(delayMs);
+    } else {
+      return `${spec} (registry: ${actual ?? "not found"})`;
+    }
+  }
+
+  return `${spec} (registry: not found)`;
+};
+
+const verifyFailed: string[] = [];
+for (const spec of [...results.published, ...results.skipped]) {
+  const failure = await verifySpec(spec);
+  if (failure) verifyFailed.push(failure);
 }
 
 console.log("\n=== Publish summary ===");

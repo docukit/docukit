@@ -28,9 +28,15 @@ import {
 import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
 import { handleSync } from "./handlers/clientInitiated/sync.js";
 import { handleUnsubscribe } from "./handlers/clientInitiated/unsubscribe.js";
-import { BCHelper } from "./utils/BCHelper.js";
+import { handleIdentity } from "./handlers/serverInitiated/identity.js";
+import type { BCHelper } from "./utils/BCHelper.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
 import { getOwnPresencePatch } from "./utils/getOwnPresencePatch.js";
+import {
+  clearLocalIdentity as clearStoredLocalIdentity,
+  readLocalIdentity,
+} from "./utils/localIdentity.js";
+import { setupLocalPromise } from "./utils/setupLocalPromise.js";
 
 // TODO: review this type!
 type LocalResolved<S extends object, O extends object> = {
@@ -96,27 +102,37 @@ export class DocSyncClient<
       timing?.singleClientMaxDebounce ?? 3000,
     );
 
-    // Initialize local provider (if configured)
-    this._localPromise = (async () => {
-      const identity = await local.getIdentity();
-      const provider = local.provider(identity);
-
-      this._bcHelper = new BCHelper(this, identity.userId);
-
-      return { provider, identity };
-    })();
-
+    const cachedIdentity = readLocalIdentity();
     this._deviceId = getDeviceId();
     this._socket = io(config.server.url, {
       auth: (cb) => {
+        const authPayload = {
+          deviceId: this._deviceId,
+          clientId: this._clientId,
+          claimedUserId: cachedIdentity?.userId ?? null,
+        };
+
+        if (config.server.auth.mode === "request") {
+          cb(authPayload);
+          return;
+        }
+
         void Promise.resolve(config.server.auth.getToken()).then((token) => {
-          cb({ token, deviceId: this._deviceId, clientId: this._clientId });
+          cb({ ...authPayload, token });
         });
       },
+      withCredentials: config.server.auth.mode === "request",
       // Performance optimizations for testing
       transports: ["websocket"], // Skip polling, go straight to WebSocket
     });
 
+    this._localPromise = setupLocalPromise({
+      client: this,
+      providerFactory: local.provider,
+      cachedIdentity,
+    });
+
+    handleIdentity({ client: this });
     handleConnect({ client: this });
     handleDisconnect({ client: this });
     handleCollaboration({ client: this });
@@ -130,6 +146,10 @@ export class DocSyncClient<
 
   disconnect() {
     this._socket.disconnect();
+  }
+
+  clearLocalIdentity() {
+    clearStoredLocalIdentity();
   }
 
   /**
@@ -367,14 +387,13 @@ export class DocSyncClient<
       // include is the new cursor. Two frames so setPresence (from selection change) has run.
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          const presencePatch = getOwnPresencePatch(this, docId);
           this._bcHelper?.broadcast({
             type: "OPERATIONS",
             source: "local-broadcast",
             operations,
             docId,
-            ...(flags?.skipUndo && { flags: { skipUndo: true } }),
-            ...(presencePatch && { presence: presencePatch }),
+            flags: flags?.skipUndo ? { skipUndo: true } : {},
+            presence: getOwnPresencePatch(this, docId),
           });
         });
       });

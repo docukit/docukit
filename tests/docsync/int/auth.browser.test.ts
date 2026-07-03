@@ -1,9 +1,11 @@
 // TODO: move to unit tests
 
-import { describe, expect, inject, test, vi } from "vitest";
+import { describe, expect, inject, test } from "vitest";
 import { DocSyncClient, indexedDBProvider } from "@docukit/docsync/client";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { defineNode, string } from "@docukit/docnode";
+
+const LOCAL_IDENTITY_KEY = "docsync:localUserId";
 
 const docBinding = DocNodeBinding([
   {
@@ -20,23 +22,33 @@ const getTestServerUrl = () => {
   return `ws://localhost:${port}`;
 };
 
-const createClient = (token: string) =>
-  new DocSyncClient({
-    server: { url: getTestServerUrl(), auth: { getToken: () => token } },
-    docBinding,
-    local: {
-      provider: indexedDBProvider,
-      getIdentity: () => ({ userId: "u", secret: "s" }),
+const createClient = (token: string) => {
+  localStorage.removeItem(LOCAL_IDENTITY_KEY);
+
+  return new DocSyncClient({
+    server: {
+      url: getTestServerUrl(),
+      auth: { mode: "token", getToken: () => token },
     },
+    docBinding,
+    local: { provider: indexedDBProvider },
+  });
+};
+
+const waitForConnection = (socket: {
+  once(event: "connect", listener: () => void): unknown;
+  once(event: "connect_error", listener: (error: Error) => void): unknown;
+}) =>
+  new Promise<void>((resolve, reject) => {
+    socket.once("connect", resolve);
+    socket.once("connect_error", reject);
   });
 
 describe("Authentication", () => {
   test("client with valid token connects successfully", async () => {
     const client = createClient("test-token-user1");
     const socket = client["_socket"];
-    await vi.waitFor(() => expect(socket.connected).toBe(true), {
-      timeout: 500,
-    });
+    await waitForConnection(socket);
     socket.disconnect();
   });
 
@@ -44,7 +56,7 @@ describe("Authentication", () => {
     const client = createClient("invalid");
     const socket = client["_socket"];
     const error = await new Promise<Error>((r) =>
-      socket.on("connect_error", r),
+      socket.once("connect_error", r),
     );
     expect(error.message).toContain("Authentication");
     socket.disconnect();

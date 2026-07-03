@@ -20,10 +20,14 @@ export function handleUnsubscribeDoc<
 >({
   server,
   socket,
+  userId,
+  deviceId,
   clientId,
 }: {
   server: DocSyncServer<TContext, D, S, O>;
   socket: ServerConnectionSocket<TContext, S, O>;
+  userId: string;
+  deviceId: string;
   clientId: string;
 }): void {
   const socketToDocsMap = server["_socketToDocsMap"];
@@ -50,6 +54,14 @@ export function handleUnsubscribeDoc<
         presence: null,
       });
       broadcastCollaborationState(server, docId);
+
+      server["_emit"](server["_docUnsubscribeEventListeners"], {
+        userId,
+        deviceId,
+        clientId,
+        docId,
+        reason: "unsubscribe-doc",
+      });
 
       cb({ success: true });
     },

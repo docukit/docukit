@@ -63,17 +63,15 @@ export const emptyOps = (): Operations => [[], {}] as Operations;
 export const createClient = async () => {
   const docBinding = createDocBinding();
   const userId = generateTestUserId();
+  localStorage.setItem("docsync:localUserId", userId);
 
   const config: ClientConfig<Doc, JsonDoc, Operations> = {
     server: {
       url: "ws://localhost:8081",
-      auth: { getToken: () => "test-token" },
+      auth: { mode: "token", getToken: () => "test-token" },
     },
     docBinding,
-    local: {
-      provider: indexedDBProvider,
-      getIdentity: () => ({ userId, secret: "test-secret" }),
-    },
+    local: { provider: indexedDBProvider },
   };
 
   const client = new DocSyncClient(config);
@@ -81,6 +79,7 @@ export const createClient = async () => {
   // Wait for lazy initialization
   await client["_localPromise"];
   client.disconnect();
+  client["_socket"].connected = true;
 
   return client;
 };
