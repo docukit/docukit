@@ -157,14 +157,14 @@ export const syncDocWithServer = async <
       data: response.data,
     });
 
-    const serverOperations = response.data.operations ?? [];
+    const serverOperations = response.data.operations;
     const applyOperationsArgs: ApplyOperationsToStoredDocArgs<S, O> = {
       ...args,
       operations,
       serverOperations,
       clock: response.data.clock,
       deleteOperationBatchCount: operationsBatches.length,
-      ...(response.data.serializedDoc !== undefined
+      ...(response.data.serializedDoc !== null
         ? { serverSerializedDoc: response.data.serializedDoc }
         : {}),
     };
@@ -190,7 +190,7 @@ export const syncDocWithServer = async <
     }
     if (cachedData) return cachedData;
 
-    if (response.data.serializedDoc !== undefined && syncedDoc !== undefined) {
+    if (response.data.serializedDoc !== null && syncedDoc !== undefined) {
       const syncedData = { docId: args.id, doc: syncedDoc };
       queryClient.setQueryData(getDocKey(args), syncedData);
       return syncedData;

@@ -44,6 +44,7 @@ export function handleUnsubscribeDoc<
       }
 
       const { docId } = req;
+      const { userId, deviceId, clientId } = socket.data;
       await socket.leave(`doc:${docId}`);
 
       const subscribedDocs = socketToDocsMap.get(socket.id);
@@ -56,6 +57,14 @@ export function handleUnsubscribeDoc<
 
       applyPresenceUpdate(presenceByDoc, socket, { docId, presence: null });
       broadcastCollaborationState(server, docId);
+
+      server["_emit"](server["_docUnsubscribeEventListeners"], {
+        userId,
+        deviceId,
+        clientId,
+        docId,
+        reason: "unsubscribe-doc",
+      });
 
       cb({ data: void undefined });
     },

@@ -39,7 +39,7 @@ export function handleSync<
       if (!envelope) return;
 
       const { docId, clock } = envelope;
-      const { userId, deviceId, context } = socket.data;
+      const { userId, deviceId, clientId, context } = socket.data;
 
       const authorized = server["_authorize"]
         ? await server["_authorize"]({
@@ -58,7 +58,7 @@ export function handleSync<
         server["_emit"](server["_syncRequestEventListeners"], {
           userId,
           deviceId,
-          socketId: socket.id,
+          clientId,
           status: "error",
           req: envelope,
           error: errorEvent,
@@ -88,6 +88,13 @@ export function handleSync<
           socketToDocsMap.set(socket.id, new Set());
         }
         socketToDocsMap.get(socket.id)!.add(docId);
+
+        server["_emit"](server["_docSubscribeEventListeners"], {
+          userId,
+          deviceId,
+          clientId,
+          docId,
+        });
 
         const presence = presenceByDoc.get(docId);
         if (presence) socket.emit("presence", { docId, presence });
@@ -131,10 +138,8 @@ export function handleSync<
         cb({
           data: {
             docId: stored.docId,
-            ...(stored.operations ? { operations: stored.operations } : {}),
-            ...(stored.serializedDoc
-              ? { serializedDoc: stored.serializedDoc }
-              : {}),
+            operations: stored.operations,
+            serializedDoc: stored.serializedDoc,
             clock: stored.clock,
           },
         });
@@ -165,22 +170,14 @@ export function handleSync<
         server["_emit"](server["_syncRequestEventListeners"], {
           userId,
           deviceId,
-          socketId: socket.id,
+          clientId,
           status: "success",
           req: envelope,
-          ...(stored.operations || stored.serializedDoc
-            ? {
-                res: {
-                  ...(stored.operations
-                    ? { operations: stored.operations }
-                    : {}),
-                  ...(stored.serializedDoc
-                    ? { serializedDoc: stored.serializedDoc }
-                    : {}),
-                  clock: stored.clock,
-                },
-              }
-            : {}),
+          res: {
+            operations: stored.operations,
+            serializedDoc: stored.serializedDoc,
+            clock: stored.clock,
+          },
           durationMs: Date.now() - startTime,
           clientsCount: docRoom?.size ?? 0,
           devicesCount: devicesInRoom.size,
@@ -197,7 +194,7 @@ export function handleSync<
         server["_emit"](server["_syncRequestEventListeners"], {
           userId,
           deviceId,
-          socketId: socket.id,
+          clientId,
           status: "error",
           req: envelope,
           error: {

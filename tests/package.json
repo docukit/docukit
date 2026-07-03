@@ -16,6 +16,7 @@
     "@tanstack/query-core": "^5.101.0",
     "@tanstack/react-query": "^5.101.0",
     "lexical": "0.45.0",
+    "socket.io-client": "^4.8.1",
     "ulid": "^2.3.0",
     "valibot": "^1.0.0"
   },

@@ -37,7 +37,7 @@ export const createSyncValidation = <
 
     operations(req: SyncEnvelope) {
       try {
-        return (req.operations ?? []).map((operation) =>
+        return req.operations.map((operation) =>
           context.server["_validators"].operations(operation),
         );
       } catch (error) {
@@ -72,15 +72,10 @@ export const createSyncValidation = <
         );
         const serializedDoc =
           rawSerializedDoc === undefined
-            ? undefined
+            ? null
             : context.server["_validators"].serializedDoc(rawSerializedDoc);
 
-        return {
-          docId,
-          ...(operations.length > 0 ? { operations } : {}),
-          ...(serializedDoc !== undefined ? { serializedDoc } : {}),
-          clock,
-        };
+        return { docId, operations, serializedDoc, clock };
       } catch (error) {
         respondValidationError(context, error);
       }
@@ -96,13 +91,13 @@ const respondValidationError = <
   { server, socket, req, cb, startTime }: SyncValidationContext<TContext, S, O>,
   error: unknown,
 ) => {
-  const { userId, deviceId } = socket.data;
+  const { userId, deviceId, clientId } = socket.data;
   const errorEvent = createValidationError(error);
 
   server["_emit"](server["_syncRequestEventListeners"], {
     userId,
     deviceId,
-    socketId: socket.id,
+    clientId,
     status: "error",
     req,
     error: errorEvent,

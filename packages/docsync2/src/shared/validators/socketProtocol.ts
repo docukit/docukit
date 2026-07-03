@@ -19,15 +19,15 @@ export const presenceSchema = v.record(v.string(), v.unknown());
 export const syncRequestSchema = v.object({
   type: v.string(),
   docId: v.string(),
-  operations: v.optional(v.array(v.unknown())),
+  operations: v.array(v.unknown()),
   serializedDoc: v.optional(v.unknown()),
   clock: v.number(),
 });
 
 export const syncResponseDataSchema = v.object({
   docId: v.string(),
-  operations: v.optional(v.array(v.unknown())),
-  serializedDoc: v.optional(v.unknown()),
+  operations: v.array(v.unknown()),
+  serializedDoc: v.nullable(v.unknown()),
   clock: v.number(),
 });
 

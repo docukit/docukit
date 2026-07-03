@@ -125,6 +125,9 @@ importers:
       '@docukit/docnode-lexical':
         specifier: workspace:*
         version: link:../packages/docnode-lexical
+      '@docukit/docsync-react':
+        specifier: workspace:*
+        version: link:../packages/docsync-react
       '@docukit/docsync2':
         specifier: workspace:*
         version: link:../packages/docsync2
@@ -159,7 +162,7 @@ importers:
         specifier: ^0.13.8
         version: 0.13.10(typescript@5.9.3)(valibot@1.2.0(typescript@5.9.3))(zod@4.3.5)
       '@tanstack/react-query':
-        specifier: ^5.90.12
+        specifier: ^5.101.0
         version: 5.101.0(react@19.2.3)
       '@vercel/analytics':
         specifier: ^1.5.0
@@ -412,6 +415,9 @@ importers:
       lexical:
         specifier: 0.45.0
         version: 0.45.0
+      socket.io-client:
+        specifier: ^4.8.1
+        version: 4.8.3
       ulid:
         specifier: ^2.3.0
         version: 2.4.0

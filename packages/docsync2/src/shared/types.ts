@@ -33,12 +33,12 @@ export type Result<D, E = Error> =
 
 export type SyncRequest<S = unknown, O = unknown> = v.InferOutput<
   typeof syncRequestSchema
-> & { operations?: O[] | undefined; serializedDoc?: S | undefined };
+> & { operations: O[]; serializedDoc?: S | undefined };
 
 export type SyncResponse<S = unknown, O = unknown> = Result<
   v.InferOutput<typeof syncResponseDataSchema> & {
-    operations?: O[] | undefined;
-    serializedDoc?: S | undefined;
+    operations: O[];
+    serializedDoc: S | null;
   },
   v.InferOutput<typeof syncResponseErrorSchema>
 >;

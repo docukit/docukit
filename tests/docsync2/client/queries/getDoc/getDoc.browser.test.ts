@@ -370,7 +370,7 @@ describe("getDoc", () => {
       const syncedPendingOperations = new Promise<void>((resolve, reject) => {
         const off = reference.docSync.on("sync", (event) => {
           if (event.req.docId !== created.docId) return;
-          if ((event.req.operations?.length ?? 0) === 0) return;
+          if (event.req.operations.length === 0) return;
 
           off();
           if (event.error) {

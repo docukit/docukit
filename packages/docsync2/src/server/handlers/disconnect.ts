@@ -15,7 +15,7 @@ export function handleDisconnect<
   socket: ServerConnectionSocket<TContext, S, O>;
 }): void {
   socket.on("disconnect", (reason) => {
-    const { userId, deviceId } = socket.data;
+    const { userId, deviceId, clientId } = socket.data;
     const socketToDocsMap = server["_socketToDocsMap"];
     const presenceByDoc = server["_presenceByDoc"];
     const subscribedDocs = socketToDocsMap.get(socket.id);
@@ -24,6 +24,13 @@ export function handleDisconnect<
       for (const docId of subscribedDocs) {
         applyPresenceUpdate(presenceByDoc, socket, { docId, presence: null });
         broadcastCollaborationState(server, docId);
+        server["_emit"](server["_docUnsubscribeEventListeners"], {
+          userId,
+          deviceId,
+          clientId,
+          docId,
+          reason,
+        });
       }
 
       socketToDocsMap.delete(socket.id);
@@ -32,7 +39,7 @@ export function handleDisconnect<
     server["_emit"](server["_clientDisconnectEventListeners"], {
       userId,
       deviceId,
-      socketId: socket.id,
+      clientId,
       reason,
     });
   });

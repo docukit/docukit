@@ -17,7 +17,7 @@ import type { Server, Socket } from "socket.io";
 export type ClientConnectEvent<TContext = unknown> = {
   userId: string;
   deviceId: string;
-  socketId: string;
+  clientId: string;
   context: TContext;
 };
 
@@ -30,14 +30,31 @@ export type ClientConnectEvent<TContext = unknown> = {
 export type ClientDisconnectEvent = {
   userId: string;
   deviceId: string;
-  socketId: string;
+  clientId: string;
+  reason: string;
+};
+
+/** Emitted when a connected client subscribes to a document. */
+export type DocSubscribeEvent = {
+  userId: string;
+  deviceId: string;
+  clientId: string;
+  docId: string;
+};
+
+/** Emitted when a connected client unsubscribes from a document. */
+export type DocUnsubscribeEvent = {
+  userId: string;
+  deviceId: string;
+  clientId: string;
+  docId: string;
   reason: string;
 };
 
 type SyncRequestEventBase = {
   userId: string;
   deviceId: string;
-  socketId: string;
+  clientId: string;
   durationMs?: number;
   devicesCount?: number;
   clientsCount?: number;
@@ -54,14 +71,14 @@ export type SyncRequestEvent<O = unknown, S = unknown> =
   | (SyncRequestEventBase & {
       status: "success";
       req: SyncRequest<S, O>;
-      res?: { operations?: O[]; clock?: number; serializedDoc?: S };
+      res: { operations: O[]; clock: number; serializedDoc: S | null };
       error?: never;
     })
   | (SyncRequestEventBase & {
       status: "error";
       req: SyncRequest<S, O>;
       error: SyncRequestEventError<"AuthorizationError" | "DatabaseError">;
-      res?: { operations?: O[]; clock?: number; serializedDoc?: S };
+      res?: { operations: O[]; clock: number; serializedDoc: S | null };
     })
   | (SyncRequestEventBase & {
       status: "error";
@@ -76,6 +93,8 @@ export type ClientConnectEventListener<TContext = unknown> = (
 export type ClientDisconnectEventListener = (
   event: ClientDisconnectEvent,
 ) => void;
+export type DocSubscribeEventListener = (event: DocSubscribeEvent) => void;
+export type DocUnsubscribeEventListener = (event: DocUnsubscribeEvent) => void;
 export type SyncRequestEventListener<O = unknown, S = unknown> = (
   event: SyncRequestEvent<O, S>,
 ) => void;

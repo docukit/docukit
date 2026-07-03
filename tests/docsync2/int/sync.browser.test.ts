@@ -35,6 +35,9 @@ describe("DocSync2 integration sync", () => {
             reject(new Error(event.error.message));
             return;
           }
+          expect(event.req.operations).toStrictEqual([]);
+          expect(event.data.operations).toStrictEqual([]);
+          expect(event.data.serializedDoc).toBeNull();
           resolve();
         });
       });
