@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { emptyIDB, testWrapper } from "./utils.js";
+import { emptyIDB, testWrapper, waitForLocalBroadcast } from "./utils.js";
 
 describe("Local-First", () => {
   test("cannot load doc twice", async () => {
@@ -130,6 +130,7 @@ describe("Local-First", () => {
       otherTab.doc?.forceCommit();
 
       reference.addChild("Hello");
+      reference.doc?.forceCommit();
       await otherTab.assertMemoryDoc(["Hello"]);
       await reference.assertMemoryDoc(["Hello"]);
 
@@ -146,6 +147,7 @@ describe("Local-First", () => {
       otherTab.doc?.forceCommit();
 
       reference.addChildSkippingUndo("Hello");
+      await waitForLocalBroadcast();
 
       await reference.assertMemoryDoc(["Hello"]);
       await otherTab.assertMemoryDoc(["Hello"]);

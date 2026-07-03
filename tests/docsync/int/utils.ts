@@ -24,6 +24,58 @@ import { expect, inject, vi, type Mock } from "vitest";
  * Use sparingly - prefer explicit waitFor conditions when possible.
  */
 const tick = (ms = 3) => new Promise((resolve) => setTimeout(resolve, ms));
+const animationFrame = () =>
+  new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+const testBroadcastChannels = new Map<string, Set<TestBroadcastChannel>>();
+
+class TestBroadcastChannel extends EventTarget implements BroadcastChannel {
+  onmessage: ((this: BroadcastChannel, ev: MessageEvent) => unknown) | null =
+    null;
+  onmessageerror:
+    | ((this: BroadcastChannel, ev: MessageEvent) => unknown)
+    | null = null;
+
+  #closed = false;
+
+  constructor(readonly name: string) {
+    super();
+    const channels = testBroadcastChannels.get(name) ?? new Set();
+    channels.add(this);
+    testBroadcastChannels.set(name, channels);
+  }
+
+  postMessage(message: unknown): void {
+    const channels = testBroadcastChannels.get(this.name);
+    if (!channels) return;
+
+    for (const channel of channels) {
+      if (channel === this) continue;
+      queueMicrotask(() => {
+        if (channel.#closed) return;
+        const event = new MessageEvent("message", { data: message });
+        channel.onmessage?.call(channel, event);
+        channel.dispatchEvent(event);
+      });
+    }
+  }
+
+  close(): void {
+    this.#closed = true;
+    const channels = testBroadcastChannels.get(this.name);
+    if (!channels) return;
+    channels.delete(this);
+    if (channels.size === 0) {
+      testBroadcastChannels.delete(this.name);
+    }
+  }
+}
+
+const testBroadcastChannel: typeof BroadcastChannel = TestBroadcastChannel;
+
+export const waitForLocalBroadcast = async (): Promise<void> => {
+  await animationFrame();
+  await animationFrame();
+};
 
 // ============================================================================
 // Constants
@@ -66,11 +118,10 @@ const createDocBinding = () => DocNodeBinding([testDocConfig]);
 // Generators
 // ============================================================================
 
+const runId = crypto.randomUUID();
 let clientCounter = 0;
-let testCounter = 0; // Add test counter for isolation
 
-const generateUserId = () =>
-  `integration-user-${Date.now()}-test${++testCounter}-${++clientCounter}`;
+const generateUserId = () => `integration-user-${runId}-${++clientCounter}`;
 
 const generateDocId = () => ulid().toLowerCase();
 
@@ -171,10 +222,12 @@ export const testWrapper = async (
  */
 const createClientWithConfig = (config: {
   userId: string;
+  deviceId: string;
   token: string;
   docBinding: ReturnType<typeof createDocBinding>;
 }): DocSyncClient<Doc, JsonDoc, Operations> => {
   localStorage.setItem("docsync:localUserId", config.userId);
+  localStorage.setItem("docsync:deviceId", config.deviceId);
 
   const clientConfig: ClientConfig<Doc, JsonDoc, Operations> = {
     server: {
@@ -186,7 +239,13 @@ const createClientWithConfig = (config: {
     local: { provider: indexedDBProvider },
   };
 
-  return new DocSyncClient(clientConfig);
+  const currentBroadcastChannel = globalThis.BroadcastChannel;
+  globalThis.BroadcastChannel = testBroadcastChannel;
+  try {
+    return new DocSyncClient(clientConfig);
+  } finally {
+    globalThis.BroadcastChannel = currentBroadcastChannel;
+  }
 };
 
 // ============================================================================
@@ -199,8 +258,10 @@ const setupClients = async (): Promise<ClientsSetup> => {
 
   // Reference: local + RT + BC enabled (userId1)
   const referenceUserId = generateUserId();
+  const referenceDeviceId = crypto.randomUUID();
   const referenceClient = createClientWithConfig({
     userId: referenceUserId,
+    deviceId: referenceDeviceId,
     token: createTestToken(referenceUserId),
     docBinding,
   });
@@ -208,20 +269,17 @@ const setupClients = async (): Promise<ClientsSetup> => {
   // OtherTab: local + RT + BC enabled (same userId1 as reference)
   const otherTabClient = createClientWithConfig({
     userId: referenceUserId, // Same user for broadcast channel and IDB sharing
+    deviceId: referenceDeviceId,
     token: createTestToken(referenceUserId),
     docBinding,
   });
 
   // OtherDevice: local enabled with different userId2, RT enabled, BC disabled
   const otherDeviceUserId = generateUserId();
-  // Wait for reference and otherTab sockets to connect before creating otherDevice
-  // This ensures they get their deviceId before we change it
-  await new Promise((resolve) => setTimeout(resolve, 40));
-  // Force a different deviceId for otherDevice to simulate a different physical device
-  const newDeviceId = crypto.randomUUID();
-  localStorage.setItem("docsync:deviceId", newDeviceId);
+  const otherDeviceId = crypto.randomUUID();
   const otherDeviceClient = createClientWithConfig({
     userId: otherDeviceUserId, // Different user = different IDB + BC namespace
+    deviceId: otherDeviceId,
     token: createTestToken(otherDeviceUserId),
     docBinding,
   });

@@ -26,12 +26,14 @@ const countChildren = (doc: Doc): number => {
   });
   return count;
 };
+const reactUserId = "John";
 
 test("createDocSyncClient", async () => {
+  localStorage.setItem("docsync:localUserId", reactUserId);
   const { useDoc } = createDocSyncClient({
     server: {
       url: testServerUrl(),
-      auth: { mode: "token", getToken: () => "test-token-John" },
+      auth: { mode: "token", getToken: () => `test-token-${reactUserId}` },
     },
     local: { provider: indexedDBProvider },
     docBinding: DocNodeBinding([docConfig]),
@@ -128,10 +130,11 @@ test("createDocSyncClient", async () => {
 }, 5000);
 
 test("client keeps own presence for debounced outgoing sync", async () => {
+  localStorage.setItem("docsync:localUserId", reactUserId);
   const { useDoc, usePresence, client } = createDocSyncClient({
     server: {
       url: testServerUrl(),
-      auth: { mode: "token", getToken: () => "test-token-John" },
+      auth: { mode: "token", getToken: () => `test-token-${reactUserId}` },
     },
     local: { provider: indexedDBProvider },
     timing: { singleClientMaxDebounce: 200 },
