@@ -36,7 +36,7 @@ export function handleSync<
       req: SyncRequest<O>,
       cb: (res: SyncResponse<S, O>) => void,
     ): Promise<void> => {
-      const { type, docId, operations = [], clock } = req;
+      const { type, docId, operations, clock } = req;
       const startTime = Date.now();
 
       // TODO: we should validate req with Valibot here
@@ -56,7 +56,7 @@ export function handleSync<
           clientId,
           status: "error",
           req,
-          error: errorEvent,
+          error: { ...errorEvent, stack: null },
           durationMs: Date.now() - startTime,
         });
 
@@ -101,10 +101,8 @@ export function handleSync<
 
           return {
             docId,
-            ...(serverOps.length > 0 ? { operations: serverOps.flat() } : {}),
-            ...(serverDoc?.serializedDoc
-              ? { serializedDoc: serverDoc.serializedDoc }
-              : {}),
+            operations: serverOps.flat(),
+            serializedDoc: serverDoc?.serializedDoc ?? null,
             clock: newClock,
           };
         });
@@ -112,10 +110,8 @@ export function handleSync<
         cb({
           data: {
             docId: result.docId,
-            ...(result.operations ? { operations: result.operations } : {}),
-            ...(result.serializedDoc
-              ? { serializedDoc: result.serializedDoc }
-              : {}),
+            operations: result.operations,
+            serializedDoc: result.serializedDoc,
             clock: result.clock,
           },
         });
@@ -150,28 +146,17 @@ export function handleSync<
           clientId,
           status: "success",
           req,
-          ...(result.operations || result.serializedDoc
-            ? {
-                res: {
-                  ...(result.operations
-                    ? { operations: result.operations }
-                    : {}),
-                  ...(result.serializedDoc
-                    ? { serializedDoc: result.serializedDoc }
-                    : {}),
-                  clock: result.clock,
-                },
-              }
-            : {}),
+          res: {
+            operations: result.operations,
+            serializedDoc: result.serializedDoc,
+            clock: result.clock,
+          },
           durationMs: Date.now() - startTime,
           clientsCount: docRoom?.size ?? 0,
           devicesCount: devicesInRoom.size,
         });
 
-        if (
-          result.operations &&
-          result.operations.length >= OPERATION_THRESHOLD
-        ) {
+        if (result.operations.length >= OPERATION_THRESHOLD) {
           const {
             docId: resultDocId,
             operations: serverOps,
@@ -212,9 +197,7 @@ export function handleSync<
           req,
           error: {
             ...errorEvent,
-            ...(error instanceof Error && error.stack
-              ? { stack: error.stack }
-              : {}),
+            stack: error instanceof Error ? (error.stack ?? null) : null,
           },
           durationMs: Date.now() - startTime,
         });

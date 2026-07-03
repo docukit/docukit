@@ -210,7 +210,7 @@ describe("DocSyncClient", () => {
     expect(typeof authPayload.deviceId).toBe("string");
     expect(authPayload).toMatchObject({ clientId: client["_clientId"] });
     expect(authPayload).not.toHaveProperty("token");
-    expect(authPayload).not.toHaveProperty("claimedUserId");
+    expect(authPayload.claimedUserId).toBe(null);
   });
 
   type DebounceTestClient = DocSyncClient<
@@ -1645,6 +1645,8 @@ describe("DocSyncClient", () => {
           source: "local-broadcast",
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           operations: expect.anything(),
+          flags: {},
+          presence: {},
         });
       } finally {
         globalThis.BroadcastChannel = originalBroadcastChannel;
@@ -1705,7 +1707,14 @@ describe("DocSyncClient", () => {
         // Simulate a message from BroadcastChannel with empty operations
         // Operations format is [OrderedOperation[], StatePatch] - empty is [[], {}]
         messageHandler!({
-          data: { type: "OPERATIONS", docId, operations: [[], {}] },
+          data: {
+            type: "OPERATIONS",
+            docId,
+            source: "local-broadcast",
+            operations: [[], {}],
+            flags: {},
+            presence: {},
+          },
         } as MessageEvent);
         // If we got here without throwing, the message was processed
       } finally {
@@ -1756,7 +1765,14 @@ describe("DocSyncClient", () => {
         // Simulate receiving operations from another tab (empty operations)
         // Operations format is [OrderedOperation[], StatePatch] - empty is [[], {}]
         messageHandler!({
-          data: { type: "OPERATIONS", docId, operations: [[], {}] },
+          data: {
+            type: "OPERATIONS",
+            docId,
+            source: "local-broadcast",
+            operations: [[], {}],
+            flags: {},
+            presence: {},
+          },
         } as MessageEvent);
 
         // postMessage should NOT be called - we don't re-broadcast received operations

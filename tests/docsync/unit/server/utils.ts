@@ -100,7 +100,7 @@ export async function testWrapper(
     client: TestClient;
     waitForConnect: () => Promise<void>;
     waitForError: () => Promise<Error>;
-    sync: (payload: SyncPayload) => Promise<SyncResponse>;
+    sync: (payload: SyncPayloadInput) => Promise<SyncResponse>;
     socket: TestClient["_socket"];
   }) => Promise<void>,
 ) {
@@ -120,9 +120,13 @@ export async function testWrapper(
     new Promise<Error>((resolve) => {
       socket.on("connect_error", resolve);
     });
-  const sync = (payload: SyncPayload) =>
+  const sync = (payload: SyncPayloadInput) =>
     new Promise<SyncResponse>((resolve) => {
-      socket.emit("sync", payload, resolve);
+      socket.emit(
+        "sync",
+        { type: "test", operations: [], clock: 0, ...payload },
+        resolve,
+      );
     });
 
   await fn({ server, client, waitForConnect, waitForError, socket, sync });
@@ -132,16 +136,18 @@ export async function testWrapper(
 type SyncPayload = {
   type: string;
   docId: string;
-  operations?: Operations[];
+  operations: Operations[];
   clock: number;
 };
+type SyncPayloadInput = Pick<SyncPayload, "docId"> &
+  Partial<Omit<SyncPayload, "docId">>;
 type SyncResponse =
   | {
       data: {
         docId: string;
         clock: number;
-        operations?: unknown[];
-        serializedDoc?: unknown;
+        operations: Operations[];
+        serializedDoc: JsonDoc | null;
       };
     }
   | {

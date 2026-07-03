@@ -485,10 +485,8 @@ describe("sync", () => {
       await T.waitForConnect();
       expect(T.socket.connected).toBe(true);
       const res = await T.sync({
-        type: "test",
         docId: "doc-1",
         operations: [createTestOperation()],
-        clock: 0,
       });
 
       expect("error" in res).toBe(false);
@@ -512,12 +510,7 @@ describe("sync", () => {
       // Send 100 operations individually
       for (let i = 0; i < 100; i++) {
         const operation = createTestOperation();
-        const res = await T.sync({
-          type: "test",
-          docId,
-          operations: [operation],
-          clock: i,
-        });
+        const res = await T.sync({ docId, operations: [operation], clock: i });
 
         expect("error" in res).toBe(false);
         if ("data" in res) {
@@ -526,19 +519,14 @@ describe("sync", () => {
       }
 
       // First sync from clock 0: should receive all 100 operations
-      const res1 = await T.sync({
-        type: "test",
-        docId,
-        operations: [],
-        clock: 0,
-      });
+      const res1 = await T.sync({ docId });
 
       expect("error" in res1).toBe(false);
       if ("data" in res1) {
         expect(res1.data.clock).toBe(100);
         expect(res1.data.operations).toBeDefined();
         expect(res1.data.operations?.length).toBe(100);
-        expect(res1.data.serializedDoc).toBeUndefined();
+        expect(res1.data.serializedDoc).toBe(null);
       }
 
       // Wait for squashing to complete (it happens async after the response)
@@ -546,18 +534,13 @@ describe("sync", () => {
 
       // Second sync from clock 100: should receive serializedDoc (squashed)
       // because previous fetch triggered squashing (>= 100 operations)
-      const res2 = await T.sync({
-        type: "test",
-        docId,
-        operations: [],
-        clock: 100,
-      });
+      const res2 = await T.sync({ docId, clock: 100 });
 
       expect("error" in res2).toBe(false);
       if ("data" in res2) {
         expect(res2.data.clock).toBe(100);
         expect(res2.data.serializedDoc).toBeDefined();
-        expect(res2.data.operations).toBeUndefined();
+        expect(res2.data.operations).toStrictEqual([]);
       }
     });
   });

@@ -9,8 +9,8 @@ type BroadcastMessage<O> =
       source: BroadcastSource;
       operations: O;
       docId: string;
-      flags?: { skipUndo?: boolean };
-      presence?: Record<string, unknown>;
+      flags: { skipUndo?: boolean };
+      presence: Record<string, unknown>;
     }
   | { type: "PRESENCE"; docId: string; presence: Record<string, unknown> };
 
@@ -34,11 +34,9 @@ export class BCHelper<
           client["_pushStatusByDocId"].set(docId, "pushing-with-pending");
         }
         void this._applyOperations(client, operations, docId, source, flags);
-        if (presence) {
-          const cacheEntry = client["_docsCache"].get(docId);
-          if (cacheEntry)
-            applyPresencePatch(client["_clientId"], cacheEntry, presence);
-        }
+        const cacheEntry = client["_docsCache"].get(docId);
+        if (cacheEntry)
+          applyPresencePatch(client["_clientId"], cacheEntry, presence);
         return;
       }
       if (msg.type === "PRESENCE") {
@@ -55,7 +53,7 @@ export class BCHelper<
     operations: O,
     docId: string,
     source: BroadcastSource,
-    flags?: { skipUndo?: boolean },
+    flags: { skipUndo?: boolean },
   ): Promise<void> {
     const cacheEntry = client["_docsCache"].get(docId);
     if (!cacheEntry) return;

@@ -58,9 +58,9 @@ export type SyncRequestEvent<O = unknown, S = unknown> = {
   clientId: string;
   status: "success" | "error";
 
-  req: { type: string; docId: string; operations?: O[]; clock: number };
+  req: { type: string; docId: string; operations: O[]; clock: number };
 
-  res?: { operations?: O[]; clock?: number; serializedDoc?: S };
+  res?: { operations: O[]; clock: number | null; serializedDoc: S | null };
 
   durationMs?: number;
   devicesCount?: number;
@@ -69,7 +69,7 @@ export type SyncRequestEvent<O = unknown, S = unknown> = {
   error?: {
     type: "AuthorizationError" | "DatabaseError" | "ValidationError";
     message: string;
-    stack?: string;
+    stack: string | null;
   };
 };
 

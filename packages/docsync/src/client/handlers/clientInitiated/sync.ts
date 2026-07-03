@@ -138,15 +138,7 @@ export const handleSync = async <
   }
 
   const { data } = response;
-  client["_events"].emit("sync", {
-    req,
-    data: {
-      docId: data.docId,
-      ...(data.operations ? { operations: data.operations } : {}),
-      ...(data.serializedDoc ? { serializedDoc: data.serializedDoc } : {}),
-      clock: data.clock,
-    },
-  });
+  client["_events"].emit("sync", { req, data });
   let didConsolidate = false;
 
   await provider.transaction("readwrite", async (ctx) => {
@@ -186,14 +178,15 @@ export const handleSync = async <
       operations: persistedServerOperations,
     });
 
-    const presencePatch = getOwnPresencePatch(client, docId);
+    const presence = getOwnPresencePatch(client, docId);
     for (const op of persistedServerOperations) {
       client["_bcHelper"]?.broadcast({
         type: "OPERATIONS",
         source: "network",
         operations: op,
         docId,
-        ...(presencePatch && { presence: presencePatch }),
+        flags: {},
+        presence,
       });
     }
   }
