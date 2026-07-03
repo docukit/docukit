@@ -52,10 +52,11 @@ export type Result<D, E = Error> =
 // ============================================================================
 
 /** Shared request payload for the sync event (client sends, server receives). */
-export type SyncRequest<O = unknown> = {
+export type SyncRequest<S = unknown, O = unknown> = {
   type: string;
   docId: string;
   operations: O[];
+  serializedDoc: S | null;
   clock: number;
 };
 
