@@ -68,6 +68,9 @@ importers:
       knip:
         specifier: ^5.82.1
         version: 5.82.1(@types/node@22.19.7)(typescript@5.9.3)
+      lexical:
+        specifier: 0.45.0
+        version: 0.45.0
       lint-staged:
         specifier: 15.4.1
         version: 15.4.1
@@ -86,6 +89,12 @@ importers:
       prettier-plugin-tailwindcss:
         specifier: ^0.7.2
         version: 0.7.2(prettier@3.8.1)
+      react:
+        specifier: 19.1.0
+        version: 19.1.0
+      react-dom:
+        specifier: 19.1.0
+        version: 19.1.0(react@19.1.0)
       tsx:
         specifier: ^4.19.2
         version: 4.21.0
