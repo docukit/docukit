@@ -1324,6 +1324,59 @@ describe("DocSyncClient", () => {
         expect(stored?.serializedDoc).toStrictEqual(serverDoc.serializedDoc);
       });
 
+      test("createIfMissing true should invalidate the optimistic doc after reconciling with a server snapshot", async () => {
+        const client = createClient();
+        const callback = createCallback();
+        const serverDoc = createDocWithChild(client);
+
+        socketMockState.syncResponses.set(serverDoc.docId, {
+          data: {
+            docId: serverDoc.docId,
+            operations: [],
+            serializedDoc: serverDoc.serializedDoc,
+            clock: 0,
+          },
+        });
+
+        client.getDoc(
+          { type: "test", id: serverDoc.docId, createIfMissing: true },
+          callback,
+        );
+
+        await expect
+          .poll(() =>
+            callback.mock.calls.find(
+              ([result]) =>
+                result.status === "success" &&
+                result.fetchStatus === "fetching",
+            ),
+          )
+          .toBeDefined();
+
+        const optimisticResult = callback.mock.calls.find(
+          ([result]) =>
+            result.status === "success" && result.fetchStatus === "fetching",
+        )?.[0];
+        if (
+          optimisticResult?.status !== "success" ||
+          optimisticResult.data === undefined
+        ) {
+          throw new Error("Expected optimistic doc result");
+        }
+        const optimisticDoc = optimisticResult.data.doc;
+
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0].fetchStatus)
+          .toBe("idle");
+
+        await Promise.resolve();
+
+        expect(() => {
+          const child = optimisticDoc.createNode(ChildNode);
+          optimisticDoc.root.append(child);
+        }).toThrow();
+      });
+
       test("should emit local success while network fetch is still active", async () => {
         const client = createClient();
         const callback = createCallback();
