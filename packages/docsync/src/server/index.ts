@@ -23,12 +23,13 @@ import { handleSync } from "./handlers/sync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
 import { startupLog } from "./utils/startupLog.js";
 
+// TODO: valibot schema
 type HandshakeAuth = {
   token?: unknown;
   deviceId?: unknown;
   clientId?: unknown;
+  claimedUserId?: unknown;
 };
-
 const isHandshakeAuth = (value: unknown): value is HandshakeAuth =>
   typeof value === "object" && value !== null;
 
@@ -91,9 +92,14 @@ export class DocSyncServer<
         return;
       }
 
-      const { token, deviceId, clientId } = handshakeAuth;
+      const { token, deviceId, clientId, claimedUserId } = handshakeAuth;
       if (token !== undefined && typeof token !== "string") {
         next(new Error("Authentication failed: invalid token"));
+        return;
+      }
+
+      if (claimedUserId !== undefined && typeof claimedUserId !== "string") {
+        next(new Error("Authentication failed: invalid claimed user ID"));
         return;
       }
 
@@ -108,15 +114,23 @@ export class DocSyncServer<
         return;
       }
 
-      const authenticateInput =
-        token === undefined
-          ? { request: socket.request }
-          : { request: socket.request, token };
+      const authenticateInput = {
+        request: socket.request,
+        ...(token === undefined ? {} : { token }),
+      };
 
       Promise.resolve(this._authenticate(authenticateInput))
         .then((authResult) => {
           if (!authResult) {
             next(new Error("Authentication failed: invalid credentials"));
+            return;
+          }
+
+          if (
+            claimedUserId !== undefined &&
+            authResult.userId !== claimedUserId
+          ) {
+            next(new Error("Authentication failed: claimed user ID mismatch"));
             return;
           }
 
@@ -152,6 +166,8 @@ export class DocSyncServer<
 
     this._io.on("connection", (socket) => {
       const { userId, deviceId, clientId, context } = socket.data;
+
+      socket.emit("identity", { userId });
 
       // Emit client connect event
       this._emit(this._clientConnectEventListeners, {

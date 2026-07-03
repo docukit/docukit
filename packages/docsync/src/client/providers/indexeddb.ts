@@ -1,16 +1,15 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { openDB, type DBSchema } from "idb";
 import type { SerializedDocPayload } from "../../shared/types.js";
 import type { ClientProvider, Identity } from "../types.js";
 
-interface DocNodeIDB extends DBSchema {
+interface DocNodeIDB<S extends object, O extends object> extends DBSchema {
   docs: {
     key: string; // docId
-    value: SerializedDocPayload<unknown>;
+    value: SerializedDocPayload<S>;
   };
   operations: {
     key: number;
-    value: { operations: unknown[]; docId: string };
+    value: { operations: O[]; docId: string };
     indexes: { docId_idx: string };
   };
 }
@@ -18,12 +17,12 @@ interface DocNodeIDB extends DBSchema {
 /**
  * IndexedDB-backed client provider.
  */
-export function indexedDBProvider(
+export function indexedDBProvider<S extends object, O extends object>(
   identity: Identity,
-): ClientProvider<any, any> {
+): ClientProvider<S, O> {
   // Each user gets their own database for isolation and performance.
   const dbName = `docsync-${identity.userId}`;
-  const dbPromise = openDB<DocNodeIDB>(dbName, 1, {
+  const dbPromise = openDB<DocNodeIDB<S, O>>(dbName, 1, {
     upgrade(db) {
       if (db.objectStoreNames.contains("docs")) return;
       db.createObjectStore("docs", { keyPath: "docId" });

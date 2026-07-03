@@ -3,10 +3,20 @@ title: Auth
 description: Authentication model for DocSync
 ---
 
-## Recommended Browser Pattern
+DocSync does not log users in. Your app still owns login, logout, sessions,
+tokens, roles, and permissions.
+
+DocSync only needs one thing during the WebSocket handshake: a server-verified
+`userId`.
+
+## Authenticate via request (recommended)
 
 For browser apps that already use an `HttpOnly` session cookie, prefer request
-auth:
+auth.
+
+In request auth mode, the browser sends matching cookies with the WebSocket
+handshake. Your server reads the session from `request.headers`, and browser
+JavaScript never needs to read the session secret.
 
 ```ts
 const { client, useDoc, usePresence } = createDocSyncClient({
@@ -16,38 +26,32 @@ const { client, useDoc, usePresence } = createDocSyncClient({
 });
 ```
 
-Then authenticate from the WebSocket handshake request on the server:
+On the server, authenticate from the handshake request:
 
 ```ts
 const server = new DocSyncServer({
   docBinding,
   provider,
-  async authenticate({ request, token }) {
-    // Authenticate via request, commonly with cookies.
+  async authenticate({ request }) {
     const session = await getSessionFromCookie(request.headers);
     if (session) return { userId: session.user.id };
-
-    // Or authenticate via token.
-    if (token) return await verifySyncToken(token);
 
     return undefined;
   },
 });
 ```
 
-This is the best default for normal browser apps because the server
-authenticates from the WebSocket handshake request. When the app uses an
-`HttpOnly` session cookie, the browser can send that cookie during the
-handshake. JavaScript does not need to read the session secret, and DocSync does
-not need an extra token request.
+This is usually the best browser setup because it avoids an extra client-side
+token fetch. It also keeps `HttpOnly` cookies unreadable from JavaScript.
 
 Same-origin cookie sessions are the simplest setup. Cross-origin cookie sessions
 require the app to configure cookie domain, `SameSite`, `Secure`, and
 credential/CORS settings correctly.
 
-## Token Auth
+## Authenticate via token
 
-Use token auth when cookies are not the right tool:
+Use token auth when cookies are not the right tool, or when the client already
+has a safe token to present.
 
 ```ts
 const { client, useDoc, usePresence } = createDocSyncClient({
@@ -60,25 +64,24 @@ const { client, useDoc, usePresence } = createDocSyncClient({
 });
 ```
 
-Token auth is a good fit for CLIs, tests, workers, mobile apps,
-server-to-server sync, API keys, and short-lived scoped document grants.
+On the server, verify the token:
 
-## Does Token Auth Require An Extra Request?
+```ts
+const server = new DocSyncServer({
+  docBinding,
+  provider,
+  async authenticate({ token }) {
+    if (!token) return undefined;
+    return await verifySyncToken(token);
+  },
+});
+```
 
-Not always.
+Token auth is a good fit for tests, workers, mobile apps, server-to-server sync,
+API keys, and short-lived scoped document grants.
 
-Token auth only needs an extra request when all of these are true:
-
-- the app's existing session is stored in an `HttpOnly` cookie;
-- JavaScript cannot read that cookie;
-- DocSync needs a JavaScript-readable sync token after the page has loaded.
-
-You can avoid that request by embedding a sync token in the initial
-server-rendered page. That is faster, but the sync token is then readable by
-JavaScript.
-
-For most browser apps with `HttpOnly` session cookies, request auth is the safer
-and simpler pattern.
+`getToken` runs when the socket connects or reconnects. It should read existing
+auth state. It should not perform a full login flow.
 
 ## Server Auth Input
 
@@ -88,13 +91,14 @@ and simpler pattern.
 type AuthenticateInput = { request: IncomingMessage; token?: string };
 ```
 
-Recommended precedence:
+If your app supports both cookies and tokens, choose the precedence inside
+`authenticate`:
 
 ```ts
 async authenticate({ request, token }) {
   // Authenticate via request, commonly with cookies.
   const cookieIdentity = await getCookieIdentity(request.headers);
-  if (cookieIdentity) return cookieIdentity;
+  if (cookieIdentity) return { userId: cookieIdentity.userId };
 
   // Or authenticate via token.
   if (token) return await getTokenIdentity(token);
@@ -103,34 +107,122 @@ async authenticate({ request, token }) {
 }
 ```
 
-DocSync does not choose whether cookies or tokens win. Your app decides inside
-`authenticate`.
+DocSync does not choose whether cookies or tokens win. Your app decides.
+
+## Verified Identity
+
+`authenticate` must return a `userId` when the connection is accepted:
+
+```ts
+type AuthenticateResult<TContext> = { userId: string; context?: TContext };
+```
+
+The returned `userId` is the server-verified identity for the socket. DocSync
+uses it for presence, authorization events, sync events, logs, and local storage
+namespacing.
+
+Return `undefined` to reject the connection.
+
+`context` is application-owned data. Put roles, organization IDs, plan data, or
+other authorization facts there when useful. DocSync passes that context to
+`authorize` and server events.
+
+```ts
+async authenticate({ request }) {
+  const session = await getSessionFromCookie(request.headers);
+  if (!session) return undefined;
+
+  return {
+    userId: session.user.id,
+    context: { role: session.user.role, orgId: session.user.orgId },
+  };
+}
+```
+
+## Local Identity
+
+DocSync stores the last server-verified `userId` in `localStorage` so the next
+app start can open user-scoped local storage before the network is available.
+
+That cache is only a local startup hint. It does not authenticate the user, and
+it is not passed to your `authenticate` callback.
+
+On startup:
+
+1. If DocSync has a cached verified `userId`, it opens the local provider with
+   that user ID.
+2. DocSync sends that value as an internal `claimedUserId` in the WebSocket
+   handshake.
+3. `claimedUserId` is not passed to your public `authenticate` callback.
+4. The server authenticates from the request and optional token.
+5. If the authenticated `userId` differs from `claimedUserId`, the server
+   rejects the connection.
+6. If there is no cached identity, DocSync waits for the server `identity` event
+   before opening local storage.
+
+The server is always the final authority. DocSync does not switch users inside a
+live client instance. If your app logs out or logs in as another user, navigate,
+unmount, or create a new `DocSyncClient`.
+
+Call `client.clearLocalIdentity()` when your app logs out or switches accounts:
+
+```ts
+async function logout() {
+  client.clearLocalIdentity();
+
+  await authClient.signOut().catch(() => {
+    // Offline logout: DocSync local identity was still cleared.
+  });
+}
+```
+
+This matters even if your app is not fully offline-capable. DocSync reads the
+cached verified `userId` on the next client startup to choose the local storage
+namespace and to send `claimedUserId` during authentication. If the cache still
+contains the previous user, the server will reject the next connection for a
+different authenticated user.
+
+`clearLocalIdentity()` only clears DocSync's local identity cache. It does not
+log out Better Auth, NextAuth, Clerk, or any other auth library. It also does
+not clear IndexedDB, reset the live client, or disconnect the socket.
+
+Offline-capable apps need this especially because logout may happen while the
+network request to the auth provider fails.
+
+Authentication only happens on the server.
 
 ## Authorization
 
-Authentication answers who the connection belongs to. Authorization answers what
-that user can do.
-
-Use `authorize` for document-level access control:
+Use `authorize` to decide what an authenticated user can do:
 
 ```ts
 const server = new DocSyncServer({
   docBinding,
   provider,
-  async authenticate({ request }) {
-    const session = await getSessionFromCookie(request.headers);
-    if (!session) return undefined;
-    return { userId: session.user.id, context: { orgId: session.user.orgId } };
-  },
+  authenticate,
   async authorize({ type, req, userId, context }) {
     if (type === "sync") {
-      return await canUserEditDocument(userId, req, context.orgId);
+      return await canUserAccessDoc(userId, req.docId, context.orgId);
     }
-
     return true;
   },
 });
 ```
 
-Keep authorization application-defined. DocSync does not inspect document
-contents, operation structure, roles, ACLs, or sharing rules.
+`authenticate` answers "who is this connection?".
+`authorize` answers "what is this user allowed to do?".
+
+## What DocSync Does Not Do
+
+DocSync does not:
+
+- issue credentials;
+- refresh credentials;
+- persist credentials;
+- generate encryption keys;
+- store encryption keys;
+- send local encryption secrets to the client;
+- manage account switching inside a live `DocSyncClient`.
+
+If your app needs local, server-side, or end-to-end encryption, implement it in
+your storage or payload layer.

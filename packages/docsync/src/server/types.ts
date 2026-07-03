@@ -99,6 +99,11 @@ export type AuthenticateInput = {
   token?: string;
 };
 
+export type AuthenticateResult<TContext = unknown> = {
+  userId: string;
+  context?: TContext;
+};
+
 // ============================================================================
 // Server Config
 // ============================================================================
@@ -121,7 +126,7 @@ export type ServerConfig<
 
   authenticate(
     ev: AuthenticateInput,
-  ): MaybePromise<{ userId: string; context?: TContext } | undefined>;
+  ): MaybePromise<AuthenticateResult<TContext> | undefined>;
 
   authorize?(ev: {
     type: DocSyncEventName;

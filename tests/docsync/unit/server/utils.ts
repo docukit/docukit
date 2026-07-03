@@ -1,13 +1,14 @@
-/* eslint-disable @typescript-eslint/no-empty-object-type */
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { DocSyncServer, inMemoryServerProvider } from "@docukit/docsync/server";
 import {
   DocSyncClient,
   type ClientAuthConfig,
   type ClientProvider,
-  type Identity,
 } from "@docukit/docsync/client";
+import { Doc, type JsonDoc, type Operations } from "@docukit/docnode";
 import { testDocConfig } from "../../int/utils.js";
+
+type TestClient = DocSyncClient<Doc, JsonDoc, Operations>;
 
 // Auto-assign unique port range based on Vitest worker ID
 // This allows test files to run in parallel without port conflicts
@@ -23,11 +24,29 @@ export const testPort = (offset = 0) => BASE_PORT + offset;
 const createMockDocSyncClient = (serverOverrides?: {
   url?: string;
   auth?: ClientAuthConfig;
-}): DocSyncClient => {
+  localUserId?: string;
+}): TestClient => {
   // mock window
   globalThis.window = {} as Window & typeof globalThis;
   // mock localStorage
-  globalThis.localStorage = { getItem: () => "asd" } as unknown as Storage;
+  const storage = new Map<string, string>([["docsync:deviceId", "asd"]]);
+  if (serverOverrides?.localUserId !== undefined) {
+    storage.set("docsync:localUserId", serverOverrides.localUserId);
+  }
+  globalThis.localStorage = {
+    clear: () => storage.clear(),
+    getItem: (key) => storage.get(key) ?? null,
+    key: (index) => Array.from(storage.keys())[index] ?? null,
+    get length() {
+      return storage.size;
+    },
+    removeItem: (key) => {
+      storage.delete(key);
+    },
+    setItem: (key, value) => {
+      storage.set(key, value);
+    },
+  } satisfies Storage;
 
   return new DocSyncClient({
     server: {
@@ -37,17 +56,24 @@ const createMockDocSyncClient = (serverOverrides?: {
         getToken: () => "test-token",
       },
     },
-    local: {
-      // TODO: review this. ServerProvider in the client?
-      provider: inMemoryServerProvider as unknown as (
-        identity: Identity,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ) => ClientProvider<any, any>,
-      getIdentity: () => ({ userId: "test-user", secret: "test-secret" }),
-    },
+    local: { provider: () => createTestClientProvider() },
     docBinding: DocNodeBinding([]),
-  }) as unknown as DocSyncClient;
+  });
 };
+
+export const createTestClientProvider = (): ClientProvider<
+  JsonDoc,
+  Operations
+> => ({
+  transaction: (_mode, callback) =>
+    callback({
+      getSerializedDoc: () => Promise.resolve(undefined),
+      getOperations: () => Promise.resolve([]),
+      deleteOperations: () => Promise.resolve(undefined),
+      saveOperations: () => Promise.resolve(undefined),
+      saveSerializedDoc: () => Promise.resolve(undefined),
+    }),
+});
 
 const createServer = (port = BASE_PORT) => {
   return new DocSyncServer({
@@ -63,14 +89,19 @@ const createServer = (port = BASE_PORT) => {
 };
 
 export async function testWrapper(
-  serverOverrides: { url?: string; auth?: ClientAuthConfig; port?: number },
+  serverOverrides: {
+    url?: string;
+    auth?: ClientAuthConfig;
+    port?: number;
+    localUserId?: string;
+  },
   fn: (args: {
     server: DocSyncServer;
-    client: DocSyncClient;
+    client: TestClient;
     waitForConnect: () => Promise<void>;
     waitForError: () => Promise<Error>;
     sync: (payload: SyncPayload) => Promise<SyncResponse>;
-    socket: DocSyncClient["_socket"];
+    socket: TestClient["_socket"];
   }) => Promise<void>,
 ) {
   const port = serverOverrides.port ?? BASE_PORT;
@@ -101,7 +132,7 @@ export async function testWrapper(
 type SyncPayload = {
   type: string;
   docId: string;
-  operations?: {}[];
+  operations?: Operations[];
   clock: number;
 };
 type SyncResponse =
@@ -119,3 +150,21 @@ type SyncResponse =
         message: string;
       };
     };
+
+export function createTestOperation(): Operations {
+  const doc = new Doc(testDocConfig);
+  const childNodeDef = testDocConfig.extensions[0]?.nodes?.[0];
+  if (!childNodeDef) throw new Error("Missing child node definition");
+
+  let capturedOperations: Operations | undefined;
+  const unregister = doc.onChange((event) => {
+    capturedOperations = event.operations;
+  });
+
+  doc.root.append(doc.createNode(childNodeDef));
+  doc.forceCommit();
+  unregister();
+
+  if (!capturedOperations) throw new Error("Expected captured operations");
+  return capturedOperations;
+}

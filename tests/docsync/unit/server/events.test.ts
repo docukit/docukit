@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { testWrapper, testPort } from "./utils.js";
+import { testWrapper, testPort, createTestOperation } from "./utils.js";
 import { DocSyncServer, inMemoryServerProvider } from "@docukit/docsync/server";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import type { ClientAuthConfig } from "@docukit/docsync/client";
@@ -258,7 +258,7 @@ describe("Server Events", () => {
         await T.sync({
           type: "test",
           docId: "doc-subscribe",
-          operations: [{ type: "insert" }],
+          operations: [createTestOperation()],
           clock: 0,
         });
 
@@ -381,6 +381,7 @@ describe("Server Events", () => {
       const auth = tokenAuth("valid-user9");
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
+        const operation = createTestOperation();
         T.server.onSyncRequest((event) => {
           capturedEvent = event;
         });
@@ -389,7 +390,7 @@ describe("Server Events", () => {
         await T.sync({
           type: "test",
           docId: "doc-1",
-          operations: [{ type: "insert" }],
+          operations: [operation],
           clock: 0,
         });
 
@@ -399,7 +400,7 @@ describe("Server Events", () => {
           deviceId: expect.any(String) as string,
           clientId: expect.any(String) as string,
           status: "success",
-          req: { docId: "doc-1", operations: [{ type: "insert" }], clock: 0 },
+          req: { docId: "doc-1", operations: [operation], clock: 0 },
           // res is optional - only present if operations/serializedDoc returned
           durationMs: expect.any(Number) as number,
           clientsCount: expect.any(Number) as number,
@@ -435,7 +436,7 @@ describe("Server Events", () => {
           await T.sync({
             type: "test",
             docId: "doc-1",
-            operations: [{ type: "insert" }],
+            operations: [createTestOperation()],
             clock: 0,
           });
 
@@ -450,6 +451,7 @@ describe("Server Events", () => {
       const auth = tokenAuth("valid-user11");
       await testWrapper({ auth }, async (T) => {
         let capturedEvent: SyncRequestEvent | undefined;
+        const operation = createTestOperation();
         T.server.onSyncRequest((event) => {
           capturedEvent = event;
         });
@@ -458,7 +460,7 @@ describe("Server Events", () => {
         await T.sync({
           type: "test",
           docId: "test-doc",
-          operations: [{ type: "test" }],
+          operations: [operation],
           clock: 5,
         });
 
@@ -466,7 +468,7 @@ describe("Server Events", () => {
         expect(capturedEvent?.req).toStrictEqual({
           type: "test",
           docId: "test-doc",
-          operations: [{ type: "test" }],
+          operations: [operation],
           clock: 5,
         });
       });
@@ -484,7 +486,7 @@ describe("Server Events", () => {
         await T.sync({
           type: "test",
           docId: "doc-2",
-          operations: [{ type: "insert" }],
+          operations: [createTestOperation()],
           clock: 0,
         });
 
@@ -521,7 +523,7 @@ describe("Server Events", () => {
         await T.sync({
           type: "test",
           docId: "doc-3",
-          operations: [{ type: "insert" }],
+          operations: [createTestOperation()],
           clock: 0,
         });
 
@@ -543,7 +545,7 @@ describe("Server Events", () => {
         await T.sync({
           type: "test",
           docId: "doc-4",
-          operations: [{ type: "insert" }],
+          operations: [createTestOperation()],
           clock: 0,
         });
 
@@ -563,7 +565,7 @@ describe("Server Events", () => {
         await T.sync({
           type: "test",
           docId: "doc-5",
-          operations: [{ type: "insert" }],
+          operations: [createTestOperation()],
           clock: 0,
         });
 
@@ -618,7 +620,7 @@ describe("Server Events", () => {
         await T.sync({
           type: "test",
           docId: "doc-7",
-          operations: [{ type: "insert" }],
+          operations: [createTestOperation()],
           clock: 0,
         });
 
@@ -650,19 +652,19 @@ describe("Server Events", () => {
         await T.sync({
           type: "test",
           docId: "doc-a",
-          operations: [{ type: "insert" }],
+          operations: [createTestOperation()],
           clock: 0,
         });
         await T.sync({
           type: "test",
           docId: "doc-b",
-          operations: [{ type: "insert" }],
+          operations: [createTestOperation()],
           clock: 0,
         });
         await T.sync({
           type: "test",
           docId: "doc-c",
-          operations: [{ type: "insert" }],
+          operations: [createTestOperation()],
           clock: 0,
         });
 
@@ -703,7 +705,7 @@ describe("Server Events", () => {
           await T.sync({
             type: "test",
             docId: "doc-8",
-            operations: [{ type: "insert" }],
+            operations: [createTestOperation()],
             clock: 0,
           });
 
@@ -733,7 +735,7 @@ describe("Server Events", () => {
         await T.sync({
           type: "test",
           docId: "doc-9",
-          operations: [{ type: "insert" }],
+          operations: [createTestOperation()],
           clock: 0,
         });
 

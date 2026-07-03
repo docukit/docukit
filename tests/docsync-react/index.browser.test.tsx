@@ -22,10 +22,7 @@ test("createDocSyncClient", async () => {
       url: testServerUrl(),
       auth: { mode: "token", getToken: () => "test-token-John" },
     },
-    local: {
-      provider: indexedDBProvider,
-      getIdentity: () => ({ userId: "John", secret: "asdasdasd" }),
-    },
+    local: { provider: indexedDBProvider },
     docBinding: DocNodeBinding([docConfig]),
   });
 
@@ -125,10 +122,7 @@ test("client keeps own presence for debounced outgoing sync", async () => {
       url: testServerUrl(),
       auth: { mode: "token", getToken: () => "test-token-John" },
     },
-    local: {
-      provider: indexedDBProvider,
-      getIdentity: () => ({ userId: "John", secret: "asdasdasd" }),
-    },
+    local: { provider: indexedDBProvider },
     timing: { singleClientMaxDebounce: 200 },
     docBinding: DocNodeBinding([docConfig]),
   });

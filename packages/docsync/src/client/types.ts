@@ -42,7 +42,7 @@ export type DeferredState<T> = {
   data: T;
 };
 
-export type Identity = { userId: string; secret: string };
+export type Identity = { userId: string };
 
 export type TokenClientAuthConfig = {
   /**
@@ -116,7 +116,6 @@ export type ClientConfig<
   };
   local: {
     provider: (identity: Identity) => ClientProvider<NoInfer<S>, NoInfer<O>>;
-    getIdentity: () => MaybePromise<Identity>;
   };
 };
 
