@@ -12,7 +12,22 @@ process.env.NODE_OPTIONS = [process.env.NODE_OPTIONS, "--expose-gc"]
   .filter(Boolean)
   .join(" ");
 
-const project = (name: string, browser: boolean): TestProjectConfiguration => ({
+const browserExclude = ["**/.context/**", "**/node_modules/**", "**/dist/**"];
+
+const nodeExclude = [
+  "**/.context/**",
+  "**/*.browser.test.ts",
+  "**/*.browser.test.tsx",
+  "**/*.ui.test.ts",
+  "**/node_modules",
+  "**/dist",
+];
+
+const project = (
+  name: string,
+  browser: boolean,
+  options?: { include?: string[]; exclude?: string[]; globalSetup?: string[] },
+): TestProjectConfiguration => ({
   extends: true, // Extends root config to include resolve.conditions
   plugins: [react()],
   test: {
@@ -24,20 +39,17 @@ const project = (name: string, browser: boolean): TestProjectConfiguration => ({
     hookTimeout: 2000,
     ...(browser
       ? {
-          include: ["**/*.browser.test.ts", "**/*.browser.test.tsx"],
-          exclude: ["**/.context/**", "**/node_modules/**", "**/dist/**"],
-        }
-      : {
-          exclude: [
-            "**/.context/**",
+          include: options?.include ?? [
             "**/*.browser.test.ts",
             "**/*.browser.test.tsx",
-            "**/*.ui.test.ts",
-            "**/node_modules",
-            "**/dist",
           ],
+          exclude: options?.exclude ?? browserExclude,
+        }
+      : {
+          ...(options?.include ? { include: options.include } : {}),
+          exclude: options?.exclude ?? nodeExclude,
         }),
-    globalSetup: ["./tests/docsync/int/globalSetup.ts"],
+    ...(options?.globalSetup ? { globalSetup: options.globalSetup } : {}),
     benchmark: { include: ["**/*browser.bench.ts"] },
     name,
     browser: {
@@ -75,6 +87,25 @@ export default defineConfig({
         "**/*.spec.ts",
       ],
     },
-    projects: [project("node", false), project("browser", true)],
+    projects: [
+      project("node", false),
+      project("browser", true, {
+        exclude: [
+          ...browserExclude,
+          "tests/docsync2/**",
+          "tests/docsync2-react/**",
+        ],
+        globalSetup: ["./tests/docsync/int/globalSetup.ts"],
+      }),
+      project("browser-docsync2", true, {
+        include: [
+          "tests/docsync2/**/*.browser.test.ts",
+          "tests/docsync2/**/*.browser.test.tsx",
+          "tests/docsync2-react/**/*.browser.test.ts",
+          "tests/docsync2-react/**/*.browser.test.tsx",
+        ],
+        globalSetup: ["./tests/docsync2/int/globalSetup.ts"],
+      }),
+    ],
   },
 });
