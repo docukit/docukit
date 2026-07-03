@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, expectTypeOf } from "vitest";
+import { beforeEach, describe, test, expect, vi, expectTypeOf } from "vitest";
 import {
   DocSyncClient,
   indexedDBProvider,
@@ -27,9 +27,24 @@ import {
   createCallback,
   getSuccessData,
   getErrorResult,
+  cacheLocalIdentity,
+  clearCachedLocalIdentity,
+  LOCAL_IDENTITY_KEY,
 } from "./utils.js";
 
-type SocketAuthPayload = { deviceId: string; clientId: string; token?: string };
+type SocketAuthPayload = {
+  deviceId: string;
+  clientId: string;
+  token?: string;
+  claimedUserId?: string;
+};
+
+type MockIdentityPayload = { userId: string };
+
+const socketMockState = vi.hoisted(() => ({
+  autoIdentity: true,
+  identityPayload: undefined as MockIdentityPayload | undefined,
+}));
 
 // Mock socket.io-client to avoid real connections
 const ioMock = vi.hoisted(() =>
@@ -40,33 +55,43 @@ const ioMock = vi.hoisted(() =>
         auth?: (callback: (payload: SocketAuthPayload) => void) => void;
         withCredentials?: boolean;
       },
-    ) => ({
-      connected: true,
-      on: vi.fn(),
-      emit: vi.fn(
-        (
-          _event: string,
-          _payload: unknown,
-          callback?: (response: unknown) => void,
-        ) => {
-          if (!callback) return;
-          if (
-            _event === "sync" &&
-            typeof _payload === "object" &&
-            _payload !== null &&
-            "docId" in _payload &&
-            "clock" in _payload
-          ) {
-            callback({
-              data: { docId: _payload.docId, clock: _payload.clock },
-            });
-            return;
+    ) => {
+      return {
+        connected: true,
+        on: vi.fn((event: string, listener: (payload?: unknown) => void) => {
+          if (event === "identity" && socketMockState.autoIdentity) {
+            queueMicrotask(() =>
+              listener(
+                socketMockState.identityPayload ?? { userId: "mock-user" },
+              ),
+            );
           }
-          callback({ data: undefined, success: true });
-        },
-      ),
-      disconnect: vi.fn(),
-    }),
+        }),
+        emit: vi.fn(
+          (
+            _event: string,
+            _payload: unknown,
+            callback?: (response: unknown) => void,
+          ) => {
+            if (!callback) return;
+            if (
+              _event === "sync" &&
+              typeof _payload === "object" &&
+              _payload !== null &&
+              "docId" in _payload &&
+              "clock" in _payload
+            ) {
+              callback({
+                data: { docId: _payload.docId, clock: _payload.clock },
+              });
+              return;
+            }
+            callback({ data: undefined, success: true });
+          },
+        ),
+        disconnect: vi.fn(),
+      };
+    },
   ),
 );
 
@@ -77,6 +102,13 @@ vi.mock("socket.io-client", () => ({ io: ioMock }));
 // ============================================================================
 
 describe("DocSyncClient", () => {
+  beforeEach(() => {
+    ioMock.mockClear();
+    socketMockState.autoIdentity = true;
+    socketMockState.identityPayload = undefined;
+    clearCachedLocalIdentity();
+  });
+
   type DebounceTestDoc = { docId: string };
   type DebounceTestSerializedDoc = { docId: string };
   type DebounceTestOperation = { value: string };
@@ -122,6 +154,8 @@ describe("DocSyncClient", () => {
           saveSerializedDoc: () => Promise.resolve(undefined),
         }),
     };
+
+    cacheLocalIdentity("mock-user");
 
     const config: ClientConfig<
       DebounceTestDoc,
@@ -176,6 +210,7 @@ describe("DocSyncClient", () => {
     expect(typeof authPayload.deviceId).toBe("string");
     expect(authPayload).toMatchObject({ clientId: client["_clientId"] });
     expect(authPayload).not.toHaveProperty("token");
+    expect(authPayload).not.toHaveProperty("claimedUserId");
   });
 
   type DebounceTestClient = DocSyncClient<
@@ -184,13 +219,25 @@ describe("DocSyncClient", () => {
     DebounceTestOperation
   >;
 
-  const getSocketOnMock = (client: DebounceTestClient) => {
+  const getSocketOnMock = <
+    D extends object,
+    S extends object,
+    O extends object,
+  >(
+    client: DocSyncClient<D, S, O>,
+  ) => {
     // eslint-disable-next-line @typescript-eslint/unbound-method -- socket is a Vitest mock in this test file.
     const onMock = vi.mocked(client["_socket"].on);
     return onMock;
   };
 
-  const getSocketEmitMock = (client: DebounceTestClient) => {
+  const getSocketEmitMock = <
+    D extends object,
+    S extends object,
+    O extends object,
+  >(
+    client: DocSyncClient<D, S, O>,
+  ) => {
     // eslint-disable-next-line @typescript-eslint/unbound-method -- socket is a Vitest mock in this test file.
     const emitMock = vi.mocked(client["_socket"].emit);
     return emitMock;
@@ -221,6 +268,15 @@ describe("DocSyncClient", () => {
 
     const listener = eventCall[1];
     Reflect.apply(listener, undefined, [payload]);
+  };
+
+  const createIndexedDBProviderSpy = () => {
+    const providerFactory: ClientConfig<
+      Doc,
+      JsonDoc,
+      Operations
+    >["local"]["provider"] = (identity) => indexedDBProvider(identity);
+    return vi.fn(providerFactory);
   };
 
   const cacheDebounceTestDoc = (client: DebounceTestClient, docId: string) => {
@@ -266,6 +322,118 @@ describe("DocSyncClient", () => {
       expect(client).toBeInstanceOf(DocSyncClient);
     });
 
+    test("uses cached identity namespace and sends claimed user ID", async () => {
+      socketMockState.autoIdentity = false;
+
+      const providerFactory = createIndexedDBProviderSpy();
+      const client = createClientWithProvider(providerFactory, "cached-user");
+      await client["_localPromise"];
+
+      const options = ioMock.mock.calls.at(-1)?.[1];
+      if (!options || typeof options.auth !== "function") {
+        throw new Error("Expected socket auth callback");
+      }
+
+      let authPayload: SocketAuthPayload | undefined;
+      options.auth((payload) => {
+        authPayload = payload;
+      });
+      await flushMicrotasks();
+
+      expect(authPayload).toMatchObject({
+        clientId: client["_clientId"],
+        claimedUserId: "cached-user",
+      });
+      expect(
+        providerFactory.mock.calls.map(([identity]) => identity),
+      ).toStrictEqual([{ userId: "cached-user" }]);
+      expect((await client["_localPromise"]).identity).toStrictEqual({
+        userId: "cached-user",
+      });
+    });
+
+    test("does not sync local operations while socket is disconnected", async () => {
+      socketMockState.autoIdentity = false;
+
+      const providerFactory = createIndexedDBProviderSpy();
+      const client = createClientWithProvider(providerFactory, "offline-user");
+      await client["_localPromise"];
+      client["_socket"].connected = false;
+
+      const callback = createCallback();
+      client.getDoc(
+        { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
+        callback,
+      );
+      await expect.poll(() => getSuccessData(callback)).toBeDefined();
+
+      const loadedDoc = getSuccessData(callback)?.doc;
+      if (!loadedDoc) {
+        throw new Error("Expected cached document to load");
+      }
+
+      loadedDoc.root.append(loadedDoc.createNode(ChildNode));
+      await flushMicrotasks();
+
+      const emitMock = getSocketEmitMock(client);
+      expect(emitMock.mock.calls.some(([event]) => event === "sync")).toBe(
+        false,
+      );
+    });
+
+    test("opens provider when server identity arrives", async () => {
+      socketMockState.identityPayload = { userId: "plain-user" };
+
+      const providerFactory = createIndexedDBProviderSpy();
+      const client = createClientWithProvider(providerFactory);
+
+      await expect
+        .poll(async () => (await client["_localPromise"]).identity.userId)
+        .toBe("plain-user");
+
+      expect(localStorage.getItem(LOCAL_IDENTITY_KEY)).toBe("plain-user");
+      expect(
+        providerFactory.mock.calls.map(([identity]) => identity),
+      ).toStrictEqual([{ userId: "plain-user" }]);
+    });
+
+    test("keeps same local namespace when verified identity matches", async () => {
+      socketMockState.identityPayload = { userId: "same-user" };
+      const providerFactory = createIndexedDBProviderSpy();
+
+      const client = createClientWithProvider(providerFactory, "same-user");
+      await client["_localPromise"];
+      await flushMicrotasks();
+
+      await expect
+        .poll(() => localStorage.getItem(LOCAL_IDENTITY_KEY))
+        .toBe("same-user");
+      expect(providerFactory).toHaveBeenCalledTimes(1);
+      expect((await client["_localPromise"]).identity).toStrictEqual({
+        userId: "same-user",
+      });
+      expect(
+        providerFactory.mock.calls.map(([identity]) => identity),
+      ).toStrictEqual([{ userId: "same-user" }]);
+    });
+
+    test("clearLocalIdentity removes the cached identity only", async () => {
+      socketMockState.autoIdentity = false;
+
+      const providerFactory = createIndexedDBProviderSpy();
+      const client = createClientWithProvider(providerFactory, "logout-user");
+      await client["_localPromise"];
+
+      expect(localStorage.getItem(LOCAL_IDENTITY_KEY)).toBe("logout-user");
+
+      client.clearLocalIdentity();
+
+      expect(localStorage.getItem(LOCAL_IDENTITY_KEY)).toBeNull();
+      expect((await client["_localPromise"]).identity).toStrictEqual({
+        userId: "logout-user",
+      });
+    });
+
     test("should set up BroadcastChannel for cross-tab communication", async () => {
       const originalBroadcastChannel = globalThis.BroadcastChannel;
       const constructorSpy = vi.fn();
@@ -298,7 +466,7 @@ describe("DocSyncClient", () => {
         // BroadcastChannel name should be user-specific: "docsync:{userId}"
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const channelName = constructorSpy.mock.calls[0]?.[0];
-        expect(channelName).toMatch(/^docsync:test-user-/);
+        expect(channelName).toBe("docsync:mock-user");
         expect(client).toBeInstanceOf(DocSyncClient);
       } finally {
         globalThis.BroadcastChannel = originalBroadcastChannel;

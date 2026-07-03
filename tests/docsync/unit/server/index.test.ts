@@ -3,13 +3,17 @@
 
 /* eslint-disable @typescript-eslint/no-empty-object-type */
 import { describe, test, expect, expectTypeOf } from "vitest";
-import { testWrapper, testPort } from "./utils.js";
+import {
+  testWrapper,
+  testPort,
+  createTestClientProvider,
+  createTestOperation,
+} from "./utils.js";
 import { DocSyncServer, inMemoryServerProvider } from "@docukit/docsync/server";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { DocSyncClient } from "@docukit/docsync/client";
-import type { ClientAuthConfig, ClientProvider } from "@docukit/docsync/client";
-import { Doc, type Operations } from "@docukit/docnode";
-import { testDocConfig } from "../../int/utils.js";
+import type { ClientAuthConfig } from "@docukit/docsync/client";
+import type { Doc, JsonDoc, Operations } from "@docukit/docnode";
 
 describe("authentication", () => {
   test("rejects when credentials do not resolve an identity", async () => {
@@ -40,6 +44,64 @@ describe("authentication", () => {
       await T.waitForConnect();
       expect(T.socket.connected).toBe(true);
     });
+  });
+
+  test("accepts matching claimed user ID", async () => {
+    const auth: ClientAuthConfig = {
+      mode: "token",
+      getToken: () => "valid-user1",
+    };
+    await testWrapper(
+      { auth, port: testPort(13), localUserId: "user1" },
+      async (T) => {
+        await T.waitForConnect();
+        expect(T.socket.connected).toBe(true);
+      },
+    );
+  });
+
+  test("rejects mismatched claimed user ID", async () => {
+    const auth: ClientAuthConfig = {
+      mode: "token",
+      getToken: () => "valid-user1",
+    };
+    await testWrapper(
+      { auth, port: testPort(14), localUserId: "old-user" },
+      async (T) => {
+        const error = await T.waitForError();
+        expect(error.message).toContain("claimed user ID mismatch");
+      },
+    );
+  });
+
+  test("does not expose claimed user ID to authenticate", async () => {
+    const port = testPort(15);
+    mockBrowserGlobals("device-id");
+    localStorage.setItem("docsync:localUserId", "request-user");
+
+    let sawClaimedUserId = false;
+    const server = new DocSyncServer({
+      docBinding: DocNodeBinding([]),
+      port,
+      provider: inMemoryServerProvider(),
+      authenticate: (input) => {
+        sawClaimedUserId = "claimedUserId" in input;
+        return { userId: "request-user" };
+      },
+    });
+
+    const client = createMockDocSyncClient(port, "request-user", {
+      mode: "request",
+    });
+    const socket = client["_socket"];
+
+    await new Promise<void>((resolve) => socket.on("connect", resolve));
+
+    expect(socket.connected).toBe(true);
+    expect(sawClaimedUserId).toBe(false);
+
+    client.disconnect();
+    await server.close();
   });
 
   test("accepts request auth without token", async () => {
@@ -190,6 +252,7 @@ describe("collaboration", () => {
 });
 
 function mockBrowserGlobals(deviceId: string): void {
+  const storage = new Map<string, string>([["docsync:deviceId", deviceId]]);
   Object.defineProperty(globalThis, "window", {
     configurable: true,
     value: {},
@@ -197,12 +260,18 @@ function mockBrowserGlobals(deviceId: string): void {
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
     value: {
-      clear: () => undefined,
-      getItem: () => deviceId,
-      key: () => null,
-      length: 1,
-      removeItem: () => undefined,
-      setItem: () => undefined,
+      clear: () => storage.clear(),
+      getItem: (key) => storage.get(key) ?? null,
+      key: (index) => Array.from(storage.keys())[index] ?? null,
+      get length() {
+        return storage.size;
+      },
+      removeItem: (key) => {
+        storage.delete(key);
+      },
+      setItem: (key, value) => {
+        storage.set(key, value);
+      },
     } satisfies Storage,
   });
 }
@@ -211,10 +280,7 @@ describe("presence", () => {
   test("cleans up presence on disconnect", async () => {
     // Manually create server and clients to test multi-client scenarios
     const port = testPort(10);
-    globalThis.window = {} as Window & typeof globalThis;
-    globalThis.localStorage = {
-      getItem: () => "device-id",
-    } as unknown as Storage;
+    mockBrowserGlobals("device-id");
 
     const server = new DocSyncServer({
       docBinding: DocNodeBinding([]),
@@ -328,10 +394,7 @@ describe("presence", () => {
 
   test("broadcasts presence only to other clients in the same room", async () => {
     const port = testPort(11);
-    globalThis.window = {} as Window & typeof globalThis;
-    globalThis.localStorage = {
-      getItem: () => "device-id",
-    } as unknown as Storage;
+    mockBrowserGlobals("device-id");
 
     const server = new DocSyncServer({
       docBinding: DocNodeBinding([]),
@@ -404,39 +467,15 @@ function createMockDocSyncClient(
   port: number,
   token: string,
   auth: ClientAuthConfig = { mode: "token", getToken: () => token },
-): DocSyncClient {
+): DocSyncClient<Doc, JsonDoc, Operations> {
   return new DocSyncClient({
     server: { url: `ws://localhost:${port}`, auth },
-    local: {
-      // TODO: review this. ServerProvider in the client?
-      provider: inMemoryServerProvider as unknown as (
-        identity: Identity,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ) => ClientProvider<any, any>,
-    },
+    local: { provider: () => createTestClientProvider() },
     docBinding: DocNodeBinding([]),
-  }) as unknown as DocSyncClient;
+  });
 }
 
 describe("sync", () => {
-  function createInsertOperation(): Operations {
-    const doc = new Doc(testDocConfig);
-    const childNodeDef = testDocConfig.extensions[0]?.nodes?.[0];
-    if (!childNodeDef) throw new Error("Missing child node definition");
-
-    let capturedOperations: Operations | undefined;
-    const unregister = doc.onChange((event) => {
-      capturedOperations = event.operations;
-    });
-
-    doc.root.append(doc.createNode(childNodeDef));
-    doc.forceCommit();
-    unregister();
-
-    if (!capturedOperations) throw new Error("Expected captured operations");
-    return capturedOperations;
-  }
-
   test("returns incremented clock", async () => {
     const auth: ClientAuthConfig = {
       mode: "token",
@@ -448,7 +487,7 @@ describe("sync", () => {
       const res = await T.sync({
         type: "test",
         docId: "doc-1",
-        operations: [{ type: "insert" }],
+        operations: [createTestOperation()],
         clock: 0,
       });
 
@@ -472,7 +511,7 @@ describe("sync", () => {
 
       // Send 100 operations individually
       for (let i = 0; i < 100; i++) {
-        const operation = createInsertOperation();
+        const operation = createTestOperation();
         const res = await T.sync({
           type: "test",
           docId,
