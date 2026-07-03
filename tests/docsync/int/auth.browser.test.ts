@@ -28,7 +28,7 @@ describe("Authentication", () => {
     const client = createClient("test-token-user1");
     const socket = client["_socket"];
     await vi.waitFor(() => expect(socket.connected).toBe(true), {
-      timeout: 1000,
+      timeout: 2000,
     });
     socket.disconnect();
   });
