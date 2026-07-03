@@ -7,9 +7,16 @@
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { testDocConfig } from "./utils.js";
 import { DocSyncServer, inMemoryServerProvider } from "@docukit/docsync/server";
+import type { TestProject } from "vitest/node";
 import { createServer } from "node:net";
 
 const PREFERRED_PORT = 8082;
+
+declare module "vitest" {
+  export interface ProvidedContext {
+    testServerPort: number;
+  }
+}
 
 // Extend globalThis to include test server port
 declare global {
@@ -51,7 +58,7 @@ const parseTestToken = (token: string): string | undefined => {
 let server: DocSyncServer | undefined;
 let serverPort: number;
 
-export async function setup() {
+export async function setup(project: TestProject) {
   // Find an available port
   serverPort = await findAvailablePort(PREFERRED_PORT);
 
@@ -67,12 +74,13 @@ export async function setup() {
     },
   });
 
-  // Give the server a moment to start
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  // Give the server a short moment to finish binding before browser workers connect.
+  await new Promise((resolve) => setTimeout(resolve, 10));
   console.log(`✅ Test server ready on port ${serverPort}\n`);
 
   // Store the port in globalThis so tests can access it
   globalThis.__TEST_SERVER_PORT__ = serverPort;
+  project.provide("testServerPort", serverPort);
 }
 
 export async function teardown() {
