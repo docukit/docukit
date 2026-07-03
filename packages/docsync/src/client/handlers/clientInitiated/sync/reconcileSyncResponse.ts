@@ -41,10 +41,6 @@ export async function reconcileSyncResponse<
   let replacementDoc: D | undefined;
 
   await provider.transaction("readwrite", async (ctx) => {
-    if (operationsBatches.length > 0) {
-      await ctx.deleteOperations({ docId, count: operationsBatches.length });
-    }
-
     const stored = await ctx.getSerializedDoc({ docId });
     const baseSerializedDoc = data.serializedDoc ?? stored?.serializedDoc;
     if (baseSerializedDoc === undefined) return;
@@ -69,6 +65,9 @@ export async function reconcileSyncResponse<
     if (stored === undefined && recheckStored !== undefined) return;
 
     await ctx.saveSerializedDoc({ serializedDoc, docId, clock: data.clock });
+    if (operationsBatches.length > 0) {
+      await ctx.deleteOperations({ docId, count: operationsBatches.length });
+    }
     replacementDoc = doc;
     didConsolidate = true;
   });
