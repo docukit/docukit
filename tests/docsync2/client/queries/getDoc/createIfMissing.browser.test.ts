@@ -78,6 +78,7 @@ describe("getDoc createIfMissing", () => {
     const testClient = createTestClient();
     const { queryClient, docSync, docBinding, docArgs } = testClient;
     await reconnectTestClient(testClient);
+    await docSync["_localPromise"];
     await disconnectTestClient(testClient);
 
     const observed = observeDoc(testClient, {

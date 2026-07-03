@@ -41,15 +41,16 @@ export const createTestDocSyncClient = <
   options?: { timing?: ClientConfig<D, S, O>["timing"]; userId?: string },
 ) => {
   const userId = options?.userId ?? generateTestUserId();
-  const identity = { userId, secret: "test-secret" };
+  localStorage.removeItem("docsync:localUserId");
+  const identity = { userId };
   const provider: ClientProvider<S, O> = indexedDBProvider(identity);
   const docSync = new DocSyncClient({
     docBinding,
     server: {
       url: getTestServerUrl(),
-      auth: { getToken: () => `test-token-${userId}` },
+      auth: { mode: "token", getToken: () => `test-token-${userId}` },
     },
-    local: { provider: () => provider, getIdentity: () => identity },
+    local: { provider: () => provider },
     ...(options?.timing ? { timing: options.timing } : {}),
   });
   const queryClient = docSync["_queryClient"];

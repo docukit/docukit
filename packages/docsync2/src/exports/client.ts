@@ -28,10 +28,13 @@ export type {
 } from "../shared/validators/getDocData.js";
 export type { GetDocKey } from "../shared/validators/getDocKey.js";
 export type {
+  ClientAuthConfig,
   ClientConfig,
   ClientProvider,
   ClientProviderContext,
   Identity,
+  RequestClientAuthConfig,
+  TokenClientAuthConfig,
 } from "../client/types.js";
 export type {
   ClientEventEmitter,

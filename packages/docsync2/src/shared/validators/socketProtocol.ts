@@ -8,9 +8,10 @@ export const docSyncEventNameSchema = v.union([
 ]);
 
 export const socketAuthSchema = v.object({
-  token: v.pipe(v.string(), v.minLength(1)),
+  token: v.optional(v.pipe(v.string(), v.minLength(1))),
   deviceId: v.pipe(v.string(), v.minLength(1)),
   clientId: v.pipe(v.string(), v.minLength(1)),
+  claimedUserId: v.nullish(v.pipe(v.string(), v.minLength(1))),
 });
 
 export const presenceSchema = v.record(v.string(), v.unknown());

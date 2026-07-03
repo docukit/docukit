@@ -6,6 +6,7 @@ import type {
   SyncRequest,
   SerializedDocPayload,
 } from "../shared/types.js";
+import type { IncomingMessage } from "node:http";
 import type { Server, Socket } from "socket.io";
 
 // ============================================================================
@@ -88,6 +89,13 @@ export type Validators<S extends object, O extends object> = {
   operations(input: unknown): O;
 };
 
+export type AuthenticateInput = { request: IncomingMessage; token?: string };
+
+export type AuthenticateResult<TContext extends object = object> = {
+  userId: string;
+  context?: TContext;
+};
+
 export type AuthenticatedSocketData<TContext extends object = object> = {
   userId: string;
   deviceId: string;
@@ -111,9 +119,9 @@ export type ServerConfig<
   port?: number;
   provider: ServerProvider<NoInfer<S>, NoInfer<O>>;
 
-  authenticate(ev: {
-    token: string;
-  }): MaybePromise<{ userId: string; context?: TContext } | undefined>;
+  authenticate(
+    ev: AuthenticateInput,
+  ): MaybePromise<AuthenticateResult<TContext> | undefined>;
 
   authorize?(ev: {
     type: DocSyncEventName;

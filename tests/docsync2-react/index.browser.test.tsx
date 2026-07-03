@@ -22,15 +22,9 @@ test("useDoc reads a DocSync2 getDoc query through React Query", async () => {
   const { client, useDoc } = createDocSyncClient({
     server: {
       url: testServerUrl(),
-      auth: { getToken: () => "test-token-docsync2-react" },
+      auth: { mode: "token", getToken: () => "test-token-docsync2-react" },
     },
-    local: {
-      provider: indexedDBProvider,
-      getIdentity: () => ({
-        userId: "docsync2-react-user",
-        secret: "test-secret",
-      }),
-    },
+    local: { provider: indexedDBProvider },
     docBinding: DocNodeBinding([docConfig]),
   });
 

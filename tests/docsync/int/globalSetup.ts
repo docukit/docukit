@@ -100,7 +100,11 @@ export async function setup(project: TestProject) {
     validators: docsync2Validators,
     port: docsync2ServerPort,
     provider: inMemoryDocSync2ServerProvider<JsonDoc, Operations>(),
-    authenticate: ({ token }) => {
+    authenticate: ({ request, token }) => {
+      if (!token) {
+        if (!request.headers.host) return undefined;
+        return { userId: "docsync2-request-user" };
+      }
       const userId = parseTestToken(token);
       if (!userId) return undefined;
       return { userId };

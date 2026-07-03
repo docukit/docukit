@@ -69,12 +69,24 @@ export class DocSyncServer<
         return;
       }
 
-      const { token, deviceId, clientId } = parsedAuth.output;
+      const { token, deviceId, clientId, claimedUserId } = parsedAuth.output;
+      const hasClaimedUserId =
+        claimedUserId !== null && claimedUserId !== undefined;
 
-      Promise.resolve(this._authenticate({ token }))
+      const authenticateInput = {
+        request: socket.request,
+        ...(token === undefined ? {} : { token }),
+      };
+
+      Promise.resolve(this._authenticate(authenticateInput))
         .then((authResult) => {
           if (!authResult) {
-            next(new Error("Authentication failed: invalid token"));
+            next(new Error("Authentication failed: invalid credentials"));
+            return;
+          }
+
+          if (hasClaimedUserId && authResult.userId !== claimedUserId) {
+            next(new Error("Authentication failed: claimed user ID mismatch"));
             return;
           }
 
@@ -110,6 +122,8 @@ export class DocSyncServer<
 
     this._io.on("connection", (socket) => {
       const { userId, deviceId, context } = socket.data;
+
+      socket.emit("identity", { userId });
 
       // Emit client connect event
       this._emit(this._clientConnectEventListeners, {

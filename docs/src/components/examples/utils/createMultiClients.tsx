@@ -23,13 +23,11 @@ const createClientForUser = (
     server: {
       url: env.NEXT_PUBLIC_DOCSYNC_SERVER_URL,
       auth: {
+        mode: "token",
         getToken: () => userId, // Use userId as token
       },
     },
-    local: {
-      provider: indexedDBProvider,
-      getIdentity: () => ({ userId, secret: "docs-demo" }),
-    },
+    local: { provider: indexedDBProvider },
     timing: { collabMaxDebounce: 10, singleClientMaxDebounce: 10 },
     docBinding: DocNodeBinding(docConfigs),
   });

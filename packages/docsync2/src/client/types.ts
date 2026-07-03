@@ -8,7 +8,16 @@ import type {
 import type { Socket } from "socket.io-client";
 import type { DocBinding } from "./bindings/types.js";
 
-export type Identity = { userId: string; secret: string };
+export type Identity = { userId: string };
+
+export type TokenClientAuthConfig = {
+  mode: "token";
+  getToken: () => MaybePromise<string>;
+};
+
+export type RequestClientAuthConfig = { mode: "request" };
+
+export type ClientAuthConfig = TokenClientAuthConfig | RequestClientAuthConfig;
 
 export type DeferredState<T> = {
   data: T;
@@ -31,7 +40,7 @@ export type ClientConfig<
   O extends object = object,
 > = {
   docBinding: DocBinding<D, S, O>;
-  server: { url: string; auth: { getToken: () => MaybePromise<string> } };
+  server: { url: string; auth: ClientAuthConfig };
   timing?: {
     /**
      * Maximum time to batch local operation updates while another user is
@@ -56,7 +65,6 @@ export type ClientConfig<
   };
   local: {
     provider: (identity: Identity) => ClientProvider<NoInfer<S>, NoInfer<O>>;
-    getIdentity: () => MaybePromise<Identity>;
   };
 };
 

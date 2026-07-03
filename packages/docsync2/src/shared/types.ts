@@ -70,6 +70,8 @@ type DirtyPayload = v.InferOutput<typeof dirtyPayloadSchema>;
 type CollaborationPayload = v.InferOutput<typeof collaborationPayloadSchema>;
 type PresencePayload = v.InferOutput<typeof presencePayloadSchema>;
 
+export type IdentityPayload = { userId: string };
+
 export type ClientToServerEvents<S extends object, O extends object> = {
   sync: SyncHandler<S, O>;
   presence: PresenceHandler;
@@ -78,6 +80,7 @@ export type ClientToServerEvents<S extends object, O extends object> = {
 };
 
 export type ServerToClientEvents = {
+  identity: (payload: IdentityPayload) => void;
   dirty: (payload: DirtyPayload) => void;
   collaboration: (payload: CollaborationPayload) => void;
   presence: (payload: PresencePayload) => void;
