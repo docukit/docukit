@@ -13,7 +13,7 @@ import {
   type DocNode,
 } from "@docukit/docnode";
 import { ulid } from "ulid";
-import { expect, vi, type Mock } from "vitest";
+import { expect, inject, vi, type Mock } from "vitest";
 
 // ============================================================================
 // Miscellaneous
@@ -39,7 +39,8 @@ declare global {
  * The port is set by globalSetup.ts and stored in globalThis.
  */
 const getTestServerUrl = (): string => {
-  const port = globalThis.__TEST_SERVER_PORT__ ?? 8082;
+  const injectedPort: number | undefined = inject("testServerPort");
+  const port = injectedPort ?? globalThis.__TEST_SERVER_PORT__ ?? 8082;
   return `ws://localhost:${port}`;
 };
 

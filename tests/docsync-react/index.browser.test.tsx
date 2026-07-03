@@ -1,4 +1,4 @@
-import { test, expectTypeOf, expect } from "vitest";
+import { expect, expectTypeOf, inject, test } from "vitest";
 import {
   createDocSyncClient,
   indexedDBProvider,
@@ -13,8 +13,11 @@ declare global {
   var __TEST_SERVER_PORT__: number | undefined;
 }
 
-const testServerUrl = () =>
-  `ws://localhost:${globalThis.__TEST_SERVER_PORT__ ?? 8082}`;
+const testServerUrl = () => {
+  const injectedPort: number | undefined = inject("testServerPort");
+  const port = injectedPort ?? globalThis.__TEST_SERVER_PORT__ ?? 8082;
+  return `ws://localhost:${port}`;
+};
 
 const countChildren = (doc: Doc): number => {
   let count = 0;

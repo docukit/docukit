@@ -27,6 +27,19 @@
 
 - **NEVER** inspect node IDs, operation contents, or document structure
 
+### DocSync Cleanup Rules
+
+- In `packages/docsync2`, do not add cleanups, disposers, or unsubscribe flows automatically.
+- First prove with an integration or GC test that there is a real memory leak that the JavaScript garbage collector cannot collect. `tests/docsync2/client/queries/getDoc/GC.test.ts` may be useful, or it may need to be improved.
+- Before proposing cleanup, first check whether references are already lost naturally, whether DocSync is storing unnecessary references, or whether TanStack Query already owns that state.
+- If cleanup still seems necessary after that investigation, compare realistic alternatives and explain the pros and cons before implementing it.
+
+### DocSync Test Rules
+
+- In `packages/docsync2`, prefer integration tests that include the full client-server architecture, or UI tests when the behavior is user-facing.
+- Avoid unit tests and partial integration tests with mocked parts by default. If one seems valuable because it checks complex behavior, first explain the mock, compare it with integration or UI alternatives, and wait for approval.
+- Do not add very low-level tests for trivial behavior, such as a function throwing when it misses a TypeScript-required parameter, or a very small function with obvious behavior.
+
 ## Tests
 
 - Test files should be highly declarative and easy to understand. Extract repetitive utilities, setup, or cleanup functions into utils.ts files.
@@ -39,7 +52,16 @@
 ## TypeScript Rules
 
 - **NEVER add `any` (or `as any`, `as unknown as ...`, etc.) without first stopping, presenting every alternative you can think of, and waiting for explicit approval.** This applies to both implementation code and tests, to both new code and edits to existing code, and to both function signatures (including generic defaults like `<T = any>`) and local values. If TS inference is failing, the right move is to surface the problem and the trade-offs — not to silence it with `any`. Even if the existing code already used `any`, do not preserve it without asking.
+- Use TypeScript inference as much as possible. Do not add explicit return types, object shape types, or wrapper aliases when the inferred type is clear and stable from the implementation.
 - Never call a function with an explicit type parameter. Let TypeScript infer it. For example, write `createQueryResultReducer(...)`, not `createQueryResultReducer<Data>(...)`.
+  - Accepted exception: `serverProvider` factory calls may use explicit type parameters when TypeScript cannot infer the serialized document and operation types from context.
+
+## Export Rules
+
+- Do not export types only because implementation code uses them internally.
+- Export a type only when it is used by public docs, public tests, or a real user-facing API.
+- Export as little runtime API as possible. Internal helpers should stay internal.
+- If a rare test needs a complex internal runtime helper, export it with the `_INTERNAL_` prefix and add a JSDoc `@internal` note on the source symbol.
 
 ## Critical Rules for Agents
 
