@@ -6,6 +6,7 @@ import {
   dispatchNetworkDocNotFound,
 } from "../../../utils/dispatchDocQueryAction.js";
 import { getOwnPresencePatch } from "../../../utils/getOwnPresencePatch.js";
+import { getLocalDocVersion } from "../../../utils/localDocVersion.js";
 import { request } from "../../../utils/request.js";
 import { setupDocChangeListener } from "../../../utils/setupDocChangeListener.js";
 import { reconcileSyncResponse } from "./reconcileSyncResponse.js";
@@ -45,6 +46,7 @@ function replaceDocInCache<
   client["_docsCache"].set(args.docId, {
     promisedDoc: nextPromisedDoc,
     refCount: cacheEntry.refCount,
+    localVersion: cacheEntry.localVersion,
     type: cacheEntry.type,
     ...(cacheEntry.localLoadMode && {
       localLoadMode: cacheEntry.localLoadMode,
@@ -94,6 +96,7 @@ export const handleSync = async <
   if (client["_localOpsBatchState"].has(docId)) {
     await client["_flushLocalOperations"](docId, { sync: false });
   }
+  const requestLocalVersion = getLocalDocVersion(client, docId);
 
   const { provider } = await client["_localPromise"];
   const socket = client["_socket"];
@@ -158,6 +161,7 @@ export const handleSync = async <
     docId,
     operationsBatches,
     localOperations: operations,
+    requestLocalVersion,
     data,
   });
 

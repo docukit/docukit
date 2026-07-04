@@ -111,6 +111,7 @@ describe("Local-First", () => {
       await otherTab.assertMemoryDoc([]);
       await otherDevice.assertMemoryDoc([]);
       await reference.assertIDBDoc({ doc: [], ops: [] });
+      await waitForLocalBroadcast();
       await otherTab.assertMemoryDoc(["Hello"]);
 
       // broadcastChannel then IDB
@@ -131,6 +132,7 @@ describe("Local-First", () => {
 
       reference.addChild("Hello");
       reference.doc?.forceCommit();
+      await waitForLocalBroadcast();
       await otherTab.assertMemoryDoc(["Hello"]);
       await reference.assertMemoryDoc(["Hello"]);
 

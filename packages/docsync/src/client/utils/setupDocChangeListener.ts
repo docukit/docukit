@@ -1,6 +1,7 @@
 import type { DocSyncClient } from "../index.js";
 import { flushPresenceDebounce } from "../handlers/clientInitiated/presence.js";
 import { getOwnPresencePatch } from "./getOwnPresencePatch.js";
+import { markLocalDocChanged } from "./localDocVersion.js";
 
 export function setupDocChangeListener<
   D extends object,
@@ -17,6 +18,10 @@ export function setupDocChangeListener<
       origin: changeOrigin,
       operation: operations,
     });
+
+    if (changeOrigin !== "network") {
+      markLocalDocChanged(client, docId);
+    }
 
     if (changeOrigin !== "local") {
       const timeoutBeforeChange =

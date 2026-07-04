@@ -56,6 +56,7 @@ type QueryListener = (result: QueryResult<DocData<object> | undefined>) => void;
 type DocCacheEntry<D> = {
   promisedDoc: Promise<D | undefined>;
   refCount: number;
+  localVersion: number;
   type: string;
   localLoadMode?: LocalLoadMode;
   queryResult: QueryResult<DocData<D> | undefined>;
@@ -233,6 +234,7 @@ export class DocSyncClient<
       this._docsCache.set(docId, {
         promisedDoc,
         refCount: 1,
+        localVersion: 0,
         type,
         localLoadMode,
         queryResult,

@@ -4,6 +4,7 @@ import type {
 } from "../../../../shared/types.js";
 import type { DocSyncClient } from "../../../index.js";
 import type { ClientProvider } from "../../../types.js";
+import { getLocalDocVersion } from "../../../utils/localDocVersion.js";
 
 export type ReconcileSyncResult<D extends object, O extends object> =
   | { type: "none" }
@@ -32,16 +33,38 @@ export async function reconcileSyncResponse<
     docId: string;
     operationsBatches: O[][];
     localOperations: O[];
+    requestLocalVersion: number;
     data: Extract<SyncResponse<S, O>, { data: unknown }>["data"];
   },
 ): Promise<ReconcileSyncResult<D, O>> {
-  const { provider, docId, operationsBatches, localOperations, data } = args;
+  const {
+    provider,
+    docId,
+    operationsBatches,
+    localOperations,
+    requestLocalVersion,
+    data,
+  } = args;
   const hasServerSnapshot = data.serializedDoc !== null;
   let didConsolidate = false;
+  let pendingProviderOperations: O[] = [];
   let replacementDoc: D | undefined;
 
   await provider.transaction("readwrite", async (ctx) => {
     const stored = await ctx.getSerializedDoc({ docId });
+    // A newer sync already updated IndexedDB; this response must not rewind it.
+    if (stored !== undefined && stored.clock > data.clock) {
+      return;
+    }
+    if (
+      stored !== undefined &&
+      stored.clock >= data.clock &&
+      localOperations.length === 0 &&
+      data.operations.length > 0
+    ) {
+      return;
+    }
+
     const baseSerializedDoc = data.serializedDoc ?? stored?.serializedDoc;
     if (baseSerializedDoc === undefined) return;
 
@@ -54,6 +77,11 @@ export async function reconcileSyncResponse<
     ) {
       return;
     }
+
+    const currentOperationsBatches = await ctx.getOperations({ docId });
+    pendingProviderOperations = currentOperationsBatches
+      .slice(operationsBatches.length)
+      .flat();
 
     const doc = client["_docBinding"].deserialize(baseSerializedDoc);
     applyOperations(client, doc, data.operations, { skipUndo: true });
@@ -73,9 +101,22 @@ export async function reconcileSyncResponse<
   });
 
   if (replacementDoc && hasServerSnapshot) {
-    const pendingLocalOperations =
+    const pendingMemoryOperations =
       client["_localOpsBatchState"].get(docId)?.data ?? [];
-    applyOperations(client, replacementDoc, pendingLocalOperations);
+    const hasUnrebuildableLocalMemory =
+      getLocalDocVersion(client, docId) > requestLocalVersion &&
+      pendingProviderOperations.length === 0 &&
+      pendingMemoryOperations.length === 0;
+
+    if (hasUnrebuildableLocalMemory) {
+      if (didConsolidate && data.operations.length > 0) {
+        return { type: "applyServerOperations", operations: data.operations };
+      }
+      return { type: "none" };
+    }
+
+    applyOperations(client, replacementDoc, pendingProviderOperations);
+    applyOperations(client, replacementDoc, pendingMemoryOperations);
     return { type: "replaceDoc", doc: replacementDoc };
   }
 
