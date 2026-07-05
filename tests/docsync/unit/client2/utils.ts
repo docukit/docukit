@@ -203,6 +203,7 @@ export const triggerSync = (
     client["_docsCache"].set(docId, {
       promisedDoc: Promise.resolve(doc),
       refCount: 1,
+      localVersion: 0,
       type: "test",
       queryResult: {
         status: "success",
