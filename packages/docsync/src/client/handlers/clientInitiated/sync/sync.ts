@@ -1,7 +1,15 @@
-import type { SyncRequest, SyncResponse } from "../../../shared/types.js";
-import type { DocSyncClient } from "../../index.js";
-import { getOwnPresencePatch } from "../../utils/getOwnPresencePatch.js";
-import { request } from "../../utils/request.js";
+import type { SyncRequest, SyncResponse } from "../../../../shared/types.js";
+import type { DocSyncClient } from "../../../index.js";
+import {
+  dispatchLocalDocFound,
+  dispatchNetworkDocFound,
+  dispatchNetworkDocNotFound,
+} from "../../../utils/dispatchDocQueryAction.js";
+import { getOwnPresencePatch } from "../../../utils/getOwnPresencePatch.js";
+import { getLocalDocVersion } from "../../../utils/localDocVersion.js";
+import { request } from "../../../utils/request.js";
+import { setupDocChangeListener } from "../../../utils/setupDocChangeListener.js";
+import { reconcileSyncResponse } from "./reconcileSyncResponse.js";
 
 /** Applies server operations to the cached doc. */
 async function applyServerOperations<
@@ -23,28 +31,22 @@ async function applyServerOperations<
   }
 }
 
-/**
- * TODO: Replaces the cached document (e.g. when server responds with a squashed doc).
- * Keeps refCount, presence, and presenceListeners unchanged.
- */
-function _replaceDocInCache<
+function replaceDocInCache<
   D extends object,
   S extends object,
   O extends object,
->(
-  client: DocSyncClient<D, S, O>,
-  args: { docId: string; doc?: D; serializedDoc?: S },
-): void {
+>(client: DocSyncClient<D, S, O>, args: { docId: string; doc: D }): void {
   const cacheEntry = client["_docsCache"].get(args.docId);
   if (!cacheEntry) return;
-  if (args.doc === undefined && args.serializedDoc === undefined) return;
 
-  const newDoc =
-    args.doc ?? client["_docBinding"].deserialize(args.serializedDoc!);
+  const previousPromisedDoc = cacheEntry.promisedDoc;
+  const nextPromisedDoc = Promise.resolve(args.doc);
+  setupDocChangeListener(client, args);
 
   client["_docsCache"].set(args.docId, {
-    promisedDoc: Promise.resolve(newDoc),
+    promisedDoc: nextPromisedDoc,
     refCount: cacheEntry.refCount,
+    localVersion: cacheEntry.localVersion,
     type: cacheEntry.type,
     ...(cacheEntry.localLoadMode && {
       localLoadMode: cacheEntry.localLoadMode,
@@ -54,6 +56,40 @@ function _replaceDocInCache<
     presence: cacheEntry.presence,
     presenceListeners: cacheEntry.presenceListeners,
   });
+
+  void previousPromisedDoc
+    .then((previousDoc) => {
+      const currentEntry = client["_docsCache"].get(args.docId);
+      if (
+        currentEntry?.promisedDoc === nextPromisedDoc &&
+        previousDoc &&
+        previousDoc !== args.doc
+      ) {
+        client["_docBinding"].dispose(previousDoc);
+      }
+    })
+    .catch(() => undefined);
+}
+
+function broadcastServerOperations<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
+  client: DocSyncClient<D, S, O>,
+  args: { docId: string; operations: O[] },
+): void {
+  const presence = getOwnPresencePatch(client, args.docId);
+  for (const op of args.operations) {
+    client["_bcHelper"]?.broadcast({
+      type: "OPERATIONS",
+      source: "network",
+      operations: op,
+      docId: args.docId,
+      flags: {},
+      presence,
+    });
+  }
 }
 
 /**
@@ -81,10 +117,10 @@ export const handleSync = async <
   if (client["_localOpsBatchState"].has(docId)) {
     await client["_flushLocalOperations"](docId, { sync: false });
   }
+  const requestLocalVersion = getLocalDocVersion(client, docId);
 
   const { provider } = await client["_localPromise"];
   const socket = client["_socket"];
-  const docBinding = client["_docBinding"];
 
   // Prepare payload: read operations and clock from provider.
   const [operationsBatches, stored] = await provider.transaction(
@@ -106,13 +142,14 @@ export const handleSync = async <
     return;
   }
   const type = cacheEntry.type;
-  const payload: SyncRequest<O> = {
+  const payload: SyncRequest<S, O> = {
     type,
     clock: clientClock,
     docId,
     operations,
+    serializedDoc: stored?.serializedDoc ?? null,
   };
-  const req = { type, docId, operations, clock: clientClock };
+  const req = payload;
 
   let response: SyncResponse<S, O>;
   try {
@@ -139,56 +176,29 @@ export const handleSync = async <
 
   const { data } = response;
   client["_events"].emit("sync", { req, data });
-  let didConsolidate = false;
 
-  await provider.transaction("readwrite", async (ctx) => {
-    if (operationsBatches.length > 0) {
-      await ctx.deleteOperations({ docId, count: operationsBatches.length });
-    }
-
-    const stored = await ctx.getSerializedDoc({ docId });
-    if (!stored) return;
-
-    if (stored.clock >= data.clock) {
-      didConsolidate = false;
-      return;
-    }
-
-    const serverOps = data.operations ?? [];
-    const allOps = [...serverOps, ...operations];
-    if (allOps.length === 0) return;
-
-    const doc = docBinding.deserialize(stored.serializedDoc);
-    for (const op of allOps) {
-      docBinding.applyOperations(doc, op);
-    }
-    const serializedDoc = docBinding.serialize(doc);
-
-    const recheckStored = await ctx.getSerializedDoc({ docId });
-    if (recheckStored?.clock !== stored.clock) return;
-
-    await ctx.saveSerializedDoc({ serializedDoc, docId, clock: data.clock });
-    didConsolidate = true;
+  const reconcileResult = await reconcileSyncResponse(client, {
+    provider,
+    docId,
+    operationsBatches,
+    localOperations: operations,
+    requestLocalVersion,
+    data,
   });
 
-  const persistedServerOperations = data.operations ?? [];
-  if (didConsolidate && persistedServerOperations.length > 0) {
+  if (reconcileResult.type === "replaceDoc") {
+    replaceDocInCache(client, { docId, doc: reconcileResult.doc });
+    dispatchLocalDocFound(client, docId, { doc: reconcileResult.doc, docId });
+    broadcastServerOperations(client, { docId, operations: data.operations });
+  } else if (reconcileResult.type === "applyServerOperations") {
     await applyServerOperations(client, {
       docId,
-      operations: persistedServerOperations,
+      operations: reconcileResult.operations,
     });
-
-    const presence = getOwnPresencePatch(client, docId);
-    for (const op of persistedServerOperations) {
-      client["_bcHelper"]?.broadcast({
-        type: "OPERATIONS",
-        source: "network",
-        operations: op,
-        docId,
-        flags: {},
-        presence,
-      });
-    }
+    broadcastServerOperations(client, {
+      docId,
+      operations: reconcileResult.operations,
+    });
   }
 
   const currentStatus = pushStatusByDocId.get(docId);
@@ -198,5 +208,19 @@ export const handleSync = async <
     void handleSync(client, docId);
     return;
   }
-  client["_markDocQueryIdle"](docId);
+  const latestCacheEntry = client["_docsCache"].get(docId);
+  if (!latestCacheEntry) return;
+  if (latestCacheEntry.queryResult.fetchStatus === "idle") return;
+
+  if (
+    latestCacheEntry.queryResult.status === "success" &&
+    latestCacheEntry.queryResult.data !== undefined
+  ) {
+    dispatchNetworkDocFound(client, docId, latestCacheEntry.queryResult.data);
+    return;
+  }
+
+  dispatchNetworkDocNotFound(client, docId, {
+    createIfMissing: latestCacheEntry.localLoadMode === "loadOrCreate",
+  });
 };

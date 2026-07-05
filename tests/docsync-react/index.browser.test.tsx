@@ -7,7 +7,7 @@ import { DocNodeBinding } from "@docukit/docsync-react/docnode";
 import type { Doc } from "@docukit/docnode";
 import type { DocData, QueryResult } from "@docukit/docsync/client";
 import { renderHook } from "vitest-browser-react";
-import { docConfig, id } from "./utils.js";
+import { ChildNode, docConfig, id } from "./utils.js";
 
 declare global {
   var __TEST_SERVER_PORT__: number | undefined;
@@ -19,11 +19,21 @@ const testServerUrl = () => {
   return `ws://localhost:${port}`;
 };
 
+const countChildren = (doc: Doc): number => {
+  let count = 0;
+  doc.root.children().forEach(() => {
+    count += 1;
+  });
+  return count;
+};
+const reactUserId = "John";
+
 test("createDocSyncClient", async () => {
+  localStorage.setItem("docsync:localUserId", reactUserId);
   const { useDoc } = createDocSyncClient({
     server: {
       url: testServerUrl(),
-      auth: { mode: "token", getToken: () => "test-token-John" },
+      auth: { mode: "token", getToken: () => `test-token-${reactUserId}` },
     },
     local: { provider: indexedDBProvider },
     docBinding: DocNodeBinding([docConfig]),
@@ -120,10 +130,11 @@ test("createDocSyncClient", async () => {
 }, 5000);
 
 test("client keeps own presence for debounced outgoing sync", async () => {
+  localStorage.setItem("docsync:localUserId", reactUserId);
   const { useDoc, usePresence, client } = createDocSyncClient({
     server: {
       url: testServerUrl(),
-      auth: { mode: "token", getToken: () => "test-token-John" },
+      auth: { mode: "token", getToken: () => `test-token-${reactUserId}` },
     },
     local: { provider: indexedDBProvider },
     timing: { singleClientMaxDebounce: 200 },
@@ -175,3 +186,101 @@ test("client keeps own presence for debounced outgoing sync", async () => {
   client.disconnect();
   client["_bcHelper"]?.close();
 });
+
+test("useDoc rerenders with the server doc after replacing an optimistic local doc", async () => {
+  const docId = id.ending(Date.now().toString().slice(-6));
+
+  localStorage.removeItem("docsync:localUserId");
+  const source = createDocSyncClient({
+    server: {
+      url: testServerUrl(),
+      auth: { mode: "token", getToken: () => `test-token-source-${docId}` },
+    },
+    local: { provider: indexedDBProvider },
+    timing: { singleClientMaxDebounce: 0 },
+    docBinding: DocNodeBinding([docConfig]),
+  });
+
+  if (!source.client) {
+    throw new Error("Expected source client in browser tests");
+  }
+  const sourceClient = source.client;
+  const sourceSyncedLocalOperation: boolean[] = [];
+  sourceClient.on("sync", (event) => {
+    if (event.req.operations.length > 0 && event.data) {
+      sourceSyncedLocalOperation.push(true);
+    }
+  });
+
+  const { result: sourceResult } = await renderHook(() =>
+    source.useDoc({ type: "test", id: docId, createIfMissing: true }),
+  );
+
+  await expect
+    .poll(
+      () =>
+        sourceResult.current.status === "success"
+          ? sourceResult.current.fetchStatus
+          : undefined,
+      { interval: 20, timeout: 2000 },
+    )
+    .toBe("idle");
+
+  if (sourceResult.current.status !== "success") {
+    throw new Error("Expected source doc result");
+  }
+
+  const sourceDoc = sourceResult.current.data.doc;
+  const child = sourceDoc.createNode(ChildNode);
+  child.state.value.set("server");
+  sourceDoc.root.append(child);
+
+  await expect
+    .poll(() => sourceSyncedLocalOperation.includes(true), {
+      interval: 20,
+      timeout: 2000,
+    })
+    .toBe(true);
+
+  sourceClient.disconnect();
+  sourceClient["_bcHelper"]?.close();
+
+  localStorage.removeItem("docsync:localUserId");
+  const reader = createDocSyncClient({
+    server: {
+      url: testServerUrl(),
+      auth: { mode: "token", getToken: () => `test-token-reader-${docId}` },
+    },
+    local: { provider: indexedDBProvider },
+    docBinding: DocNodeBinding([docConfig]),
+  });
+
+  if (!reader.client) {
+    throw new Error("Expected reader client in browser tests");
+  }
+  const readerClient = reader.client;
+
+  const { result: readerResult } = await renderHook(() =>
+    reader.useDoc({ type: "test", id: docId, createIfMissing: true }),
+  );
+
+  await expect
+    .poll(
+      () => {
+        const current = readerResult.current;
+        if (current.status !== "success" || current.fetchStatus !== "idle")
+          return -1;
+
+        return countChildren(current.data.doc);
+      },
+      { interval: 20, timeout: 2000 },
+    )
+    .toBe(1);
+
+  if (readerResult.current.status !== "success") {
+    throw new Error("Expected reader doc result");
+  }
+
+  readerClient.disconnect();
+  readerClient["_bcHelper"]?.close();
+}, 5000);

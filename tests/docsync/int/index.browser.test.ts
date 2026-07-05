@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { emptyIDB, testWrapper } from "./utils.js";
+import { emptyIDB, testWrapper, waitForLocalBroadcast } from "./utils.js";
 
 describe("Local-First", () => {
   test("cannot load doc twice", async () => {
@@ -111,6 +111,7 @@ describe("Local-First", () => {
       await otherTab.assertMemoryDoc([]);
       await otherDevice.assertMemoryDoc([]);
       await reference.assertIDBDoc({ doc: [], ops: [] });
+      await waitForLocalBroadcast();
       await otherTab.assertMemoryDoc(["Hello"]);
 
       // broadcastChannel then IDB
@@ -130,6 +131,8 @@ describe("Local-First", () => {
       otherTab.doc?.forceCommit();
 
       reference.addChild("Hello");
+      reference.doc?.forceCommit();
+      await waitForLocalBroadcast();
       await otherTab.assertMemoryDoc(["Hello"]);
       await reference.assertMemoryDoc(["Hello"]);
 
@@ -146,6 +149,7 @@ describe("Local-First", () => {
       otherTab.doc?.forceCommit();
 
       reference.addChildSkippingUndo("Hello");
+      await waitForLocalBroadcast();
 
       await reference.assertMemoryDoc(["Hello"]);
       await otherTab.assertMemoryDoc(["Hello"]);
@@ -231,10 +235,7 @@ describe("Local-First", () => {
       otherDevice.connect();
       await reference.assertMemoryDoc(["A", "B"]);
       await otherTab.assertMemoryDoc(["A", "B"]);
-      // otherDevice added B locally first, then received A from server
-      // CRDT ordering may differ based on insertion order vs deterministic ID ordering
-      // TODO: find a way to deterministically insert with conflicts
-      await otherDevice.assertMemoryDoc(["B", "A"]);
+      await otherDevice.assertMemoryDoc(["A", "B"]);
 
       await reference.assertIDBDoc({ doc: ["A", "B"], ops: [] });
       await otherTab.assertIDBDoc({ doc: ["A", "B"], ops: [] });
@@ -280,10 +281,7 @@ describe("Local-First", () => {
       otherDevice.connect();
       await reference.assertMemoryDoc(["A", "B", "C"]);
       await otherTab.assertMemoryDoc(["B", "A", "C"]);
-      // otherDevice added B locally first, then received A from server
-      // CRDT ordering may differ based on insertion order vs deterministic ID ordering
-      // TODO: find a way to deterministically insert with conflicts
-      await otherDevice.assertMemoryDoc(["C", "A", "B"]);
+      await otherDevice.assertMemoryDoc(["A", "B", "C"]);
 
       await reference.assertIDBDoc({ doc: ["A", "B", "C"], ops: [] });
       await otherTab.assertIDBDoc({ doc: ["A", "B", "C"], ops: [] });

@@ -58,7 +58,13 @@ export type SyncRequestEvent<O = unknown, S = unknown> = {
   clientId: string;
   status: "success" | "error";
 
-  req: { type: string; docId: string; operations: O[]; clock: number };
+  req: {
+    type: string;
+    docId: string;
+    operations: O[];
+    serializedDoc: S | null;
+    clock: number;
+  };
 
   res?: { operations: O[]; clock: number | null; serializedDoc: S | null };
 

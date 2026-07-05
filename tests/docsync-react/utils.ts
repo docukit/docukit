@@ -1,8 +1,13 @@
-import type { DocConfig } from "@docukit/docnode";
+import { defineNode, string, type DocConfig } from "@docukit/docnode";
+
+export const ChildNode = defineNode({
+  type: "child",
+  state: { value: string("") },
+});
 
 export const docConfig: DocConfig = {
   type: "test",
-  extensions: [{ nodes: [{ type: "test", state: {} }] }],
+  extensions: [{ nodes: [ChildNode] }],
 };
 
 export const id = {

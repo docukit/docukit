@@ -93,6 +93,25 @@ export const tick = (ms = 3) =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 // ============================================================================
+// Sync Payload Helpers
+// ============================================================================
+
+type SyncPayload = {
+  docId: string;
+  operations: Operations[];
+  serializedDoc: JsonDoc | null;
+  clock: number;
+};
+
+export const s = (payload: Partial<SyncPayload> = {}): SyncPayload => ({
+  docId: "test-doc",
+  operations: [],
+  serializedDoc: null,
+  clock: 1,
+  ...payload,
+});
+
+// ============================================================================
 // Doc Setup Helper
 // ============================================================================
 
@@ -184,6 +203,7 @@ export const triggerSync = (
     client["_docsCache"].set(docId, {
       promisedDoc: Promise.resolve(doc),
       refCount: 1,
+      localVersion: 0,
       type: "test",
       queryResult: {
         status: "success",

@@ -122,11 +122,7 @@ export async function testWrapper(
     });
   const sync = (payload: SyncPayloadInput) =>
     new Promise<SyncResponse>((resolve) => {
-      socket.emit(
-        "sync",
-        { type: "test", operations: [], clock: 0, ...payload },
-        resolve,
-      );
+      socket.emit("sync", s(payload), resolve);
     });
 
   await fn({ server, client, waitForConnect, waitForError, socket, sync });
@@ -137,10 +133,10 @@ type SyncPayload = {
   type: string;
   docId: string;
   operations: Operations[];
+  serializedDoc: JsonDoc | null;
   clock: number;
 };
-type SyncPayloadInput = Pick<SyncPayload, "docId"> &
-  Partial<Omit<SyncPayload, "docId">>;
+type SyncPayloadInput = Partial<SyncPayload>;
 type SyncResponse =
   | {
       data: {
@@ -156,6 +152,15 @@ type SyncResponse =
         message: string;
       };
     };
+
+export const s = (payload: SyncPayloadInput = {}): SyncPayload => ({
+  type: "test",
+  docId: "test-doc",
+  operations: [],
+  serializedDoc: null,
+  clock: 0,
+  ...payload,
+});
 
 export function createTestOperation(): Operations {
   const doc = new Doc(testDocConfig);

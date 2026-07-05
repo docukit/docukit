@@ -10,6 +10,7 @@ import {
   ops,
   emptyOps,
   ChildNode,
+  s,
   spyOnRequest,
   triggerSync,
 } from "./utils.js";
@@ -41,9 +42,7 @@ describe("Client 2", () => {
       const docId = generateDocId();
       spyOnRequest(client).mockImplementation(
         () =>
-          new Promise((r) =>
-            setTimeout(() => r({ data: { docId, clock: 1 } }), 50),
-          ),
+          new Promise((r) => setTimeout(() => r({ data: s({ docId }) }), 50)),
       );
 
       await saveOperations(client, docId);
@@ -62,10 +61,7 @@ describe("Client 2", () => {
       spyOnRequest(client).mockImplementation(
         (_event, payload) =>
           new Promise((r) =>
-            setTimeout(
-              () => r({ data: { docId: payload.docId, clock: 1 } }),
-              20,
-            ),
+            setTimeout(() => r({ data: s({ docId: payload.docId }) }), 20),
           ),
       );
 
@@ -91,9 +87,7 @@ describe("Client 2", () => {
       const requestSpy = spyOnRequest(client);
       requestSpy.mockImplementation(
         () =>
-          new Promise((r) =>
-            setTimeout(() => r({ data: { docId, clock: 1 } }), 50),
-          ),
+          new Promise((r) => setTimeout(() => r({ data: s({ docId }) }), 50)),
       );
 
       await saveOperations(client, docId);
@@ -113,7 +107,7 @@ describe("Client 2", () => {
       const requestSpy = spyOnRequest(client);
       requestSpy.mockImplementation(() => {
         callCount++;
-        return Promise.resolve({ data: { docId, clock: callCount } });
+        return Promise.resolve({ data: s({ docId, clock: callCount }) });
       });
 
       await setupDocWithOperations(client, docId);
@@ -155,12 +149,15 @@ describe("Client 2", () => {
 
       triggerSync(client, docId);
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
-      expect(requestSpy).toHaveBeenCalledWith("sync", {
-        type: "test",
-        clock: 0,
-        docId,
-        operations: testOperations,
-      });
+      expect(requestSpy).toHaveBeenCalledWith(
+        "sync",
+        expect.objectContaining({
+          type: "test",
+          clock: 0,
+          docId,
+          operations: testOperations,
+        }),
+      );
     });
 
     test("should set status to pushing at start", async () => {
@@ -170,7 +167,7 @@ describe("Client 2", () => {
       // eslint-disable-next-line @typescript-eslint/require-await -- sync mock of async interface
       spyOnRequest(client).mockImplementation(async () => {
         statusDuringPush = client["_pushStatusByDocId"].get(docId);
-        return { data: { docId, clock: 1 } };
+        return { data: s({ docId }) };
       });
 
       await setupDocWithOperations(client, docId);
@@ -215,7 +212,7 @@ describe("Client 2", () => {
     test("should handle client sends operations + server returns no operations", async () => {
       const client = await createClient();
       const requestSpy = spyOnRequest(client);
-      requestSpy.mockResolvedValue({ data: { docId: "test-doc", clock: 1 } });
+      requestSpy.mockResolvedValue({ data: s() });
       const docId = generateDocId();
 
       await setupDocWithOperations(client, docId, {
@@ -244,12 +241,7 @@ describe("Client 2", () => {
       // Mock API to return server operations
       const requestSpy = spyOnRequest(client);
       requestSpy.mockResolvedValue({
-        data: {
-          docId,
-          operations: serverOperations,
-          serializedDoc: null,
-          clock: 1,
-        },
+        data: s({ docId, operations: serverOperations }),
       });
 
       await setupDocWithOperations(client, docId, {
@@ -271,7 +263,7 @@ describe("Client 2", () => {
     test("should handle client sends no operations + server returns no operations (pull with no updates)", async () => {
       const client = await createClient();
       const requestSpy = spyOnRequest(client);
-      requestSpy.mockResolvedValue({ data: { docId: "test-doc", clock: 1 } });
+      requestSpy.mockResolvedValue({ data: s() });
       const docId = generateDocId();
 
       // Setup a document without pending operations (pure pull scenario)
@@ -322,12 +314,7 @@ describe("Client 2", () => {
       // Mock API to return server operations
       const requestSpy = spyOnRequest(client);
       requestSpy.mockResolvedValue({
-        data: {
-          docId,
-          operations: serverOperations,
-          serializedDoc: null,
-          clock: 1,
-        },
+        data: s({ docId, operations: serverOperations }),
       });
 
       // Setup a document without pending operations (pure pull scenario)
@@ -375,7 +362,7 @@ describe("Client 2", () => {
     test("should delete operations after successful push", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      spyOnRequest(client).mockResolvedValue({ data: { docId, clock: 1 } });
+      spyOnRequest(client).mockResolvedValue({ data: s({ docId }) });
 
       await setupDocWithOperations(client, docId, {
         operations: [emptyOps(), emptyOps()],
@@ -396,7 +383,7 @@ describe("Client 2", () => {
       requestSpy.mockImplementation(
         () =>
           new Promise((resolve) =>
-            setTimeout(() => resolve({ data: { docId, clock: 1 } }), 30),
+            setTimeout(() => resolve({ data: s({ docId }) }), 30),
           ),
       );
 
@@ -417,7 +404,7 @@ describe("Client 2", () => {
     test("should consolidate operations into serialized doc after push", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      spyOnRequest(client).mockResolvedValue({ data: { docId, clock: 1 } });
+      spyOnRequest(client).mockResolvedValue({ data: s({ docId }) });
 
       const docBinding = client["_docBinding"];
       const provider = (await client["_localPromise"]).provider;
@@ -444,7 +431,7 @@ describe("Client 2", () => {
     test("should increment clock after consolidation", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      spyOnRequest(client).mockResolvedValue({ data: { docId, clock: 6 } });
+      spyOnRequest(client).mockResolvedValue({ data: s({ docId, clock: 6 }) });
 
       await setupDocWithOperations(client, docId, { clock: 5 });
       triggerSync(client, docId);
@@ -456,7 +443,7 @@ describe("Client 2", () => {
     test("should set status to idle after successful push", async () => {
       const client = await createClient();
       const docId = generateDocId();
-      spyOnRequest(client).mockResolvedValue({ data: { docId, clock: 1 } });
+      spyOnRequest(client).mockResolvedValue({ data: s({ docId }) });
 
       await setupDocWithOperations(client, docId);
       triggerSync(client, docId);
@@ -478,7 +465,7 @@ describe("Client 2", () => {
       requestSpy.mockImplementation(
         () =>
           new Promise((resolve) =>
-            setTimeout(() => resolve({ data: { docId, clock: 1 } }), 20),
+            setTimeout(() => resolve({ data: s({ docId }) }), 20),
           ),
       );
 
@@ -498,9 +485,7 @@ describe("Client 2", () => {
       requestSpy.mockImplementation(() => {
         callCount++;
         if (callCount === 1) return Promise.reject(new Error("Network error"));
-        return Promise.resolve({
-          data: { docId, operations: [], serializedDoc: null, clock: 1 },
-        });
+        return Promise.resolve({ data: s({ docId }) });
       });
 
       await setupDocWithOperations(client, docId);
@@ -520,9 +505,7 @@ describe("Client 2", () => {
         statusHistory.push(client["_pushStatusByDocId"].get(docId));
         if (statusHistory.length === 1)
           return Promise.reject(new Error("Network error"));
-        return Promise.resolve({
-          data: { docId, operations: [], serializedDoc: null, clock: 1 },
-        });
+        return Promise.resolve({ data: s({ docId }) });
       });
 
       await setupDocWithOperations(client, docId);
@@ -542,7 +525,7 @@ describe("Client 2", () => {
           receivedOperations.push(payload.operations);
         }
         return Promise.resolve({
-          data: { docId, clock: receivedOperations.length },
+          data: s({ docId, clock: receivedOperations.length }),
         });
       });
 
@@ -574,7 +557,7 @@ describe("Client 2", () => {
         maxConcurrent = Math.max(maxConcurrent, concurrentCalls);
         await tick();
         concurrentCalls--;
-        return { data: { docId, clock: 1 } };
+        return { data: s({ docId }) };
       });
 
       await setupDocWithOperations(client, docId);
@@ -592,7 +575,7 @@ describe("Client 2", () => {
       requestSpy.mockImplementation(
         () =>
           new Promise((resolve) =>
-            setTimeout(() => resolve({ data: { docId, clock: 1 } }), 30),
+            setTimeout(() => resolve({ data: s({ docId }) }), 30),
           ),
       );
 
@@ -622,7 +605,7 @@ describe("Client 2", () => {
       requestSpy.mockImplementation(async (_event, payload) => {
         callOrder.push(payload.docId);
         await tick();
-        return { data: { docId: payload.docId, clock: 1 } };
+        return { data: s({ docId: payload.docId }) };
       });
 
       for (const docId of [docId1, docId2]) {
@@ -644,7 +627,7 @@ describe("Client 2", () => {
       spyOnRequest(client).mockImplementation(
         () =>
           new Promise((resolve) =>
-            setTimeout(() => resolve({ data: { docId, clock: 1 } }), 20),
+            setTimeout(() => resolve({ data: s({ docId }) }), 20),
           ),
       );
 

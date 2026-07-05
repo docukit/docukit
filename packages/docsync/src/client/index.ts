@@ -21,21 +21,22 @@ import { handleDeleteDoc } from "./handlers/clientInitiated/deleteDoc.js";
 import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { handleCollaboration } from "./handlers/serverInitiated/collaboration.js";
 import { handleDirty } from "./handlers/serverInitiated/dirty.js";
-import {
-  flushPresenceDebounce,
-  handlePresence,
-} from "./handlers/clientInitiated/presence.js";
+import { handlePresence } from "./handlers/clientInitiated/presence.js";
 import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
-import { handleSync } from "./handlers/clientInitiated/sync.js";
+import { handleSync } from "./handlers/clientInitiated/sync/sync.js";
 import { handleUnsubscribe } from "./handlers/clientInitiated/unsubscribe.js";
 import { handleIdentity } from "./handlers/serverInitiated/identity.js";
 import type { BCHelper } from "./utils/BCHelper.js";
+import {
+  dispatchLocalDocFound,
+  dispatchLocalQueryError,
+} from "./utils/dispatchDocQueryAction.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
-import { getOwnPresencePatch } from "./utils/getOwnPresencePatch.js";
 import {
   clearLocalIdentity as clearStoredLocalIdentity,
   readLocalIdentity,
 } from "./utils/localIdentity.js";
+import { setupDocChangeListener } from "./utils/setupDocChangeListener.js";
 import { setupLocalPromise } from "./utils/setupLocalPromise.js";
 
 // TODO: review this type!
@@ -55,6 +56,7 @@ type QueryListener = (result: QueryResult<DocData<object> | undefined>) => void;
 type DocCacheEntry<D> = {
   promisedDoc: Promise<D | undefined>;
   refCount: number;
+  localVersion: number;
   type: string;
   localLoadMode?: LocalLoadMode;
   queryResult: QueryResult<DocData<D> | undefined>;
@@ -232,6 +234,7 @@ export class DocSyncClient<
       this._docsCache.set(docId, {
         promisedDoc,
         refCount: 1,
+        localVersion: 0,
         type,
         localLoadMode,
         queryResult,
@@ -262,17 +265,6 @@ export class DocSyncClient<
     }
   }
 
-  protected _markDocQueryIdle(docId: string): void {
-    const cacheEntry = this._docsCache.get(docId);
-    if (!cacheEntry) return;
-    if (cacheEntry.queryResult.fetchStatus === "idle") return;
-
-    this._emitQueryResult(docId, {
-      ...cacheEntry.queryResult,
-      fetchStatus: "idle",
-    });
-  }
-
   private _observePromisedDoc(
     docId: string,
     promisedDoc: Promise<D | undefined>,
@@ -287,7 +279,7 @@ export class DocSyncClient<
         delete cacheEntry.localLoadMode;
 
         if (doc) {
-          this._setupChangeListener(doc, docId);
+          setupDocChangeListener(this, { doc, docId });
           this._events.emit("docLoad", {
             docId,
             source: localLoadMode === "loadOrCreate" ? "created" : "local",
@@ -295,13 +287,11 @@ export class DocSyncClient<
           });
         }
 
-        this._emitQueryResult(docId, {
-          status: "success",
-          fetchStatus: doc ? cacheEntry.queryResult.fetchStatus : "idle",
-          data: doc ? { doc, docId } : undefined,
-        });
-
         if (doc) {
+          dispatchLocalDocFound(this, docId, { doc, docId });
+        }
+
+        if (this._socket.connected) {
           void handleSync(this, docId);
         }
       } catch (e) {
@@ -311,11 +301,7 @@ export class DocSyncClient<
         delete cacheEntry.localLoadMode;
 
         const error = e instanceof Error ? e : new Error(String(e));
-        this._emitQueryResult(docId, {
-          ...cacheEntry.queryResult,
-          status: "error",
-          error,
-        });
+        dispatchLocalQueryError(this, docId, error);
       }
     })();
   }
@@ -360,44 +346,6 @@ export class DocSyncClient<
 
   setPresence({ docId, presence }: { docId: string; presence: unknown }) {
     void handlePresence(this, { docId, presence });
-  }
-
-  private _setupChangeListener(doc: D, docId: string) {
-    this._docBinding.onChange(doc, ({ flags, operations }) => {
-      const changeOrigin = this._changeOrigin;
-
-      this._events.emit("change", {
-        docId,
-        origin: changeOrigin,
-        operation: operations,
-      });
-
-      if (changeOrigin !== "local") {
-        const timeoutBeforeChange =
-          this._presenceDebounceState.get(docId)?.timeout;
-        queueMicrotask(() =>
-          flushPresenceDebounce(this, docId, { timeoutBeforeChange }),
-        );
-        return;
-      }
-
-      void this.onLocalOperations({ docId, operations: [operations] });
-
-      // Defer BC send so Lexical can update selection first; then the presence we
-      // include is the new cursor. Two frames so setPresence (from selection change) has run.
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          this._bcHelper?.broadcast({
-            type: "OPERATIONS",
-            source: "local-broadcast",
-            operations,
-            docId,
-            flags: flags?.skipUndo ? { skipUndo: true } : {},
-            presence: getOwnPresencePatch(this, docId),
-          });
-        });
-      });
-    });
   }
 
   protected _applyOperationsFrom(

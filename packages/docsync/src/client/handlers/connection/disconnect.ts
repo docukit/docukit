@@ -1,4 +1,5 @@
 import type { DocSyncClient } from "../../index.js";
+import { dispatchDocQueryDisconnected } from "../../utils/dispatchDocQueryAction.js";
 
 export function handleDisconnect<
   D extends object = object,
@@ -13,6 +14,7 @@ export function handleDisconnect<
       delete state.timeout;
     }
     for (const docId of client["_docsCache"].keys()) {
+      dispatchDocQueryDisconnected(client, docId);
       client["_bcHelper"]?.broadcast({
         type: "PRESENCE",
         docId,
@@ -22,6 +24,9 @@ export function handleDisconnect<
     client["_events"].emit("disconnect", { reason });
   });
   client["_socket"].on("connect_error", (err) => {
+    for (const docId of client["_docsCache"].keys()) {
+      dispatchDocQueryDisconnected(client, docId);
+    }
     client["_events"].emit("disconnect", { reason: err.message });
   });
 }

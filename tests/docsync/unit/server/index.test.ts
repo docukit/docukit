@@ -14,6 +14,7 @@ import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { DocSyncClient } from "@docukit/docsync/client";
 import type { ClientAuthConfig } from "@docukit/docsync/client";
 import type { Doc, JsonDoc, Operations } from "@docukit/docnode";
+import { testDocConfig } from "../../int/utils.js";
 
 describe("authentication", () => {
   test("rejects when credentials do not resolve an identity", async () => {
@@ -194,14 +195,14 @@ describe("collaboration", () => {
     await new Promise((resolve) =>
       socket1.emit(
         "sync",
-        { type: "test", docId, operations: [], clock: 0 },
+        { type: "test", docId, operations: [], serializedDoc: null, clock: 0 },
         resolve,
       ),
     );
     await new Promise((resolve) =>
       socketSameUser.emit(
         "sync",
-        { type: "test", docId, operations: [], clock: 0 },
+        { type: "test", docId, operations: [], serializedDoc: null, clock: 0 },
         resolve,
       ),
     );
@@ -218,7 +219,7 @@ describe("collaboration", () => {
     await new Promise((resolve) =>
       socket2.emit(
         "sync",
-        { type: "test", docId, operations: [], clock: 0 },
+        { type: "test", docId, operations: [], serializedDoc: null, clock: 0 },
         resolve,
       ),
     );
@@ -313,14 +314,26 @@ describe("presence", () => {
       new Promise((resolve) =>
         socket1.emit(
           "sync",
-          { type: "test", docId, operations: [], clock: 0 },
+          {
+            type: "test",
+            docId,
+            operations: [],
+            serializedDoc: null,
+            clock: 0,
+          },
           resolve,
         ),
       ),
       new Promise((resolve) =>
         socket2.emit(
           "sync",
-          { type: "test", docId, operations: [], clock: 0 },
+          {
+            type: "test",
+            docId,
+            operations: [],
+            serializedDoc: null,
+            clock: 0,
+          },
           resolve,
         ),
       ),
@@ -426,7 +439,7 @@ describe("presence", () => {
     await new Promise((resolve) => {
       socket1.emit(
         "sync",
-        { type: "test", docId, operations: [], clock: 0 },
+        { type: "test", docId, operations: [], serializedDoc: null, clock: 0 },
         resolve,
       );
     });
@@ -496,6 +509,72 @@ describe("sync", () => {
     });
   });
 
+  test("saves a client snapshot when the server document is missing", async () => {
+    const auth: ClientAuthConfig = {
+      mode: "token",
+      getToken: () => "valid-user1",
+    };
+    await testWrapper({ auth }, async (T) => {
+      await T.waitForConnect();
+
+      const docId = "01kfpgjsabrpdcw0qgh5evhy2h";
+      const docBinding = DocNodeBinding([testDocConfig]);
+      const childNodeDef = testDocConfig.extensions[0]?.nodes?.[0];
+      if (!childNodeDef) throw new Error("Missing child node definition");
+
+      const { doc } = docBinding.create("test", docId);
+      doc.root.append(doc.createNode(childNodeDef));
+      const serializedDoc = docBinding.serialize(doc);
+
+      const saveRes = await T.sync({ docId, serializedDoc, clock: 0 });
+      expect("error" in saveRes).toBe(false);
+
+      const loadRes = await T.sync({ docId, clock: 0 });
+      expect("error" in loadRes).toBe(false);
+      if ("data" in loadRes) {
+        expect(loadRes.data.serializedDoc).toStrictEqual(serializedDoc);
+      }
+    });
+  });
+
+  test("does not return a server snapshot when the client has a same-clock snapshot", async () => {
+    const auth: ClientAuthConfig = {
+      mode: "token",
+      getToken: () => "valid-user1",
+    };
+    await testWrapper({ auth }, async (T) => {
+      await T.waitForConnect();
+
+      const docId = "01kfpgjsabrpdcw0qgh5evhy2j";
+      const docBinding = DocNodeBinding([testDocConfig]);
+      const { doc } = docBinding.create("test", docId);
+      const serializedDoc = docBinding.serialize(doc);
+
+      const saveRes = await T.sync({ docId, serializedDoc, clock: 0 });
+      expect("error" in saveRes).toBe(false);
+
+      const sameClockRes = await T.sync({ docId, serializedDoc, clock: 0 });
+      expect("error" in sameClockRes).toBe(false);
+      if ("data" in sameClockRes) {
+        expect(sameClockRes.data.serializedDoc).toBe(null);
+        expect(sameClockRes.data.operations).toStrictEqual([]);
+        expect(sameClockRes.data.clock).toBe(0);
+      }
+
+      const noLocalSnapshotRes = await T.sync({
+        docId,
+        serializedDoc: null,
+        clock: 0,
+      });
+      expect("error" in noLocalSnapshotRes).toBe(false);
+      if ("data" in noLocalSnapshotRes) {
+        expect(noLocalSnapshotRes.data.serializedDoc).toStrictEqual(
+          serializedDoc,
+        );
+      }
+    });
+  });
+
   test("squashes operations after threshold", async () => {
     const auth: ClientAuthConfig = {
       mode: "token",
@@ -541,6 +620,15 @@ describe("sync", () => {
         expect(res2.data.clock).toBe(100);
         expect(res2.data.serializedDoc).toBeDefined();
         expect(res2.data.operations).toStrictEqual([]);
+      }
+
+      const res3 = await T.sync({ docId, clock: 0 });
+
+      expect("error" in res3).toBe(false);
+      if ("data" in res3) {
+        expect(res3.data.clock).toBe(100);
+        expect(res3.data.serializedDoc).toBeDefined();
+        expect(res3.data.operations).toStrictEqual([]);
       }
     });
   });
