@@ -772,12 +772,14 @@ export async function createEditorPair(page: Page, context: BrowserContext) {
 }
 
 async function waitForEditorReady(page: Page) {
-  const reference = page.locator("#reference").first();
-  await reference.waitFor({ state: "visible" });
-  await reference
-    .locator("[data-lexical-editor] p")
-    .first()
-    .waitFor({ state: "visible" });
+  for (const selector of ["#reference", "#otherTab", "#otherDevice"]) {
+    const editor = page.locator(selector).first();
+    await editor.waitFor({ state: "visible" });
+    await editor
+      .locator("[data-lexical-editor] p")
+      .first()
+      .waitFor({ state: "visible" });
+  }
 }
 
 export function collapsed(offset: number): SelectionExpectation {

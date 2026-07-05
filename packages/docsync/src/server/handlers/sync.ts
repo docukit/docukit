@@ -105,7 +105,7 @@ export function handleSync<
           let operationsClock = clock;
           if (
             serverDoc !== undefined &&
-            (serializedDoc === null || serverDoc.clock >= clock)
+            (serializedDoc === null || serverDoc.clock > clock)
           ) {
             responseSerializedDoc = serverDoc.serializedDoc;
             operationsClock = serverDoc.clock;

@@ -71,6 +71,27 @@ function replaceDocInCache<
     .catch(() => undefined);
 }
 
+function broadcastServerOperations<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
+  client: DocSyncClient<D, S, O>,
+  args: { docId: string; operations: O[] },
+): void {
+  const presence = getOwnPresencePatch(client, args.docId);
+  for (const op of args.operations) {
+    client["_bcHelper"]?.broadcast({
+      type: "OPERATIONS",
+      source: "network",
+      operations: op,
+      docId: args.docId,
+      flags: {},
+      presence,
+    });
+  }
+}
+
 /**
  * Sync (push) a document to the server. Queues if already pushing (sets
  * pushing-with-pending), otherwise sets pushing and runs the sync.
@@ -168,23 +189,16 @@ export const handleSync = async <
   if (reconcileResult.type === "replaceDoc") {
     replaceDocInCache(client, { docId, doc: reconcileResult.doc });
     dispatchLocalDocFound(client, docId, { doc: reconcileResult.doc, docId });
+    broadcastServerOperations(client, { docId, operations: data.operations });
   } else if (reconcileResult.type === "applyServerOperations") {
     await applyServerOperations(client, {
       docId,
       operations: reconcileResult.operations,
     });
-
-    const presence = getOwnPresencePatch(client, docId);
-    for (const op of reconcileResult.operations) {
-      client["_bcHelper"]?.broadcast({
-        type: "OPERATIONS",
-        source: "network",
-        operations: op,
-        docId,
-        flags: {},
-        presence,
-      });
-    }
+    broadcastServerOperations(client, {
+      docId,
+      operations: reconcileResult.operations,
+    });
   }
 
   const currentStatus = pushStatusByDocId.get(docId);

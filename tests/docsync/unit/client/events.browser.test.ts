@@ -16,6 +16,7 @@ import {
   emptyOps,
   spyOnRequest,
   triggerSync,
+  s,
 } from "../client2/utils.js";
 
 describe("Client Events", () => {
@@ -112,7 +113,7 @@ describe("Client Events", () => {
       const testOps = [emptyOps()];
       await saveOperations(client, docId, testOps);
 
-      spyOnRequest(client).mockResolvedValue({ data: { docId, clock: 1 } });
+      spyOnRequest(client).mockResolvedValue({ data: s({ docId, clock: 1 }) });
 
       let syncSuccess = false;
       client.on("sync", (event) => {

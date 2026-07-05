@@ -100,7 +100,13 @@ export async function reconcileSyncResponse<
     didConsolidate = true;
   });
 
-  if (replacementDoc && hasServerSnapshot) {
+  const hasConcurrentServerAndLocalOperations =
+    data.operations.length > 0 && localOperations.length > 0;
+
+  if (
+    replacementDoc &&
+    (hasServerSnapshot || hasConcurrentServerAndLocalOperations)
+  ) {
     const pendingMemoryOperations =
       client["_localOpsBatchState"].get(docId)?.data ?? [];
     const hasUnrebuildableLocalMemory =

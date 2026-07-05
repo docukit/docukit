@@ -537,6 +537,44 @@ describe("sync", () => {
     });
   });
 
+  test("does not return a server snapshot when the client has a same-clock snapshot", async () => {
+    const auth: ClientAuthConfig = {
+      mode: "token",
+      getToken: () => "valid-user1",
+    };
+    await testWrapper({ auth }, async (T) => {
+      await T.waitForConnect();
+
+      const docId = "01kfpgjsabrpdcw0qgh5evhy2j";
+      const docBinding = DocNodeBinding([testDocConfig]);
+      const { doc } = docBinding.create("test", docId);
+      const serializedDoc = docBinding.serialize(doc);
+
+      const saveRes = await T.sync({ docId, serializedDoc, clock: 0 });
+      expect("error" in saveRes).toBe(false);
+
+      const sameClockRes = await T.sync({ docId, serializedDoc, clock: 0 });
+      expect("error" in sameClockRes).toBe(false);
+      if ("data" in sameClockRes) {
+        expect(sameClockRes.data.serializedDoc).toBe(null);
+        expect(sameClockRes.data.operations).toStrictEqual([]);
+        expect(sameClockRes.data.clock).toBe(0);
+      }
+
+      const noLocalSnapshotRes = await T.sync({
+        docId,
+        serializedDoc: null,
+        clock: 0,
+      });
+      expect("error" in noLocalSnapshotRes).toBe(false);
+      if ("data" in noLocalSnapshotRes) {
+        expect(noLocalSnapshotRes.data.serializedDoc).toStrictEqual(
+          serializedDoc,
+        );
+      }
+    });
+  });
+
   test("squashes operations after threshold", async () => {
     const auth: ClientAuthConfig = {
       mode: "token",
