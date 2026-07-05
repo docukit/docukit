@@ -48,7 +48,7 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
   function useDoc(args: {
     type: string;
     id: string;
-    createIfMissing?: false;
+    createIfMissing?: boolean;
   }): QueryResult<DocData | undefined>;
   function useDoc(args: GetDocArgs): QueryResult<DocData | undefined> {
     const [result, setResult] = useState<QueryResult<DocData | undefined>>({

@@ -46,6 +46,14 @@ test("createDocSyncClient", async () => {
   expectTypeOf<ReturnType<typeof useDoc>>().toEqualTypeOf<MaybeDocResult>();
 
   const typeCheck = (hook: typeof useDoc) => {
+    const shouldCreate = Math.random() > 0.5;
+    const dynamicCreateIfMissingResult = hook({
+      type: "test",
+      id: "123",
+      createIfMissing: shouldCreate,
+    });
+    expectTypeOf(dynamicCreateIfMissingResult).toEqualTypeOf<MaybeDocResult>();
+
     // @ts-expect-error - type is required
     hook({ createIfMissing: true, id: "123" });
 
