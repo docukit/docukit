@@ -795,7 +795,7 @@ describe("DocSyncClient", () => {
   });
 
   describe("local operations debounce", () => {
-    test("batches collaborative local operation persistence until max debounce", async () => {
+    test("persists collaborative local operations every fixed IDB debounce while server sync waits for collab debounce", async () => {
       vi.useFakeTimers();
 
       try {
@@ -807,13 +807,14 @@ describe("DocSyncClient", () => {
           timing: { collabMaxDebounce: 1000 },
         });
         await client["_localPromise"];
+        cacheDebounceTestDoc(client, "doc-1");
         client["_collabDocIds"].add("doc-1");
 
         client.onLocalOperations({
           docId: "doc-1",
           operations: [{ value: "A" }],
         });
-        await vi.advanceTimersByTimeAsync(999);
+        await vi.advanceTimersByTimeAsync(49);
         expect(saveOperations).not.toHaveBeenCalled();
 
         client.onLocalOperations({
@@ -828,13 +829,37 @@ describe("DocSyncClient", () => {
           docId: "doc-1",
           operations: [{ value: "A" }, { value: "B" }],
         });
+
+        const emitMock = getSocketEmitMock(client);
+        expect(emitMock).not.toHaveBeenCalledWith(
+          "sync",
+          expect.objectContaining({ docId: "doc-1" }),
+          expect.any(Function),
+        );
+
+        await vi.advanceTimersByTimeAsync(949);
+        await flushMicrotasks();
+        expect(emitMock).not.toHaveBeenCalledWith(
+          "sync",
+          expect.objectContaining({ docId: "doc-1" }),
+          expect.any(Function),
+        );
+
+        await vi.advanceTimersByTimeAsync(1);
+        await flushMicrotasks();
+
+        expect(emitMock).toHaveBeenCalledWith(
+          "sync",
+          expect.objectContaining({ docId: "doc-1" }),
+          expect.any(Function),
+        );
         client.disconnect();
       } finally {
         vi.useRealTimers();
       }
     });
 
-    test("uses single-client debounce when document has no collaborators", async () => {
+    test("persists single-client local operations every fixed IDB debounce", async () => {
       vi.useFakeTimers();
 
       try {
@@ -843,7 +868,7 @@ describe("DocSyncClient", () => {
         );
         const client = createDebounceTestClient({
           saveOperations,
-          timing: { collabMaxDebounce: 50, singleClientMaxDebounce: 100 },
+          timing: { collabMaxDebounce: 50, singleClientMaxDebounce: 1000 },
         });
         await client["_localPromise"];
 
@@ -857,13 +882,7 @@ describe("DocSyncClient", () => {
           docId: "doc-1",
           operations: [{ value: "B" }],
         });
-        await vi.advanceTimersByTimeAsync(40);
-
-        client.onLocalOperations({
-          docId: "doc-1",
-          operations: [{ value: "C" }],
-        });
-        await vi.advanceTimersByTimeAsync(19);
+        await vi.advanceTimersByTimeAsync(9);
         await flushMicrotasks();
         expect(saveOperations).not.toHaveBeenCalled();
 
@@ -873,7 +892,24 @@ describe("DocSyncClient", () => {
         expect(saveOperations).toHaveBeenCalledOnce();
         expect(saveOperations).toHaveBeenCalledWith({
           docId: "doc-1",
-          operations: [{ value: "A" }, { value: "B" }, { value: "C" }],
+          operations: [{ value: "A" }, { value: "B" }],
+        });
+
+        client.onLocalOperations({
+          docId: "doc-1",
+          operations: [{ value: "C" }],
+        });
+        await vi.advanceTimersByTimeAsync(49);
+        await flushMicrotasks();
+        expect(saveOperations).toHaveBeenCalledOnce();
+
+        await vi.advanceTimersByTimeAsync(1);
+        await flushMicrotasks();
+
+        expect(saveOperations).toHaveBeenCalledTimes(2);
+        expect(saveOperations).toHaveBeenLastCalledWith({
+          docId: "doc-1",
+          operations: [{ value: "C" }],
         });
         client.disconnect();
       } finally {
@@ -881,7 +917,7 @@ describe("DocSyncClient", () => {
       }
     });
 
-    test("flushes pending single-client operations when a collaborator appears", async () => {
+    test("syncs saved single-client operations when a collaborator appears", async () => {
       vi.useFakeTimers();
 
       try {
@@ -898,10 +934,7 @@ describe("DocSyncClient", () => {
         cacheDebounceTestDoc(client, docId);
         client.onLocalOperations({ docId, operations: [{ value: "A" }] });
 
-        await vi.advanceTimersByTimeAsync(2999);
-        expect(saveOperations).not.toHaveBeenCalled();
-
-        emitMockedCollaboration(client, { docId, hasCollaborators: true });
+        await vi.advanceTimersByTimeAsync(50);
         await flushMicrotasks();
 
         expect(saveOperations).toHaveBeenCalledWith({
@@ -910,6 +943,23 @@ describe("DocSyncClient", () => {
         });
 
         const emitMock = getSocketEmitMock(client);
+        expect(emitMock).not.toHaveBeenCalledWith(
+          "sync",
+          expect.objectContaining({ docId }),
+          expect.any(Function),
+        );
+
+        await vi.advanceTimersByTimeAsync(2949);
+        await flushMicrotasks();
+        expect(emitMock).not.toHaveBeenCalledWith(
+          "sync",
+          expect.objectContaining({ docId }),
+          expect.any(Function),
+        );
+
+        emitMockedCollaboration(client, { docId, hasCollaborators: true });
+        await flushMicrotasks();
+
         await expect
           .poll(() => emitMock.mock.calls.some(([event]) => event === "sync"))
           .toBe(true);

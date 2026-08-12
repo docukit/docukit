@@ -11,7 +11,6 @@ export function handleConnect<
     client["_events"].emit("connect");
     void (async () => {
       const syncedDocIds = new Set<string>();
-      // TODO: This is defensive for long debounces; consider debouncing only server sync, not local IDB persistence.
       await Promise.all(
         [...client["_localOpsBatchState"].keys()].map(async (docId) => {
           const didFlush = await client["_flushLocalOperations"](docId, {
