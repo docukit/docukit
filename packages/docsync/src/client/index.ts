@@ -49,6 +49,11 @@ type LocalOpsBatchState<O extends object> = DeferredState<O[]> & {
   startedAt: number;
 };
 
+type SyncDebounceState = {
+  timeout?: ReturnType<typeof setTimeout>;
+  startedAt: number;
+};
+
 type PushStatus = "idle" | "pushing" | "pushing-with-pending";
 type ChangeOrigin = "local" | "network" | "local-broadcast";
 type LocalLoadMode = "load" | "loadOrCreate";
@@ -64,6 +69,8 @@ type DocCacheEntry<D> = {
   presence: Presence;
   presenceListeners: Set<(presence: Presence) => void>;
 };
+
+const LOCAL_IDB_MAX_DEBOUNCE = 50;
 
 export class DocSyncClient<
   D extends object = object,
@@ -82,6 +89,7 @@ export class DocSyncClient<
 
   // Flow control state (batching, debouncing, push queueing)
   protected _localOpsBatchState = new Map<string, LocalOpsBatchState<O>>();
+  protected _syncDebounceState = new Map<string, SyncDebounceState>();
   protected _collabMaxDebounce: number;
   protected _singleClientMaxDebounce: number;
   protected _collabDocIds = new Set<string>();
@@ -422,6 +430,9 @@ export class DocSyncClient<
       const currentEntry = this._docsCache.get(docId);
       if (currentEntry?.refCount === 0) {
         this._docsCache.delete(docId);
+        const syncState = this._syncDebounceState.get(docId);
+        clearTimeout(syncState?.timeout);
+        this._syncDebounceState.delete(docId);
         const presenceState = this._presenceDebounceState.get(docId);
         clearTimeout(presenceState?.timeout);
         this._presenceDebounceState.delete(docId);
@@ -438,7 +449,7 @@ export class DocSyncClient<
     // Get or create the batch state for this document
     let state = this._localOpsBatchState.get(docId);
     const now = Date.now();
-    const maxDebounce = this._collabDocIds.has(docId)
+    const syncMaxDebounce = this._collabDocIds.has(docId)
       ? this._collabMaxDebounce
       : this._singleClientMaxDebounce;
 
@@ -453,8 +464,34 @@ export class DocSyncClient<
       state.data.push(...operations);
     }
 
+    if (now - state.startedAt >= LOCAL_IDB_MAX_DEBOUNCE) {
+      void this._flushLocalOperations(docId, { sync: false });
+    } else {
+      state.timeout ??= setTimeout(
+        () => {
+          void this._flushLocalOperations(docId, { sync: false });
+        },
+        LOCAL_IDB_MAX_DEBOUNCE - (now - state.startedAt),
+      );
+    }
+
+    this._debounceSync(docId, syncMaxDebounce, now);
+  }
+
+  protected _debounceSync(
+    docId: string,
+    maxDebounce: number,
+    now: number,
+  ): void {
+    let state = this._syncDebounceState.get(docId);
+
+    if (!state) {
+      state = { startedAt: now };
+      this._syncDebounceState.set(docId, state);
+    }
+
     if (maxDebounce === 0 || now - state.startedAt >= maxDebounce) {
-      void this._flushLocalOperations(docId);
+      void handleSync(this, docId);
       return;
     }
 
@@ -462,7 +499,7 @@ export class DocSyncClient<
 
     state.timeout = setTimeout(
       () => {
-        void this._flushLocalOperations(docId);
+        void handleSync(this, docId);
       },
       maxDebounce - (now - state.startedAt),
     );
@@ -476,6 +513,7 @@ export class DocSyncClient<
     if (!currentState) return false;
 
     const opsToSave = currentState.data;
+    clearTimeout(currentState.timeout);
     this._localOpsBatchState.delete(docId);
 
     if (opsToSave.length > 0) {

@@ -106,6 +106,10 @@ export const handleSync = async <
 ): Promise<void> => {
   if (!client["_socket"].connected) return;
 
+  const syncDebounceState = client["_syncDebounceState"].get(docId);
+  clearTimeout(syncDebounceState?.timeout);
+  client["_syncDebounceState"].delete(docId);
+
   const pushStatusByDocId = client["_pushStatusByDocId"];
   const status = pushStatusByDocId.get(docId) ?? "idle";
   if (status !== "idle") {
