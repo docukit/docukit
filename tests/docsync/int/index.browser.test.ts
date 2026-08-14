@@ -99,6 +99,49 @@ describe("Local-First", () => {
     });
   });
 
+  test("same-user client syncs operations persisted before server debounce", async () => {
+    await testWrapper(async ({ docId, reference, otherTab, otherDevice }) => {
+      const syncCallCount = (client: typeof reference) =>
+        client.reqSpy.mock.calls.filter(
+          ([event, payload]) => event === "sync" && payload.docId === docId,
+        ).length;
+
+      otherTab.disconnect();
+      otherDevice.disconnect();
+
+      await reference.loadDoc();
+      await reference.assertIDBDoc(emptyIDB);
+      reference.client["_singleClientMaxDebounce"] = 1500;
+      reference.client["_collabMaxDebounce"] = 1500;
+      const referenceSyncCallsBeforeChange = syncCallCount(reference);
+
+      reference.addChild("Hello");
+      await reference.assertMemoryDoc(["Hello"]);
+      await reference.assertIDBDoc({ doc: [], ops: ["Hello"] });
+      expect(syncCallCount(reference)).toBe(referenceSyncCallsBeforeChange);
+
+      reference.disconnect();
+      reference.unLoadDoc();
+
+      const otherTabSyncCallsBeforeLoad = syncCallCount(otherTab);
+      await otherTab.loadDoc();
+      await otherTab.assertMemoryDoc(["Hello"]);
+      await otherTab.assertIDBDoc({ doc: [], ops: ["Hello"] });
+      expect(syncCallCount(otherTab)).toBe(otherTabSyncCallsBeforeLoad);
+
+      otherTab.connect();
+      await otherTab.assertIDBDoc({ doc: ["Hello"], ops: [] });
+      expect(syncCallCount(otherTab)).toBeGreaterThan(
+        otherTabSyncCallsBeforeLoad,
+      );
+
+      otherDevice.connect();
+      await otherDevice.loadDoc();
+      await otherDevice.assertMemoryDoc(["Hello"]);
+      await otherDevice.assertIDBDoc({ doc: ["Hello"], ops: [] });
+    });
+  });
+
   test("load -> add child", async () => {
     await testWrapper(async ({ reference, otherDevice, otherTab }) => {
       await reference.loadDoc();
