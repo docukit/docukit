@@ -1,5 +1,6 @@
 {
   "name": "@docukit/docsync2-react",
+  "private": true,
   "version": "0.0.0-alpha.0",
   "license": "SEE LICENSE IN LICENSE.md",
   "type": "module",
