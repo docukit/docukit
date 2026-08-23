@@ -8,7 +8,7 @@ import {
   type LexicalNode,
 } from "lexical";
 
-import { LexicalDocNode } from "./lexicalDocNode.js";
+import { createLexicalDocRootNode, LexicalDocNode } from "./lexicalDocNode.js";
 import type { KeyBinding } from "./types.js";
 
 /**
@@ -29,6 +29,10 @@ export function initializeEditorFromDoc(
     () => {
       const root = $getRoot();
       root.clear();
+      const rootDefinition = createLexicalDocRootNode(doc.root.type);
+      if (doc.root.is(rootDefinition)) {
+        root.updateFromJSON(doc.root.state.j.get());
+      }
 
       const processChildren = (
         parentDocNode: DocNode,

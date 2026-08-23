@@ -7,9 +7,10 @@ import {
   type LexicalEditor,
   type LexicalNode,
   type NodeKey,
+  type SerializedRootNode,
 } from "lexical";
 
-import { LexicalDocNode } from "./lexicalDocNode.js";
+import { createLexicalDocRootNode, LexicalDocNode } from "./lexicalDocNode.js";
 import { SKIP_UNDO_TAG } from "./constants.js";
 import type { KeyBinding } from "./types.js";
 
@@ -60,6 +61,14 @@ export function syncLexicalToDocNode(
           // Read Lexical state and sync to DocNode
           editorState.read(() => {
             const lexicalRoot = $getRoot();
+            const rootDefinition = createLexicalDocRootNode(doc.root.type);
+            if (doc.root.is(rootDefinition)) {
+              const serialized: SerializedRootNode = {
+                ...lexicalRoot.exportJSON(),
+                children: [],
+              };
+              doc.root.state.j.set(serialized);
+            }
             $syncLexicalToDocNode(
               doc,
               doc.root,

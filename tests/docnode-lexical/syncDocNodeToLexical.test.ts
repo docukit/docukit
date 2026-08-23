@@ -3,14 +3,77 @@ import {
   createEditor,
   type ParagraphNode,
   type SerializedParagraphNode,
+  type SerializedRootNode,
   type SerializedTextNode,
 } from "lexical";
 import { describe, expect, test } from "vitest";
 
-import { syncLexicalWithDoc, LexicalDocNode } from "@docukit/docnode-lexical";
+import { Doc } from "@docukit/docnode";
+import {
+  createLexicalDocNodeConfig,
+  LexicalDocNode,
+  LexicalDocRootNode,
+  syncLexicalWithDoc,
+} from "@docukit/docnode-lexical";
 import { createLexicalDoc } from "./utils.js";
 
+const createDocWithRootState = (rootState: SerializedRootNode) =>
+  Doc.fromJSON(createLexicalDocNodeConfig(), [
+    "01kc52hq510g6y44jhq0wqrjb3",
+    "docnode-lexical",
+    { j: JSON.stringify(rootState) },
+  ]);
+
 describe("docnode to lexical sync", () => {
+  test("initializes root metadata", () => {
+    const rootState: SerializedRootNode = {
+      children: [],
+      direction: "rtl",
+      format: "",
+      indent: 0,
+      type: "root",
+      version: 1,
+    };
+    const doc = createDocWithRootState(rootState);
+    const editor = createEditor({
+      namespace: "MyEditor",
+      onError: (error) => {
+        console.error(error);
+      },
+    });
+
+    syncLexicalWithDoc(editor, doc);
+
+    expect(editor.getEditorState().toJSON().root).toStrictEqual(rootState);
+  });
+
+  test("syncs live root metadata updates", () => {
+    const rootState: SerializedRootNode = {
+      children: [],
+      direction: "rtl",
+      format: "",
+      indent: 0,
+      type: "root",
+      version: 1,
+    };
+    const doc = createDocWithRootState(rootState);
+    const editor = createEditor({
+      namespace: "MyEditor",
+      onError: (error) => {
+        console.error(error);
+      },
+    });
+    syncLexicalWithDoc(editor, doc);
+
+    if (!doc.root.is(LexicalDocRootNode)) {
+      throw new Error("Expected a LexicalDocRootNode");
+    }
+    doc.root.state.j.set({ ...rootState, direction: "ltr" });
+    doc.forceCommit();
+
+    expect(editor.getEditorState().toJSON().root.direction).toBe("ltr");
+  });
+
   test("add paragraph to empty doc", () => {
     const editor = createEditor({
       namespace: "MyEditor",

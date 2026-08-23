@@ -2,6 +2,7 @@ export { syncLexicalWithDoc } from "../index.js";
 export { SKIP_UNDO_TAG } from "../constants.js";
 export {
   LexicalDocNode,
+  LexicalDocRootNode,
   createLexicalDocNodeConfig,
 } from "../lexicalDocNode.js";
 export { syncPresence, updatePresence } from "../presence/index.js";
