@@ -11,7 +11,7 @@ import {
   type SerializedLexicalNode,
 } from "lexical";
 
-import { LexicalDocNode } from "../lexicalDocNode.js";
+import { createLexicalDocRootNode, LexicalDocNode } from "../lexicalDocNode.js";
 import {
   getIsApplyingOwnChanges,
   setIsApplyingOwnChanges,
@@ -266,6 +266,14 @@ function $applyDocNodeOperations(
   // Apply state patches (update node properties)
   // updateFromJSON() safely updates properties while preserving children
   for (const docNodeId in statePatch) {
+    if (docNodeId === doc.root.id) {
+      const rootDefinition = createLexicalDocRootNode(doc.root.type);
+      if (doc.root.is(rootDefinition)) {
+        lexicalRoot.getWritable().updateFromJSON(doc.root.state.j.get());
+      }
+      continue;
+    }
+
     const lexicalKey = docNodeIdToLexicalKey.get(docNodeId);
     if (!lexicalKey) {
       continue;

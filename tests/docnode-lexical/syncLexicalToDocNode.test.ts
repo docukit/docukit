@@ -127,6 +127,71 @@ describe("docnode to lexical", () => {
 });
 
 describe("lexical to docnode sync", () => {
+  test("preserves the full serialized editor state", () => {
+    const sourceEditor = createEditor({
+      namespace: "SourceEditor",
+      onError: (error) => {
+        console.error(error);
+      },
+    });
+    const doc = createLexicalDoc();
+    syncLexicalWithDoc(sourceEditor, doc);
+
+    sourceEditor.update(
+      () => {
+        const root = $getRoot();
+        root.setDirection("rtl");
+        root.append($createParagraphNode().append($createTextNode("Hello")));
+      },
+      { discrete: true },
+    );
+    const expected = JSON.stringify(sourceEditor.getEditorState().toJSON());
+
+    const restoredEditor = createEditor({
+      namespace: "RestoredEditor",
+      onError: (error) => {
+        console.error(error);
+      },
+    });
+    syncLexicalWithDoc(restoredEditor, doc);
+
+    expect(JSON.stringify(restoredEditor.getEditorState().toJSON())).toBe(
+      expected,
+    );
+  });
+
+  test("syncs root metadata", () => {
+    const editor = createEditor({
+      namespace: "MyEditor",
+      onError: (error) => {
+        console.error(error);
+      },
+    });
+    const doc = createLexicalDoc();
+    syncLexicalWithDoc(editor, doc);
+
+    editor.update(
+      () => {
+        $getRoot().setDirection("rtl");
+      },
+      { discrete: true },
+    );
+
+    assertJson(doc, [
+      "root",
+      {
+        j: JSON.stringify({
+          children: [],
+          direction: "rtl",
+          format: "",
+          indent: 0,
+          type: "root",
+          version: 1,
+        }),
+      },
+    ]);
+  });
+
   test("add paragraph to empty editor", () => {
     const editor = createEditor({
       namespace: "MyEditor",
