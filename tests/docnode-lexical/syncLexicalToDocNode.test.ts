@@ -127,6 +127,87 @@ describe("docnode to lexical", () => {
 });
 
 describe("lexical to docnode sync", () => {
+  test("does not create operations for dirty but semantically unchanged nodes", () => {
+    const doc = createLexicalDoc();
+    const paragraph = doc.createNode(LexicalDocNode);
+    const text = doc.createNode(LexicalDocNode);
+
+    // Deliberately use a different object-key order than Lexical's exportJSON.
+    // These values describe the same nodes and must not become local changes
+    // when Lexical marks them dirty during plugin initialization.
+    paragraph.state.j.set({
+      version: 1,
+      type: "paragraph",
+      textStyle: "",
+      textFormat: 0,
+      indent: 0,
+      format: "",
+      direction: null,
+      children: [],
+    });
+    text.state.j.set({
+      version: 1,
+      type: "text",
+      text: "Initial",
+      style: "",
+      mode: "normal",
+      format: 0,
+      detail: 0,
+    });
+    paragraph.append(text);
+    doc.root.append(paragraph);
+    doc.forceCommit();
+
+    const editor = createEditor({
+      namespace: "MyEditor",
+      onError: (error) => {
+        console.error(error);
+      },
+    });
+    syncLexicalWithDoc(editor, doc);
+
+    let changeCount = 0;
+    const unregister = doc.onChange(() => {
+      changeCount++;
+    });
+
+    editor.update(
+      () => {
+        const lexicalParagraph = $getRoot().getFirstChild() as
+          | ParagraphNode
+          | undefined;
+        const lexicalText = lexicalParagraph?.getFirstChild() as
+          | TextNode
+          | undefined;
+        lexicalParagraph?.getWritable();
+        lexicalText?.getWritable();
+      },
+      { discrete: true },
+    );
+
+    expect(changeCount).toBe(0);
+
+    editor.update(
+      () => {
+        const lexicalParagraph = $getRoot().getFirstChild() as
+          | ParagraphNode
+          | undefined;
+        const lexicalText = lexicalParagraph?.getFirstChild() as
+          | TextNode
+          | undefined;
+        lexicalText?.setTextContent("Updated");
+      },
+      { discrete: true },
+    );
+
+    expect(changeCount).toBe(1);
+    expect(
+      (doc.root.first?.first as DocNode<typeof LexicalDocNode>).state.j.get()
+        .text,
+    ).toBe("Updated");
+    unregister();
+  });
+
   test("add paragraph to empty editor", () => {
     const editor = createEditor({
       namespace: "MyEditor",

@@ -36,6 +36,10 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
     applyOperations: (doc, operations, flags) => {
       doc.applyOperations(operations, flags);
     },
+    exportHistory: (doc) => doc.undoManager.exportHistory(),
+    importHistory: (doc, history) => {
+      doc.undoManager.importHistory(history);
+    },
     dispose: (doc) => doc.dispose(),
   });
 };

@@ -35,12 +35,26 @@ function replaceDocInCache<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, args: { docId: string; doc: D }): void {
+>(
+  client: DocSyncClient<D, S, O>,
+  args: {
+    docId: string;
+    doc: D;
+    exportedHistory?: { promisedDoc: Promise<D | undefined>; value: unknown };
+  },
+): void {
   const cacheEntry = client["_docsCache"].get(args.docId);
   if (!cacheEntry) return;
 
   const previousPromisedDoc = cacheEntry.promisedDoc;
   const nextPromisedDoc = Promise.resolve(args.doc);
+  const docBinding = client["_docBinding"];
+  if (
+    args.exportedHistory?.promisedDoc === previousPromisedDoc &&
+    docBinding.importHistory
+  ) {
+    docBinding.importHistory(args.doc, args.exportedHistory.value);
+  }
   setupDocChangeListener(client, args);
 
   client["_docsCache"].set(args.docId, {
@@ -69,6 +83,33 @@ function replaceDocInCache<
       }
     })
     .catch(() => undefined);
+}
+
+async function exportHistoryForPotentialReplacement<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
+  client: DocSyncClient<D, S, O>,
+  args: {
+    docId: string;
+    hasServerSnapshot: boolean;
+    hasConcurrentOperations: boolean;
+  },
+): Promise<
+  { promisedDoc: Promise<D | undefined>; value: unknown } | undefined
+> {
+  if (!args.hasServerSnapshot && !args.hasConcurrentOperations) return;
+  const docBinding = client["_docBinding"];
+  if (!docBinding.exportHistory) return;
+  const cacheEntry = client["_docsCache"].get(args.docId);
+  if (!cacheEntry) return;
+  const doc = await cacheEntry.promisedDoc;
+  if (!doc) return;
+  return {
+    promisedDoc: cacheEntry.promisedDoc,
+    value: docBinding.exportHistory(doc),
+  };
 }
 
 function broadcastServerOperations<
@@ -181,6 +222,17 @@ export const handleSync = async <
   const { data } = response;
   client["_events"].emit("sync", { req, data });
 
+  // Replacement is required when the server supplies a snapshot or when
+  // concurrent operations are order-sensitive. Capture ephemeral history
+  // before reconciliation so DocNode's export can commit any pending edit and
+  // reconciliation can include that edit in the replacement document.
+  const exportedHistory = await exportHistoryForPotentialReplacement(client, {
+    docId,
+    hasServerSnapshot: data.serializedDoc !== null,
+    hasConcurrentOperations:
+      data.operations.length > 0 && operations.length > 0,
+  });
+
   const reconcileResult = await reconcileSyncResponse(client, {
     provider,
     docId,
@@ -191,7 +243,11 @@ export const handleSync = async <
   });
 
   if (reconcileResult.type === "replaceDoc") {
-    replaceDocInCache(client, { docId, doc: reconcileResult.doc });
+    replaceDocInCache(client, {
+      docId,
+      doc: reconcileResult.doc,
+      ...(exportedHistory && { exportedHistory }),
+    });
     dispatchLocalDocFound(client, docId, { doc: reconcileResult.doc, docId });
     broadcastServerOperations(client, { docId, operations: data.operations });
   } else if (reconcileResult.type === "applyServerOperations") {

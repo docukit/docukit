@@ -327,6 +327,102 @@ describe("undoManager", () => {
     });
   });
 
+  test("exportHistory and importHistory preserve undo, redo, and metadata", () => {
+    const source = createTextDocWithUndo();
+    let token = 0;
+    source.undoManager.onPush(({ meta }) => {
+      meta.set("selection", { token: token++ });
+    });
+
+    source.root.append(...text(source, "1"));
+    source.forceCommit();
+    source.root.append(...text(source, "2"));
+    source.forceCommit();
+    source.undoManager.undo();
+    assertDoc(source, ["1"]);
+
+    const history = source.undoManager.exportHistory();
+    expect(history.undoStack[0]?.meta).toStrictEqual({
+      selection: { token: 0 },
+    });
+    expect(history.redoStack[0]?.meta).toStrictEqual({
+      selection: { token: 2 },
+    });
+
+    const replacement = Doc.fromJSON(
+      {
+        type: "root",
+        extensions: [TextExtension],
+        undoManager: { maxUndoSteps: 10, mergeInterval: 0 },
+      },
+      source.toJSON({ unsafe: true }),
+    );
+    replacement.forceCommit();
+    replacement.undoManager.importHistory(history);
+
+    const restoredMetadata: unknown[] = [];
+    replacement.undoManager.onPop(({ meta }) => {
+      restoredMetadata.push(meta.get("selection"));
+    });
+
+    replacement.undoManager.redo();
+    assertDoc(replacement, ["1", "2"]);
+    replacement.undoManager.undo();
+    assertDoc(replacement, ["1"]);
+    replacement.undoManager.undo();
+    assertDoc(replacement, []);
+    expect(restoredMetadata).toStrictEqual([
+      { token: 2 },
+      undefined,
+      { token: 0 },
+    ]);
+  });
+
+  test("importHistory preserves the merge interval timestamp", () => {
+    withMockedDateNow((setNow) => {
+      const source = createTextDocWithUndo(10, 500);
+      setNow(1000);
+      source.root.append(...text(source, "a"));
+      source.forceCommit();
+
+      const history = source.undoManager.exportHistory();
+      expect(history.lastUpdate).toBe(1000);
+
+      const replacement = Doc.fromJSON(
+        {
+          type: "root",
+          extensions: [TextExtension],
+          undoManager: { maxUndoSteps: 10, mergeInterval: 500 },
+        },
+        source.toJSON({ unsafe: true }),
+      );
+      replacement.forceCommit();
+      replacement.undoManager.importHistory(history);
+
+      setNow(1200);
+      replacement.root.append(...text(replacement, "b"));
+      replacement.forceCommit();
+      replacement.undoManager.undo();
+      assertDoc(replacement, []);
+    });
+  });
+
+  test("importHistory validates the history and document identity", () => {
+    const source = createTextDocWithUndo();
+    source.root.append(...text(source, "1"));
+    source.forceCommit();
+    const history = source.undoManager.exportHistory();
+
+    expect(() => source.undoManager.importHistory({})).toThrowError(
+      "Invalid undo history",
+    );
+
+    const otherDoc = createTextDocWithUndo();
+    expect(() => otherDoc.undoManager.importHistory(history)).toThrowError(
+      "Undo history belongs to a different document",
+    );
+  });
+
   test("maxUndoSteps 0 disables undo history", () => {
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const undoManager = doc.undoManager;

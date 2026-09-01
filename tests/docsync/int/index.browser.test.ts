@@ -166,6 +166,36 @@ describe("Local-First", () => {
     });
   });
 
+  test("reconnect preserves undo when concurrent operations replace the doc", async () => {
+    await testWrapper(async ({ reference, otherDevice }) => {
+      await reference.loadDoc();
+      await otherDevice.loadDoc();
+      reference.doc?.forceCommit();
+      otherDevice.doc?.forceCommit();
+
+      reference.disconnect();
+
+      reference.addChild("Local");
+      reference.doc?.forceCommit();
+      await reference.assertIDBDoc({ doc: [], ops: ["Local"] });
+      await reference.assertCanUndo(true);
+      const liveDoc = reference.doc;
+
+      otherDevice.addChild("Remote");
+      otherDevice.doc?.forceCommit();
+      await otherDevice.assertIDBDoc({ doc: ["Remote"], ops: [] });
+
+      reference.connect();
+
+      await reference.assertMemoryDoc(["Remote", "Local"]);
+      expect(reference.doc).not.toBe(liveDoc);
+      await reference.assertCanUndo(true);
+
+      reference.doc?.undoManager.undo();
+      await reference.assertMemoryDoc(["Remote"]);
+    });
+  });
+
   test("local broadcast changes are undoable by the same user in another tab", async () => {
     await testWrapper(async ({ reference, otherTab }) => {
       await reference.loadDoc();

@@ -208,13 +208,17 @@ function $syncNodeContent(
   }
 
   const serialized = lexicalNode.exportJSON();
-  // const currentJSON = docNode.state.j.get();
+  const lexicalDocNode = docNode as DocNode<typeof LexicalDocNode>;
 
-  // I think this is unnecessary because docnode already does a deep comparison when setting the state.
-  // Deep comparison only when dirty (like Yjs V1 does with prevValue !== nextValue)
-  // if (JSON.stringify(currentJSON) !== JSON.stringify(serialized)) {
-  (docNode as DocNode<typeof LexicalDocNode>).state.j.set(serialized);
-  // }
+  // Lexical can mark nodes dirty while initializing plugins even when their
+  // serialized content did not change. Avoid turning those normalization
+  // updates into local DocNode operations: during stale-while-revalidate, a
+  // redundant local state operation could overwrite newer server content.
+  // Compare the already-parsed JSON values structurally so object key order
+  // does not create a false difference.
+  if (!areJsonValuesEqual(lexicalDocNode.state.j.get(), serialized)) {
+    lexicalDocNode.state.j.set(serialized);
+  }
 
   // Recurse into children if element
   if ($isElementNode(lexicalNode)) {
@@ -227,6 +231,46 @@ function $syncNodeContent(
       keyBinding,
     );
   }
+}
+
+function areJsonValuesEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) {
+    return true;
+  }
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right)) {
+      return false;
+    }
+
+    return (
+      left.length === right.length &&
+      left.every((value, index) => areJsonValuesEqual(value, right[index]))
+    );
+  }
+
+  if (
+    typeof left !== "object" ||
+    left === null ||
+    typeof right !== "object" ||
+    right === null
+  ) {
+    return false;
+  }
+
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key) =>
+        Object.hasOwn(rightRecord, key) &&
+        areJsonValuesEqual(leftRecord[key], rightRecord[key]),
+    )
+  );
 }
 
 /**
