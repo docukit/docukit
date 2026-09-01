@@ -45,18 +45,23 @@ function replaceDocInCache<
     doc: D;
     exportedHistory?: { promisedDoc: Promise<D | undefined>; value: unknown };
   },
-): void {
+) {
   const cacheEntry = client["_docsCache"].get(args.docId);
   if (!cacheEntry) return;
 
   const previousPromisedDoc = cacheEntry.promisedDoc;
   const nextPromisedDoc = Promise.resolve(args.doc);
   const docBinding = client["_docBinding"];
+  let historyImportError: { historyImportError: unknown } | undefined;
   if (
     args.exportedHistory?.promisedDoc === previousPromisedDoc &&
     docBinding.importHistory
   ) {
-    docBinding.importHistory(args.doc, args.exportedHistory.value);
+    try {
+      docBinding.importHistory(args.doc, args.exportedHistory.value);
+    } catch (error) {
+      historyImportError = { historyImportError: error };
+    }
   }
   setupDocChangeListener(client, args);
 
@@ -86,6 +91,8 @@ function replaceDocInCache<
       }
     })
     .catch(() => undefined);
+
+  return historyImportError;
 }
 
 type HistorySource<D extends object> = {
@@ -324,13 +331,17 @@ export const handleSync = async <
     });
 
     if (reconcileResult.type === "replaceDoc") {
-      replaceDocInCache(client, {
+      const replaceResult = replaceDocInCache(client, {
         docId,
         doc: reconcileResult.doc,
         ...(exportedHistory && { exportedHistory }),
       });
       dispatchLocalDocFound(client, docId, { doc: reconcileResult.doc, docId });
       broadcastServerOperations(client, { docId, operations: data.operations });
+      // IndexedDB was already reconciled before the history import. Finish the
+      // cache swap first so persistent and visible content cannot diverge, then
+      // keep the binding failure loud for the caller.
+      if (replaceResult) throw replaceResult.historyImportError;
     } else if (reconcileResult.type === "applyServerOperations") {
       await applyServerOperations(client, {
         docId,

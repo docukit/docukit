@@ -13,6 +13,7 @@ import {
   s,
   spyOnRequest,
   triggerSync,
+  cacheDoc,
 } from "./utils.js";
 import type { Operations } from "@docukit/docnode";
 
@@ -359,6 +360,54 @@ describe("Client 2", () => {
   // ──────────────────────────────────────────────────────────────────────────
 
   describe("handleSync - Success Path", () => {
+    test("keeps the replacement doc and resets status when history import throws", async () => {
+      const client = await createClient();
+      const docId = generateDocId();
+      const docBinding = client["_docBinding"];
+      const { doc: liveDoc } = await setupDocWithOperations(client, docId, {
+        operations: [],
+      });
+      cacheDoc(client, docId, liveDoc);
+
+      const { doc: serverDoc } = docBinding.create("test", docId);
+      serverDoc.root.append(serverDoc.createNode(ChildNode));
+      serverDoc.forceCommit();
+
+      const requestSpy = spyOnRequest(client);
+      requestSpy
+        .mockResolvedValueOnce({
+          data: s({
+            docId,
+            clock: 1,
+            serializedDoc: docBinding.serialize(serverDoc),
+          }),
+        })
+        .mockResolvedValue({ data: s({ docId, clock: 2 }) });
+
+      const importHistory = docBinding.importHistory;
+      if (!importHistory) throw new Error("Expected history support");
+      const importError = new Error("history import failed");
+      docBinding.importHistory = () => {
+        throw importError;
+      };
+
+      try {
+        await expect(client["_sync"](docId)).rejects.toBe(importError);
+      } finally {
+        docBinding.importHistory = importHistory;
+      }
+
+      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+      const replacementDoc = await client["_docsCache"].get(docId)?.promisedDoc;
+      expect(replacementDoc).toBeDefined();
+      expect(replacementDoc).not.toBe(liveDoc);
+      expect(replacementDoc?.root.first?.type).toBe("child");
+
+      await client["_sync"](docId);
+      expect(requestSpy).toHaveBeenCalledTimes(2);
+      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+    });
+
     test("should delete operations after successful push", async () => {
       const client = await createClient();
       const docId = generateDocId();

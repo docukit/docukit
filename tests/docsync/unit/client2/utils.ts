@@ -184,6 +184,28 @@ export const getStoredClock = async (
   return stored?.clock;
 };
 
+export const cacheDoc = (
+  client: DocSyncClient<Doc, JsonDoc, Operations>,
+  docId: string,
+  doc = client["_docBinding"].create("test", docId).doc,
+) => {
+  client["_docsCache"].set(docId, {
+    promisedDoc: Promise.resolve(doc),
+    refCount: 1,
+    localVersion: 0,
+    type: "test",
+    queryResult: {
+      status: "success",
+      fetchStatus: "idle",
+      data: { doc, docId },
+    },
+    queryListeners: new Set(),
+    presence: {},
+    presenceListeners: new Set(),
+  });
+  return doc;
+};
+
 // ============================================================================
 // Sync Trigger (for tests)
 // ============================================================================
@@ -199,21 +221,7 @@ export const triggerSync = (
 ): void => {
   // Ensure a cache entry exists so handleSync can read the type
   if (!client["_docsCache"].has(docId)) {
-    const { doc } = client["_docBinding"].create("test", docId);
-    client["_docsCache"].set(docId, {
-      promisedDoc: Promise.resolve(doc),
-      refCount: 1,
-      localVersion: 0,
-      type: "test",
-      queryResult: {
-        status: "success",
-        fetchStatus: "idle",
-        data: { doc, docId },
-      },
-      queryListeners: new Set(),
-      presence: {},
-      presenceListeners: new Set(),
-    });
+    cacheDoc(client, docId);
   }
 
   const socket = client["_socket"] as unknown as {
