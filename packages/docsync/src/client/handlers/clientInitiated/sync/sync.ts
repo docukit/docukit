@@ -138,6 +138,37 @@ function exportHistoryFromCurrentSource<
   };
 }
 
+/**
+ * Resolves the in-memory operations batch across the history export.
+ *
+ * `exportHistory` force-commits the live doc, which pushes the resulting
+ * operation into the batch *and* can flush it in the same synchronous turn:
+ * `_flushLocalOperations` deletes the batch entry before its first await, so
+ * reading the batch only after the export would miss that operation. The
+ * replacement doc would then be swapped in without an edit whose undo entry we
+ * just exported. The flush keeps the array it took, and the push happens before
+ * it, so the reference captured beforehand still holds the operation.
+ */
+function resolvePendingMemoryOperations<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
+  client: DocSyncClient<D, S, O>,
+  docId: string,
+  batchBeforeExport: O[] | undefined,
+): O[] {
+  const batchAfterExport = client["_localOpsBatchState"].get(docId)?.data;
+  if (batchBeforeExport === undefined) return batchAfterExport ?? [];
+  if (
+    batchAfterExport === undefined ||
+    batchAfterExport === batchBeforeExport
+  ) {
+    return batchBeforeExport;
+  }
+  return [...batchBeforeExport, ...batchAfterExport];
+}
+
 function broadcastServerOperations<
   D extends object,
   S extends object,
@@ -184,143 +215,157 @@ export const handleSync = async <
     return;
   }
   pushStatusByDocId.set(docId, "pushing");
-
-  if (client["_localOpsBatchState"].has(docId)) {
-    await client["_flushLocalOperations"](docId, { sync: false });
-  }
-  const requestLocalVersion = getLocalDocVersion(client, docId);
-
-  const { provider } = await client["_localPromise"];
-  const socket = client["_socket"];
-
-  // Prepare payload: read operations and clock from provider.
-  const [operationsBatches, stored] = await provider.transaction(
-    "readonly",
-    async (ctx) => {
-      return Promise.all([
-        ctx.getOperations({ docId }),
-        ctx.getSerializedDoc({ docId }),
-      ]);
-    },
-  );
-  const operations = operationsBatches.flat();
-  const clientClock = stored?.clock ?? 0;
-
-  const cacheEntry = client["_docsCache"].get(docId);
-  if (!cacheEntry) {
-    // Doc was unloaded while this sync was in-flight — abort.
-    pushStatusByDocId.set(docId, "idle");
-    return;
-  }
-  const type = cacheEntry.type;
-  const payload: SyncRequest<S, O> = {
-    type,
-    clock: clientClock,
-    docId,
-    operations,
-    serializedDoc: stored?.serializedDoc ?? null,
-  };
-  const req = payload;
-
-  let response: SyncResponse<S, O>;
+  // Any throw below would leave the push status stuck on "pushing", and every
+  // later handleSync call would early-return on it — the document would stop
+  // syncing until a reload. Reset the status and rethrow so the failure stays
+  // loud.
   try {
-    response = await request(socket, "sync", payload);
-  } catch (error) {
-    client["_events"].emit("sync", {
-      req,
-      error: {
-        type: "NetworkError",
-        message: error instanceof Error ? error.message : String(error),
+    if (client["_localOpsBatchState"].has(docId)) {
+      await client["_flushLocalOperations"](docId, { sync: false });
+    }
+    const requestLocalVersion = getLocalDocVersion(client, docId);
+
+    const { provider } = await client["_localPromise"];
+    const socket = client["_socket"];
+
+    // Prepare payload: read operations and clock from provider.
+    const [operationsBatches, stored] = await provider.transaction(
+      "readonly",
+      async (ctx) => {
+        return Promise.all([
+          ctx.getOperations({ docId }),
+          ctx.getSerializedDoc({ docId }),
+        ]);
       },
+    );
+    const operations = operationsBatches.flat();
+    const clientClock = stored?.clock ?? 0;
+
+    const cacheEntry = client["_docsCache"].get(docId);
+    if (!cacheEntry) {
+      // Doc was unloaded while this sync was in-flight — abort.
+      pushStatusByDocId.set(docId, "idle");
+      return;
+    }
+    const type = cacheEntry.type;
+    const payload: SyncRequest<S, O> = {
+      type,
+      clock: clientClock,
+      docId,
+      operations,
+      serializedDoc: stored?.serializedDoc ?? null,
+    };
+    const req = payload;
+
+    let response: SyncResponse<S, O>;
+    try {
+      response = await request(socket, "sync", payload);
+    } catch (error) {
+      client["_events"].emit("sync", {
+        req,
+        error: {
+          type: "NetworkError",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      pushStatusByDocId.set(docId, "idle");
+      void handleSync(client, docId);
+      return;
+    }
+
+    if ("error" in response && response.error) {
+      client["_events"].emit("sync", { req, error: response.error });
+      pushStatusByDocId.set(docId, "idle");
+      void handleSync(client, docId);
+      return;
+    }
+
+    const { data } = response;
+    client["_events"].emit("sync", { req, data });
+
+    // Resolve the live doc before starting the asynchronous provider work. The
+    // history itself is exported only in the synchronous final section below.
+    const historySource = await resolveHistorySourceForPotentialReplacement(
+      client,
+      {
+        docId,
+        hasServerSnapshot: data.serializedDoc !== null,
+        hasConcurrentOperations:
+          data.operations.length > 0 && operations.length > 0,
+      },
+    );
+    const preparedReconciliation = await prepareSyncReconciliation(client, {
+      provider,
+      docId,
+      operationsBatches,
+      localOperations: operations,
+      data,
     });
+
+    // Keep this section synchronous. Exporting DocNode history force-commits a
+    // pending edit, finalize then applies that operation to the replacement,
+    // and replacement imports the matching history before another user event
+    // can run.
+    const batchBeforeExport = client["_localOpsBatchState"].get(docId)?.data;
+    const exportedHistory =
+      preparedReconciliation.replacementDoc &&
+      preparedReconciliation.shouldReplaceDoc
+        ? exportHistoryFromCurrentSource(client, docId, historySource)
+        : undefined;
+    const reconcileResult = finalizeSyncReconciliation(client, {
+      docId,
+      prepared: preparedReconciliation,
+      requestLocalVersion,
+      pendingMemoryOperations: resolvePendingMemoryOperations(
+        client,
+        docId,
+        batchBeforeExport,
+      ),
+    });
+
+    if (reconcileResult.type === "replaceDoc") {
+      replaceDocInCache(client, {
+        docId,
+        doc: reconcileResult.doc,
+        ...(exportedHistory && { exportedHistory }),
+      });
+      dispatchLocalDocFound(client, docId, { doc: reconcileResult.doc, docId });
+      broadcastServerOperations(client, { docId, operations: data.operations });
+    } else if (reconcileResult.type === "applyServerOperations") {
+      await applyServerOperations(client, {
+        docId,
+        operations: reconcileResult.operations,
+      });
+      broadcastServerOperations(client, {
+        docId,
+        operations: reconcileResult.operations,
+      });
+    }
+
+    const currentStatus = pushStatusByDocId.get(docId);
+    const shouldRetry = currentStatus === "pushing-with-pending";
     pushStatusByDocId.set(docId, "idle");
-    void handleSync(client, docId);
-    return;
-  }
+    if (shouldRetry) {
+      void handleSync(client, docId);
+      return;
+    }
+    const latestCacheEntry = client["_docsCache"].get(docId);
+    if (!latestCacheEntry) return;
+    if (latestCacheEntry.queryResult.fetchStatus === "idle") return;
 
-  if ("error" in response && response.error) {
-    client["_events"].emit("sync", { req, error: response.error });
+    if (
+      latestCacheEntry.queryResult.status === "success" &&
+      latestCacheEntry.queryResult.data !== undefined
+    ) {
+      dispatchNetworkDocFound(client, docId, latestCacheEntry.queryResult.data);
+      return;
+    }
+
+    dispatchNetworkDocNotFound(client, docId, {
+      createIfMissing: latestCacheEntry.localLoadMode === "loadOrCreate",
+    });
+  } catch (error) {
     pushStatusByDocId.set(docId, "idle");
-    void handleSync(client, docId);
-    return;
+    throw error;
   }
-
-  const { data } = response;
-  client["_events"].emit("sync", { req, data });
-
-  // Resolve the live doc before starting the asynchronous provider work. The
-  // history itself is exported only in the synchronous final section below.
-  const historySource = await resolveHistorySourceForPotentialReplacement(
-    client,
-    {
-      docId,
-      hasServerSnapshot: data.serializedDoc !== null,
-      hasConcurrentOperations:
-        data.operations.length > 0 && operations.length > 0,
-    },
-  );
-  const preparedReconciliation = await prepareSyncReconciliation(client, {
-    provider,
-    docId,
-    operationsBatches,
-    localOperations: operations,
-    data,
-  });
-
-  // Keep this section synchronous. Exporting DocNode history force-commits a
-  // pending edit, finalize then reads that operation from the memory batch,
-  // and replacement imports the matching history before another user event
-  // can run.
-  const exportedHistory =
-    preparedReconciliation.replacementDoc &&
-    preparedReconciliation.shouldReplaceDoc
-      ? exportHistoryFromCurrentSource(client, docId, historySource)
-      : undefined;
-  const reconcileResult = finalizeSyncReconciliation(client, {
-    docId,
-    prepared: preparedReconciliation,
-    requestLocalVersion,
-  });
-
-  if (reconcileResult.type === "replaceDoc") {
-    replaceDocInCache(client, {
-      docId,
-      doc: reconcileResult.doc,
-      ...(exportedHistory && { exportedHistory }),
-    });
-    dispatchLocalDocFound(client, docId, { doc: reconcileResult.doc, docId });
-    broadcastServerOperations(client, { docId, operations: data.operations });
-  } else if (reconcileResult.type === "applyServerOperations") {
-    await applyServerOperations(client, {
-      docId,
-      operations: reconcileResult.operations,
-    });
-    broadcastServerOperations(client, {
-      docId,
-      operations: reconcileResult.operations,
-    });
-  }
-
-  const currentStatus = pushStatusByDocId.get(docId);
-  const shouldRetry = currentStatus === "pushing-with-pending";
-  pushStatusByDocId.set(docId, "idle");
-  if (shouldRetry) {
-    void handleSync(client, docId);
-    return;
-  }
-  const latestCacheEntry = client["_docsCache"].get(docId);
-  if (!latestCacheEntry) return;
-  if (latestCacheEntry.queryResult.fetchStatus === "idle") return;
-
-  if (
-    latestCacheEntry.queryResult.status === "success" &&
-    latestCacheEntry.queryResult.data !== undefined
-  ) {
-    dispatchNetworkDocFound(client, docId, latestCacheEntry.queryResult.data);
-    return;
-  }
-
-  dispatchNetworkDocNotFound(client, docId, {
-    createIfMissing: latestCacheEntry.localLoadMode === "loadOrCreate",
-  });
 };

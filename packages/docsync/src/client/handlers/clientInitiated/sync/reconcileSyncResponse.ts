@@ -118,6 +118,10 @@ export async function prepareSyncReconciliation<
 /**
  * Finishes reconciliation synchronously so local edits cannot land between
  * rebuilding a replacement document and swapping it into the cache.
+ *
+ * `pendingMemoryOperations` is resolved by the caller rather than read from the
+ * client here: exporting the undo history force-commits the live doc, which can
+ * flush and delete the in-memory batch in the same synchronous turn.
  */
 export function finalizeSyncReconciliation<
   D extends object,
@@ -129,13 +133,13 @@ export function finalizeSyncReconciliation<
     docId: string;
     prepared: PreparedSyncReconciliation<D, O>;
     requestLocalVersion: number;
+    pendingMemoryOperations: O[];
   },
 ): ReconcileSyncResult<D, O> {
-  const { docId, prepared, requestLocalVersion } = args;
+  const { docId, prepared, requestLocalVersion, pendingMemoryOperations } =
+    args;
 
   if (prepared.replacementDoc && prepared.shouldReplaceDoc) {
-    const pendingMemoryOperations =
-      client["_localOpsBatchState"].get(docId)?.data ?? [];
     const hasUnrebuildableLocalMemory =
       getLocalDocVersion(client, docId) > requestLocalVersion &&
       prepared.pendingProviderOperations.length === 0 &&

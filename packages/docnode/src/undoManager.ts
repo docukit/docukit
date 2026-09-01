@@ -125,6 +125,9 @@ export class UndoManager {
    * metadata values are supported by their chosen storage format.
    */
   exportHistory(): UndoHistory {
+    // Not only for the history: DocSync relies on this commit to push a pending
+    // edit into its local operations batch, so the replacement document picks
+    // it up. Do not skip it when undo is disabled.
     this._doc.forceCommit();
     return {
       docId: this._doc.root.id,
