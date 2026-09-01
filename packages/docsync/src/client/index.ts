@@ -505,6 +505,10 @@ export class DocSyncClient<
     );
   }
 
+  protected _sync(docId: string) {
+    return handleSync(this, docId);
+  }
+
   protected async _flushLocalOperations(
     docId: string,
     options?: { sync?: boolean },

@@ -12,11 +12,18 @@ import type { UnsubscribeDocHandler } from "../server/handlers/unsubscribe.js";
  */
 
 // TO-DECIDE: should params in fn's be objects?
-export interface DocBinding<
+type DocBindingHistory<D extends object> =
+  | {
+      exportHistory(doc: D): unknown;
+      importHistory(doc: D, history: unknown): void;
+    }
+  | { exportHistory?: never; importHistory?: never };
+
+export type DocBinding<
   D extends object = object,
   S extends object = object,
   O extends object = object,
-> {
+> = {
   // method syntax is required to avoid type errors
   create(type: string, id?: string): { doc: D; docId: string };
   deserialize(serializedDoc: S): D;
@@ -27,7 +34,7 @@ export interface DocBinding<
   ): void;
   applyOperations(doc: D, operations: O, flags?: TransactionFlags): void;
   dispose(doc: D): void;
-}
+} & DocBindingHistory<D>;
 
 // Keep this local instead of importing from @docukit/docnode because DocNode is
 // an optional peer dependency of @docukit/docsync.

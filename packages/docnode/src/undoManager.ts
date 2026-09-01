@@ -1,9 +1,26 @@
 import { type Doc } from "./main.js";
-import { mergeOperations, type Operations } from "./operations.js";
+import {
+  mergeOperations,
+  type Operations,
+  type OrderedOperation,
+} from "./operations.js";
 import type { UndoManagerConfig } from "./types.js";
 
 /** `meta` is opaque — consumers attach arbitrary data (e.g. selection). */
 type UndoStackItem = { operations: Operations; meta: Map<string, unknown> };
+
+export type UndoHistoryItem = {
+  operations: Operations;
+  meta: Record<string, unknown>;
+};
+
+export type UndoHistory = {
+  docId: string;
+  docType: string;
+  undoStack: UndoHistoryItem[];
+  redoStack: UndoHistoryItem[];
+  lastUpdate?: number;
+};
 
 type UndoManagerEvent = { meta: UndoStackItem["meta"]; type: "undo" | "redo" };
 
@@ -103,6 +120,47 @@ export class UndoManager {
   }
 
   /**
+   * Exports undo and redo state without exporting editor-specific listeners.
+   * Metadata uses plain objects so consumers can persist histories whose
+   * metadata values are supported by their chosen storage format.
+   */
+  exportHistory(): UndoHistory {
+    // Not only for the history: DocSync relies on this commit to push a pending
+    // edit into its local operations batch, so the replacement document picks
+    // it up. Do not skip it when undo is disabled.
+    this._doc.forceCommit();
+    return {
+      docId: this._doc.root.id,
+      docType: this._doc.root.type,
+      undoStack: this._undoStack.map(exportStackItem),
+      redoStack: this._redoStack.map(exportStackItem),
+      ...(this._lastUpdate !== undefined && { lastUpdate: this._lastUpdate }),
+    };
+  }
+
+  /**
+   * Replaces this manager's history with a previously exported history.
+   * The document ID and type must match because operations contain node IDs.
+   */
+  importHistory(history: unknown): void {
+    if (!isUndoHistory(history)) {
+      throw new TypeError("Invalid undo history");
+    }
+    if (
+      history.docId !== this._doc.root.id ||
+      history.docType !== this._doc.root.type
+    ) {
+      throw new Error("Undo history belongs to a different document");
+    }
+
+    const maxSteps = this._maxUndoSteps;
+    this._undoStack = importStack(history.undoStack, maxSteps);
+    this._redoStack = importStack(history.redoStack, maxSteps);
+    this._lastUpdate = history.lastUpdate;
+    this._txType = "update";
+  }
+
+  /**
    * Fires synchronously when an item is pushed to either stack.
    * Text editor bindings will often store selection state here.
    */
@@ -123,4 +181,141 @@ export class UndoManager {
       this._popHandlers.delete(handler);
     };
   }
+}
+
+function cloneOperations(operations: Operations): Operations {
+  const orderedOperations = operations[0].map(cloneOrderedOperation);
+  const statePatch = Object.fromEntries(
+    Object.entries(operations[1]).map(([id, state]) => [id, { ...state }]),
+  );
+  return [orderedOperations, statePatch];
+}
+
+function cloneOrderedOperation(operation: OrderedOperation): OrderedOperation {
+  if (operation[0] === 0) {
+    return [
+      0,
+      operation[1].map(([id, type]) => [id, type]),
+      operation[2],
+      operation[3],
+      operation[4],
+    ];
+  }
+  if (operation[0] === 1) {
+    return [1, operation[1], operation[2]];
+  }
+  return [
+    2,
+    operation[1],
+    operation[2],
+    operation[3],
+    operation[4],
+    operation[5],
+  ];
+}
+
+function exportStackItem(item: UndoStackItem): UndoHistoryItem {
+  return {
+    operations: cloneOperations(item.operations),
+    // Intentionally shallow: history handoff normally disposes the source doc,
+    // while persistence owns serialization of its opaque metadata values. A
+    // deep clone would reject valid non-serializable editor metadata.
+    meta: Object.fromEntries(item.meta),
+  };
+}
+
+function importStack(items: UndoHistoryItem[], maxSteps: number) {
+  const retainedItems = maxSteps === 0 ? [] : items.slice(-maxSteps);
+  return retainedItems.map((item) => ({
+    operations: cloneOperations(item.operations),
+    meta: new Map(Object.entries(item.meta)),
+  }));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return isRecord(value) && Object.values(value).every(isString);
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isNodeReference(value: unknown): value is string | 0 {
+  return value === 0 || typeof value === "string";
+}
+
+function isOrderedOperation(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  if (value[0] === 0) {
+    return (
+      value.length === 5 &&
+      Array.isArray(value[1]) &&
+      value[1].every(
+        (node) =>
+          Array.isArray(node) && node.length === 2 && node.every(isString),
+      ) &&
+      isNodeReference(value[2]) &&
+      isNodeReference(value[3]) &&
+      isNodeReference(value[4])
+    );
+  }
+  if (value[0] === 1) {
+    return (
+      value.length === 3 &&
+      typeof value[1] === "string" &&
+      isNodeReference(value[2])
+    );
+  }
+  if (value[0] === 2) {
+    return (
+      value.length === 6 &&
+      typeof value[1] === "string" &&
+      isNodeReference(value[2]) &&
+      isNodeReference(value[3]) &&
+      isNodeReference(value[4]) &&
+      isNodeReference(value[5])
+    );
+  }
+  return false;
+}
+
+function isOperations(value: unknown): value is Operations {
+  if (!Array.isArray(value) || value.length !== 2) return false;
+  const orderedOperations: unknown = value[0];
+  const statePatch: unknown = value[1];
+  return (
+    Array.isArray(orderedOperations) &&
+    orderedOperations.every(isOrderedOperation) &&
+    isRecord(statePatch) &&
+    Object.values(statePatch).every(isStringRecord)
+  );
+}
+
+function isHistoryItem(value: unknown): value is UndoHistoryItem {
+  return (
+    isRecord(value) && isOperations(value.operations) && isRecord(value.meta)
+  );
+}
+
+function isUndoHistory(value: unknown): value is UndoHistory {
+  return (
+    isRecord(value) &&
+    typeof value.docId === "string" &&
+    typeof value.docType === "string" &&
+    Array.isArray(value.undoStack) &&
+    value.undoStack.every(isHistoryItem) &&
+    Array.isArray(value.redoStack) &&
+    value.redoStack.every(isHistoryItem) &&
+    (value.lastUpdate === undefined ||
+      (typeof value.lastUpdate === "number" &&
+        Number.isFinite(value.lastUpdate)))
+  );
 }

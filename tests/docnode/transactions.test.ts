@@ -5,6 +5,7 @@ import {
   mergeOperations,
   type Operations,
   type TransactionFlags,
+  type UndoHistory,
 } from "@docukit/docnode";
 import {
   assertDoc,
@@ -325,6 +326,170 @@ describe("undoManager", () => {
       undoManager.undo();
       assertDoc(doc, ["a"]);
     });
+  });
+
+  test("exportHistory and importHistory preserve undo, redo, and metadata", () => {
+    const source = createTextDocWithUndo();
+    let token = 0;
+    source.undoManager.onPush(({ meta }) => {
+      meta.set("selection", { token: token++ });
+    });
+
+    source.root.append(...text(source, "1"));
+    source.forceCommit();
+    source.root.append(...text(source, "2"));
+    source.forceCommit();
+    source.undoManager.undo();
+    assertDoc(source, ["1"]);
+
+    const history = source.undoManager.exportHistory();
+    expect(history.undoStack[0]?.meta).toStrictEqual({
+      selection: { token: 0 },
+    });
+    expect(history.redoStack[0]?.meta).toStrictEqual({
+      selection: { token: 2 },
+    });
+
+    const replacement = Doc.fromJSON(
+      {
+        type: "root",
+        extensions: [TextExtension],
+        undoManager: { maxUndoSteps: 10, mergeInterval: 0 },
+      },
+      source.toJSON({ unsafe: true }),
+    );
+    replacement.forceCommit();
+    replacement.undoManager.importHistory(history);
+
+    const restoredMetadata: unknown[] = [];
+    replacement.undoManager.onPop(({ meta }) => {
+      restoredMetadata.push(meta.get("selection"));
+    });
+
+    replacement.undoManager.redo();
+    assertDoc(replacement, ["1", "2"]);
+    replacement.undoManager.undo();
+    assertDoc(replacement, ["1"]);
+    replacement.undoManager.undo();
+    assertDoc(replacement, []);
+    expect(restoredMetadata).toStrictEqual([
+      { token: 2 },
+      undefined,
+      { token: 0 },
+    ]);
+  });
+
+  test("importHistory preserves the merge interval timestamp", () => {
+    withMockedDateNow((setNow) => {
+      const source = createTextDocWithUndo(10, 500);
+      setNow(1000);
+      source.root.append(...text(source, "a"));
+      source.forceCommit();
+
+      const history = source.undoManager.exportHistory();
+      expect(history.lastUpdate).toBe(1000);
+
+      const replacement = Doc.fromJSON(
+        {
+          type: "root",
+          extensions: [TextExtension],
+          undoManager: { maxUndoSteps: 10, mergeInterval: 500 },
+        },
+        source.toJSON({ unsafe: true }),
+      );
+      replacement.forceCommit();
+      replacement.undoManager.importHistory(history);
+
+      setNow(1200);
+      replacement.root.append(...text(replacement, "b"));
+      replacement.forceCommit();
+      replacement.undoManager.undo();
+      assertDoc(replacement, []);
+    });
+  });
+
+  test("importHistory validates the history and document identity", () => {
+    const source = createTextDocWithUndo();
+    source.root.append(...text(source, "1"));
+    source.forceCommit();
+    const history = source.undoManager.exportHistory();
+
+    expect(() => source.undoManager.importHistory({})).toThrowError(
+      "Invalid undo history",
+    );
+
+    const otherDoc = createTextDocWithUndo();
+    expect(() => otherDoc.undoManager.importHistory(history)).toThrowError(
+      "Undo history belongs to a different document",
+    );
+  });
+
+  test("exportHistory and importHistory clone move operations", () => {
+    const doc = createTextDocWithUndo();
+    const history: UndoHistory = {
+      ...doc.undoManager.exportHistory(),
+      undoStack: [{ operations: [[[2, "start", 0, 0, 0, 0]], {}], meta: {} }],
+    };
+
+    doc.undoManager.importHistory(history);
+
+    expect(doc.undoManager.exportHistory().undoStack).toStrictEqual(
+      history.undoStack,
+    );
+  });
+
+  test("importHistory rejects malformed exported history paths", () => {
+    const doc = createTextDocWithUndo();
+    const valid = doc.undoManager.exportHistory();
+    const withOperations = (operations: unknown): unknown => ({
+      ...valid,
+      undoStack: [{ operations, meta: {} }],
+    });
+
+    const malformedHistories: unknown[] = [
+      null,
+      [],
+      new Date(),
+      { ...valid, docId: 1 },
+      { ...valid, docType: 1 },
+      { ...valid, undoStack: null },
+      { ...valid, undoStack: [null] },
+      { ...valid, undoStack: [{ operations: [[], {}], meta: [] }] },
+      { ...valid, redoStack: null },
+      { ...valid, lastUpdate: "now" },
+      { ...valid, lastUpdate: Number.NaN },
+      withOperations(null),
+      withOperations([]),
+      withOperations([[]]),
+      withOperations([[null], {}]),
+      withOperations([[[0]], {}]),
+      withOperations([[[0, {}, 0, 0, 0]], {}]),
+      withOperations([[[0, [null], 0, 0, 0]], {}]),
+      withOperations([[[0, [["id"]], 0, 0, 0]], {}]),
+      withOperations([[[0, [["id", 1]], 0, 0, 0]], {}]),
+      withOperations([[[0, [["id", "type"]], null, 0, 0]], {}]),
+      withOperations([[[0, [["id", "type"]], 0, null, 0]], {}]),
+      withOperations([[[0, [["id", "type"]], 0, 0, null]], {}]),
+      withOperations([[[1]], {}]),
+      withOperations([[[1, 1, 0]], {}]),
+      withOperations([[[1, "start", null]], {}]),
+      withOperations([[[2]], {}]),
+      withOperations([[[2, 1, 0, 0, 0, 0]], {}]),
+      withOperations([[[2, "start", null, 0, 0, 0]], {}]),
+      withOperations([[[2, "start", 0, null, 0, 0]], {}]),
+      withOperations([[[2, "start", 0, 0, null, 0]], {}]),
+      withOperations([[[2, "start", 0, 0, 0, null]], {}]),
+      withOperations([[[3]], {}]),
+      withOperations([[], []]),
+      withOperations([[], { node: [] }]),
+      withOperations([[], { node: { value: 1 } }]),
+    ];
+
+    for (const malformed of malformedHistories) {
+      expect(() => doc.undoManager.importHistory(malformed)).toThrowError(
+        "Invalid undo history",
+      );
+    }
   });
 
   test("maxUndoSteps 0 disables undo history", () => {
