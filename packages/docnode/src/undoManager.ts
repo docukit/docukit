@@ -214,6 +214,9 @@ function cloneOrderedOperation(operation: OrderedOperation): OrderedOperation {
 function exportStackItem(item: UndoStackItem): UndoHistoryItem {
   return {
     operations: cloneOperations(item.operations),
+    // Intentionally shallow: history handoff normally disposes the source doc,
+    // while persistence owns serialization of its opaque metadata values. A
+    // deep clone would reject valid non-serializable editor metadata.
     meta: Object.fromEntries(item.meta),
   };
 }

@@ -5,6 +5,7 @@ import {
   mergeOperations,
   type Operations,
   type TransactionFlags,
+  type UndoHistory,
 } from "@docukit/docnode";
 import {
   assertDoc,
@@ -421,6 +422,74 @@ describe("undoManager", () => {
     expect(() => otherDoc.undoManager.importHistory(history)).toThrowError(
       "Undo history belongs to a different document",
     );
+  });
+
+  test("exportHistory and importHistory clone move operations", () => {
+    const doc = createTextDocWithUndo();
+    const history: UndoHistory = {
+      ...doc.undoManager.exportHistory(),
+      undoStack: [{ operations: [[[2, "start", 0, 0, 0, 0]], {}], meta: {} }],
+    };
+
+    doc.undoManager.importHistory(history);
+
+    expect(doc.undoManager.exportHistory().undoStack).toStrictEqual(
+      history.undoStack,
+    );
+  });
+
+  test("importHistory rejects malformed exported history paths", () => {
+    const doc = createTextDocWithUndo();
+    const valid = doc.undoManager.exportHistory();
+    const withOperations = (operations: unknown): unknown => ({
+      ...valid,
+      undoStack: [{ operations, meta: {} }],
+    });
+
+    const malformedHistories: unknown[] = [
+      null,
+      [],
+      new Date(),
+      { ...valid, docId: 1 },
+      { ...valid, docType: 1 },
+      { ...valid, undoStack: null },
+      { ...valid, undoStack: [null] },
+      { ...valid, undoStack: [{ operations: [[], {}], meta: [] }] },
+      { ...valid, redoStack: null },
+      { ...valid, lastUpdate: "now" },
+      { ...valid, lastUpdate: Number.NaN },
+      withOperations(null),
+      withOperations([]),
+      withOperations([[]]),
+      withOperations([[null], {}]),
+      withOperations([[[0]], {}]),
+      withOperations([[[0, {}, 0, 0, 0]], {}]),
+      withOperations([[[0, [null], 0, 0, 0]], {}]),
+      withOperations([[[0, [["id"]], 0, 0, 0]], {}]),
+      withOperations([[[0, [["id", 1]], 0, 0, 0]], {}]),
+      withOperations([[[0, [["id", "type"]], null, 0, 0]], {}]),
+      withOperations([[[0, [["id", "type"]], 0, null, 0]], {}]),
+      withOperations([[[0, [["id", "type"]], 0, 0, null]], {}]),
+      withOperations([[[1]], {}]),
+      withOperations([[[1, 1, 0]], {}]),
+      withOperations([[[1, "start", null]], {}]),
+      withOperations([[[2]], {}]),
+      withOperations([[[2, 1, 0, 0, 0, 0]], {}]),
+      withOperations([[[2, "start", null, 0, 0, 0]], {}]),
+      withOperations([[[2, "start", 0, null, 0, 0]], {}]),
+      withOperations([[[2, "start", 0, 0, null, 0]], {}]),
+      withOperations([[[2, "start", 0, 0, 0, null]], {}]),
+      withOperations([[[3]], {}]),
+      withOperations([[], []]),
+      withOperations([[], { node: [] }]),
+      withOperations([[], { node: { value: 1 } }]),
+    ];
+
+    for (const malformed of malformedHistories) {
+      expect(() => doc.undoManager.importHistory(malformed)).toThrowError(
+        "Invalid undo history",
+      );
+    }
   });
 
   test("maxUndoSteps 0 disables undo history", () => {

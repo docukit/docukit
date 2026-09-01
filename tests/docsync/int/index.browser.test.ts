@@ -1,4 +1,4 @@
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, vi } from "vitest";
 import { emptyIDB, testWrapper, waitForLocalBroadcast } from "./utils.js";
 
 describe("Local-First", () => {
@@ -173,26 +173,91 @@ describe("Local-First", () => {
       reference.doc?.forceCommit();
       otherDevice.doc?.forceCommit();
 
+      reference.addChild("Earlier");
+      reference.doc?.forceCommit();
+      await reference.assertIDBDoc({ doc: ["Earlier"], ops: [] });
+      await otherDevice.assertMemoryDoc(["Earlier"]);
+
       reference.disconnect();
 
       reference.addChild("Local");
       reference.doc?.forceCommit();
-      await reference.assertIDBDoc({ doc: [], ops: ["Local"] });
+      await reference.assertIDBDoc({ doc: ["Earlier"], ops: ["Local"] });
       await reference.assertCanUndo(true);
       const liveDoc = reference.doc;
 
       otherDevice.addChild("Remote");
       otherDevice.doc?.forceCommit();
-      await otherDevice.assertIDBDoc({ doc: ["Remote"], ops: [] });
+      await otherDevice.assertIDBDoc({ doc: ["Earlier", "Remote"], ops: [] });
 
       reference.connect();
 
-      await reference.assertMemoryDoc(["Remote", "Local"]);
+      await reference.assertMemoryDoc(["Earlier", "Local", "Remote"]);
       expect(reference.doc).not.toBe(liveDoc);
       await reference.assertCanUndo(true);
 
       reference.doc?.undoManager.undo();
+      await reference.assertMemoryDoc(["Earlier", "Remote"]);
+      await reference.assertCanUndo(true);
+
+      reference.doc?.undoManager.undo();
       await reference.assertMemoryDoc(["Remote"]);
+    });
+  });
+
+  test("reconnect preserves an edit made during asynchronous reconciliation", async () => {
+    await testWrapper(async ({ reference, otherDevice }) => {
+      await reference.loadDoc();
+      await otherDevice.loadDoc();
+      reference.doc?.forceCommit();
+      otherDevice.doc?.forceCommit();
+
+      reference.disconnect();
+      reference.addChild("Local");
+      reference.doc?.forceCommit();
+      await reference.assertIDBDoc({ doc: [], ops: ["Local"] });
+
+      otherDevice.addChild("Remote");
+      otherDevice.doc?.forceCommit();
+      await otherDevice.assertIDBDoc({ doc: ["Remote"], ops: [] });
+
+      const local = await reference.client["_localPromise"];
+      const provider = local.provider;
+      const transaction = provider.transaction.bind(provider);
+      let injectEdit = true;
+      const transactionSpy = vi
+        .spyOn(provider, "transaction")
+        .mockImplementation((mode, callback) => {
+          if (mode !== "readwrite" || !injectEdit) {
+            return transaction(mode, callback);
+          }
+          injectEdit = false;
+          return transaction(mode, async (ctx) => {
+            const result = callback(ctx);
+            reference.addChild("During reconciliation");
+            reference.doc?.forceCommit();
+            return result;
+          });
+        });
+
+      const liveDoc = reference.doc;
+      try {
+        reference.connect();
+
+        await reference.assertMemoryDoc([
+          "Remote",
+          "Local",
+          "During reconciliation",
+        ]);
+        expect(reference.doc).not.toBe(liveDoc);
+
+        reference.doc?.undoManager.undo();
+        await reference.assertMemoryDoc(["Remote", "Local"]);
+        reference.doc?.undoManager.undo();
+        await reference.assertMemoryDoc(["Remote"]);
+      } finally {
+        transactionSpy.mockRestore();
+      }
     });
   });
 

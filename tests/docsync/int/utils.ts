@@ -105,7 +105,9 @@ const ChildNode = defineNode({ type: "child", state: { value: string("") } });
 export const testDocConfig = {
   type: "test",
   extensions: [{ nodes: [ChildNode] }],
-  undoManager: { maxUndoSteps: 10 },
+  // Integration tests assert individual undo steps, so do not merge adjacent
+  // edits based on wall-clock timing.
+  undoManager: { maxUndoSteps: 10, mergeInterval: 0 },
 };
 
 // ============================================================================

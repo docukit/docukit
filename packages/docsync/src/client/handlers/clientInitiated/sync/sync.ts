@@ -9,7 +9,10 @@ import { getOwnPresencePatch } from "../../../utils/getOwnPresencePatch.js";
 import { getLocalDocVersion } from "../../../utils/localDocVersion.js";
 import { request } from "../../../utils/request.js";
 import { setupDocChangeListener } from "../../../utils/setupDocChangeListener.js";
-import { reconcileSyncResponse } from "./reconcileSyncResponse.js";
+import {
+  finalizeSyncReconciliation,
+  prepareSyncReconciliation,
+} from "./reconcileSyncResponse.js";
 
 /** Applies server operations to the cached doc. */
 async function applyServerOperations<
@@ -85,7 +88,12 @@ function replaceDocInCache<
     .catch(() => undefined);
 }
 
-async function exportHistoryForPotentialReplacement<
+type HistorySource<D extends object> = {
+  doc: D;
+  promisedDoc: Promise<D | undefined>;
+};
+
+async function resolveHistorySourceForPotentialReplacement<
   D extends object,
   S extends object,
   O extends object,
@@ -96,9 +104,7 @@ async function exportHistoryForPotentialReplacement<
     hasServerSnapshot: boolean;
     hasConcurrentOperations: boolean;
   },
-): Promise<
-  { promisedDoc: Promise<D | undefined>; value: unknown } | undefined
-> {
+): Promise<HistorySource<D> | undefined> {
   if (!args.hasServerSnapshot && !args.hasConcurrentOperations) return;
   const docBinding = client["_docBinding"];
   if (!docBinding.exportHistory) return;
@@ -106,9 +112,29 @@ async function exportHistoryForPotentialReplacement<
   if (!cacheEntry) return;
   const doc = await cacheEntry.promisedDoc;
   if (!doc) return;
+  return { doc, promisedDoc: cacheEntry.promisedDoc };
+}
+
+function exportHistoryFromCurrentSource<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
+  client: DocSyncClient<D, S, O>,
+  docId: string,
+  source: HistorySource<D> | undefined,
+): { promisedDoc: Promise<D | undefined>; value: unknown } | undefined {
+  if (!source) return;
+  const cacheEntry = client["_docsCache"].get(docId);
+  const docBinding = client["_docBinding"];
+  if (
+    cacheEntry?.promisedDoc !== source.promisedDoc ||
+    !docBinding.exportHistory
+  )
+    return;
   return {
-    promisedDoc: cacheEntry.promisedDoc,
-    value: docBinding.exportHistory(doc),
+    promisedDoc: source.promisedDoc,
+    value: docBinding.exportHistory(source.doc),
   };
 }
 
@@ -222,24 +248,38 @@ export const handleSync = async <
   const { data } = response;
   client["_events"].emit("sync", { req, data });
 
-  // Replacement is required when the server supplies a snapshot or when
-  // concurrent operations are order-sensitive. Capture ephemeral history
-  // before reconciliation so DocNode's export can commit any pending edit and
-  // reconciliation can include that edit in the replacement document.
-  const exportedHistory = await exportHistoryForPotentialReplacement(client, {
-    docId,
-    hasServerSnapshot: data.serializedDoc !== null,
-    hasConcurrentOperations:
-      data.operations.length > 0 && operations.length > 0,
-  });
-
-  const reconcileResult = await reconcileSyncResponse(client, {
+  // Resolve the live doc before starting the asynchronous provider work. The
+  // history itself is exported only in the synchronous final section below.
+  const historySource = await resolveHistorySourceForPotentialReplacement(
+    client,
+    {
+      docId,
+      hasServerSnapshot: data.serializedDoc !== null,
+      hasConcurrentOperations:
+        data.operations.length > 0 && operations.length > 0,
+    },
+  );
+  const preparedReconciliation = await prepareSyncReconciliation(client, {
     provider,
     docId,
     operationsBatches,
     localOperations: operations,
-    requestLocalVersion,
     data,
+  });
+
+  // Keep this section synchronous. Exporting DocNode history force-commits a
+  // pending edit, finalize then reads that operation from the memory batch,
+  // and replacement imports the matching history before another user event
+  // can run.
+  const exportedHistory =
+    preparedReconciliation.replacementDoc &&
+    preparedReconciliation.shouldReplaceDoc
+      ? exportHistoryFromCurrentSource(client, docId, historySource)
+      : undefined;
+  const reconcileResult = finalizeSyncReconciliation(client, {
+    docId,
+    prepared: preparedReconciliation,
+    requestLocalVersion,
   });
 
   if (reconcileResult.type === "replaceDoc") {

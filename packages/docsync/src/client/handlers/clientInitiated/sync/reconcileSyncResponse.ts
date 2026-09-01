@@ -11,6 +11,14 @@ export type ReconcileSyncResult<D extends object, O extends object> =
   | { type: "replaceDoc"; doc: D }
   | { type: "applyServerOperations"; operations: O[] };
 
+type PreparedSyncReconciliation<D extends object, O extends object> = {
+  didConsolidate: boolean;
+  shouldReplaceDoc: boolean;
+  pendingProviderOperations: O[];
+  replacementDoc?: D;
+  serverOperations: O[];
+};
+
 function applyOperations<D extends object, S extends object, O extends object>(
   client: DocSyncClient<D, S, O>,
   doc: D,
@@ -22,7 +30,11 @@ function applyOperations<D extends object, S extends object, O extends object>(
   }
 }
 
-export async function reconcileSyncResponse<
+/**
+ * Performs the asynchronous provider transaction and prepares a possible
+ * replacement. The live in-memory document is intentionally left untouched.
+ */
+export async function prepareSyncReconciliation<
   D extends object,
   S extends object,
   O extends object,
@@ -33,18 +45,10 @@ export async function reconcileSyncResponse<
     docId: string;
     operationsBatches: O[][];
     localOperations: O[];
-    requestLocalVersion: number;
     data: Extract<SyncResponse<S, O>, { data: unknown }>["data"];
   },
-): Promise<ReconcileSyncResult<D, O>> {
-  const {
-    provider,
-    docId,
-    operationsBatches,
-    localOperations,
-    requestLocalVersion,
-    data,
-  } = args;
+): Promise<PreparedSyncReconciliation<D, O>> {
+  const { provider, docId, operationsBatches, localOperations, data } = args;
   const hasServerSnapshot = data.serializedDoc !== null;
   let didConsolidate = false;
   let pendingProviderOperations: O[] = [];
@@ -100,34 +104,67 @@ export async function reconcileSyncResponse<
     didConsolidate = true;
   });
 
-  const hasConcurrentServerAndLocalOperations =
-    data.operations.length > 0 && localOperations.length > 0;
+  return {
+    didConsolidate,
+    shouldReplaceDoc:
+      hasServerSnapshot ||
+      (data.operations.length > 0 && localOperations.length > 0),
+    pendingProviderOperations,
+    ...(replacementDoc && { replacementDoc }),
+    serverOperations: data.operations,
+  };
+}
 
-  if (
-    replacementDoc &&
-    (hasServerSnapshot || hasConcurrentServerAndLocalOperations)
-  ) {
+/**
+ * Finishes reconciliation synchronously so local edits cannot land between
+ * rebuilding a replacement document and swapping it into the cache.
+ */
+export function finalizeSyncReconciliation<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
+  client: DocSyncClient<D, S, O>,
+  args: {
+    docId: string;
+    prepared: PreparedSyncReconciliation<D, O>;
+    requestLocalVersion: number;
+  },
+): ReconcileSyncResult<D, O> {
+  const { docId, prepared, requestLocalVersion } = args;
+
+  if (prepared.replacementDoc && prepared.shouldReplaceDoc) {
     const pendingMemoryOperations =
       client["_localOpsBatchState"].get(docId)?.data ?? [];
     const hasUnrebuildableLocalMemory =
       getLocalDocVersion(client, docId) > requestLocalVersion &&
-      pendingProviderOperations.length === 0 &&
+      prepared.pendingProviderOperations.length === 0 &&
       pendingMemoryOperations.length === 0;
 
     if (hasUnrebuildableLocalMemory) {
-      if (didConsolidate && data.operations.length > 0) {
-        return { type: "applyServerOperations", operations: data.operations };
+      if (prepared.didConsolidate && prepared.serverOperations.length > 0) {
+        return {
+          type: "applyServerOperations",
+          operations: prepared.serverOperations,
+        };
       }
       return { type: "none" };
     }
 
-    applyOperations(client, replacementDoc, pendingProviderOperations);
-    applyOperations(client, replacementDoc, pendingMemoryOperations);
-    return { type: "replaceDoc", doc: replacementDoc };
+    applyOperations(
+      client,
+      prepared.replacementDoc,
+      prepared.pendingProviderOperations,
+    );
+    applyOperations(client, prepared.replacementDoc, pendingMemoryOperations);
+    return { type: "replaceDoc", doc: prepared.replacementDoc };
   }
 
-  if (didConsolidate && data.operations.length > 0) {
-    return { type: "applyServerOperations", operations: data.operations };
+  if (prepared.didConsolidate && prepared.serverOperations.length > 0) {
+    return {
+      type: "applyServerOperations",
+      operations: prepared.serverOperations,
+    };
   }
 
   return { type: "none" };
