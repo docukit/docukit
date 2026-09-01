@@ -21,6 +21,9 @@ doc.undoManager.redo(); // redo the last undone transaction
 doc.undoManager.canUndo(); // true if there are undo steps available
 doc.undoManager.canRedo(); // true if there are redo steps available
 doc.undoManager.isEnabled; // true when maxUndoSteps is greater than 0
+
+const history = doc.undoManager.exportHistory(); // the undo and redo history
+doc.undoManager.importHistory(history); // restore exported history
 ```
 
 If `undoManager` is omitted, `maxUndoSteps` defaults to `0`.
