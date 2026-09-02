@@ -780,6 +780,10 @@ async function waitForEditorReady(page: Page) {
       .first()
       .waitFor({ state: "visible" });
   }
+  // The example keeps rendering the document when a query carries an error, so
+  // a broken demo no longer hides the editor. Assert the error is absent, or a
+  // regression like a rejected handshake would pass every editor test.
+  await expect(page.getByTestId("query-error")).toHaveCount(0);
 }
 
 export function collapsed(offset: number): SelectionExpectation {

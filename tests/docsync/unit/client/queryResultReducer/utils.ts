@@ -13,7 +13,8 @@ type ActionCase = {
   name: string;
   run: (state: State) => State;
   expected: (state: State) => State;
-  invalid?: (state: State) => string | undefined;
+  /** Terminal network actions leave a settled query untouched. */
+  ignoredWhenSettled?: boolean;
 };
 
 const fetchStatuses = ["fetching", "paused", "idle"] satisfies FetchStatus[];
@@ -55,18 +56,22 @@ function withFetchStatus(state: State, fetchStatus: FetchStatus): State {
   return errorState(state, fetchStatus, state.error);
 }
 
-function invalidNetworkAction(state: State): string | undefined {
-  if (state.fetchStatus !== "idle") return undefined;
-  return "when fetchStatus is idle";
+/**
+ * Terminal network actions settle a query, but a query that went `paused` while
+ * the response was in flight must stay `paused`.
+ */
+function terminalFetchStatus(state: State): FetchStatus {
+  return state.fetchStatus === "paused" ? "paused" : "idle";
 }
 
 function networkDocNotFoundExpected(
   state: State,
   createIfMissing: boolean,
 ): State {
-  if ("data" in state) return success(state.data, "idle");
-  if (createIfMissing) return { status: "pending", fetchStatus: "idle" };
-  return success(undefined, "idle");
+  const fetchStatus = terminalFetchStatus(state);
+  if ("data" in state) return success(state.data, fetchStatus);
+  if (createIfMissing) return { status: "pending", fetchStatus };
+  return success(undefined, fetchStatus);
 }
 
 export const stateCases: StateCase[] = [
@@ -126,34 +131,38 @@ export const actionCases: ActionCase[] = [
     expected: (state) => withFetchStatus(state, "paused"),
   },
   {
+    name: "connectionError",
+    run: (state) =>
+      reducerFor(state).action.connectionError({ error: networkError }),
+    expected: (state) => errorState(state, "paused", networkError),
+  },
+  {
     name: "networkDocFound",
     run: (state) =>
       reducerFor(state).action.networkDocFound({ data: "network" }),
-    expected: () => success("network", "idle"),
-    invalid: invalidNetworkAction,
+    expected: (state) => success("network", terminalFetchStatus(state)),
+    ignoredWhenSettled: true,
   },
   {
     name: "networkDocNotFound optional data",
     run: (state) =>
       reducerFor(state).action.networkDocNotFound({ createIfMissing: false }),
     expected: (state) => networkDocNotFoundExpected(state, false),
-    invalid: invalidNetworkAction,
+    ignoredWhenSettled: true,
   },
   {
     name: "networkDocNotFound required data",
     run: (state) =>
       reducerFor(state).action.networkDocNotFound({ createIfMissing: true }),
     expected: (state) => networkDocNotFoundExpected(state, true),
-    invalid: invalidNetworkAction,
+    ignoredWhenSettled: true,
   },
   {
     name: "networkQueryError",
     run: (state) =>
-      reducerFor(state).action.networkQueryError({
-        error: networkError,
-        fetchStatus: "idle",
-      }),
-    expected: (state) => errorState(state, "idle", networkError),
-    invalid: invalidNetworkAction,
+      reducerFor(state).action.networkQueryError({ error: networkError }),
+    expected: (state) =>
+      errorState(state, terminalFetchStatus(state), networkError),
+    ignoredWhenSettled: true,
   },
 ];

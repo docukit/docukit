@@ -7,10 +7,12 @@ import {
   dispatchNetworkDocNotFound,
   dispatchNetworkQueryError,
 } from "../../../utils/dispatchDocQueryAction.js";
+import { DocSyncError } from "../../../utils/DocSyncError.js";
 import { getOwnPresencePatch } from "../../../utils/getOwnPresencePatch.js";
 import { getLocalDocVersion } from "../../../utils/localDocVersion.js";
 import { request } from "../../../utils/request.js";
 import { setupDocChangeListener } from "../../../utils/setupDocChangeListener.js";
+import { clearSyncRetry, scheduleSyncRetry } from "../../../utils/syncRetry.js";
 import {
   finalizeSyncReconciliation,
   prepareSyncReconciliation,
@@ -271,30 +273,39 @@ export const handleSync = async <
     try {
       response = await request(socket, "sync", payload);
     } catch (error) {
-      const queryError =
-        error instanceof Error ? error : new Error(String(error));
+      const queryError = new DocSyncError(
+        "NetworkError",
+        error instanceof Error ? error.message : String(error),
+        { cause: error },
+      );
       client["_events"].emit("sync", {
         req,
         error: { type: "NetworkError", message: queryError.message },
       });
       dispatchNetworkQueryError(client, docId, queryError);
       pushStatusByDocId.set(docId, "idle");
-      void handleSync(client, docId);
+      scheduleSyncRetry(client, docId, () => void handleSync(client, docId));
       return;
     }
 
     if ("error" in response && response.error) {
       client["_events"].emit("sync", { req, error: response.error });
-      const queryError = new Error(response.error.message);
-      queryError.name = response.error.type;
+      const queryError = new DocSyncError(
+        response.error.type,
+        response.error.message,
+      );
       dispatchNetworkQueryError(client, docId, queryError);
       pushStatusByDocId.set(docId, "idle");
+      // Only a DatabaseError is transient. Authorization and validation
+      // failures would be rejected identically on every retry, so retrying
+      // them is a loop that can never converge.
       if (response.error.type === "DatabaseError") {
-        void handleSync(client, docId);
+        scheduleSyncRetry(client, docId, () => void handleSync(client, docId));
       }
       return;
     }
 
+    clearSyncRetry(client, docId);
     const { data } = response;
     client["_events"].emit("sync", { req, data });
 
@@ -370,7 +381,6 @@ export const handleSync = async <
     }
     const latestCacheEntry = client["_docsCache"].get(docId);
     if (!latestCacheEntry) return;
-    if (latestCacheEntry.queryResult.fetchStatus === "idle") return;
 
     if (
       latestCacheEntry.queryResult.status === "success" &&
@@ -385,11 +395,16 @@ export const handleSync = async <
     });
   } catch (error) {
     pushStatusByDocId.set(docId, "idle");
-    dispatchNetworkQueryError(
-      client,
-      docId,
-      error instanceof Error ? error : new Error(String(error)),
-    );
+    try {
+      dispatchNetworkQueryError(
+        client,
+        docId,
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    } catch {
+      // Reporting the failure on the query must never replace the failure
+      // itself — the rethrow below is what keeps it loud.
+    }
     throw error;
   }
 };

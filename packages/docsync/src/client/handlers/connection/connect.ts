@@ -9,6 +9,7 @@ export function handleConnect<
 >({ client }: { client: DocSyncClient<D, S, O> }): void {
   client["_socket"].on("connect", () => {
     client["_connectionError"] = undefined;
+    client["_connectionFetchStatus"] = "fetching";
     client["_events"].emit("connect");
     void (async () => {
       const syncedDocIds = new Set<string>();

@@ -22,6 +22,30 @@ function error<D>(
 }
 
 /**
+ * An `idle` query is settled: a newer sync already produced its result. A
+ * terminal network action arriving afterwards belongs to a superseded attempt —
+ * Socket.IO can drop and reconnect while a request is in flight, and the
+ * abandoned one still settles later, after the retry already succeeded.
+ * Applying it would overwrite a fresh result with a stale one.
+ *
+ * This contains the damage; see the TODO in handlers/connection/disconnect.ts
+ * for the race that produces the superseded sync in the first place.
+ */
+function isSettled<D>(state: QueryResult<D>): boolean {
+  return state.fetchStatus === "idle";
+}
+
+/**
+ * Terminal network actions settle the query, but they must not claim the
+ * connection is healthy. The socket can drop while a response is still being
+ * reconciled, so a query that is already `paused` stays `paused` and the app
+ * keeps rendering its offline state.
+ */
+function terminalFetchStatus<D>(state: QueryResult<D>): FetchStatus {
+  return state.fetchStatus === "paused" ? "paused" : "idle";
+}
+
+/**
  * @internal - Do not use this function!
  */
 export function createQueryResultReducer<D>(config: {
@@ -52,37 +76,38 @@ export function createQueryResultReducer<D>(config: {
         return withFetchStatus(state, "paused");
       },
 
-      networkDocFound: (_state: QueryResult<D>, payload: { data: D }) =>
-        success(payload.data, "idle"),
+      /**
+       * A permanent connection failure: the query cannot progress until the
+       * client reconnects, so it pauses and surfaces the error in one step.
+       */
+      connectionError: (state: QueryResult<D>, payload: { error: Error }) =>
+        error(state, "paused", payload.error),
+
+      networkDocFound: (state: QueryResult<D>, payload: { data: D }) =>
+        isSettled(state)
+          ? state
+          : success(payload.data, terminalFetchStatus(state)),
 
       networkDocNotFound: (
         state: QueryResult<D>,
         payload: { createIfMissing: boolean },
       ): QueryResult<D> => {
-        if (state.status === "success") return success(state.data, "idle");
+        if (isSettled(state)) return state;
+        const fetchStatus = terminalFetchStatus(state);
+        if (state.status === "success") return success(state.data, fetchStatus);
         if (state.status === "error" && state.data !== undefined) {
-          return success(state.data, "idle");
+          return success(state.data, fetchStatus);
         }
         if (payload.createIfMissing) {
-          return { status: "pending", fetchStatus: "idle" };
+          return { status: "pending", fetchStatus };
         }
-        return success(undefined as D, "idle");
+        return success(undefined as D, fetchStatus);
       },
 
-      networkQueryError: (
-        state: QueryResult<D>,
-        payload: { error: Error; fetchStatus: "paused" | "idle" },
-      ) => error(state, payload.fetchStatus, payload.error),
-    },
-    beforeAction: (state, action) => {
-      const terminalNetworkAction =
-        action.type === "networkDocFound" ||
-        action.type === "networkDocNotFound" ||
-        action.type === "networkQueryError";
-
-      if (terminalNetworkAction && state.fetchStatus === "idle") {
-        throw new Error(`Cannot apply ${action.type} when fetchStatus is idle`);
-      }
+      networkQueryError: (state: QueryResult<D>, payload: { error: Error }) =>
+        isSettled(state)
+          ? state
+          : error(state, terminalFetchStatus(state), payload.error),
     },
   });
 }

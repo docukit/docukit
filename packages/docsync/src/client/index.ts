@@ -28,6 +28,7 @@ import { handleUnsubscribe } from "./handlers/clientInitiated/unsubscribe.js";
 import { handleIdentity } from "./handlers/serverInitiated/identity.js";
 import type { BCHelper } from "./utils/BCHelper.js";
 import {
+  dispatchDocQueryDisconnected,
   dispatchLocalDocFound,
   dispatchLocalQueryError,
 } from "./utils/dispatchDocQueryAction.js";
@@ -38,6 +39,7 @@ import {
 } from "./utils/localIdentity.js";
 import { setupDocChangeListener } from "./utils/setupDocChangeListener.js";
 import { setupLocalPromise } from "./utils/setupLocalPromise.js";
+import { clearSyncRetry, type SyncRetryState } from "./utils/syncRetry.js";
 
 // TODO: review this type!
 type LocalResolved<S extends object, O extends object> = {
@@ -86,6 +88,13 @@ export class DocSyncClient<
   protected _bcHelper?: BCHelper<D, S, O>;
   protected _socket: ClientSocket<S, O>;
   protected _connectionError: Error | undefined;
+  /**
+   * Single source of truth for the network state new subscriptions start from.
+   * Reading it off the socket at subscription time would report `fetching` to a
+   * query created right after a failed connection attempt, while every query
+   * created before it sits on `paused`.
+   */
+  protected _connectionFetchStatus: "fetching" | "paused" = "fetching";
   protected _changeOrigin: ChangeOrigin = "local";
 
   // Flow control state (batching, debouncing, push queueing)
@@ -96,6 +105,7 @@ export class DocSyncClient<
   protected _collabDocIds = new Set<string>();
   protected _presenceDebounceState = new Map<string, DeferredState<unknown>>();
   protected _pushStatusByDocId = new Map<string, PushStatus>();
+  protected _syncRetryState = new Map<string, SyncRetryState>();
 
   /** Typed as unknown so DocSyncClient remains covariant in O, S (assignable to DocSyncClient base). */
   protected _events = createClientEventEmitter();
@@ -137,6 +147,8 @@ export class DocSyncClient<
       transports: ["websocket"], // Skip polling, go straight to WebSocket
     });
 
+    this._connectionFetchStatus = this._socket.active ? "fetching" : "paused";
+
     this._localPromise = setupLocalPromise({
       client: this,
       providerFactory: local.provider,
@@ -152,11 +164,25 @@ export class DocSyncClient<
   }
 
   connect() {
+    // A new attempt supersedes the failure that ended the previous one, so a
+    // subscription created while connecting must not inherit a stale error.
+    this._connectionError = undefined;
+    this._connectionFetchStatus = "fetching";
     this._socket.connect();
   }
 
   disconnect() {
+    const wasConnected = this._socket.connected;
     this._socket.disconnect();
+    this._connectionFetchStatus = "paused";
+    // Socket.IO only emits "disconnect" for a socket that had connected.
+    // Disconnecting mid-handshake would otherwise leave every query on
+    // "fetching" forever, because no listener ever runs.
+    if (!wasConnected) {
+      for (const docId of this._docsCache.keys()) {
+        dispatchDocQueryDisconnected(this, docId);
+      }
+    }
   }
 
   clearLocalIdentity() {
@@ -208,7 +234,7 @@ export class DocSyncClient<
       "createIfMissing" in args && args.createIfMissing === true;
     const localLoadMode = createIfMissing ? "loadOrCreate" : "load";
     const listener = onChange as QueryListener;
-    const initialFetchStatus = this._socket.active ? "fetching" : "paused";
+    const initialFetchStatus = this._connectionFetchStatus;
 
     const existingCacheEntry = this._docsCache.get(docId);
     if (existingCacheEntry) {
@@ -216,9 +242,10 @@ export class DocSyncClient<
       existingCacheEntry.queryListeners.add(listener);
       listener(existingCacheEntry.queryResult);
 
-      const hasDoc =
-        existingCacheEntry.queryResult.status === "success" &&
-        existingCacheEntry.queryResult.data !== undefined;
+      // Deliberately not gated on `status === "success"`: a query can hold data
+      // together with a later error, and treating that as "no document" would
+      // reload the doc and swap out the live instance the caller is editing.
+      const hasDoc = existingCacheEntry.queryResult.data !== undefined;
 
       if (
         createIfMissing &&
@@ -442,6 +469,7 @@ export class DocSyncClient<
         clearTimeout(presenceState?.timeout);
         this._presenceDebounceState.delete(docId);
         this._collabDocIds.delete(docId);
+        clearSyncRetry(this, docId);
         if (doc) {
           await handleUnsubscribe(this._socket, { docId });
           this._docBinding.dispose(doc);

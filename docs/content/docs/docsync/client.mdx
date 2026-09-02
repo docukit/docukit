@@ -156,11 +156,12 @@ const result = useDoc({ type: "notes", id: "doc-123", createIfMissing: true });
     },
     data: {
       description:
-        "The document data when status is 'success'. Contains doc (the DocNode instance) and id (document ID). Undefined if document not found.",
-      type: "{ doc: D; id: string } | undefined",
+        "The document data: doc (the DocNode instance) and docId (document ID). Undefined when the document was not found, and still present when a later sync fails, so stale content stays renderable alongside an error.",
+      type: "{ doc: D; docId: string } | undefined",
     },
     error: {
-      description: "Error information when status is 'error'.",
+      description:
+        "The failure that produced the current state. DocSync's own failures are DocSyncError instances, whose type field ('AuthorizationError', 'ConnectionError', 'DatabaseError', 'NetworkError' or 'ValidationError') can be branched on without matching the message.",
       type: "Error",
     },
     fetchStatus: {

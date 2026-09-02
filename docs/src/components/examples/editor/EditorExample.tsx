@@ -237,9 +237,12 @@ function EditorContent({
     createIfMissing: true,
   });
   const [presence, setPresence] = usePresenceHook({ docId });
-  const isReady = status === "success" && data.docId === docId;
+  // `data` and `error` can coexist: a sync failure does not invalidate the doc
+  // already loaded from local storage, so keep editing available and report the
+  // failure next to it instead of replacing the editor with an error screen.
+  const isReady = data?.docId === docId;
 
-  if (status === "error") {
+  if (!isReady && status === "error") {
     return <div className="text-destructive">Error: {error.message}</div>;
   }
 
@@ -248,6 +251,14 @@ function EditorContent({
       ariaLabel={isReady ? undefined : "Loading editor"}
       isLoading={!isReady}
     >
+      {status === "error" ? (
+        <div
+          data-testid="query-error"
+          className="text-destructive px-2 py-1 text-sm"
+        >
+          {error.message}
+        </div>
+      ) : null}
       {isReady ? (
         <EditorPanel
           key={`${clientId}:${docId}`}
