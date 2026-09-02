@@ -1410,6 +1410,45 @@ describe("DocSyncClient", () => {
         });
       });
 
+      test("should resume loaded queries when reconnecting, not just new ones", async () => {
+        const client = createClient();
+        const loadedCallback = createCallback();
+        const lateCallback = createCallback();
+        const docId = ulid().toLowerCase();
+
+        client.getDoc(
+          { type: "test", id: docId, createIfMissing: true },
+          loadedCallback,
+        );
+        await expect
+          .poll(() => loadedCallback.mock.calls.at(-1)?.[0].fetchStatus)
+          .toBe("idle");
+
+        setSocketState(client, { active: false, connected: false });
+        emitMockedSocketEvent(
+          client,
+          "connect_error",
+          new Error("Authentication failed"),
+        );
+        expect(loadedCallback.mock.calls.at(-1)?.[0]).toMatchObject({
+          status: "error",
+          fetchStatus: "paused",
+        });
+
+        client.connect();
+        setSocketState(client, { active: true, connected: false });
+        client.getDoc(
+          { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
+          lateCallback,
+        );
+
+        // Both subscriptions have to agree about the connection they share.
+        expect(loadedCallback.mock.calls.at(-1)?.[0].fetchStatus).toBe(
+          "fetching",
+        );
+        expect(lateCallback.mock.calls[0]?.[0].fetchStatus).toBe("fetching");
+      });
+
       test("should keep the document instance when subscribing while an error is visible", async () => {
         const client = createClient();
         const callback = createCallback();
@@ -2168,6 +2207,9 @@ describe("DocSyncClient", () => {
         ([event]) => event === "sync",
       ).length;
       expect(syncCallsAfterFailure).toBe(1);
+      // A scheduled retry is still network work, so the query must not claim
+      // it has settled while the backoff is pending.
+      expect(callback.mock.calls.at(-1)?.[0].fetchStatus).toBe("fetching");
 
       // The retry is scheduled, not immediate, so a server outage cannot turn
       // into a hot loop.

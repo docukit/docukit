@@ -28,6 +28,7 @@ import { handleUnsubscribe } from "./handlers/clientInitiated/unsubscribe.js";
 import { handleIdentity } from "./handlers/serverInitiated/identity.js";
 import type { BCHelper } from "./utils/BCHelper.js";
 import {
+  dispatchDocQueryConnected,
   dispatchDocQueryDisconnected,
   dispatchLocalDocFound,
   dispatchLocalQueryError,
@@ -94,7 +95,7 @@ export class DocSyncClient<
    * query created right after a failed connection attempt, while every query
    * created before it sits on `paused`.
    */
-  protected _connectionFetchStatus: "fetching" | "paused" = "fetching";
+  protected _connectionFetchStatus: "fetching" | "paused";
   protected _changeOrigin: ChangeOrigin = "local";
 
   // Flow control state (batching, debouncing, push queueing)
@@ -168,6 +169,12 @@ export class DocSyncClient<
     // subscription created while connecting must not inherit a stale error.
     this._connectionError = undefined;
     this._connectionFetchStatus = "fetching";
+    // Loaded queries have to follow, or a document subscribed before the
+    // reconnect would report `paused` while one subscribed after it reports
+    // `fetching`, for the same client and the same socket.
+    for (const docId of this._docsCache.keys()) {
+      dispatchDocQueryConnected(this, docId);
+    }
     this._socket.connect();
   }
 

@@ -3,13 +3,18 @@ import type { DocSyncClient } from "../index.js";
 /**
  * Transient sync failures (network drops, a server database hiccup) are worth
  * retrying, but retrying them immediately turns an outage into a hot loop that
- * hammers the server for as long as it stays down. Back off exponentially and
- * give up after a handful of attempts, leaving the error visible on the query
- * so the application can decide what to do.
+ * hammers the server for as long as it stays down. Back off exponentially up to
+ * a fixed ceiling, then give up, leaving the error visible on the query so the
+ * application can decide what to do.
+ *
+ * The attempts below span 300, 600, 1200, 2400, 4800 and then 5000ms three
+ * times — roughly 24 seconds, long enough to ride out a server restart without
+ * retrying a genuinely broken document forever. Any successful sync or
+ * reconnect resets the counter, so a later edit starts over.
  */
 const SYNC_RETRY_BASE_DELAY = 300;
 const SYNC_RETRY_MAX_DELAY = 5_000;
-const SYNC_RETRY_MAX_ATTEMPTS = 5;
+const SYNC_RETRY_MAX_ATTEMPTS = 8;
 
 export type SyncRetryState = {
   attempts: number;
@@ -17,8 +22,9 @@ export type SyncRetryState = {
 };
 
 /**
- * Schedules `retry` with exponential backoff. Returns `false` once the document
- * has exhausted its attempts, so the caller can stop retrying.
+ * Schedules `retry` with exponential backoff. Returns whether a retry was
+ * scheduled: `false` means the document exhausted its attempts, so the caller
+ * must settle the query instead of leaving it looking busy.
  */
 export function scheduleSyncRetry<
   D extends object,

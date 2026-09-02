@@ -15,7 +15,6 @@ import { clearAllSyncRetries } from "../../utils/syncRetry.js";
 function pauseQueries<D extends object, S extends object, O extends object>(
   client: DocSyncClient<D, S, O>,
   connectionError: DocSyncError | undefined,
-  onDoc?: (docId: string) => void,
 ): void {
   client["_connectionFetchStatus"] = "paused";
   if (connectionError) client["_connectionError"] = connectionError;
@@ -25,7 +24,21 @@ function pauseQueries<D extends object, S extends object, O extends object>(
     } else {
       dispatchDocQueryDisconnected(client, docId);
     }
-    onDoc?.(docId);
+  }
+}
+
+/** Tells the other tabs this client is gone from every document it had open. */
+function broadcastPresenceLeft<
+  D extends object,
+  S extends object,
+  O extends object,
+>(client: DocSyncClient<D, S, O>): void {
+  for (const docId of client["_docsCache"].keys()) {
+    client["_bcHelper"]?.broadcast({
+      type: "PRESENCE",
+      docId,
+      presence: { [client["_clientId"]]: null },
+    });
   }
 }
 
@@ -59,13 +72,8 @@ export function handleDisconnect<
             `The server disconnected the DocSync client (${reason})`,
           )
         : undefined;
-    pauseQueries(client, connectionError, (docId) => {
-      client["_bcHelper"]?.broadcast({
-        type: "PRESENCE",
-        docId,
-        presence: { [client["_clientId"]]: null },
-      });
-    });
+    pauseQueries(client, connectionError);
+    broadcastPresenceLeft(client);
     client["_events"].emit("disconnect", { reason });
   });
   client["_socket"].on("connect_error", (err) => {

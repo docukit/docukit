@@ -192,6 +192,12 @@ rendering usable data and show the later error separately. A paused state is
 often transient, so applications may delay a connectivity notice to avoid a
 flash during short interruptions.
 
+Retries are not unlimited. A network or database failure is retried with
+exponential backoff for about 24 seconds; after that the query settles on
+`error` with `fetchStatus: "idle"` and keeps its data, so `error` together with
+`idle` means DocSync has stopped trying on its own. Any later edit or reconnect
+starts a fresh attempt.
+
 ---
 
 ## usePresence

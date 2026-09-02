@@ -202,6 +202,23 @@ function broadcastServerOperations<
 }
 
 /**
+ * Schedules a retry for a failed sync and keeps the query on `fetching` while
+ * the backoff is pending. A scheduled retry is still network work, so reporting
+ * `idle` would tell the application nothing is happening while DocSync is in
+ * fact waiting to try again. Once the attempts are exhausted the query settles,
+ * keeping the error visible.
+ */
+function retryOrSettle<D extends object, S extends object, O extends object>(
+  client: DocSyncClient<D, S, O>,
+  docId: string,
+): void {
+  const retrying = scheduleSyncRetry(client, docId, () => {
+    void handleSync(client, docId);
+  });
+  if (retrying) dispatchDocQueryFetchStarted(client, docId);
+}
+
+/**
  * Sync (push) a document to the server. Queues if already pushing (sets
  * pushing-with-pending), otherwise sets pushing and runs the sync.
  */
@@ -284,7 +301,7 @@ export const handleSync = async <
       });
       dispatchNetworkQueryError(client, docId, queryError);
       pushStatusByDocId.set(docId, "idle");
-      scheduleSyncRetry(client, docId, () => void handleSync(client, docId));
+      retryOrSettle(client, docId);
       return;
     }
 
@@ -299,9 +316,7 @@ export const handleSync = async <
       // Only a DatabaseError is transient. Authorization and validation
       // failures would be rejected identically on every retry, so retrying
       // them is a loop that can never converge.
-      if (response.error.type === "DatabaseError") {
-        scheduleSyncRetry(client, docId, () => void handleSync(client, docId));
-      }
+      if (response.error.type === "DatabaseError") retryOrSettle(client, docId);
       return;
     }
 
