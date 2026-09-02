@@ -163,8 +163,33 @@ const result = useDoc({ type: "notes", id: "doc-123", createIfMissing: true });
       description: "Error information when status is 'error'.",
       type: "Error",
     },
+    fetchStatus: {
+      description:
+        "Network activity for the document. Fetching means a sync is active, paused means it cannot continue until the connection returns, and idle means no network work is running.",
+      type: '"fetching" | "paused" | "idle"',
+      required: true,
+    },
   }}
 />
+
+`status` describes the available result. `fetchStatus` independently describes
+network work, so local or stale data can remain available while synchronization
+is paused or a later sync has failed.
+
+| Situation                                          | `status`                         | `fetchStatus`        | Result                                                                                     |
+| -------------------------------------------------- | -------------------------------- | -------------------- | ------------------------------------------------------------------------------------------ |
+| Initial connection or active sync                  | `pending`, `success`, or `error` | `fetching`           | Existing local data and errors are preserved                                               |
+| Temporarily offline or manually disconnected       | `pending`, `success`, or `error` | `paused`             | Existing local data and errors are preserved                                               |
+| Sync completed                                     | `success`                        | `idle`               | Server result is available, including `undefined` when an optional document does not exist |
+| Local storage failed                               | `error`                          | Current fetch status | `error` contains the local failure                                                         |
+| Authentication or permanent connection rejection   | `error`                          | `paused`             | `error` contains the connection failure                                                    |
+| Server permanently rejected a sync                 | `error`                          | `idle`               | Existing data is preserved and `error` contains the authorization or validation failure    |
+| Network or database attempt failed and is retrying | `error`                          | `fetching`           | Existing data and the latest error are preserved until a retry succeeds                    |
+
+Because `data` and `error` can exist at the same time, applications should keep
+rendering usable data and show the later error separately. A paused state is
+often transient, so applications may delay a connectivity notice to avoid a
+flash during short interruptions.
 
 ---
 

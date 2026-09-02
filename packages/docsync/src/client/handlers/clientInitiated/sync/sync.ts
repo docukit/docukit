@@ -1,9 +1,11 @@
 import type { SyncRequest, SyncResponse } from "../../../../shared/types.js";
 import type { DocSyncClient } from "../../../index.js";
 import {
+  dispatchDocQueryFetchStarted,
   dispatchLocalDocFound,
   dispatchNetworkDocFound,
   dispatchNetworkDocNotFound,
+  dispatchNetworkQueryError,
 } from "../../../utils/dispatchDocQueryAction.js";
 import { getOwnPresencePatch } from "../../../utils/getOwnPresencePatch.js";
 import { getLocalDocVersion } from "../../../utils/localDocVersion.js";
@@ -222,6 +224,7 @@ export const handleSync = async <
     return;
   }
   pushStatusByDocId.set(docId, "pushing");
+  dispatchDocQueryFetchStarted(client, docId);
   // Any throw below would leave the push status stuck on "pushing", and every
   // later handleSync call would early-return on it — the document would stop
   // syncing until a reload. Reset the status and rethrow so the failure stays
@@ -268,13 +271,13 @@ export const handleSync = async <
     try {
       response = await request(socket, "sync", payload);
     } catch (error) {
+      const queryError =
+        error instanceof Error ? error : new Error(String(error));
       client["_events"].emit("sync", {
         req,
-        error: {
-          type: "NetworkError",
-          message: error instanceof Error ? error.message : String(error),
-        },
+        error: { type: "NetworkError", message: queryError.message },
       });
+      dispatchNetworkQueryError(client, docId, queryError);
       pushStatusByDocId.set(docId, "idle");
       void handleSync(client, docId);
       return;
@@ -282,8 +285,13 @@ export const handleSync = async <
 
     if ("error" in response && response.error) {
       client["_events"].emit("sync", { req, error: response.error });
+      const queryError = new Error(response.error.message);
+      queryError.name = response.error.type;
+      dispatchNetworkQueryError(client, docId, queryError);
       pushStatusByDocId.set(docId, "idle");
-      void handleSync(client, docId);
+      if (response.error.type === "DatabaseError") {
+        void handleSync(client, docId);
+      }
       return;
     }
 
@@ -377,6 +385,11 @@ export const handleSync = async <
     });
   } catch (error) {
     pushStatusByDocId.set(docId, "idle");
+    dispatchNetworkQueryError(
+      client,
+      docId,
+      error instanceof Error ? error : new Error(String(error)),
+    );
     throw error;
   }
 };

@@ -59,6 +59,7 @@ const ioMock = vi.hoisted(() =>
     ) => {
       return {
         connected: true,
+        active: true,
         on: vi.fn((event: string, listener: (payload?: unknown) => void) => {
           if (event === "identity" && socketMockState.autoIdentity) {
             queueMicrotask(() =>
@@ -267,6 +268,27 @@ describe("DocSyncClient", () => {
 
     const listener = eventCall[1];
     Reflect.apply(listener, undefined, []);
+  };
+
+  const emitMockedSocketEvent = <
+    D extends object,
+    S extends object,
+    O extends object,
+  >(
+    client: DocSyncClient<D, S, O>,
+    event: "connect" | "connect_error" | "disconnect",
+    payload?: unknown,
+  ) => {
+    const onMock = getSocketOnMock(client);
+    const eventCall = onMock.mock.calls.find(
+      ([registeredEvent]) => registeredEvent === event,
+    );
+    if (!eventCall) {
+      throw new Error(`Expected socket listener for ${event}`);
+    }
+
+    const listener = eventCall[1];
+    Reflect.apply(listener, undefined, payload === undefined ? [] : [payload]);
   };
 
   const emitMockedCollaboration = (
@@ -1144,6 +1166,166 @@ describe("DocSyncClient", () => {
         });
       });
 
+      test("should remain fetching while the initial connection is active", () => {
+        const client = createClient();
+        const callback = createCallback();
+
+        Object.defineProperties(client["_socket"], {
+          active: { configurable: true, value: true },
+          connected: { configurable: true, value: false },
+        });
+        client.getDoc({ type: "test", id: "test-id" }, callback);
+
+        expect(callback).toHaveBeenCalledWith({
+          status: "pending",
+          fetchStatus: "fetching",
+        });
+      });
+
+      test("should pause an idle query after a manual disconnect", async () => {
+        const client = createClient();
+        const callback = createCallback();
+        const docId = ulid().toLowerCase();
+
+        client.getDoc(
+          { type: "test", id: docId, createIfMissing: true },
+          callback,
+        );
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0].fetchStatus)
+          .toBe("idle");
+
+        Object.defineProperties(client["_socket"], {
+          active: { configurable: true, value: false },
+          connected: { configurable: true, value: false },
+        });
+        emitMockedSocketEvent(client, "disconnect", "io client disconnect");
+
+        expect(callback.mock.calls.at(-1)?.[0]).toMatchObject({
+          status: "success",
+          fetchStatus: "paused",
+        });
+      });
+
+      test("should pause a transient connection failure without reporting an error", async () => {
+        const client = createClient();
+        const callback = createCallback();
+        const docId = ulid().toLowerCase();
+
+        client.getDoc(
+          { type: "test", id: docId, createIfMissing: true },
+          callback,
+        );
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0].fetchStatus)
+          .toBe("idle");
+
+        Object.defineProperties(client["_socket"], {
+          active: { configurable: true, value: true },
+          connected: { configurable: true, value: false },
+        });
+        emitMockedSocketEvent(
+          client,
+          "connect_error",
+          new Error("transport unavailable"),
+        );
+
+        expect(callback.mock.calls.at(-1)?.[0]).toMatchObject({
+          status: "success",
+          fetchStatus: "paused",
+        });
+      });
+
+      test("should preserve local data with a permanent connection error", async () => {
+        const client = createClient();
+        const callback = createCallback();
+        const connectionError = new Error("Authentication failed");
+        const docId = ulid().toLowerCase();
+
+        Object.defineProperties(client["_socket"], {
+          active: { configurable: true, value: false },
+          connected: { configurable: true, value: false },
+        });
+        emitMockedSocketEvent(client, "connect_error", connectionError);
+        client.getDoc(
+          { type: "test", id: docId, createIfMissing: true },
+          callback,
+        );
+
+        expect(callback.mock.calls[0]?.[0]).toStrictEqual({
+          status: "error",
+          fetchStatus: "paused",
+          error: connectionError,
+        });
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0])
+          .toMatchObject({
+            status: "error",
+            fetchStatus: "paused",
+            error: connectionError,
+            data: { docId },
+          });
+      });
+
+      test("should report a server-initiated disconnect as an error", async () => {
+        const client = createClient();
+        const callback = createCallback();
+        const docId = ulid().toLowerCase();
+
+        client.getDoc(
+          { type: "test", id: docId, createIfMissing: true },
+          callback,
+        );
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0].fetchStatus)
+          .toBe("idle");
+
+        Object.defineProperties(client["_socket"], {
+          active: { configurable: true, value: false },
+          connected: { configurable: true, value: false },
+        });
+        emitMockedSocketEvent(client, "disconnect", "io server disconnect");
+
+        expect(callback.mock.calls.at(-1)?.[0]).toMatchObject({
+          status: "error",
+          fetchStatus: "paused",
+          data: { docId },
+        });
+      });
+
+      test("should recover a permanent connection error after reconnecting", async () => {
+        const client = createClient();
+        const callback = createCallback();
+        const docId = ulid().toLowerCase();
+
+        Object.defineProperties(client["_socket"], {
+          active: { configurable: true, value: false, writable: true },
+          connected: { configurable: true, value: false, writable: true },
+        });
+        emitMockedSocketEvent(
+          client,
+          "connect_error",
+          new Error("Authentication failed"),
+        );
+        client.getDoc(
+          { type: "test", id: docId, createIfMissing: true },
+          callback,
+        );
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0].status)
+          .toBe("error");
+
+        Object.defineProperties(client["_socket"], {
+          active: { configurable: true, value: true },
+          connected: { configurable: true, value: true },
+        });
+        emitMockedSocketEvent(client, "connect");
+
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0])
+          .toMatchObject({ status: "success", fetchStatus: "idle" });
+      });
+
       test("should return undefined when document does not exist and createIfMissing is false", async () => {
         const client = createClient();
         const callback = createCallback();
@@ -1458,6 +1640,10 @@ describe("DocSyncClient", () => {
           configurable: true,
           value: false,
         });
+        Object.defineProperty(client["_socket"], "active", {
+          configurable: true,
+          value: false,
+        });
         client.getDoc(
           { type: "test", id: customId, createIfMissing: true },
           callback,
@@ -1727,6 +1913,33 @@ describe("DocSyncClient", () => {
       if (reason instanceof Error) return reason.message.includes(substring);
       return false;
     };
+
+    test("should expose a permanent sync rejection without retrying", async () => {
+      const client = createClient();
+      const callback = createCallback();
+      const docId = ulid().toLowerCase();
+      socketMockState.syncResponses.set(docId, {
+        error: { type: "AuthorizationError", message: "Access denied" },
+      });
+
+      client.getDoc(
+        { type: "test", id: docId, createIfMissing: true },
+        callback,
+      );
+
+      await expect
+        .poll(() => callback.mock.calls.at(-1)?.[0])
+        .toMatchObject({
+          status: "error",
+          fetchStatus: "idle",
+          data: { docId },
+          error: { name: "AuthorizationError", message: "Access denied" },
+        });
+      const syncCalls = getSocketEmitMock(client).mock.calls.filter(
+        ([event]) => event === "sync",
+      );
+      expect(syncCalls).toHaveLength(1);
+    });
 
     test("should emit error status when provider throws", async () => {
       const errorMessage = "IndexedDB connection failed";

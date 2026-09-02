@@ -1,9 +1,14 @@
 // TODO: move to unit tests
 
 import { describe, expect, inject, test } from "vitest";
-import { DocSyncClient, indexedDBProvider } from "@docukit/docsync/client";
+import {
+  DocSyncClient,
+  indexedDBProvider,
+  type DocData,
+  type QueryResult,
+} from "@docukit/docsync/client";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
-import { defineNode, string } from "@docukit/docnode";
+import { defineNode, string, type Doc } from "@docukit/docnode";
 
 const LOCAL_IDENTITY_KEY = "docsync:localUserId";
 
@@ -60,5 +65,23 @@ describe("Authentication", () => {
     );
     expect(error.message).toContain("Authentication");
     socket.disconnect();
+  });
+
+  test("document query exposes an authentication rejection as error and paused", async () => {
+    const client = createClient("invalid");
+    const results: QueryResult<DocData<Doc> | undefined>[] = [];
+
+    client.getDoc({ type: "t", id: "auth-rejection" }, (result) => {
+      results.push(result);
+    });
+
+    await expect.poll(() => results.at(-1)?.status).toBe("error");
+    const result = results.at(-1);
+    expect(result?.fetchStatus).toBe("paused");
+    if (result?.status !== "error") {
+      throw new Error("Expected an error result");
+    }
+    expect(result.error.message).toContain("Authentication");
+    client.disconnect();
   });
 });

@@ -96,13 +96,21 @@ export const actionCases: ActionCase[] = [
   {
     name: "localDocFound",
     run: (state) => reducerFor(state).action.localDocFound({ data: "found" }),
-    expected: (state) => success("found", state.fetchStatus),
+    expected: (state) =>
+      state.status === "error"
+        ? { ...state, data: "found" }
+        : success("found", state.fetchStatus),
   },
   {
     name: "localQueryError",
     run: (state) =>
       reducerFor(state).action.localQueryError({ error: localError }),
     expected: (state) => errorState(state, state.fetchStatus, localError),
+  },
+  {
+    name: "fetchStarted",
+    run: (state) => reducerFor(state).action.fetchStarted(undefined),
+    expected: (state) => withFetchStatus(state, "fetching"),
   },
   {
     name: "connected",
@@ -115,10 +123,7 @@ export const actionCases: ActionCase[] = [
   {
     name: "disconnected",
     run: (state) => reducerFor(state).action.disconnected(undefined),
-    expected: (state) =>
-      state.fetchStatus === "fetching"
-        ? withFetchStatus(state, "paused")
-        : state,
+    expected: (state) => withFetchStatus(state, "paused"),
   },
   {
     name: "networkDocFound",
@@ -144,7 +149,10 @@ export const actionCases: ActionCase[] = [
   {
     name: "networkQueryError",
     run: (state) =>
-      reducerFor(state).action.networkQueryError({ error: networkError }),
+      reducerFor(state).action.networkQueryError({
+        error: networkError,
+        fetchStatus: "idle",
+      }),
     expected: (state) => errorState(state, "idle", networkError),
     invalid: invalidNetworkAction,
   },

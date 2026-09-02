@@ -32,10 +32,15 @@ export function createQueryResultReducer<D>(config: {
     actions: {
       // localDocNotFound is not an action, because does not change the state
       localDocFound: (state: QueryResult<D>, payload: { data: D }) =>
-        success(payload.data, state.fetchStatus),
+        state.status === "error"
+          ? { ...state, data: payload.data }
+          : success(payload.data, state.fetchStatus),
 
       localQueryError: (state: QueryResult<D>, payload: { error: Error }) =>
         error(state, state.fetchStatus, payload.error),
+
+      fetchStarted: (state: QueryResult<D>, _payload: undefined) =>
+        withFetchStatus(state, "fetching"),
 
       connected: (state: QueryResult<D>, _payload: undefined) => {
         if (state.fetchStatus !== "paused") return state;
@@ -43,7 +48,7 @@ export function createQueryResultReducer<D>(config: {
       },
 
       disconnected: (state: QueryResult<D>, _payload: undefined) => {
-        if (state.fetchStatus !== "fetching") return state;
+        if (state.fetchStatus === "paused") return state;
         return withFetchStatus(state, "paused");
       },
 
@@ -64,8 +69,10 @@ export function createQueryResultReducer<D>(config: {
         return success(undefined as D, "idle");
       },
 
-      networkQueryError: (state: QueryResult<D>, payload: { error: Error }) =>
-        error(state, "idle", payload.error),
+      networkQueryError: (
+        state: QueryResult<D>,
+        payload: { error: Error; fetchStatus: "paused" | "idle" },
+      ) => error(state, payload.fetchStatus, payload.error),
     },
     beforeAction: (state, action) => {
       const terminalNetworkAction =

@@ -47,6 +47,21 @@ export function dispatchDocQueryConnected<
   if (next !== cacheEntry.queryResult) client["_emitQueryResult"](docId, next);
 }
 
+export function dispatchDocQueryFetchStarted<
+  D extends object,
+  S extends object,
+  O extends object,
+>(client: DocSyncClient<D, S, O>, docId: string): void {
+  const cacheEntry = client["_docsCache"].get(docId);
+  if (!cacheEntry) return;
+
+  const reducer = createQueryResultReducer({
+    initialState: cacheEntry.queryResult,
+  });
+  const next = reducer.action.fetchStarted(undefined);
+  if (next !== cacheEntry.queryResult) client["_emitQueryResult"](docId, next);
+}
+
 export function dispatchDocQueryDisconnected<
   D extends object,
   S extends object,
@@ -93,5 +108,23 @@ export function dispatchNetworkDocNotFound<
     initialState: cacheEntry.queryResult,
   });
   const next = reducer.action.networkDocNotFound(payload);
+  if (next !== cacheEntry.queryResult) client["_emitQueryResult"](docId, next);
+}
+
+export function dispatchNetworkQueryError<
+  D extends object,
+  S extends object,
+  O extends object,
+>(client: DocSyncClient<D, S, O>, docId: string, error: Error): void {
+  const cacheEntry = client["_docsCache"].get(docId);
+  if (!cacheEntry) return;
+
+  const reducer = createQueryResultReducer({
+    initialState: cacheEntry.queryResult,
+  });
+  const next = reducer.action.networkQueryError({
+    error,
+    fetchStatus: client["_socket"].connected ? "idle" : "paused",
+  });
   if (next !== cacheEntry.queryResult) client["_emitQueryResult"](docId, next);
 }

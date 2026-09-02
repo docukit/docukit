@@ -85,6 +85,7 @@ export class DocSyncClient<
   protected _clientId: string;
   protected _bcHelper?: BCHelper<D, S, O>;
   protected _socket: ClientSocket<S, O>;
+  protected _connectionError: Error | undefined;
   protected _changeOrigin: ChangeOrigin = "local";
 
   // Flow control state (batching, debouncing, push queueing)
@@ -207,7 +208,7 @@ export class DocSyncClient<
       "createIfMissing" in args && args.createIfMissing === true;
     const localLoadMode = createIfMissing ? "loadOrCreate" : "load";
     const listener = onChange as QueryListener;
-    const initialFetchStatus = this._socket.connected ? "fetching" : "paused";
+    const initialFetchStatus = this._socket.active ? "fetching" : "paused";
 
     const existingCacheEntry = this._docsCache.get(docId);
     if (existingCacheEntry) {
@@ -235,10 +236,14 @@ export class DocSyncClient<
         docId,
         createIfMissing ? type : undefined,
       );
-      const queryResult: QueryResult<DocData<D> | undefined> = {
-        status: "pending",
-        fetchStatus: initialFetchStatus,
-      };
+      const queryResult: QueryResult<DocData<D> | undefined> = this
+        ._connectionError
+        ? {
+            status: "error",
+            fetchStatus: "paused",
+            error: this._connectionError,
+          }
+        : { status: "pending", fetchStatus: initialFetchStatus };
       this._docsCache.set(docId, {
         promisedDoc,
         refCount: 1,

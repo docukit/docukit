@@ -402,10 +402,19 @@ describe("Client 2", () => {
       expect(replacementDoc).toBeDefined();
       expect(replacementDoc).not.toBe(liveDoc);
       expect(replacementDoc?.root.first?.type).toBe("child");
+      expect(client["_docsCache"].get(docId)?.queryResult).toMatchObject({
+        status: "error",
+        fetchStatus: "idle",
+        error: importError,
+      });
 
       await client["_sync"](docId);
       expect(requestSpy).toHaveBeenCalledTimes(2);
       expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+      expect(client["_docsCache"].get(docId)?.queryResult).toMatchObject({
+        status: "success",
+        fetchStatus: "idle",
+      });
     });
 
     test("should delete operations after successful push", async () => {
