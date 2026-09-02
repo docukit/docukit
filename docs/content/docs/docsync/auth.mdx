@@ -81,7 +81,9 @@ Token auth is a good fit for tests, workers, mobile apps, server-to-server sync,
 API keys, and short-lived scoped document grants.
 
 `getToken` runs when the socket connects or reconnects. It should read existing
-auth state. It should not perform a full login flow.
+auth state. It should not perform a full login flow. If it throws or returns a
+rejected promise, loaded queries receive a `ConnectionError` and pause until
+the application starts another connection attempt.
 
 ## Server Auth Input
 

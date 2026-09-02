@@ -18,7 +18,10 @@ import type { ClientEventMap, ClientEventName } from "./utils/events.js";
 import { createClientEventEmitter } from "./utils/events.js";
 import { handleConnect } from "./handlers/connection/connect.js";
 import { handleDeleteDoc } from "./handlers/clientInitiated/deleteDoc.js";
-import { handleDisconnect } from "./handlers/connection/disconnect.js";
+import {
+  handleDisconnect,
+  pauseQueries,
+} from "./handlers/connection/disconnect.js";
 import { handleCollaboration } from "./handlers/serverInitiated/collaboration.js";
 import { handleDirty } from "./handlers/serverInitiated/dirty.js";
 import { handlePresence } from "./handlers/clientInitiated/presence.js";
@@ -41,6 +44,7 @@ import {
 import { setupDocChangeListener } from "./utils/setupDocChangeListener.js";
 import { setupLocalPromise } from "./utils/setupLocalPromise.js";
 import { clearSyncRetry, type SyncRetryState } from "./utils/syncRetry.js";
+import { DocSyncError } from "./utils/DocSyncError.js";
 
 // TODO: review this type!
 type LocalResolved<S extends object, O extends object> = {
@@ -63,6 +67,7 @@ type LocalLoadMode = "load" | "loadOrCreate";
 type QueryListener = (result: QueryResult<DocData<object> | undefined>) => void;
 type DocCacheEntry<D> = {
   promisedDoc: Promise<D | undefined>;
+  activeSyncAttempt?: symbol;
   refCount: number;
   localVersion: number;
   type: string;
@@ -89,6 +94,7 @@ export class DocSyncClient<
   protected _bcHelper?: BCHelper<D, S, O>;
   protected _socket: ClientSocket<S, O>;
   protected _connectionError: Error | undefined;
+  protected _connectionAttempt?: symbol;
   /**
    * Single source of truth for the network state new subscriptions start from.
    * Reading it off the socket at subscription time would report `fetching` to a
@@ -138,10 +144,32 @@ export class DocSyncClient<
           cb(authPayload);
           return;
         }
+        const getToken = config.server.auth.getToken;
+        const connectionAttempt = Symbol();
+        this._connectionAttempt = connectionAttempt;
 
-        void Promise.resolve(config.server.auth.getToken()).then((token) => {
-          cb({ ...authPayload, token });
-        });
+        // Start with a resolved promise so both a synchronous throw and a
+        // rejected token promise follow the same connection-error path.
+        void Promise.resolve()
+          .then(() => getToken())
+          .then((token) => {
+            if (this._connectionAttempt !== connectionAttempt) return;
+            cb({ ...authPayload, token });
+          })
+          .catch((error: unknown) => {
+            if (this._connectionAttempt !== connectionAttempt) return;
+            delete this._connectionAttempt;
+            const connectionError = new DocSyncError(
+              "ConnectionError",
+              error instanceof Error ? error.message : String(error),
+              { cause: error },
+            );
+            this._socket.disconnect();
+            pauseQueries(this, connectionError);
+            this._events.emit("disconnect", {
+              reason: connectionError.message,
+            });
+          });
       },
       withCredentials: config.server.auth.mode === "request",
       // Performance optimizations for testing
@@ -165,9 +193,9 @@ export class DocSyncClient<
   }
 
   connect() {
-    // A new attempt supersedes the failure that ended the previous one, so a
-    // subscription created while connecting must not inherit a stale error.
-    this._connectionError = undefined;
+    // Keep the last connection error visible while recovery is only an
+    // attempt. The successful `connect` event clears the client-wide error;
+    // each loaded query clears its own error after its sync succeeds.
     this._connectionFetchStatus = "fetching";
     // Loaded queries have to follow, or a document subscribed before the
     // reconnect would report `paused` while one subscribed after it reports
@@ -180,6 +208,7 @@ export class DocSyncClient<
 
   disconnect() {
     const wasConnected = this._socket.connected;
+    delete this._connectionAttempt;
     this._socket.disconnect();
     this._connectionFetchStatus = "paused";
     // Socket.IO only emits "disconnect" for a socket that had connected.
@@ -274,7 +303,7 @@ export class DocSyncClient<
         ._connectionError
         ? {
             status: "error",
-            fetchStatus: "paused",
+            fetchStatus: initialFetchStatus,
             error: this._connectionError,
           }
         : { status: "pending", fetchStatus: initialFetchStatus };
@@ -476,6 +505,7 @@ export class DocSyncClient<
         clearTimeout(presenceState?.timeout);
         this._presenceDebounceState.delete(docId);
         this._collabDocIds.delete(docId);
+        this._pushStatusByDocId.delete(docId);
         clearSyncRetry(this, docId);
         if (doc) {
           await handleUnsubscribe(this._socket, { docId });

@@ -8,8 +8,15 @@ export function handleConnect<
   O extends object = object,
 >({ client }: { client: DocSyncClient<D, S, O> }): void {
   client["_socket"].on("connect", () => {
+    delete client["_connectionAttempt"];
     client["_connectionError"] = undefined;
     client["_connectionFetchStatus"] = "fetching";
+    // Resume every loaded query before notifying connect listeners or awaiting
+    // local flushes. Otherwise old subscriptions can still report `paused`
+    // while subscriptions created by a connect listener report `fetching`.
+    for (const docId of client["_docsCache"].keys()) {
+      dispatchDocQueryConnected(client, docId);
+    }
     client["_events"].emit("connect");
     void (async () => {
       const syncedDocIds = new Set<string>();
@@ -26,7 +33,6 @@ export function handleConnect<
       );
 
       for (const docId of client["_docsCache"].keys()) {
-        dispatchDocQueryConnected(client, docId);
         const pushStatus = client["_pushStatusByDocId"].get(docId) ?? "idle";
         if (!syncedDocIds.has(docId) && pushStatus === "idle") {
           void handleSync(client, docId);

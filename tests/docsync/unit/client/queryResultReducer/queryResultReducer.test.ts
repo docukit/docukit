@@ -13,16 +13,6 @@ describe("createQueryResultReducer", () => {
   test.each(combinations)(
     "$stateCase.name + $actionCase.name",
     ({ stateCase, actionCase }) => {
-      // A settled query already has the result of a newer sync, so a terminal
-      // network action from a superseded attempt must leave it untouched.
-      if (
-        actionCase.ignoredWhenSettled &&
-        stateCase.state.fetchStatus === "idle"
-      ) {
-        expect(actionCase.run(stateCase.state)).toBe(stateCase.state);
-        return;
-      }
-
       expect(actionCase.run(stateCase.state)).toStrictEqual(
         actionCase.expected(stateCase.state),
       );

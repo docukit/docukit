@@ -13,8 +13,6 @@ type ActionCase = {
   name: string;
   run: (state: State) => State;
   expected: (state: State) => State;
-  /** Terminal network actions leave a settled query untouched. */
-  ignoredWhenSettled?: boolean;
 };
 
 const fetchStatuses = ["fetching", "paused", "idle"] satisfies FetchStatus[];
@@ -22,7 +20,7 @@ const localError = new Error("local failed");
 const networkError = new Error("network failed");
 
 function reducerFor(state: State) {
-  return createQueryResultReducer<Data>({ initialState: state });
+  return createQueryResultReducer({ initialState: state });
 }
 
 function success(data: Data, fetchStatus: FetchStatus): State {
@@ -110,7 +108,8 @@ export const actionCases: ActionCase[] = [
     name: "localQueryError",
     run: (state) =>
       reducerFor(state).action.localQueryError({ error: localError }),
-    expected: (state) => errorState(state, state.fetchStatus, localError),
+    expected: (state) =>
+      errorState(state, terminalFetchStatus(state), localError),
   },
   {
     name: "fetchStarted",
@@ -141,21 +140,18 @@ export const actionCases: ActionCase[] = [
     run: (state) =>
       reducerFor(state).action.networkDocFound({ data: "network" }),
     expected: (state) => success("network", terminalFetchStatus(state)),
-    ignoredWhenSettled: true,
   },
   {
     name: "networkDocNotFound optional data",
     run: (state) =>
       reducerFor(state).action.networkDocNotFound({ createIfMissing: false }),
     expected: (state) => networkDocNotFoundExpected(state, false),
-    ignoredWhenSettled: true,
   },
   {
     name: "networkDocNotFound required data",
     run: (state) =>
       reducerFor(state).action.networkDocNotFound({ createIfMissing: true }),
     expected: (state) => networkDocNotFoundExpected(state, true),
-    ignoredWhenSettled: true,
   },
   {
     name: "networkQueryError",
@@ -163,6 +159,14 @@ export const actionCases: ActionCase[] = [
       reducerFor(state).action.networkQueryError({ error: networkError }),
     expected: (state) =>
       errorState(state, terminalFetchStatus(state), networkError),
-    ignoredWhenSettled: true,
+  },
+  {
+    name: "networkQueryError with pending retry",
+    run: (state) =>
+      reducerFor(state).action.networkQueryError({
+        error: networkError,
+        fetchStatus: "fetching",
+      }),
+    expected: (state) => errorState(state, "fetching", networkError),
   },
 ];

@@ -22,20 +22,6 @@ function error<D>(
 }
 
 /**
- * An `idle` query is settled: a newer sync already produced its result. A
- * terminal network action arriving afterwards belongs to a superseded attempt —
- * Socket.IO can drop and reconnect while a request is in flight, and the
- * abandoned one still settles later, after the retry already succeeded.
- * Applying it would overwrite a fresh result with a stale one.
- *
- * This contains the damage; see the TODO in handlers/connection/disconnect.ts
- * for the race that produces the superseded sync in the first place.
- */
-function isSettled<D>(state: QueryResult<D>): boolean {
-  return state.fetchStatus === "idle";
-}
-
-/**
  * Terminal network actions settle the query, but they must not claim the
  * connection is healthy. The socket can drop while a response is still being
  * reconciled, so a query that is already `paused` stays `paused` and the app
@@ -61,7 +47,7 @@ export function createQueryResultReducer<D>(config: {
           : success(payload.data, state.fetchStatus),
 
       localQueryError: (state: QueryResult<D>, payload: { error: Error }) =>
-        error(state, state.fetchStatus, payload.error),
+        error(state, terminalFetchStatus(state), payload.error),
 
       fetchStarted: (state: QueryResult<D>, _payload: undefined) =>
         withFetchStatus(state, "fetching"),
@@ -84,15 +70,12 @@ export function createQueryResultReducer<D>(config: {
         error(state, "paused", payload.error),
 
       networkDocFound: (state: QueryResult<D>, payload: { data: D }) =>
-        isSettled(state)
-          ? state
-          : success(payload.data, terminalFetchStatus(state)),
+        success(payload.data, terminalFetchStatus(state)),
 
       networkDocNotFound: (
         state: QueryResult<D>,
         payload: { createIfMissing: boolean },
       ): QueryResult<D> => {
-        if (isSettled(state)) return state;
         const fetchStatus = terminalFetchStatus(state);
         if (state.status === "success") return success(state.data, fetchStatus);
         if (state.status === "error" && state.data !== undefined) {
@@ -104,10 +87,15 @@ export function createQueryResultReducer<D>(config: {
         return success(undefined as D, fetchStatus);
       },
 
-      networkQueryError: (state: QueryResult<D>, payload: { error: Error }) =>
-        isSettled(state)
-          ? state
-          : error(state, terminalFetchStatus(state), payload.error),
+      networkQueryError: (
+        state: QueryResult<D>,
+        payload: { error: Error; fetchStatus?: FetchStatus },
+      ) =>
+        error(
+          state,
+          payload.fetchStatus ?? terminalFetchStatus(state),
+          payload.error,
+        ),
     },
   });
 }

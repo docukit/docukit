@@ -417,6 +417,67 @@ describe("Client 2", () => {
       });
     });
 
+    test("runs a queued sync when history import throws", async () => {
+      const client = await createClient();
+      const docId = generateDocId();
+      const docBinding = client["_docBinding"];
+      const { doc: liveDoc } = await setupDocWithOperations(client, docId, {
+        operations: [],
+      });
+      cacheDoc(client, docId, liveDoc);
+
+      const { doc: serverDoc } = docBinding.create("test", docId);
+      serverDoc.root.append(serverDoc.createNode(ChildNode));
+      serverDoc.forceCommit();
+
+      let finishQueuedRequest:
+        | ((response: { data: ReturnType<typeof s> }) => void)
+        | undefined;
+      const requestSpy = spyOnRequest(client);
+      requestSpy
+        .mockResolvedValueOnce({
+          data: s({
+            docId,
+            clock: 1,
+            serializedDoc: docBinding.serialize(serverDoc),
+          }),
+        })
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishQueuedRequest = resolve;
+            }),
+        );
+
+      const importHistory = docBinding.importHistory;
+      if (!importHistory) throw new Error("Expected history support");
+      const importError = new Error("history import failed");
+      docBinding.importHistory = () => {
+        void client["_sync"](docId);
+        throw importError;
+      };
+
+      try {
+        await expect(client["_sync"](docId)).rejects.toBe(importError);
+      } finally {
+        docBinding.importHistory = importHistory;
+      }
+
+      await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
+      expect(client["_docsCache"].get(docId)?.queryResult).toMatchObject({
+        status: "error",
+        fetchStatus: "fetching",
+        error: importError,
+      });
+
+      if (!finishQueuedRequest) throw new Error("Expected queued sync request");
+      finishQueuedRequest({ data: s({ docId, clock: 2 }) });
+
+      await expect
+        .poll(() => client["_docsCache"].get(docId)?.queryResult)
+        .toMatchObject({ status: "success", fetchStatus: "idle" });
+    });
+
     test("should delete operations after successful push", async () => {
       const client = await createClient();
       const docId = generateDocId();

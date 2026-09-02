@@ -46,6 +46,7 @@ const socketMockState = vi.hoisted(() => ({
   autoIdentity: true,
   identityPayload: undefined as MockIdentityPayload | undefined,
   syncResponses: new Map<string, unknown>(),
+  syncErrors: new Map<string, Error>(),
   /**
    * Documents whose sync ack is withheld, so a test can settle the query
    * through a later sync and then release the superseded one.
@@ -97,6 +98,9 @@ const ioMock = vi.hoisted(() =>
                 return;
               }
 
+              const syncError = socketMockState.syncErrors.get(docId);
+              if (syncError) throw syncError;
+
               if (socketMockState.deferSyncDocIds.has(docId)) {
                 const acks = socketMockState.deferredSyncAcks.get(docId) ?? [];
                 acks.push(callback);
@@ -137,6 +141,7 @@ describe("DocSyncClient", () => {
     socketMockState.autoIdentity = true;
     socketMockState.identityPayload = undefined;
     socketMockState.syncResponses.clear();
+    socketMockState.syncErrors.clear();
     socketMockState.deferSyncDocIds.clear();
     socketMockState.deferredSyncAcks.clear();
     clearCachedLocalIdentity();
@@ -386,6 +391,100 @@ describe("DocSyncClient", () => {
     test("should initialize with local provider config", () => {
       const client = createClient();
       expect(client).toBeInstanceOf(DocSyncClient);
+    });
+
+    test.each([{ mode: "throw" }, { mode: "reject" }])(
+      "surfaces a token provider $mode as a connection error",
+      async ({ mode }) => {
+        const tokenError = new Error(`token ${mode}`);
+        const getToken = () => {
+          if (mode === "throw") throw tokenError;
+          return Promise.reject(tokenError);
+        };
+        socketMockState.autoIdentity = false;
+        const client = new DocSyncClient({
+          server: {
+            url: "ws://localhost:8081",
+            auth: { mode: "token", getToken },
+          },
+          docBinding: DocNodeBinding([
+            { type: "test", extensions: [{ nodes: [TestNode, ChildNode] }] },
+          ]),
+          local: { provider: indexedDBProvider },
+        });
+        setSocketState(client, { active: true, connected: false });
+        const callback = createCallback();
+        client.getDoc(
+          { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
+          callback,
+        );
+
+        const options = ioMock.mock.calls.at(-1)?.[1];
+        if (!options || typeof options.auth !== "function") {
+          throw new Error("Expected socket auth callback");
+        }
+        const authCallback = vi.fn();
+        options.auth(authCallback);
+
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0])
+          .toMatchObject({
+            status: "error",
+            fetchStatus: "paused",
+            error: {
+              type: "ConnectionError",
+              message: tokenError.message,
+              cause: tokenError,
+            },
+          });
+        expect(authCallback).not.toHaveBeenCalled();
+      },
+    );
+
+    test("ignores a token failure after a manual disconnect", async () => {
+      socketMockState.autoIdentity = false;
+      let rejectToken: ((reason?: unknown) => void) | undefined;
+      const client = new DocSyncClient({
+        server: {
+          url: "ws://localhost:8081",
+          auth: {
+            mode: "token",
+            getToken: () =>
+              new Promise<string>((_resolve, reject) => {
+                rejectToken = reject;
+              }),
+          },
+        },
+        docBinding: DocNodeBinding([
+          { type: "test", extensions: [{ nodes: [TestNode, ChildNode] }] },
+        ]),
+        local: { provider: indexedDBProvider },
+      });
+      setSocketState(client, { active: true, connected: false });
+      const callback = createCallback();
+      client.getDoc(
+        { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
+        callback,
+      );
+
+      const options = ioMock.mock.calls.at(-1)?.[1];
+      if (!options || typeof options.auth !== "function") {
+        throw new Error("Expected socket auth callback");
+      }
+      const authCallback = vi.fn();
+      options.auth(authCallback);
+      await flushMicrotasks();
+      if (!rejectToken) throw new Error("Expected pending token request");
+
+      client.disconnect();
+      rejectToken(new Error("too late"));
+      await flushMicrotasks();
+
+      expect(callback.mock.calls.at(-1)?.[0]).toStrictEqual({
+        status: "pending",
+        fetchStatus: "paused",
+      });
+      expect(authCallback).not.toHaveBeenCalled();
     });
 
     test("uses cached identity namespace and sends claimed user ID", async () => {
@@ -1389,24 +1488,22 @@ describe("DocSyncClient", () => {
         });
       });
 
-      test("should not inherit a permanent connection error after reconnecting", () => {
+      test("should keep a permanent connection error visible while reconnecting", () => {
         const client = createClient();
         const callback = createCallback();
+        const connectionError = new Error("Authentication failed");
 
         setSocketState(client, { active: false, connected: false });
-        emitMockedSocketEvent(
-          client,
-          "connect_error",
-          new Error("Authentication failed"),
-        );
+        emitMockedSocketEvent(client, "connect_error", connectionError);
 
         client.connect();
         setSocketState(client, { active: true, connected: false });
         client.getDoc({ type: "test", id: "test-id" }, callback);
 
-        expect(callback.mock.calls[0]?.[0]).toStrictEqual({
-          status: "pending",
+        expect(callback.mock.calls[0]?.[0]).toMatchObject({
+          status: "error",
           fetchStatus: "fetching",
+          error: { type: "ConnectionError", cause: connectionError },
         });
       });
 
@@ -1434,6 +1531,7 @@ describe("DocSyncClient", () => {
           status: "error",
           fetchStatus: "paused",
         });
+        const visibleError = loadedCallback.mock.calls.at(-1)?.[0].error;
 
         client.connect();
         setSocketState(client, { active: true, connected: false });
@@ -1442,11 +1540,42 @@ describe("DocSyncClient", () => {
           lateCallback,
         );
 
-        // Both subscriptions have to agree about the connection they share.
-        expect(loadedCallback.mock.calls.at(-1)?.[0].fetchStatus).toBe(
-          "fetching",
+        // Both subscriptions share the active retry and its last known error.
+        expect(loadedCallback.mock.calls.at(-1)?.[0]).toMatchObject({
+          status: "error",
+          fetchStatus: "fetching",
+          error: visibleError,
+        });
+        expect(lateCallback.mock.calls[0]?.[0]).toMatchObject({
+          status: "error",
+          fetchStatus: "fetching",
+          error: visibleError,
+        });
+      });
+
+      test("should resume loaded queries synchronously on automatic reconnect", async () => {
+        const client = createClient();
+        const callback = createCallback();
+        const docId = ulid().toLowerCase();
+
+        client.getDoc(
+          { type: "test", id: docId, createIfMissing: true },
+          callback,
         );
-        expect(lateCallback.mock.calls[0]?.[0].fetchStatus).toBe("fetching");
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0].fetchStatus)
+          .toBe("idle");
+
+        setSocketState(client, { active: true, connected: false });
+        emitMockedSocketEvent(client, "disconnect", "transport close");
+        expect(callback.mock.calls.at(-1)?.[0].fetchStatus).toBe("paused");
+
+        setSocketState(client, { active: true, connected: true });
+        emitMockedSocketEvent(client, "connect");
+
+        // The connect event must resume existing subscriptions before the
+        // asynchronous flush-and-sync work yields to another microtask.
+        expect(callback.mock.calls.at(-1)?.[0].fetchStatus).toBe("fetching");
       });
 
       test("should keep the document instance when subscribing while an error is visible", async () => {
@@ -1478,7 +1607,7 @@ describe("DocSyncClient", () => {
         expect(secondCallback.mock.calls[0]?.[0].data?.doc).toBe(loadedDoc);
       });
 
-      test("should ignore a sync failure that arrives after the query settled", async () => {
+      test("should discard an older sync after the newer sync succeeds", async () => {
         const client = createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
@@ -1492,6 +1621,7 @@ describe("DocSyncClient", () => {
           .poll(() => socketMockState.deferredSyncAcks.get(docId)?.length)
           .toBe(1);
         const supersededAck = socketMockState.deferredSyncAcks.get(docId)?.[0];
+        if (!supersededAck) throw new Error("Expected deferred sync ack");
 
         // Reconnecting starts a second sync, which settles the query first.
         socketMockState.deferSyncDocIds.delete(docId);
@@ -1502,40 +1632,131 @@ describe("DocSyncClient", () => {
           .toBe("idle");
         const settledResult = callback.mock.calls.at(-1)?.[0];
 
-        const unhandledReasons: unknown[] = [];
-        const handler = (event: PromiseRejectionEvent) => {
-          unhandledReasons.push(event.reason);
-          event.preventDefault();
-        };
         const syncEvents: unknown[] = [];
         client.on("sync", (event) => syncEvents.push(event));
-        window.addEventListener("unhandledrejection", handler);
-        try {
-          supersededAck?.({
-            error: { type: "ValidationError", message: "too late" },
+        supersededAck({
+          error: { type: "ValidationError", message: "too late" },
+        });
+        await flushMicrotasks();
+
+        // Stale attempts do not emit events, update query state, schedule a
+        // retry, or release flow control owned by a newer attempt.
+        expect(syncEvents).toStrictEqual([]);
+        expect(callback.mock.calls.at(-1)?.[0]).toBe(settledResult);
+        expect(settledResult).toMatchObject({
+          status: "success",
+          fetchStatus: "idle",
+        });
+        expect(client["_syncRetryState"].has(docId)).toBe(false);
+      });
+
+      test("should let a newer sync succeed after the older sync fails first", async () => {
+        const client = createClient();
+        const callback = createCallback();
+        const docId = ulid().toLowerCase();
+        const syncEvents: unknown[] = [];
+        client.on("sync", (event) => syncEvents.push(event));
+        socketMockState.deferSyncDocIds.add(docId);
+
+        client.getDoc(
+          { type: "test", id: docId, createIfMissing: true },
+          callback,
+        );
+        await expect
+          .poll(() => socketMockState.deferredSyncAcks.get(docId)?.length)
+          .toBe(1);
+
+        emitMockedSocketEvent(client, "disconnect", "transport close");
+        emitMockedSocketEvent(client, "connect");
+        await expect
+          .poll(() => socketMockState.deferredSyncAcks.get(docId)?.length)
+          .toBe(2);
+
+        const [supersededAck, currentAck] =
+          socketMockState.deferredSyncAcks.get(docId) ?? [];
+        if (!supersededAck || !currentAck) {
+          throw new Error("Expected both deferred sync acks");
+        }
+
+        supersededAck({
+          error: { type: "ValidationError", message: "too late" },
+        });
+        await flushMicrotasks();
+
+        expect(syncEvents).toStrictEqual([]);
+        expect(callback.mock.calls.at(-1)?.[0].fetchStatus).toBe("fetching");
+        expect(callback.mock.calls.at(-1)?.[0].status).not.toBe("error");
+
+        currentAck({
+          data: { docId, operations: [], serializedDoc: null, clock: 0 },
+        });
+
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0])
+          .toMatchObject({ status: "success", fetchStatus: "idle" });
+        expect(
+          syncEvents.some(
+            (event) =>
+              typeof event === "object" && event !== null && "error" in event,
+          ),
+        ).toBe(false);
+      });
+
+      test("should finish provider consolidation when a sync is invalidated after saving its snapshot", async () => {
+        const client = createClient();
+        const callback = createCallback();
+        const docId = ulid().toLowerCase();
+
+        client.getDoc(
+          { type: "test", id: docId, createIfMissing: true },
+          callback,
+        );
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0].fetchStatus)
+          .toBe("idle");
+
+        const doc = callback.mock.calls.at(-1)?.[0].data?.doc;
+        if (!doc) throw new Error("Expected loaded doc");
+        doc.root.append(doc.createNode(ChildNode));
+        doc.forceCommit();
+        await client["_flushLocalOperations"](docId, { sync: false });
+
+        const { provider } = await client["_localPromise"];
+        const transaction = provider.transaction.bind(provider);
+        let interruptAfterSnapshot = true;
+        const transactionSpy = vi
+          .spyOn(provider, "transaction")
+          .mockImplementation((mode, transactionCallback) => {
+            if (mode !== "readwrite" || !interruptAfterSnapshot) {
+              return transaction(mode, transactionCallback);
+            }
+            interruptAfterSnapshot = false;
+            return transaction(mode, (ctx) =>
+              transactionCallback({
+                ...ctx,
+                saveSerializedDoc: async (payload) => {
+                  await ctx.saveSerializedDoc(payload);
+                  setSocketState(client, { active: true, connected: false });
+                  emitMockedSocketEvent(
+                    client,
+                    "disconnect",
+                    "transport close",
+                  );
+                },
+              }),
+            );
           });
 
-          // The superseded response really is processed...
-          await expect
-            .poll(() =>
-              syncEvents.some(
-                (event) =>
-                  typeof event === "object" &&
-                  event !== null &&
-                  "error" in event,
-              ),
-            )
-            .toBe(true);
-          // ...and leaves the settled query untouched instead of resurrecting
-          // a stale error or breaking the reducer invariant.
-          expect(callback.mock.calls.at(-1)?.[0]).toBe(settledResult);
-          expect(settledResult).toMatchObject({
-            status: "success",
-            fetchStatus: "idle",
-          });
-          expect(unhandledReasons).toStrictEqual([]);
+        try {
+          await client["_sync"](docId);
+
+          const operations = await transaction("readonly", (ctx) =>
+            ctx.getOperations({ docId }),
+          );
+          expect(operations).toStrictEqual([]);
+          expect(callback.mock.calls.at(-1)?.[0].fetchStatus).toBe("paused");
         } finally {
-          window.removeEventListener("unhandledrejection", handler);
+          transactionSpy.mockRestore();
         }
       });
 
@@ -2148,6 +2369,52 @@ describe("DocSyncClient", () => {
       expect(syncCalls).toHaveLength(1);
     });
 
+    test("should run a queued sync after a permanent rejection", async () => {
+      const client = createClient();
+      const callback = createCallback();
+      const docId = ulid().toLowerCase();
+      socketMockState.deferSyncDocIds.add(docId);
+
+      client.getDoc(
+        { type: "test", id: docId, createIfMissing: true },
+        callback,
+      );
+      await expect
+        .poll(() => socketMockState.deferredSyncAcks.get(docId)?.length)
+        .toBe(1);
+
+      await client["_sync"](docId);
+      expect(client["_pushStatusByDocId"].get(docId)).toBe(
+        "pushing-with-pending",
+      );
+
+      const rejectedAck = socketMockState.deferredSyncAcks.get(docId)?.[0];
+      if (!rejectedAck) throw new Error("Expected deferred sync ack");
+      rejectedAck({
+        error: { type: "AuthorizationError", message: "Access denied" },
+      });
+
+      await expect
+        .poll(() => socketMockState.deferredSyncAcks.get(docId)?.length)
+        .toBe(2);
+      expect(callback.mock.calls.at(-1)?.[0]).toMatchObject({
+        status: "error",
+        fetchStatus: "fetching",
+        error: { type: "AuthorizationError" },
+      });
+
+      const queuedAck = socketMockState.deferredSyncAcks.get(docId)?.[1];
+      if (!queuedAck) throw new Error("Expected queued sync ack");
+      socketMockState.deferSyncDocIds.delete(docId);
+      queuedAck({
+        data: { docId, operations: [], serializedDoc: null, clock: 0 },
+      });
+
+      await expect
+        .poll(() => callback.mock.calls.at(-1)?.[0])
+        .toMatchObject({ status: "success", fetchStatus: "idle" });
+    });
+
     test("should not stop other documents from syncing after a rejection", async () => {
       const client = createClient();
       const rejectedCallback = createCallback();
@@ -2210,6 +2477,12 @@ describe("DocSyncClient", () => {
       // A scheduled retry is still network work, so the query must not claim
       // it has settled while the backoff is pending.
       expect(callback.mock.calls.at(-1)?.[0].fetchStatus).toBe("fetching");
+      expect(
+        callback.mock.calls.some(
+          ([result]) =>
+            result.status === "error" && result.fetchStatus === "idle",
+        ),
+      ).toBe(false);
 
       // The retry is scheduled, not immediate, so a server outage cannot turn
       // into a hot loop.
@@ -2227,6 +2500,184 @@ describe("DocSyncClient", () => {
       await expect
         .poll(() => callback.mock.calls.at(-1)?.[0])
         .toMatchObject({ status: "success", fetchStatus: "idle" });
+    });
+
+    test("should let a scheduled retry absorb a queued sync", async () => {
+      const client = createClient();
+      const callback = createCallback();
+      const docId = ulid().toLowerCase();
+      socketMockState.deferSyncDocIds.add(docId);
+
+      client.getDoc(
+        { type: "test", id: docId, createIfMissing: true },
+        callback,
+      );
+      await expect
+        .poll(() => socketMockState.deferredSyncAcks.get(docId)?.length)
+        .toBe(1);
+      await client["_sync"](docId);
+
+      const failedAck = socketMockState.deferredSyncAcks.get(docId)?.[0];
+      if (!failedAck) throw new Error("Expected deferred sync ack");
+      failedAck({
+        error: { type: "DatabaseError", message: "database unavailable" },
+      });
+      await flushMicrotasks();
+
+      expect(socketMockState.deferredSyncAcks.get(docId)).toHaveLength(1);
+      expect(client["_syncRetryState"].get(docId)?.timeout).toBeDefined();
+      expect(callback.mock.calls.at(-1)?.[0]).toMatchObject({
+        status: "error",
+        fetchStatus: "fetching",
+        error: { type: "DatabaseError" },
+      });
+
+      setSocketState(client, { active: true, connected: false });
+      emitMockedSocketEvent(client, "disconnect", "transport close");
+    });
+
+    test("should retry a rejected sync request as a network error", async () => {
+      const client = createClient();
+      const callback = createCallback();
+      const docId = ulid().toLowerCase();
+      const networkFailure = new Error("network unavailable");
+      socketMockState.syncErrors.set(docId, networkFailure);
+
+      client.getDoc(
+        { type: "test", id: docId, createIfMissing: true },
+        callback,
+      );
+
+      await expect
+        .poll(() => callback.mock.calls.at(-1)?.[0])
+        .toMatchObject({
+          status: "error",
+          fetchStatus: "fetching",
+          data: { docId },
+          error: {
+            type: "NetworkError",
+            message: "network unavailable",
+            cause: networkFailure,
+          },
+        });
+      expect(client["_syncRetryState"].get(docId)?.attempts).toBe(1);
+
+      socketMockState.syncErrors.delete(docId);
+      await client["_sync"](docId);
+
+      expect(callback.mock.calls.at(-1)?.[0]).toMatchObject({
+        status: "success",
+        fetchStatus: "idle",
+      });
+      expect(client["_syncRetryState"].has(docId)).toBe(false);
+    });
+
+    test("should cancel a pending document retry when the transport disconnects", async () => {
+      const client = createClient();
+      const callback = createCallback();
+      const docId = ulid().toLowerCase();
+      socketMockState.syncResponses.set(docId, {
+        error: { type: "DatabaseError", message: "database unavailable" },
+      });
+
+      client.getDoc(
+        { type: "test", id: docId, createIfMissing: true },
+        callback,
+      );
+      await expect
+        .poll(() => client["_syncRetryState"].get(docId)?.attempts)
+        .toBe(1);
+      const retryTimeout = client["_syncRetryState"].get(docId)?.timeout;
+      if (!retryTimeout) throw new Error("Expected retry timer");
+
+      const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+      try {
+        setSocketState(client, { active: true, connected: false });
+        emitMockedSocketEvent(client, "disconnect", "transport close");
+
+        expect(clearTimeoutSpy).toHaveBeenCalledWith(retryTimeout);
+        expect(client["_syncRetryState"].has(docId)).toBe(false);
+        expect(callback.mock.calls.at(-1)?.[0]).toMatchObject({
+          status: "error",
+          fetchStatus: "paused",
+          error: { type: "DatabaseError" },
+        });
+      } finally {
+        clearTimeoutSpy.mockRestore();
+      }
+    });
+
+    test("should cancel a pending retry when a manual sync starts", async () => {
+      const client = createClient();
+      const callback = createCallback();
+      const docId = ulid().toLowerCase();
+      socketMockState.syncResponses.set(docId, {
+        error: { type: "DatabaseError", message: "database unavailable" },
+      });
+
+      client.getDoc(
+        { type: "test", id: docId, createIfMissing: true },
+        callback,
+      );
+      await expect
+        .poll(() => client["_syncRetryState"].get(docId)?.attempts)
+        .toBe(1);
+      const firstTimeout = client["_syncRetryState"].get(docId)?.timeout;
+      if (!firstTimeout) throw new Error("Expected first retry timer");
+
+      const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+      try {
+        // A user edit can start a real sync before the scheduled retry fires.
+        // Starting it must cancel that old timer while preserving the backoff.
+        await client["_sync"](docId);
+
+        const retryState = client["_syncRetryState"].get(docId);
+        expect(retryState?.attempts).toBe(2);
+        expect(retryState?.timeout).not.toBe(firstTimeout);
+        expect(clearTimeoutSpy).toHaveBeenCalledWith(firstTimeout);
+
+        socketMockState.syncResponses.delete(docId);
+        await client["_sync"](docId);
+        expect(client["_syncRetryState"].has(docId)).toBe(false);
+      } finally {
+        clearTimeoutSpy.mockRestore();
+      }
+    });
+
+    test("should settle on idle after exhausting the bounded retries", async () => {
+      const client = createClient();
+      const callback = createCallback();
+      const docId = ulid().toLowerCase();
+      socketMockState.syncResponses.set(docId, {
+        error: { type: "DatabaseError", message: "database unavailable" },
+      });
+
+      client.getDoc(
+        { type: "test", id: docId, createIfMissing: true },
+        callback,
+      );
+      await expect
+        .poll(() => client["_syncRetryState"].get(docId)?.attempts)
+        .toBe(1);
+
+      for (let attempts = 2; attempts <= 8; attempts += 1) {
+        await client["_sync"](docId);
+        expect(client["_syncRetryState"].get(docId)?.attempts).toBe(attempts);
+      }
+      await client["_sync"](docId);
+
+      expect(client["_syncRetryState"].get(docId)).toStrictEqual({
+        attempts: 8,
+      });
+      expect(callback.mock.calls.at(-1)?.[0]).toMatchObject({
+        status: "error",
+        fetchStatus: "idle",
+        error: { type: "DatabaseError" },
+      });
+
+      socketMockState.syncResponses.delete(docId);
+      await client["_sync"](docId);
+      expect(client["_syncRetryState"].has(docId)).toBe(false);
     });
 
     test("should emit error status when provider throws", async () => {
@@ -2249,6 +2700,7 @@ describe("DocSyncClient", () => {
         await expect.poll(() => getErrorResult(callback)).toBeDefined();
         const errorResult = getErrorResult(callback);
         expect(errorResult?.status).toBe("error");
+        expect(errorResult?.fetchStatus).toBe("idle");
         expect(errorResult?.error?.message).toBe(errorMessage);
         expect(errorResult?.data).toBeUndefined();
       } finally {

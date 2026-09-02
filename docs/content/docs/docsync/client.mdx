@@ -166,7 +166,7 @@ const result = useDoc({ type: "notes", id: "doc-123", createIfMissing: true });
     },
     fetchStatus: {
       description:
-        "Network activity for the document. Fetching means a sync is active, paused means it cannot continue until the connection returns, and idle means no network work is running.",
+        "Network activity for the document. Fetching means a connection or sync attempt is active or waiting for its scheduled retry, paused means it cannot continue until the connection returns, and idle means no network work is scheduled or running.",
       type: '"fetching" | "paused" | "idle"',
       required: true,
     },
@@ -177,26 +177,31 @@ const result = useDoc({ type: "notes", id: "doc-123", createIfMissing: true });
 network work, so local or stale data can remain available while synchronization
 is paused or a later sync has failed.
 
-| Situation                                          | `status`                         | `fetchStatus`        | Result                                                                                     |
-| -------------------------------------------------- | -------------------------------- | -------------------- | ------------------------------------------------------------------------------------------ |
-| Initial connection or active sync                  | `pending`, `success`, or `error` | `fetching`           | Existing local data and errors are preserved                                               |
-| Temporarily offline or manually disconnected       | `pending`, `success`, or `error` | `paused`             | Existing local data and errors are preserved                                               |
-| Sync completed                                     | `success`                        | `idle`               | Server result is available, including `undefined` when an optional document does not exist |
-| Local storage failed                               | `error`                          | Current fetch status | `error` contains the local failure                                                         |
-| Authentication or permanent connection rejection   | `error`                          | `paused`             | `error` contains the connection failure                                                    |
-| Server permanently rejected a sync                 | `error`                          | `idle`               | Existing data is preserved and `error` contains the authorization or validation failure    |
-| Network or database attempt failed and is retrying | `error`                          | `fetching`           | Existing data and the latest error are preserved until a retry succeeds                    |
+| Situation                                          | `status`                         | `fetchStatus`      | Result                                                                                     |
+| -------------------------------------------------- | -------------------------------- | ------------------ | ------------------------------------------------------------------------------------------ |
+| Initial connection, reconnect, or active sync      | `pending`, `success`, or `error` | `fetching`         | Existing local data and errors are preserved                                               |
+| Temporarily offline or manually disconnected       | `pending`, `success`, or `error` | `paused`           | Existing local data and errors are preserved                                               |
+| Sync completed                                     | `success`                        | `idle`             | Server result is available, including `undefined` when an optional document does not exist |
+| Local storage failed                               | `error`                          | `idle` or `paused` | `error` contains the local failure; a disconnected query remains paused                    |
+| Authentication or permanent connection rejection   | `error`                          | `paused`           | `error` contains the connection failure                                                    |
+| Server permanently rejected a sync                 | `error`                          | `idle`             | Existing data is preserved and `error` contains the authorization or validation failure    |
+| Network or database attempt failed and is retrying | `error`                          | `fetching`         | Existing data and the latest error are preserved until a retry succeeds                    |
 
 Because `data` and `error` can exist at the same time, applications should keep
 rendering usable data and show the later error separately. A paused state is
 often transient, so applications may delay a connectivity notice to avoid a
 flash during short interruptions.
 
-Retries are not unlimited. A network or database failure is retried with
-exponential backoff for about 24 seconds; after that the query settles on
-`error` with `fetchStatus: "idle"` and keeps its data, so `error` together with
-`idle` means DocSync has stopped trying on its own. Any later edit or reconnect
-starts a fresh attempt.
+Retries are not unlimited. While the current socket connection remains active,
+a failed sync request or a `DatabaseError` response is retried with exponential
+backoff for about 24 seconds. After that the query settles on `error` with
+`fetchStatus: "idle"` and keeps its data, so `error` together with `idle` means
+DocSync has stopped trying on its own.
+
+A transport disconnect cancels that per-document retry and moves the query to
+`paused`. Socket.IO then owns reconnecting the transport. When the connection
+returns, DocSync resumes the document sync with a fresh retry budget. A later
+local edit also starts a fresh sync attempt after a bounded retry chain ends.
 
 ---
 

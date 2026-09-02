@@ -12,7 +12,11 @@ import { clearAllSyncRetries } from "../../utils/syncRetry.js";
  * still retrying, so that flag is what separates a temporary interruption from
  * a rejection the client will never recover from on its own.
  */
-function pauseQueries<D extends object, S extends object, O extends object>(
+export function pauseQueries<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
   client: DocSyncClient<D, S, O>,
   connectionError: DocSyncError | undefined,
 ): void {
@@ -48,15 +52,13 @@ export function handleDisconnect<
   O extends object = object,
 >({ client }: { client: DocSyncClient<D, S, O> }): void {
   client["_socket"].on("disconnect", (reason) => {
-    // TODO: clearing every push lock lets a sync that is still awaiting its ack
-    // run concurrently with the one `handleConnect` starts on reconnect. The
-    // superseded sync settles last, so its result — success or failure — would
-    // overwrite a newer one. `isSettled` in queryResultReducer.ts only stops it
-    // from doing damage; the race itself is still there. The real fix is a
-    // generation counter per document: `handleSync` captures it before awaiting
-    // and discards its own result if the document advanced meanwhile. Simply
-    // not clearing the map is not an option — an in-flight sync that never
-    // resolves would leave the document stuck on "pushing" until a reload.
+    delete client["_connectionAttempt"];
+    // Invalidate in-flight syncs before releasing their push locks. A reconnect
+    // may start a newer attempt while an abandoned Socket.IO ack still arrives;
+    // the attempt token prevents that old response from mutating current state.
+    for (const cacheEntry of client["_docsCache"].values()) {
+      delete cacheEntry.activeSyncAttempt;
+    }
     client["_pushStatusByDocId"].clear();
     client["_collabDocIds"].clear();
     clearAllSyncRetries(client);
@@ -77,6 +79,7 @@ export function handleDisconnect<
     client["_events"].emit("disconnect", { reason });
   });
   client["_socket"].on("connect_error", (err) => {
+    delete client["_connectionAttempt"];
     const connectionError = client["_socket"].active
       ? undefined
       : new DocSyncError("ConnectionError", err.message, { cause: err });

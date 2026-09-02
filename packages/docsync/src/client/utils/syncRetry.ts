@@ -32,19 +32,36 @@ export function scheduleSyncRetry<
   O extends object,
 >(client: DocSyncClient<D, S, O>, docId: string, retry: () => void): boolean {
   const retryStates = client["_syncRetryState"];
-  const attempts = (retryStates.get(docId)?.attempts ?? 0) + 1;
+  const previousState = retryStates.get(docId);
+  const attempts = (previousState?.attempts ?? 0) + 1;
   if (attempts > SYNC_RETRY_MAX_ATTEMPTS) return false;
 
   const delay = Math.min(
     SYNC_RETRY_BASE_DELAY * 2 ** (attempts - 1),
     SYNC_RETRY_MAX_DELAY,
   );
-  const timeout = setTimeout(() => {
-    delete retryStates.get(docId)?.timeout;
+  const nextState: SyncRetryState = { attempts };
+  nextState.timeout = setTimeout(() => {
+    // A manual sync or a newer failure may have replaced this backoff. Only
+    // the timer still stored for the document is allowed to start a request.
+    if (retryStates.get(docId) !== nextState) return;
+    delete nextState.timeout;
     retry();
   }, delay);
-  retryStates.set(docId, { attempts, timeout });
+  retryStates.set(docId, nextState);
   return true;
+}
+
+/** Cancels a pending timer without resetting how far backoff has progressed. */
+export function cancelPendingSyncRetry<
+  D extends object,
+  S extends object,
+  O extends object,
+>(client: DocSyncClient<D, S, O>, docId: string): void {
+  const retryState = client["_syncRetryState"].get(docId);
+  if (!retryState?.timeout) return;
+  clearTimeout(retryState.timeout);
+  delete retryState.timeout;
 }
 
 /** Forgets the backoff for a document, so the next failure starts over. */
