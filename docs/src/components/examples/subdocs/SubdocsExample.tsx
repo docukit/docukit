@@ -190,7 +190,10 @@ function SubDocContent({
   return (
     <SubdocsPanelFrame isLoading={!isReady}>
       {status === "error" ? (
-        <div className="text-destructive px-2 py-1 text-sm">
+        <div
+          data-testid="query-error"
+          className="text-destructive px-2 py-1 text-sm"
+        >
           {error.message}
         </div>
       ) : null}
@@ -207,14 +210,20 @@ function SubDocContent({
           {secondaryDoc ? (
             <div className="secondary-doc flex-1">
               {secondaryResult.status === "error" ? (
-                <div className="text-destructive px-2 py-1 text-sm">
+                <div
+                  data-testid="query-error"
+                  className="text-destructive px-2 py-1 text-sm"
+                >
                   {secondaryResult.error.message}
                 </div>
               ) : null}
               <IndexDoc doc={secondaryDoc} />
             </div>
           ) : activeDoc && secondaryResult.status === "error" ? (
-            <div className="text-destructive secondary-doc flex-1 px-2 py-1 text-sm">
+            <div
+              data-testid="query-error"
+              className="text-destructive secondary-doc flex-1 px-2 py-1 text-sm"
+            >
               {secondaryResult.error.message}
             </div>
           ) : activeDoc ? (

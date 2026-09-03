@@ -18,10 +18,7 @@ import type { ClientEventMap, ClientEventName } from "./utils/events.js";
 import { createClientEventEmitter } from "./utils/events.js";
 import { handleConnect } from "./handlers/connection/connect.js";
 import { handleDeleteDoc } from "./handlers/clientInitiated/deleteDoc.js";
-import {
-  handleDisconnect,
-  pauseQueries,
-} from "./handlers/connection/disconnect.js";
+import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { handleCollaboration } from "./handlers/serverInitiated/collaboration.js";
 import { handleDirty } from "./handlers/serverInitiated/dirty.js";
 import { handlePresence } from "./handlers/clientInitiated/presence.js";
@@ -42,6 +39,7 @@ import {
   readLocalIdentity,
 } from "./utils/localIdentity.js";
 import { setupDocChangeListener } from "./utils/setupDocChangeListener.js";
+import { pauseQueries } from "./utils/pauseQueries.js";
 import { setupLocalPromise } from "./utils/setupLocalPromise.js";
 import { clearSyncRetry, type SyncRetryState } from "./utils/syncRetry.js";
 import { DocSyncError } from "./utils/DocSyncError.js";

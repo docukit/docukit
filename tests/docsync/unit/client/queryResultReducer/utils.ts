@@ -13,6 +13,8 @@ type ActionCase = {
   name: string;
   run: (state: State) => State;
   expected: (state: State) => State;
+  /** Terminal network actions leave a settled query untouched. */
+  ignoredWhenSettled?: boolean;
 };
 
 const fetchStatuses = ["fetching", "paused", "idle"] satisfies FetchStatus[];
@@ -137,24 +139,28 @@ export const actionCases: ActionCase[] = [
   },
   {
     name: "networkDocFound",
+    ignoredWhenSettled: true,
     run: (state) =>
       reducerFor(state).action.networkDocFound({ data: "network" }),
     expected: (state) => success("network", terminalFetchStatus(state)),
   },
   {
     name: "networkDocNotFound optional data",
+    ignoredWhenSettled: true,
     run: (state) =>
       reducerFor(state).action.networkDocNotFound({ createIfMissing: false }),
     expected: (state) => networkDocNotFoundExpected(state, false),
   },
   {
     name: "networkDocNotFound required data",
+    ignoredWhenSettled: true,
     run: (state) =>
       reducerFor(state).action.networkDocNotFound({ createIfMissing: true }),
     expected: (state) => networkDocNotFoundExpected(state, true),
   },
   {
     name: "networkQueryError",
+    ignoredWhenSettled: true,
     run: (state) =>
       reducerFor(state).action.networkQueryError({ error: networkError }),
     expected: (state) =>
@@ -162,6 +168,7 @@ export const actionCases: ActionCase[] = [
   },
   {
     name: "networkQueryError with pending retry",
+    ignoredWhenSettled: true,
     run: (state) =>
       reducerFor(state).action.networkQueryError({
         error: networkError,

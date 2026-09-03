@@ -22,6 +22,17 @@ function error<D>(
 }
 
 /**
+ * An `idle` query is settled: the newest sync attempt already produced its
+ * result. The attempt token in `handleSync` is what stops a superseded attempt
+ * from reaching this reducer at all; this check is the backstop for the day a
+ * new `await` is added without its token check. Overwriting a settled query
+ * with a stale result is never correct, so it is refused here regardless.
+ */
+function isSettled<D>(state: QueryResult<D>): boolean {
+  return state.fetchStatus === "idle";
+}
+
+/**
  * Terminal network actions settle the query, but they must not claim the
  * connection is healthy. The socket can drop while a response is still being
  * reconciled, so a query that is already `paused` stays `paused` and the app
@@ -70,12 +81,15 @@ export function createQueryResultReducer<D>(config: {
         error(state, "paused", payload.error),
 
       networkDocFound: (state: QueryResult<D>, payload: { data: D }) =>
-        success(payload.data, terminalFetchStatus(state)),
+        isSettled(state)
+          ? state
+          : success(payload.data, terminalFetchStatus(state)),
 
       networkDocNotFound: (
         state: QueryResult<D>,
         payload: { createIfMissing: boolean },
       ): QueryResult<D> => {
+        if (isSettled(state)) return state;
         const fetchStatus = terminalFetchStatus(state);
         if (state.status === "success") return success(state.data, fetchStatus);
         if (state.status === "error" && state.data !== undefined) {
@@ -87,15 +101,22 @@ export function createQueryResultReducer<D>(config: {
         return success(undefined as D, fetchStatus);
       },
 
+      /**
+       * `fetchStatus: "fetching"` reports the failure while a retry or a queued
+       * sync is still pending. It is the only override allowed: forcing `idle`
+       * or `paused` from a caller would bypass `terminalFetchStatus`.
+       */
       networkQueryError: (
         state: QueryResult<D>,
-        payload: { error: Error; fetchStatus?: FetchStatus },
+        payload: { error: Error; fetchStatus?: "fetching" },
       ) =>
-        error(
-          state,
-          payload.fetchStatus ?? terminalFetchStatus(state),
-          payload.error,
-        ),
+        isSettled(state)
+          ? state
+          : error(
+              state,
+              payload.fetchStatus ?? terminalFetchStatus(state),
+              payload.error,
+            ),
     },
   });
 }

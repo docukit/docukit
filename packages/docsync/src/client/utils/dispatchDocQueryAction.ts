@@ -1,5 +1,5 @@
 import type { DocSyncClient } from "../index.js";
-import type { DocData, FetchStatus } from "../types.js";
+import type { DocData } from "../types.js";
 import { createQueryResultReducer } from "./queryResultReducer.js";
 
 export function dispatchLocalDocFound<
@@ -134,7 +134,7 @@ export function dispatchNetworkQueryError<
   client: DocSyncClient<D, S, O>,
   docId: string,
   error: Error,
-  fetchStatus?: FetchStatus,
+  fetchStatus?: "fetching",
 ): void {
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return;
