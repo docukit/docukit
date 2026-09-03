@@ -468,10 +468,12 @@ describe("Client 2", () => {
 
       await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
       expect(client["_docsCache"].get(docId)?.queryResult).toMatchObject({
-        status: "error",
+        status: "success",
         fetchStatus: "fetching",
-        error: importError,
       });
+      expect(
+        client["_docsCache"].get(docId)?.queryResult.error,
+      ).toBeUndefined();
 
       if (!finishQueuedRequest) throw new Error("Expected queued sync request");
       finishQueuedRequest({ data: s({ docId, clock: 2 }) });

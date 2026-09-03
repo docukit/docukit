@@ -193,7 +193,7 @@ const result = useDoc({ type: "notes", id: "doc-123", createIfMissing: true });
     },
     error: {
       description:
-        "The failure that produced the current state. DocSync's own failures are DocSyncError instances, whose type field ('AuthorizationError', 'ConnectionError', 'DatabaseError', 'NetworkError' or 'ValidationError') can be branched on without matching the message.",
+        "The terminal failure that produced an error state. DocSync's own failures are DocSyncError instances, whose type field ('AuthorizationError', 'ConnectionError', 'DatabaseError', 'NetworkError' or 'ValidationError') can be branched on without matching the message.",
       type: "Error",
     },
     fetchStatus: {
@@ -217,23 +217,28 @@ is paused or a later sync has failed.
 | Local storage failed                               | `error`                          | `idle` or `paused` | `error` contains the local failure; a disconnected query remains paused                    |
 | Authentication or permanent connection rejection   | `error`                          | `paused`           | `error` contains the connection failure                                                    |
 | Server permanently rejected a sync                 | `error`                          | `idle`             | Existing data is preserved and `error` contains the authorization or validation failure    |
-| Network or database attempt failed and is retrying | `error`                          | `fetching`         | Existing data and the latest error are preserved until a retry succeeds                    |
+| Network or database attempt failed and is retrying | unchanged                        | `fetching`         | The query result remains unchanged while DocSync retries                                   |
 
-Because `data` and `error` can exist at the same time, applications should keep
-rendering usable data and show the later error separately. A paused state is
-often transient, so applications may delay a connectivity notice to avoid a
-flash during short interruptions.
+Because `data` and a terminal `error` can exist at the same time, applications
+should keep rendering usable data and show the later error separately. A paused
+state is often transient, so applications may delay a connectivity notice to
+avoid a flash during short interruptions.
 
 Retries are not unlimited. While the current socket connection remains active,
 a failed sync request or a `DatabaseError` response is retried with exponential
-backoff for about 24 seconds. After that the query settles on `error` with
-`fetchStatus: "idle"` and keeps its data, so `error` together with `idle` means
-DocSync has stopped trying on its own.
+backoff for about 24 seconds. Failed attempts during that backoff do not change
+the query result. After the retry budget is exhausted, the query settles on
+`error` with `fetchStatus: "idle"` and keeps its data. At that point `error`
+means DocSync has stopped trying on its own.
 
 A transport disconnect cancels that per-document retry and moves the query to
 `paused`. Socket.IO then owns reconnecting the transport. When the connection
 returns, DocSync resumes the document sync with a fresh retry budget. A later
 local edit also starts a fresh sync attempt after a bounded retry chain ends.
+The package README contains the complete
+[error and retry policy](https://github.com/docukit/docukit/tree/main/packages/docsync#error-and-retry-policy),
+including permanent connection failures and errors raised by configured local
+providers or document bindings.
 
 ---
 

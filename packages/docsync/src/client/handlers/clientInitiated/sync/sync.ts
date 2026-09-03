@@ -255,8 +255,8 @@ function finishFailedSyncAttempt<
 
 /**
  * Reports a finished attempt once. A scheduled retry or a sync queued during
- * the failed request keeps the query on `fetching`; the queued sync starts here
- * only when no retry already covers it.
+ * the failed request keeps the existing query result unchanged; the queued
+ * sync starts here only when no retry already covers it.
  */
 function reportFinishedSyncError<
   D extends object,
@@ -270,12 +270,9 @@ function reportFinishedSyncError<
 ): void {
   const { hasPendingSync, retrying } = continuation;
   try {
-    dispatchNetworkQueryError(
-      client,
-      docId,
-      error,
-      retrying || hasPendingSync ? "fetching" : undefined,
-    );
+    if (!retrying && !hasPendingSync) {
+      dispatchNetworkQueryError(client, docId, error);
+    }
   } finally {
     if (
       hasPendingSync &&
@@ -522,16 +519,17 @@ export const handleSync = async <
     const hasPendingSync =
       pushStatusByDocId.get(docId) === "pushing-with-pending";
     if (!finishSyncAttempt(client, docId, syncAttempt)) return;
-    try {
-      dispatchNetworkQueryError(
-        client,
-        docId,
-        error instanceof Error ? error : new Error(String(error)),
-        hasPendingSync ? "fetching" : undefined,
-      );
-    } catch {
-      // Reporting the failure on the query must never replace the failure
-      // itself — the rethrow below is what keeps it loud.
+    if (!hasPendingSync) {
+      try {
+        dispatchNetworkQueryError(
+          client,
+          docId,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      } catch {
+        // Reporting the failure on the query must never replace the failure
+        // itself — the rethrow below is what keeps it loud.
+      }
     }
     if (hasPendingSync && pushStatusByDocId.get(docId) === "idle") {
       void handleSync(client, docId);

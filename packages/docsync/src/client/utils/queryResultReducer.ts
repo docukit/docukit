@@ -101,22 +101,10 @@ export function createQueryResultReducer<D>(config: {
         return success(undefined as D, fetchStatus);
       },
 
-      /**
-       * `fetchStatus: "fetching"` reports the failure while a retry or a queued
-       * sync is still pending. It is the only override allowed: forcing `idle`
-       * or `paused` from a caller would bypass `terminalFetchStatus`.
-       */
-      networkQueryError: (
-        state: QueryResult<D>,
-        payload: { error: Error; fetchStatus?: "fetching" },
-      ) =>
+      networkQueryError: (state: QueryResult<D>, payload: { error: Error }) =>
         isSettled(state)
           ? state
-          : error(
-              state,
-              payload.fetchStatus ?? terminalFetchStatus(state),
-              payload.error,
-            ),
+          : error(state, terminalFetchStatus(state), payload.error),
     },
   });
 }

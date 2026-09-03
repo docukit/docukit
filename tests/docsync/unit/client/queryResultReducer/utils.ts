@@ -17,6 +17,13 @@ type ActionCase = {
   ignoredWhenSettled?: boolean;
 };
 
+type ActionCasesByReducerAction = {
+  [ActionName in keyof ReturnType<typeof reducerFor>["action"]]: readonly [
+    ActionCase,
+    ...ActionCase[],
+  ];
+};
+
 const fetchStatuses = ["fetching", "paused", "idle"] satisfies FetchStatus[];
 const localError = new Error("local failed");
 const networkError = new Error("network failed");
@@ -41,6 +48,10 @@ function errorWithData(fetchStatus: FetchStatus): State {
   return { status: "error", fetchStatus, data: "local", error: localError };
 }
 
+function errorWithUndefinedData(fetchStatus: FetchStatus): State {
+  return { status: "error", fetchStatus, data: undefined, error: localError };
+}
+
 function errorState(
   state: State,
   fetchStatus: FetchStatus,
@@ -51,9 +62,7 @@ function errorState(
 
 function withFetchStatus(state: State, fetchStatus: FetchStatus): State {
   if (state.fetchStatus === fetchStatus) return state;
-  if (state.status === "pending") return { status: "pending", fetchStatus };
-  if (state.status === "success") return success(state.data, fetchStatus);
-  return errorState(state, fetchStatus, state.error);
+  return { ...state, fetchStatus };
 }
 
 /**
@@ -69,7 +78,10 @@ function networkDocNotFoundExpected(
   createIfMissing: boolean,
 ): State {
   const fetchStatus = terminalFetchStatus(state);
-  if ("data" in state) return success(state.data, fetchStatus);
+  if (state.status === "success") return success(state.data, fetchStatus);
+  if (state.status === "error" && state.data !== undefined) {
+    return success(state.data, fetchStatus);
+  }
   if (createIfMissing) return { status: "pending", fetchStatus };
   return success(undefined, fetchStatus);
 }
@@ -95,85 +107,101 @@ export const stateCases: StateCase[] = [
     name: `error with data ${fetchStatus}`,
     state: errorWithData(fetchStatus),
   })),
+  ...fetchStatuses.map((fetchStatus) => ({
+    name: `error with explicit undefined data ${fetchStatus}`,
+    state: errorWithUndefinedData(fetchStatus),
+  })),
 ];
 
-export const actionCases: ActionCase[] = [
-  {
-    name: "localDocFound",
-    run: (state) => reducerFor(state).action.localDocFound({ data: "found" }),
-    expected: (state) =>
-      state.status === "error"
-        ? { ...state, data: "found" }
-        : success("found", state.fetchStatus),
-  },
-  {
-    name: "localQueryError",
-    run: (state) =>
-      reducerFor(state).action.localQueryError({ error: localError }),
-    expected: (state) =>
-      errorState(state, terminalFetchStatus(state), localError),
-  },
-  {
-    name: "fetchStarted",
-    run: (state) => reducerFor(state).action.fetchStarted(undefined),
-    expected: (state) => withFetchStatus(state, "fetching"),
-  },
-  {
-    name: "connected",
-    run: (state) => reducerFor(state).action.connected(undefined),
-    expected: (state) =>
-      state.fetchStatus === "paused"
-        ? withFetchStatus(state, "fetching")
-        : state,
-  },
-  {
-    name: "disconnected",
-    run: (state) => reducerFor(state).action.disconnected(undefined),
-    expected: (state) => withFetchStatus(state, "paused"),
-  },
-  {
-    name: "connectionError",
-    run: (state) =>
-      reducerFor(state).action.connectionError({ error: networkError }),
-    expected: (state) => errorState(state, "paused", networkError),
-  },
-  {
-    name: "networkDocFound",
-    ignoredWhenSettled: true,
-    run: (state) =>
-      reducerFor(state).action.networkDocFound({ data: "network" }),
-    expected: (state) => success("network", terminalFetchStatus(state)),
-  },
-  {
-    name: "networkDocNotFound optional data",
-    ignoredWhenSettled: true,
-    run: (state) =>
-      reducerFor(state).action.networkDocNotFound({ createIfMissing: false }),
-    expected: (state) => networkDocNotFoundExpected(state, false),
-  },
-  {
-    name: "networkDocNotFound required data",
-    ignoredWhenSettled: true,
-    run: (state) =>
-      reducerFor(state).action.networkDocNotFound({ createIfMissing: true }),
-    expected: (state) => networkDocNotFoundExpected(state, true),
-  },
-  {
-    name: "networkQueryError",
-    ignoredWhenSettled: true,
-    run: (state) =>
-      reducerFor(state).action.networkQueryError({ error: networkError }),
-    expected: (state) =>
-      errorState(state, terminalFetchStatus(state), networkError),
-  },
-  {
-    name: "networkQueryError with pending retry",
-    ignoredWhenSettled: true,
-    run: (state) =>
-      reducerFor(state).action.networkQueryError({
-        error: networkError,
-        fetchStatus: "fetching",
-      }),
-    expected: (state) => errorState(state, "fetching", networkError),
-  },
-];
+const actionCasesByReducerAction = {
+  localDocFound: [
+    {
+      name: "localDocFound",
+      run: (state) => reducerFor(state).action.localDocFound({ data: "found" }),
+      expected: (state) =>
+        state.status === "error"
+          ? { ...state, data: "found" }
+          : success("found", state.fetchStatus),
+    },
+  ],
+  localQueryError: [
+    {
+      name: "localQueryError",
+      run: (state) =>
+        reducerFor(state).action.localQueryError({ error: localError }),
+      expected: (state) =>
+        errorState(state, terminalFetchStatus(state), localError),
+    },
+  ],
+  fetchStarted: [
+    {
+      name: "fetchStarted",
+      run: (state) => reducerFor(state).action.fetchStarted(undefined),
+      expected: (state) => withFetchStatus(state, "fetching"),
+    },
+  ],
+  connected: [
+    {
+      name: "connected",
+      run: (state) => reducerFor(state).action.connected(undefined),
+      expected: (state) =>
+        state.fetchStatus === "paused"
+          ? withFetchStatus(state, "fetching")
+          : state,
+    },
+  ],
+  disconnected: [
+    {
+      name: "disconnected",
+      run: (state) => reducerFor(state).action.disconnected(undefined),
+      expected: (state) => withFetchStatus(state, "paused"),
+    },
+  ],
+  connectionError: [
+    {
+      name: "connectionError",
+      run: (state) =>
+        reducerFor(state).action.connectionError({ error: networkError }),
+      expected: (state) => errorState(state, "paused", networkError),
+    },
+  ],
+  networkDocFound: [
+    {
+      name: "networkDocFound",
+      ignoredWhenSettled: true,
+      run: (state) =>
+        reducerFor(state).action.networkDocFound({ data: "network" }),
+      expected: (state) => success("network", terminalFetchStatus(state)),
+    },
+  ],
+  networkDocNotFound: [
+    {
+      name: "networkDocNotFound optional data",
+      ignoredWhenSettled: true,
+      run: (state) =>
+        reducerFor(state).action.networkDocNotFound({ createIfMissing: false }),
+      expected: (state) => networkDocNotFoundExpected(state, false),
+    },
+    {
+      name: "networkDocNotFound required data",
+      ignoredWhenSettled: true,
+      run: (state) =>
+        reducerFor(state).action.networkDocNotFound({ createIfMissing: true }),
+      expected: (state) => networkDocNotFoundExpected(state, true),
+    },
+  ],
+  networkQueryError: [
+    {
+      name: "networkQueryError",
+      ignoredWhenSettled: true,
+      run: (state) =>
+        reducerFor(state).action.networkQueryError({ error: networkError }),
+      expected: (state) =>
+        errorState(state, terminalFetchStatus(state), networkError),
+    },
+  ],
+} satisfies ActionCasesByReducerAction;
+
+export const actionCases: ActionCase[] = Object.values(
+  actionCasesByReducerAction,
+).flat();

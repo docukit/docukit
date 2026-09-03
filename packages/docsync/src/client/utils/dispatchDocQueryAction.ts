@@ -127,20 +127,13 @@ export function dispatchNetworkQueryError<
   D extends object,
   S extends object,
   O extends object,
->(
-  client: DocSyncClient<D, S, O>,
-  docId: string,
-  error: Error,
-  fetchStatus?: "fetching",
-): void {
+>(client: DocSyncClient<D, S, O>, docId: string, error: Error): void {
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return;
 
   const reducer = createQueryResultReducer({
     initialState: cacheEntry.queryResult,
   });
-  const next = reducer.action.networkQueryError(
-    fetchStatus === undefined ? { error } : { error, fetchStatus },
-  );
+  const next = reducer.action.networkQueryError({ error });
   if (next !== cacheEntry.queryResult) client["_emitQueryResult"](docId, next);
 }

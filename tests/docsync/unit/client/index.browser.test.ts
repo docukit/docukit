@@ -2628,10 +2628,10 @@ describe("DocSyncClient", () => {
         .poll(() => socketMockState.deferredSyncAcks.get(docId)?.length)
         .toBe(2);
       expect(callback.mock.calls.at(-1)?.[0]).toMatchObject({
-        status: "error",
+        status: "success",
         fetchStatus: "fetching",
-        error: { type: "AuthorizationError" },
       });
+      expect(callback.mock.calls.at(-1)?.[0].error).toBeUndefined();
 
       const queuedAck = socketMockState.deferredSyncAcks.get(docId)?.[1];
       if (!queuedAck) throw new Error("Expected queued sync ack");
@@ -2697,11 +2697,8 @@ describe("DocSyncClient", () => {
 
       await expect
         .poll(() => callback.mock.calls.at(-1)?.[0])
-        .toMatchObject({
-          status: "error",
-          data: { docId },
-          error: { type: "DatabaseError", message: "database unavailable" },
-        });
+        .toMatchObject({ status: "success", data: { docId } });
+      expect(callback.mock.calls.at(-1)?.[0].error).toBeUndefined();
 
       const syncCallsAfterFailure = getSocketEmitMock(client).mock.calls.filter(
         ([event]) => event === "sync",
@@ -2761,10 +2758,10 @@ describe("DocSyncClient", () => {
       expect(socketMockState.deferredSyncAcks.get(docId)).toHaveLength(1);
       expect(client["_syncRetryState"].get(docId)?.timeout).toBeDefined();
       expect(callback.mock.calls.at(-1)?.[0]).toMatchObject({
-        status: "error",
+        status: "success",
         fetchStatus: "fetching",
-        error: { type: "DatabaseError" },
       });
+      expect(callback.mock.calls.at(-1)?.[0].error).toBeUndefined();
 
       setSocketState(client, { active: true, connected: false });
       emitMockedSocketEvent(client, "disconnect", "transport close");
@@ -2786,15 +2783,11 @@ describe("DocSyncClient", () => {
       await expect
         .poll(() => callback.mock.calls.at(-1)?.[0])
         .toMatchObject({
-          status: "error",
+          status: "success",
           fetchStatus: "fetching",
           data: { docId },
-          error: {
-            type: "NetworkError",
-            message: "network unavailable",
-            cause: networkFailure,
-          },
         });
+      expect(callback.mock.calls.at(-1)?.[0].error).toBeUndefined();
       expect(client["_syncRetryState"].get(docId)?.attempts).toBe(1);
 
       socketMockState.syncErrors.delete(docId);
@@ -2834,10 +2827,10 @@ describe("DocSyncClient", () => {
         expect(clearTimeoutSpy).toHaveBeenCalledWith(retryTimeout);
         expect(client["_syncRetryState"].has(docId)).toBe(false);
         expect(callback.mock.calls.at(-1)?.[0]).toMatchObject({
-          status: "error",
+          status: "success",
           fetchStatus: "paused",
-          error: { type: "DatabaseError" },
         });
+        expect(callback.mock.calls.at(-1)?.[0].error).toBeUndefined();
       } finally {
         clearTimeoutSpy.mockRestore();
       }

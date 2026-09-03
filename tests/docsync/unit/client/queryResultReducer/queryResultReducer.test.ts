@@ -6,10 +6,6 @@ const combinations = stateCases.flatMap((stateCase) =>
 );
 
 describe("createQueryResultReducer", () => {
-  test("declares every state and action combination", () => {
-    expect(combinations).toHaveLength(stateCases.length * actionCases.length);
-  });
-
   test.each(combinations)(
     "$stateCase.name + $actionCase.name",
     ({ stateCase, actionCase }) => {
