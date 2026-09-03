@@ -22,6 +22,7 @@ export type {
   RequestClientAuthConfig,
   FetchStatus,
   GetDocArgs,
+  DocObserver,
   DocData,
   Identity,
   QueryResult,

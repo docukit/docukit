@@ -31,6 +31,7 @@ import {
   cacheLocalIdentity,
   clearCachedLocalIdentity,
   LOCAL_IDENTITY_KEY,
+  subscribeToDoc,
 } from "./utils.js";
 
 type SocketAuthPayload = {
@@ -281,6 +282,18 @@ describe("DocSyncClient", () => {
     return emitMock;
   };
 
+  const getSocketConnectMock = <
+    D extends object,
+    S extends object,
+    O extends object,
+  >(
+    client: DocSyncClient<D, S, O>,
+  ) => {
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- socket is a Vitest mock in this test file.
+    const connectMock = vi.mocked(client["_socket"].connect);
+    return connectMock;
+  };
+
   const emitMockedConnect = (client: DebounceTestClient) => {
     const onMock = getSocketOnMock(client);
     const eventCall = onMock.mock.calls.find(([event]) => event === "connect");
@@ -415,7 +428,8 @@ describe("DocSyncClient", () => {
         });
         setSocketState(client, { active: true, connected: false });
         const callback = createCallback();
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
           callback,
         );
@@ -463,7 +477,8 @@ describe("DocSyncClient", () => {
       });
       setSocketState(client, { active: true, connected: false });
       const callback = createCallback();
-      client.getDoc(
+      subscribeToDoc(
+        client,
         { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
         callback,
       );
@@ -527,7 +542,8 @@ describe("DocSyncClient", () => {
       client["_socket"].connected = false;
 
       const callback = createCallback();
-      client.getDoc(
+      subscribeToDoc(
+        client,
         { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
         callback,
       );
@@ -623,7 +639,8 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
 
         // Trigger _localPromise resolution by calling getDoc
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
           callback,
         );
@@ -664,7 +681,8 @@ describe("DocSyncClient", () => {
         const client = createClient();
         const callback = createCallback();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
           callback,
         );
@@ -888,7 +906,8 @@ describe("DocSyncClient", () => {
 
       const docId = ulid().toLowerCase();
       let latestResult: QueryResult<DocData<FakeDoc>> | undefined;
-      client.getDoc(
+      subscribeToDoc(
+        client,
         { type: "test", id: docId, createIfMissing: true },
         (result) => {
           latestResult = result;
@@ -1189,7 +1208,7 @@ describe("DocSyncClient", () => {
   // Type tests
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("getDoc types", () => {
+  describe("getDocObserver types", () => {
     type DocResult = QueryResult<DocData<Doc>>;
     type MaybeDocResult = QueryResult<DocData<Doc> | undefined>;
 
@@ -1199,41 +1218,47 @@ describe("DocSyncClient", () => {
       const id = ulid().toLowerCase();
 
       // with id, without createIfMissing → MaybeDocResult
-      client.getDoc({ type: "test", id }, (result) => {
+      subscribeToDoc(client, { type: "test", id }, (result) => {
         expectTypeOf(result).toEqualTypeOf<MaybeDocResult>();
       });
 
       // with id, createIfMissing: true → DocResult
-      client.getDoc({ type: "test", id, createIfMissing: true }, (result) => {
-        expectTypeOf(result).toEqualTypeOf<DocResult>();
-      });
+      subscribeToDoc(
+        client,
+        { type: "test", id, createIfMissing: true },
+        (result) => {
+          expectTypeOf(result).toEqualTypeOf<DocResult>();
+        },
+      );
 
       // with id, createIfMissing: false → MaybeDocResult
-      client.getDoc({ type: "test", id, createIfMissing: false }, (result) => {
-        expectTypeOf(result).toEqualTypeOf<MaybeDocResult>();
-      });
+      subscribeToDoc(
+        client,
+        { type: "test", id, createIfMissing: false },
+        (result) => {
+          expectTypeOf(result).toEqualTypeOf<MaybeDocResult>();
+        },
+      );
     });
 
     test("type errors for invalid arguments", () => {
       // These are compile-time checks only - we use a function that's never called
       // to avoid runtime execution while still getting TypeScript to check the types
       const typeCheck = (client: ReturnType<typeof createClient>) => {
-        const callback = createCallback();
-
         // @ts-expect-error - type is required (even with id)
-        client.getDoc({ id: "123" }, callback);
+        client.getDocObserver({ id: "123" });
 
         // @ts-expect-error - type is required (even with createIfMissing and id)
-        client.getDoc({ createIfMissing: true, id: "123" }, callback);
+        client.getDocObserver({ createIfMissing: true, id: "123" });
 
         // @ts-expect-error - id is required
-        client.getDoc({ type: "test" }, callback);
+        client.getDocObserver({ type: "test" });
 
         // @ts-expect-error - id is required
-        client.getDoc({ type: "test", createIfMissing: false }, callback);
+        client.getDocObserver({ type: "test", createIfMissing: false });
 
         // @ts-expect-error - id is required
-        client.getDoc({ type: "test", createIfMissing: true }, callback);
+        client.getDocObserver({ type: "test", createIfMissing: true });
       };
 
       // Verify the function exists (never called, just for type checking)
@@ -1265,10 +1290,10 @@ describe("DocSyncClient", () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // getDoc tests
+  // getDocObserver tests
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("getDoc", () => {
+  describe("getDocObserver", () => {
     const createDocWithChild = (client: ReturnType<typeof createClient>) => {
       const docId = ulid().toLowerCase();
       const { doc } = client["_docBinding"].create("test", docId);
@@ -1282,11 +1307,32 @@ describe("DocSyncClient", () => {
     };
 
     describe("Get existing document", () => {
+      test("should stay lazy until its first subscriber and share one document subscription", async () => {
+        const client = createClient();
+        const docId = ulid().toLowerCase();
+        const observer = client.getDocObserver({ type: "test", id: docId });
+
+        expect(observer.getSnapshot()).toStrictEqual({
+          status: "pending",
+          fetchStatus: "fetching",
+        });
+        expect(client["_docsCache"].has(docId)).toBe(false);
+
+        const unsubscribeFirst = observer.subscribe(() => undefined);
+        const unsubscribeSecond = observer.subscribe(() => undefined);
+        expect(client["_docsCache"].get(docId)?.refCount).toBe(1);
+
+        unsubscribeFirst();
+        expect(client["_docsCache"].get(docId)?.refCount).toBe(1);
+        unsubscribeSecond();
+        await expect.poll(() => client["_docsCache"].has(docId)).toBe(false);
+      });
+
       test("should emit pending status initially", () => {
         const client = createClient();
         const callback = createCallback();
 
-        client.getDoc({ type: "test", id: "test-id" }, callback);
+        subscribeToDoc(client, { type: "test", id: "test-id" }, callback);
 
         expect(callback).toHaveBeenCalledWith({
           status: "pending",
@@ -1299,7 +1345,7 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
 
         setSocketState(client, { active: true, connected: false });
-        client.getDoc({ type: "test", id: "test-id" }, callback);
+        subscribeToDoc(client, { type: "test", id: "test-id" }, callback);
 
         expect(callback).toHaveBeenCalledWith({
           status: "pending",
@@ -1312,7 +1358,8 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: docId, createIfMissing: true },
           callback,
         );
@@ -1334,7 +1381,8 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: docId, createIfMissing: true },
           callback,
         );
@@ -1363,7 +1411,8 @@ describe("DocSyncClient", () => {
 
         setSocketState(client, { active: false, connected: false });
         emitMockedSocketEvent(client, "connect_error", connectionError);
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: docId, createIfMissing: true },
           callback,
         );
@@ -1390,7 +1439,8 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: docId, createIfMissing: true },
           callback,
         );
@@ -1423,7 +1473,8 @@ describe("DocSyncClient", () => {
           "connect_error",
           new Error("Authentication failed"),
         );
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: docId, createIfMissing: true },
           callback,
         );
@@ -1439,13 +1490,12 @@ describe("DocSyncClient", () => {
           .toMatchObject({ status: "success", fetchStatus: "idle" });
       });
 
-      test("getDocResult should report the state a new subscription would start from", () => {
+      test("observer should report the state a new subscription starts from", () => {
         const client = createClient();
 
-        expect(client.getDocResult({ id: "unknown" })).toStrictEqual({
-          status: "pending",
-          fetchStatus: "fetching",
-        });
+        expect(
+          client.getDocObserver({ type: "test", id: "unknown" }).getSnapshot(),
+        ).toStrictEqual({ status: "pending", fetchStatus: "fetching" });
 
         setSocketState(client, { active: false, connected: false });
         emitMockedSocketEvent(
@@ -1454,19 +1504,22 @@ describe("DocSyncClient", () => {
           new Error("Authentication failed"),
         );
 
-        expect(client.getDocResult({ id: "unknown" })).toMatchObject({
+        expect(
+          client.getDocObserver({ type: "test", id: "unknown" }).getSnapshot(),
+        ).toMatchObject({
           status: "error",
           fetchStatus: "paused",
           error: { type: "ConnectionError" },
         });
       });
 
-      test("getDocResult should return the cached result of a loaded document", async () => {
+      test("observer should return the cached result of a loaded document", async () => {
         const client = createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: docId, createIfMissing: true },
           callback,
         );
@@ -1475,9 +1528,9 @@ describe("DocSyncClient", () => {
           .toBe("idle");
 
         // Same object the subscription holds — a read, not a new query.
-        expect(client.getDocResult({ id: docId })).toBe(
-          callback.mock.calls.at(-1)?.[0],
-        );
+        expect(
+          client.getDocObserver({ type: "test", id: docId }).getSnapshot(),
+        ).toBe(callback.mock.calls.at(-1)?.[0]);
         expect(client["_docsCache"].get(docId)?.refCount).toBe(1);
       });
 
@@ -1486,7 +1539,8 @@ describe("DocSyncClient", () => {
         const loadedCallback = createCallback();
         const lateCallback = createCallback();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
           loadedCallback,
         );
@@ -1504,7 +1558,8 @@ describe("DocSyncClient", () => {
           "paused",
         );
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
           lateCallback,
         );
@@ -1520,7 +1575,7 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
 
         setSocketState(client, { active: true, connected: false });
-        client.getDoc({ type: "test", id: "test-id" }, callback);
+        subscribeToDoc(client, { type: "test", id: "test-id" }, callback);
         expect(callback.mock.calls.at(-1)?.[0].fetchStatus).toBe("fetching");
 
         client.disconnect();
@@ -1541,7 +1596,7 @@ describe("DocSyncClient", () => {
 
         client.connect();
         setSocketState(client, { active: true, connected: false });
-        client.getDoc({ type: "test", id: "test-id" }, callback);
+        subscribeToDoc(client, { type: "test", id: "test-id" }, callback);
 
         expect(callback.mock.calls[0]?.[0]).toMatchObject({
           status: "error",
@@ -1550,13 +1605,101 @@ describe("DocSyncClient", () => {
         });
       });
 
+      test("should leave an already connected client and its queries unchanged", async () => {
+        const client = createClient();
+        const callback = createCallback();
+        const docId = ulid().toLowerCase();
+
+        subscribeToDoc(
+          client,
+          { type: "test", id: docId, createIfMissing: true },
+          callback,
+        );
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0].fetchStatus)
+          .toBe("idle");
+        const settledResult = callback.mock.calls.at(-1)?.[0];
+        const connect = getSocketConnectMock(client);
+
+        client.connect();
+
+        expect(connect).not.toHaveBeenCalled();
+        expect(callback.mock.calls.at(-1)?.[0]).toBe(settledResult);
+      });
+
+      test("should preserve paused state when starting the socket throws", async () => {
+        const client = createClient();
+        const callback = createCallback();
+        const docId = ulid().toLowerCase();
+
+        subscribeToDoc(
+          client,
+          { type: "test", id: docId, createIfMissing: true },
+          callback,
+        );
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0].fetchStatus)
+          .toBe("idle");
+        setSocketState(client, { active: false, connected: false });
+        emitMockedSocketEvent(client, "disconnect", "io client disconnect");
+        getSocketConnectMock(client).mockImplementationOnce(() => {
+          throw new Error("socket start failed");
+        });
+
+        expect(() => client.connect()).toThrow("socket start failed");
+        expect(client["_connectionFetchStatus"]).toBe("paused");
+        expect(callback.mock.calls.at(-1)?.[0].fetchStatus).toBe("paused");
+      });
+
+      test("should update every query before notifying reconnect listeners", async () => {
+        const client = createClient();
+        const firstId = ulid().toLowerCase();
+        const secondId = ulid().toLowerCase();
+        const firstObserver = client.getDocObserver({
+          type: "test",
+          id: firstId,
+          createIfMissing: true,
+        });
+        const secondObserver = client.getDocObserver({
+          type: "test",
+          id: secondId,
+          createIfMissing: true,
+        });
+        firstObserver.subscribe(() => undefined);
+        secondObserver.subscribe(() => undefined);
+        await expect
+          .poll(() => secondObserver.getSnapshot().fetchStatus)
+          .toBe("idle");
+
+        setSocketState(client, { active: false, connected: false });
+        emitMockedSocketEvent(client, "disconnect", "io client disconnect");
+        firstObserver.subscribe(() => {
+          if (firstObserver.getSnapshot().fetchStatus === "fetching") {
+            expect(secondObserver.getSnapshot().fetchStatus).toBe("fetching");
+            throw new Error("listener failed");
+          }
+        });
+        let secondListenerSawFirstStatus: string | undefined;
+        secondObserver.subscribe(() => {
+          secondListenerSawFirstStatus =
+            firstObserver.getSnapshot().fetchStatus;
+        });
+
+        expect(() => client.connect()).toThrow("listener failed");
+        expect(getSocketConnectMock(client)).toHaveBeenCalledOnce();
+        expect(firstObserver.getSnapshot().fetchStatus).toBe("fetching");
+        expect(secondObserver.getSnapshot().fetchStatus).toBe("fetching");
+        expect(secondListenerSawFirstStatus).toBe("fetching");
+      });
+
       test("should resume loaded queries when reconnecting, not just new ones", async () => {
         const client = createClient();
         const loadedCallback = createCallback();
         const lateCallback = createCallback();
         const docId = ulid().toLowerCase();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: docId, createIfMissing: true },
           loadedCallback,
         );
@@ -1578,7 +1721,8 @@ describe("DocSyncClient", () => {
 
         client.connect();
         setSocketState(client, { active: true, connected: false });
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
           lateCallback,
         );
@@ -1601,7 +1745,8 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: docId, createIfMissing: true },
           callback,
         );
@@ -1626,7 +1771,8 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: docId, createIfMissing: true },
           callback,
         );
@@ -1641,7 +1787,8 @@ describe("DocSyncClient", () => {
         expect(callback.mock.calls.at(-1)?.[0].status).toBe("error");
 
         const secondCallback = createCallback();
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: docId, createIfMissing: true },
           secondCallback,
         );
@@ -1656,7 +1803,8 @@ describe("DocSyncClient", () => {
         const docId = ulid().toLowerCase();
         socketMockState.deferSyncDocIds.add(docId);
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: docId, createIfMissing: true },
           callback,
         );
@@ -1701,7 +1849,8 @@ describe("DocSyncClient", () => {
         client.on("sync", (event) => syncEvents.push(event));
         socketMockState.deferSyncDocIds.add(docId);
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: docId, createIfMissing: true },
           callback,
         );
@@ -1750,7 +1899,8 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: docId, createIfMissing: true },
           callback,
         );
@@ -1807,7 +1957,11 @@ describe("DocSyncClient", () => {
         const client = createClient();
         const callback = createCallback();
 
-        client.getDoc({ type: "test", id: "non-existent-id" }, callback);
+        subscribeToDoc(
+          client,
+          { type: "test", id: "non-existent-id" },
+          callback,
+        );
         await expect
           .poll(() => callback.mock.calls.at(-1)?.[0])
           .toEqual({ status: "success", fetchStatus: "idle", data: undefined });
@@ -1827,7 +1981,8 @@ describe("DocSyncClient", () => {
           },
         });
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: serverDoc.docId, createIfMissing: false },
           callback,
         );
@@ -1858,7 +2013,8 @@ describe("DocSyncClient", () => {
         const docId = ulid().toLowerCase();
 
         // Create a doc first
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: docId, createIfMissing: true },
           callback1,
         );
@@ -1866,7 +2022,11 @@ describe("DocSyncClient", () => {
         const createdDoc = getSuccessData(callback1);
 
         // Request the same doc again
-        client.getDoc({ type: "test", id: createdDoc!.docId }, callback2);
+        subscribeToDoc(
+          client,
+          { type: "test", id: createdDoc!.docId },
+          callback2,
+        );
         await expect.poll(() => getSuccessData(callback2)).toBeDefined();
         const cachedDoc = getSuccessData(callback2);
         expect(cachedDoc?.doc).toBe(createdDoc!.doc);
@@ -1879,7 +2039,8 @@ describe("DocSyncClient", () => {
         const docId = ulid().toLowerCase();
 
         // Create a doc first
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: docId, createIfMissing: true },
           callback1,
         );
@@ -1887,7 +2048,11 @@ describe("DocSyncClient", () => {
         const createdDoc = getSuccessData(callback1);
 
         // Request the same doc - cache hit
-        client.getDoc({ type: "test", id: createdDoc!.docId }, callback2);
+        subscribeToDoc(
+          client,
+          { type: "test", id: createdDoc!.docId },
+          callback2,
+        );
 
         expect(callback2.mock.calls.length).toBe(1);
         expect(callback2.mock.calls[0]?.[0]?.status).toBe("success");
@@ -1901,7 +2066,8 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: docId, createIfMissing: true },
           callback,
         );
@@ -1913,7 +2079,8 @@ describe("DocSyncClient", () => {
         const client = createClient();
         const callback = createCallback();
 
-        const unsubscribe = client.getDoc(
+        const unsubscribe = subscribeToDoc(
+          client,
           { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
           callback,
         );
@@ -1928,7 +2095,8 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
         const customId = ulid().toLowerCase();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: customId, createIfMissing: true },
           callback,
         );
@@ -1941,8 +2109,9 @@ describe("DocSyncClient", () => {
         const callback2 = createCallback();
         const customId = ulid().toLowerCase();
 
-        client.getDoc({ type: "test", id: customId }, callback1);
-        client.getDoc(
+        subscribeToDoc(client, { type: "test", id: customId }, callback1);
+        subscribeToDoc(
+          client,
           { type: "test", id: customId, createIfMissing: true },
           callback2,
         );
@@ -1967,7 +2136,8 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
         const customId = ulid().toLowerCase();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: customId, createIfMissing: true },
           callback,
         );
@@ -2001,7 +2171,8 @@ describe("DocSyncClient", () => {
           },
         });
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: serverDoc.docId, createIfMissing: true },
           callback,
         );
@@ -2048,7 +2219,8 @@ describe("DocSyncClient", () => {
           },
         });
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: serverDoc.docId, createIfMissing: true },
           callback,
         );
@@ -2092,7 +2264,8 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
         const customId = ulid().toLowerCase();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: customId, createIfMissing: true },
           callback,
         );
@@ -2115,7 +2288,8 @@ describe("DocSyncClient", () => {
 
         setSocketState(client, { active: true, connected: false });
         emitMockedSocketEvent(client, "connect_error", new Error("offline"));
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: customId, createIfMissing: true },
           callback,
         );
@@ -2135,7 +2309,8 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
         const customId = ulid().toLowerCase();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: customId, createIfMissing: true },
           callback,
         );
@@ -2169,7 +2344,8 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
         const customId = ulid().toLowerCase();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: customId, createIfMissing: true },
           callback,
         );
@@ -2183,7 +2359,7 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
         const customId = ulid().toLowerCase();
 
-        client.getDoc({ type: "test", id: customId }, callback);
+        subscribeToDoc(client, { type: "test", id: customId }, callback);
 
         // First call should be pending
         expect(callback.mock.calls[0]?.[0]?.status).toBe("pending");
@@ -2200,7 +2376,8 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
         const createdId = ulid().toLowerCase();
 
-        const unsubscribe = client.getDoc(
+        const unsubscribe = subscribeToDoc(
+          client,
           { type: "test", id: createdId, createIfMissing: true },
           callback,
         );
@@ -2226,7 +2403,8 @@ describe("DocSyncClient", () => {
         const createdId = ulid().toLowerCase();
 
         // First subscription creates the doc
-        const unsubscribe1 = client.getDoc(
+        const unsubscribe1 = subscribeToDoc(
+          client,
           { type: "test", id: createdId, createIfMissing: true },
           callback1,
         );
@@ -2235,7 +2413,8 @@ describe("DocSyncClient", () => {
         const docId = getSuccessData(callback1)!.docId;
 
         // Second subscription to same doc
-        const unsubscribe2 = client.getDoc(
+        const unsubscribe2 = subscribeToDoc(
+          client,
           { type: "test", id: docId },
           callback2,
         );
@@ -2265,7 +2444,8 @@ describe("DocSyncClient", () => {
         const createdId = ulid().toLowerCase();
 
         // Create doc
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: createdId, createIfMissing: true },
           callback1,
         );
@@ -2276,11 +2456,11 @@ describe("DocSyncClient", () => {
         expect(cache.get(docId)?.refCount).toBe(1);
 
         // Second subscription
-        client.getDoc({ type: "test", id: docId }, callback2);
+        subscribeToDoc(client, { type: "test", id: docId }, callback2);
         await expect.poll(() => cache.get(docId)?.refCount).toBe(2);
 
         // Third subscription
-        client.getDoc({ type: "test", id: docId }, callback3);
+        subscribeToDoc(client, { type: "test", id: docId }, callback3);
         await expect.poll(() => cache.get(docId)?.refCount).toBe(3);
       });
 
@@ -2291,7 +2471,8 @@ describe("DocSyncClient", () => {
         const createdId = ulid().toLowerCase();
 
         // Create doc
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: createdId, createIfMissing: true },
           callback1,
         );
@@ -2299,7 +2480,8 @@ describe("DocSyncClient", () => {
         const doc1 = getSuccessData(callback1)!.doc;
 
         // Second subscription
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: getSuccessData(callback1)!.docId },
           callback2,
         );
@@ -2316,7 +2498,8 @@ describe("DocSyncClient", () => {
         const createdId = ulid().toLowerCase();
 
         // Create doc
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: createdId, createIfMissing: true },
           callback,
         );
@@ -2342,11 +2525,13 @@ describe("DocSyncClient", () => {
         const customId = ulid().toLowerCase();
 
         // Two simultaneous requests for the same non-existent doc
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: customId, createIfMissing: true },
           callback1,
         );
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: customId, createIfMissing: true },
           callback2,
         );
@@ -2393,7 +2578,8 @@ describe("DocSyncClient", () => {
         error: { type: "AuthorizationError", message: "Access denied" },
       });
 
-      client.getDoc(
+      subscribeToDoc(
+        client,
         { type: "test", id: docId, createIfMissing: true },
         callback,
       );
@@ -2418,7 +2604,8 @@ describe("DocSyncClient", () => {
       const docId = ulid().toLowerCase();
       socketMockState.deferSyncDocIds.add(docId);
 
-      client.getDoc(
+      subscribeToDoc(
+        client,
         { type: "test", id: docId, createIfMissing: true },
         callback,
       );
@@ -2468,7 +2655,8 @@ describe("DocSyncClient", () => {
         error: { type: "AuthorizationError", message: "Access denied" },
       });
 
-      client.getDoc(
+      subscribeToDoc(
+        client,
         { type: "test", id: rejectedDocId, createIfMissing: true },
         rejectedCallback,
       );
@@ -2476,7 +2664,8 @@ describe("DocSyncClient", () => {
         .poll(() => rejectedCallback.mock.calls.at(-1)?.[0].status)
         .toBe("error");
 
-      client.getDoc(
+      subscribeToDoc(
+        client,
         { type: "test", id: healthyDocId, createIfMissing: true },
         healthyCallback,
       );
@@ -2500,7 +2689,8 @@ describe("DocSyncClient", () => {
         error: { type: "DatabaseError", message: "database unavailable" },
       });
 
-      client.getDoc(
+      subscribeToDoc(
+        client,
         { type: "test", id: docId, createIfMissing: true },
         callback,
       );
@@ -2551,7 +2741,8 @@ describe("DocSyncClient", () => {
       const docId = ulid().toLowerCase();
       socketMockState.deferSyncDocIds.add(docId);
 
-      client.getDoc(
+      subscribeToDoc(
+        client,
         { type: "test", id: docId, createIfMissing: true },
         callback,
       );
@@ -2586,7 +2777,8 @@ describe("DocSyncClient", () => {
       const networkFailure = new Error("network unavailable");
       socketMockState.syncErrors.set(docId, networkFailure);
 
-      client.getDoc(
+      subscribeToDoc(
+        client,
         { type: "test", id: docId, createIfMissing: true },
         callback,
       );
@@ -2623,7 +2815,8 @@ describe("DocSyncClient", () => {
         error: { type: "DatabaseError", message: "database unavailable" },
       });
 
-      client.getDoc(
+      subscribeToDoc(
+        client,
         { type: "test", id: docId, createIfMissing: true },
         callback,
       );
@@ -2658,7 +2851,8 @@ describe("DocSyncClient", () => {
         error: { type: "DatabaseError", message: "database unavailable" },
       });
 
-      client.getDoc(
+      subscribeToDoc(
+        client,
         { type: "test", id: docId, createIfMissing: true },
         callback,
       );
@@ -2695,7 +2889,8 @@ describe("DocSyncClient", () => {
         error: { type: "DatabaseError", message: "database unavailable" },
       });
 
-      client.getDoc(
+      subscribeToDoc(
+        client,
         { type: "test", id: docId, createIfMissing: true },
         callback,
       );
@@ -2736,7 +2931,8 @@ describe("DocSyncClient", () => {
       window.addEventListener("unhandledrejection", handler);
 
       try {
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: "test-id", createIfMissing: true },
           callback,
         );
@@ -2763,7 +2959,8 @@ describe("DocSyncClient", () => {
 
       try {
         // "unknown-type" is not registered in the docBinding
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "unknown-type", id: "test-id", createIfMissing: true },
           callback,
         );
@@ -2789,7 +2986,8 @@ describe("DocSyncClient", () => {
       window.addEventListener("unhandledrejection", handler);
 
       try {
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: "test-id", createIfMissing: true },
           callback,
         );
@@ -2824,7 +3022,8 @@ describe("DocSyncClient", () => {
       window.addEventListener("unhandledrejection", handler);
 
       try {
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: "test-id", createIfMissing: true },
           callback,
         );
@@ -2863,7 +3062,8 @@ describe("DocSyncClient", () => {
         const callback = createCallback();
         const createdId = ulid().toLowerCase();
 
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: createdId, createIfMissing: true },
           callback,
         );
@@ -2918,7 +3118,8 @@ describe("DocSyncClient", () => {
         const createdId = ulid().toLowerCase();
 
         // Create a doc
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: createdId, createIfMissing: true },
           callback,
         );
@@ -2932,7 +3133,8 @@ describe("DocSyncClient", () => {
         // Simulate receiving operations from another tab
         // We need to create valid operations, so we'll create them from another doc
         const tempCallback = createCallback();
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: ulid().toLowerCase(), createIfMissing: true },
           tempCallback,
         );
@@ -2987,7 +3189,8 @@ describe("DocSyncClient", () => {
         const createdId = ulid().toLowerCase();
 
         // Create a doc - this will resolve _localPromise and initialize BroadcastChannel
-        client.getDoc(
+        subscribeToDoc(
+          client,
           { type: "test", id: createdId, createIfMissing: true },
           callback,
         );

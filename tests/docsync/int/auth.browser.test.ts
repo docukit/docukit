@@ -71,9 +71,10 @@ describe("Authentication", () => {
     const client = createClient("invalid");
     const results: QueryResult<DocData<Doc> | undefined>[] = [];
 
-    client.getDoc({ type: "t", id: "auth-rejection" }, (result) => {
-      results.push(result);
-    });
+    const observer = client.getDocObserver({ type: "t", id: "auth-rejection" });
+    const recordResult = () => results.push(observer.getSnapshot());
+    observer.subscribe(recordResult);
+    recordResult();
 
     await expect.poll(() => results.at(-1)?.status).toBe("error");
     const result = results.at(-1);

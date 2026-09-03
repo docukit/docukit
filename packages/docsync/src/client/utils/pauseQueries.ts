@@ -1,8 +1,8 @@
 import type { DocSyncClient } from "../index.js";
 import type { DocSyncError } from "./DocSyncError.js";
 import {
-  dispatchDocQueryConnectionError,
-  dispatchDocQueryDisconnected,
+  dispatchAllDocQueriesConnectionError,
+  dispatchAllDocQueriesDisconnected,
 } from "./dispatchDocQueryAction.js";
 
 /**
@@ -21,11 +21,9 @@ export function pauseQueries<
 ): void {
   client["_connectionFetchStatus"] = "paused";
   if (connectionError) client["_connectionError"] = connectionError;
-  for (const docId of client["_docsCache"].keys()) {
-    if (connectionError) {
-      dispatchDocQueryConnectionError(client, docId, connectionError);
-    } else {
-      dispatchDocQueryDisconnected(client, docId);
-    }
+  if (connectionError) {
+    dispatchAllDocQueriesConnectionError(client, connectionError);
+  } else {
+    dispatchAllDocQueriesDisconnected(client);
   }
 }

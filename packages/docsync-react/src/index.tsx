@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   DocSyncClient,
   type ClientConfig,
@@ -39,6 +45,12 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
       : undefined;
 
   type DocData = { doc: D; docId: string };
+  const serverSnapshot: QueryResult<DocData | undefined> = {
+    status: "pending",
+    fetchStatus: "fetching",
+  };
+  const getServerSnapshot = () => serverSnapshot;
+  const subscribeWithoutClient = () => () => undefined;
 
   function useDoc(args: {
     type: string;
@@ -58,25 +70,20 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
       () => ({ type, id, createIfMissing }),
       [id, type, createIfMissing],
     );
-    // The subscription only starts in the effect below. Reading the client's
-    // current result first keeps the first frame consistent with every other
-    // subscription instead of always claiming `pending` + `fetching`. During
-    // SSR there is no client, so the same fallback the client would report for
-    // a fresh connection is used.
-    const [result, setResult] = useState<QueryResult<DocData | undefined>>(
-      () =>
-        client?.getDocResult({ id }) ?? {
-          status: "pending",
-          fetchStatus: "fetching",
-        },
+    const observer = useMemo(
+      () => client?.getDocObserver(getDocArgs),
+      [getDocArgs],
     );
 
-    useEffect(() => {
-      if (!client) return;
-      return client.getDoc(getDocArgs, setResult);
-    }, [getDocArgs]);
-
-    return result;
+    // One snapshot source is used for both the first client render and every
+    // later update. This prevents a changed id from briefly rendering the
+    // previous document and gives React the consistency checks it needs for an
+    // external store. SSR uses a stable pending snapshot until hydration.
+    return useSyncExternalStore(
+      observer?.subscribe ?? subscribeWithoutClient,
+      observer?.getSnapshot ?? getServerSnapshot,
+      getServerSnapshot,
+    );
   }
 
   function usePresence(args: { docId: string | undefined }) {

@@ -1,5 +1,5 @@
 import type { DocSyncClient } from "../../index.js";
-import { dispatchDocQueryConnected } from "../../utils/dispatchDocQueryAction.js";
+import { dispatchAllDocQueriesConnected } from "../../utils/dispatchDocQueryAction.js";
 import { handleSync } from "../clientInitiated/sync/sync.js";
 
 export function handleConnect<
@@ -14,9 +14,7 @@ export function handleConnect<
     // Resume every loaded query before notifying connect listeners or awaiting
     // local flushes. Otherwise old subscriptions can still report `paused`
     // while subscriptions created by a connect listener report `fetching`.
-    for (const docId of client["_docsCache"].keys()) {
-      dispatchDocQueryConnected(client, docId);
-    }
+    dispatchAllDocQueriesConnected(client);
     client["_events"].emit("connect");
     void (async () => {
       const syncedDocIds = new Set<string>();

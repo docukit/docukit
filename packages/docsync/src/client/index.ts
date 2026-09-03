@@ -10,6 +10,7 @@ import type {
   ClientSocket,
   DeferredState,
   DocData,
+  DocObserver,
   GetDocArgs,
   Identity,
   QueryResult,
@@ -28,8 +29,8 @@ import { handleUnsubscribe } from "./handlers/clientInitiated/unsubscribe.js";
 import { handleIdentity } from "./handlers/serverInitiated/identity.js";
 import type { BCHelper } from "./utils/BCHelper.js";
 import {
-  dispatchDocQueryConnected,
-  dispatchDocQueryDisconnected,
+  dispatchAllDocQueriesConnected,
+  dispatchAllDocQueriesDisconnected,
   dispatchLocalDocFound,
   dispatchLocalQueryError,
 } from "./utils/dispatchDocQueryAction.js";
@@ -192,17 +193,17 @@ export class DocSyncClient<
   }
 
   connect() {
+    if (this._socket.connected) return;
+
     // Keep the last connection error visible while recovery is only an
     // attempt. The successful `connect` event clears the client-wide error;
     // each loaded query clears its own error after its sync succeeds.
-    this._connectionFetchStatus = "fetching";
     // Loaded queries have to follow, or a document subscribed before the
     // reconnect would report `paused` while one subscribed after it reports
     // `fetching`, for the same client and the same socket.
-    for (const docId of this._docsCache.keys()) {
-      dispatchDocQueryConnected(this, docId);
-    }
     this._socket.connect();
+    this._connectionFetchStatus = "fetching";
+    dispatchAllDocQueriesConnected(this);
   }
 
   disconnect() {
@@ -214,26 +215,12 @@ export class DocSyncClient<
     // Disconnecting mid-handshake would otherwise leave every query on
     // "fetching" forever, because no listener ever runs.
     if (!wasConnected) {
-      for (const docId of this._docsCache.keys()) {
-        dispatchDocQueryDisconnected(this, docId);
-      }
+      dispatchAllDocQueriesDisconnected(this);
     }
   }
 
   clearLocalIdentity() {
     clearStoredLocalIdentity();
-  }
-
-  /**
-   * The result `getDoc` would report for a document right now, without
-   * subscribing: the cached result for a loaded document, otherwise the state a
-   * new subscription starts from. Lets UI code render a correct first frame
-   * instead of guessing `pending` + `fetching` before its subscription runs.
-   */
-  getDocResult(args: { id: string }): QueryResult<DocData<D> | undefined> {
-    return (
-      this._docsCache.get(args.id)?.queryResult ?? this._initialQueryResult()
-    );
   }
 
   private _initialQueryResult(): QueryResult<DocData<D> | undefined> {
@@ -244,13 +231,13 @@ export class DocSyncClient<
   }
 
   /**
-   * Subscribe to a document with reactive state updates.
+   * Observe a document query with a stable snapshot and reactive updates.
    *
    * The behavior depends on which fields are provided:
    * - `{ type, id }` → Try to get an existing doc. Returns `undefined` if not found.
    * - `{ type, id, createIfMissing: true }` → Get existing doc or create it if not found.
    *
-   * The callback will be invoked with state updates:
+   * `getSnapshot()` returns one of these states:
    * 1. `{ status: "pending" }` - Initial state while fetching
    * 2. `{ status: "success", data: { doc, docId } }` - Document loaded successfully
    * 3. `{ status: "error", error }` - Failed to load document
@@ -259,28 +246,76 @@ export class DocSyncClient<
    *
    * @example
    * ```ts
-   * const unsubscribe = client.getDoc(
-   *   { type: "notes", id: "abc123" },
-   *   (result) => {
-   *     if (result.status === "pending") console.log("Pending...");
-   *     if (result.status === "success") console.log("Doc:", result.data.doc);
-   *     if (result.status === "error") console.error(result.error);
-   *   }
-   * );
+   * const observer = client.getDocObserver({ type: "notes", id: "abc123" });
+   * const render = () => {
+   *   const result = observer.getSnapshot();
+   *   if (result.status === "pending") console.log("Pending...");
+   *   if (result.status === "success") console.log("Doc:", result.data?.doc);
+   *   if (result.status === "error") console.error(result.error);
+   * };
+   * const unsubscribe = observer.subscribe(render);
+   * render();
    *
    * // Clean up when done
    * unsubscribe();
    * ```
    */
-  getDoc<T extends GetDocArgs>(
+  getDocObserver<T extends GetDocArgs>(
     args: T,
-    onChange: (
-      result: QueryResult<
-        T extends { createIfMissing: true }
-          ? DocData<D>
-          : DocData<D> | undefined
-      >,
-    ) => void,
+  ): DocObserver<
+    T extends { createIfMissing: true } ? DocData<D> : DocData<D> | undefined
+  > {
+    type ObserverData = T extends { createIfMissing: true }
+      ? DocData<D>
+      : DocData<D> | undefined;
+
+    let currentResult = (this._docsCache.get(args.id)?.queryResult ??
+      this._initialQueryResult()) as QueryResult<ObserverData>;
+    const listeners = new Set<() => void>();
+    let unsubscribeFromDoc: (() => void) | undefined;
+
+    const getSnapshot = () =>
+      (this._docsCache.get(args.id)?.queryResult ??
+        currentResult) as QueryResult<ObserverData>;
+    const subscribe = (listener: () => void) => {
+      listeners.add(listener);
+
+      if (!unsubscribeFromDoc) {
+        let isStartingSubscription = true;
+        unsubscribeFromDoc = this._subscribeDoc(args, (nextResult) => {
+          if (nextResult === currentResult) return;
+          currentResult = nextResult as QueryResult<ObserverData>;
+          // External-store consumers read the snapshot again immediately after
+          // subscribing, so the initial synchronous update needs no callback.
+          if (isStartingSubscription) return;
+          let firstError: { value: unknown } | undefined;
+          for (const currentListener of [...listeners]) {
+            try {
+              currentListener();
+            } catch (error: unknown) {
+              firstError ??= { value: error };
+            }
+          }
+          if (firstError) throw firstError.value;
+        });
+        isStartingSubscription = false;
+      }
+
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size > 0 || !unsubscribeFromDoc) return;
+        const unsubscribe = unsubscribeFromDoc;
+        unsubscribeFromDoc = undefined;
+        unsubscribe();
+      };
+    };
+
+    return { getSnapshot, subscribe };
+  }
+
+  private _subscribeDoc(
+    args: GetDocArgs,
+    onChange: (result: QueryResult<DocData<D> | undefined>) => void,
   ): () => void {
     const type = args.type;
     const docId = args.id;
@@ -343,13 +378,40 @@ export class DocSyncClient<
     docId: string,
     result: QueryResult<DocData<D> | undefined>,
   ): void {
-    const cacheEntry = this._docsCache.get(docId);
-    if (!cacheEntry) return;
+    this._emitQueryResults([{ docId, result }]);
+  }
 
-    cacheEntry.queryResult = result;
-    for (const listener of cacheEntry.queryListeners) {
-      listener(result);
+  protected _emitQueryResults(
+    updates: ReadonlyArray<{
+      docId: string;
+      result: QueryResult<DocData<D> | undefined>;
+    }>,
+  ): void {
+    const notifications: Array<{
+      listeners: QueryListener[];
+      result: QueryResult<DocData<D> | undefined>;
+    }> = [];
+
+    // Commit every snapshot before calling user code. A listener that reads a
+    // different document must never see a half-applied connection transition.
+    for (const { docId, result } of updates) {
+      const cacheEntry = this._docsCache.get(docId);
+      if (!cacheEntry || result === cacheEntry.queryResult) continue;
+      cacheEntry.queryResult = result;
+      notifications.push({ listeners: [...cacheEntry.queryListeners], result });
     }
+
+    let firstError: { value: unknown } | undefined;
+    for (const { listeners, result } of notifications) {
+      for (const listener of listeners) {
+        try {
+          listener(result);
+        } catch (error: unknown) {
+          firstError ??= { value: error };
+        }
+      }
+    }
+    if (firstError) throw firstError.value;
   }
 
   private _observePromisedDoc(

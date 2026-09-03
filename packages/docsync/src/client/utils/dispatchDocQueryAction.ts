@@ -32,19 +32,18 @@ export function dispatchLocalQueryError<
   if (next !== cacheEntry.queryResult) client["_emitQueryResult"](docId, next);
 }
 
-export function dispatchDocQueryConnected<
+export function dispatchAllDocQueriesConnected<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, docId: string): void {
-  const cacheEntry = client["_docsCache"].get(docId);
-  if (!cacheEntry) return;
-
-  const reducer = createQueryResultReducer({
-    initialState: cacheEntry.queryResult,
-  });
-  const next = reducer.action.connected(undefined);
-  if (next !== cacheEntry.queryResult) client["_emitQueryResult"](docId, next);
+>(client: DocSyncClient<D, S, O>): void {
+  const updates = [...client["_docsCache"]].map(([docId, cacheEntry]) => ({
+    docId,
+    result: createQueryResultReducer({
+      initialState: cacheEntry.queryResult,
+    }).action.connected(undefined),
+  }));
+  client["_emitQueryResults"](updates);
 }
 
 export function dispatchDocQueryFetchStarted<
@@ -62,34 +61,32 @@ export function dispatchDocQueryFetchStarted<
   if (next !== cacheEntry.queryResult) client["_emitQueryResult"](docId, next);
 }
 
-export function dispatchDocQueryConnectionError<
+export function dispatchAllDocQueriesConnectionError<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, docId: string, error: Error): void {
-  const cacheEntry = client["_docsCache"].get(docId);
-  if (!cacheEntry) return;
-
-  const reducer = createQueryResultReducer({
-    initialState: cacheEntry.queryResult,
-  });
-  const next = reducer.action.connectionError({ error });
-  if (next !== cacheEntry.queryResult) client["_emitQueryResult"](docId, next);
+>(client: DocSyncClient<D, S, O>, error: Error): void {
+  const updates = [...client["_docsCache"]].map(([docId, cacheEntry]) => ({
+    docId,
+    result: createQueryResultReducer({
+      initialState: cacheEntry.queryResult,
+    }).action.connectionError({ error }),
+  }));
+  client["_emitQueryResults"](updates);
 }
 
-export function dispatchDocQueryDisconnected<
+export function dispatchAllDocQueriesDisconnected<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, docId: string): void {
-  const cacheEntry = client["_docsCache"].get(docId);
-  if (!cacheEntry) return;
-
-  const reducer = createQueryResultReducer({
-    initialState: cacheEntry.queryResult,
-  });
-  const next = reducer.action.disconnected(undefined);
-  if (next !== cacheEntry.queryResult) client["_emitQueryResult"](docId, next);
+>(client: DocSyncClient<D, S, O>): void {
+  const updates = [...client["_docsCache"]].map(([docId, cacheEntry]) => ({
+    docId,
+    result: createQueryResultReducer({
+      initialState: cacheEntry.queryResult,
+    }).action.disconnected(undefined),
+  }));
+  client["_emitQueryResults"](updates);
 }
 
 export function dispatchNetworkDocFound<

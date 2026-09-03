@@ -23,7 +23,7 @@ export type QueryResult<D, E = Error> =
     };
 
 /**
- * Arguments for {@link DocSyncClient["getDoc"]}.
+ * Arguments for {@link DocSyncClient["getDocObserver"]}.
  */
 export type GetDocArgs = {
   type: string;
@@ -32,6 +32,15 @@ export type GetDocArgs = {
 };
 
 export type DocData<D> = { doc: D; docId: string };
+
+/**
+ * Observable document query state. Read the current value with `getSnapshot`
+ * and subscribe to later changes with `subscribe`.
+ */
+export type DocObserver<T> = {
+  getSnapshot: () => QueryResult<T>;
+  subscribe: (listener: () => void) => () => void;
+};
 
 // ============================================================================
 // Client State & Config

@@ -94,7 +94,7 @@ document grants.
   type={{
     client: {
       description:
-        "The underlying DocSyncClient instance. May be undefined during SSR. Its getDocResult({ id }) returns the QueryResult a subscription would report right now without subscribing; useDoc uses it to render a correct first frame.",
+        "The underlying DocSyncClient instance. May be undefined during SSR. Use getDocObserver(args) for imperative access to a stable QueryResult snapshot and later updates.",
       type: "DocSyncClient | undefined",
     },
     useDoc: {
@@ -109,6 +109,38 @@ document grants.
     },
   }}
 />
+
+---
+
+## getDocObserver
+
+Creates a lazy observer for imperative code. Calling `getSnapshot()` does not
+load the document. The first subscriber starts the query, and removing the last
+subscriber releases it. One observer can have multiple subscribers while using
+only one underlying document subscription.
+
+```ts
+const observer = client.getDocObserver({
+  type: "notes",
+  id: "doc-123",
+  createIfMissing: true,
+});
+
+const render = () => {
+  const result = observer.getSnapshot();
+  if (result.status === "success") console.log(result.data.doc);
+};
+
+const unsubscribe = observer.subscribe(render);
+render();
+
+// Later, when this consumer no longer needs the document:
+unsubscribe();
+```
+
+`getSnapshot()` returns the same object until the query state changes. This is
+the contract expected by external-store integrations such as React's
+`useSyncExternalStore`; `useDoc` uses this observer internally.
 
 ---
 
