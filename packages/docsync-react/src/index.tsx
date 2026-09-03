@@ -51,16 +51,24 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
     createIfMissing?: boolean;
   }): QueryResult<DocData | undefined>;
   function useDoc(args: GetDocArgs): QueryResult<DocData | undefined> {
-    const [result, setResult] = useState<QueryResult<DocData | undefined>>({
-      status: "pending",
-      fetchStatus: "fetching",
-    });
     const id = args.id;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
     const type = args.type;
     const getDocArgs = useMemo<GetDocArgs>(
       () => ({ type, id, createIfMissing }),
       [id, type, createIfMissing],
+    );
+    // The subscription only starts in the effect below. Reading the client's
+    // current result first keeps the first frame consistent with every other
+    // subscription instead of always claiming `pending` + `fetching`. During
+    // SSR there is no client, so the same fallback the client would report for
+    // a fresh connection is used.
+    const [result, setResult] = useState<QueryResult<DocData | undefined>>(
+      () =>
+        client?.getDocResult({ id }) ?? {
+          status: "pending",
+          fetchStatus: "fetching",
+        },
     );
 
     useEffect(() => {

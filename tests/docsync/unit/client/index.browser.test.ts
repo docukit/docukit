@@ -353,6 +353,7 @@ describe("DocSyncClient", () => {
     const doc = { docId };
     client["_docsCache"].set(docId, {
       promisedDoc: Promise.resolve(doc),
+      activeSyncAttempt: undefined,
       refCount: 1,
       localVersion: 0,
       type: "test",
@@ -1436,6 +1437,48 @@ describe("DocSyncClient", () => {
         await expect
           .poll(() => callback.mock.calls.at(-1)?.[0])
           .toMatchObject({ status: "success", fetchStatus: "idle" });
+      });
+
+      test("getDocResult should report the state a new subscription would start from", () => {
+        const client = createClient();
+
+        expect(client.getDocResult({ id: "unknown" })).toStrictEqual({
+          status: "pending",
+          fetchStatus: "fetching",
+        });
+
+        setSocketState(client, { active: false, connected: false });
+        emitMockedSocketEvent(
+          client,
+          "connect_error",
+          new Error("Authentication failed"),
+        );
+
+        expect(client.getDocResult({ id: "unknown" })).toMatchObject({
+          status: "error",
+          fetchStatus: "paused",
+          error: { type: "ConnectionError" },
+        });
+      });
+
+      test("getDocResult should return the cached result of a loaded document", async () => {
+        const client = createClient();
+        const callback = createCallback();
+        const docId = ulid().toLowerCase();
+
+        client.getDoc(
+          { type: "test", id: docId, createIfMissing: true },
+          callback,
+        );
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0].fetchStatus)
+          .toBe("idle");
+
+        // Same object the subscription holds — a read, not a new query.
+        expect(client.getDocResult({ id: docId })).toBe(
+          callback.mock.calls.at(-1)?.[0],
+        );
+        expect(client["_docsCache"].get(docId)?.refCount).toBe(1);
       });
 
       test("should report the same fetch status for every subscription during a transient failure", async () => {

@@ -79,9 +79,7 @@ function replaceDocInCache<
 
   client["_docsCache"].set(args.docId, {
     promisedDoc: nextPromisedDoc,
-    ...(cacheEntry.activeSyncAttempt && {
-      activeSyncAttempt: cacheEntry.activeSyncAttempt,
-    }),
+    activeSyncAttempt: cacheEntry.activeSyncAttempt,
     refCount: cacheEntry.refCount,
     localVersion: cacheEntry.localVersion,
     type: cacheEntry.type,
@@ -228,7 +226,7 @@ function finishSyncAttempt<
 >(client: DocSyncClient<D, S, O>, docId: string, syncAttempt: symbol): boolean {
   const cacheEntry = client["_docsCache"].get(docId);
   if (cacheEntry?.activeSyncAttempt !== syncAttempt) return false;
-  delete cacheEntry.activeSyncAttempt;
+  cacheEntry.activeSyncAttempt = undefined;
   client["_pushStatusByDocId"].set(docId, "idle");
   return true;
 }
@@ -316,7 +314,9 @@ export const handleSync = async <
   pushStatusByDocId.set(docId, "pushing");
   const initialCacheEntry = client["_docsCache"].get(docId);
   if (!initialCacheEntry) {
-    pushStatusByDocId.set(docId, "idle");
+    // The document was unloaded; a missing entry already reads as idle, and
+    // nothing would ever delete an entry created here.
+    pushStatusByDocId.delete(docId);
     return;
   }
   cancelPendingSyncRetry(client, docId);

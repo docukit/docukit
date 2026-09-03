@@ -65,7 +65,8 @@ type LocalLoadMode = "load" | "loadOrCreate";
 type QueryListener = (result: QueryResult<DocData<object> | undefined>) => void;
 type DocCacheEntry<D> = {
   promisedDoc: Promise<D | undefined>;
-  activeSyncAttempt?: symbol;
+  /** Token of the sync in flight; `undefined` when none is running. */
+  activeSyncAttempt: symbol | undefined;
   refCount: number;
   localVersion: number;
   type: string;
@@ -224,6 +225,25 @@ export class DocSyncClient<
   }
 
   /**
+   * The result `getDoc` would report for a document right now, without
+   * subscribing: the cached result for a loaded document, otherwise the state a
+   * new subscription starts from. Lets UI code render a correct first frame
+   * instead of guessing `pending` + `fetching` before its subscription runs.
+   */
+  getDocResult(args: { id: string }): QueryResult<DocData<D> | undefined> {
+    return (
+      this._docsCache.get(args.id)?.queryResult ?? this._initialQueryResult()
+    );
+  }
+
+  private _initialQueryResult(): QueryResult<DocData<D> | undefined> {
+    const fetchStatus = this._connectionFetchStatus;
+    return this._connectionError
+      ? { status: "error", fetchStatus, error: this._connectionError }
+      : { status: "pending", fetchStatus };
+  }
+
+  /**
    * Subscribe to a document with reactive state updates.
    *
    * The behavior depends on which fields are provided:
@@ -268,7 +288,6 @@ export class DocSyncClient<
       "createIfMissing" in args && args.createIfMissing === true;
     const localLoadMode = createIfMissing ? "loadOrCreate" : "load";
     const listener = onChange as QueryListener;
-    const initialFetchStatus = this._connectionFetchStatus;
 
     const existingCacheEntry = this._docsCache.get(docId);
     if (existingCacheEntry) {
@@ -297,16 +316,10 @@ export class DocSyncClient<
         docId,
         createIfMissing ? type : undefined,
       );
-      const queryResult: QueryResult<DocData<D> | undefined> = this
-        ._connectionError
-        ? {
-            status: "error",
-            fetchStatus: initialFetchStatus,
-            error: this._connectionError,
-          }
-        : { status: "pending", fetchStatus: initialFetchStatus };
+      const queryResult = this._initialQueryResult();
       this._docsCache.set(docId, {
         promisedDoc,
+        activeSyncAttempt: undefined,
         refCount: 1,
         localVersion: 0,
         type,

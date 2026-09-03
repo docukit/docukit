@@ -94,7 +94,7 @@ document grants.
   type={{
     client: {
       description:
-        "The underlying DocSyncClient instance. May be undefined during SSR.",
+        "The underlying DocSyncClient instance. May be undefined during SSR. Its getDocResult({ id }) returns the QueryResult a subscription would report right now without subscribing; useDoc uses it to render a correct first frame.",
       type: "DocSyncClient | undefined",
     },
     useDoc: {

@@ -29,7 +29,7 @@ export function handleDisconnect<
     // may start a newer attempt while an abandoned Socket.IO ack still arrives;
     // the attempt token prevents that old response from mutating current state.
     for (const cacheEntry of client["_docsCache"].values()) {
-      delete cacheEntry.activeSyncAttempt;
+      cacheEntry.activeSyncAttempt = undefined;
     }
     client["_pushStatusByDocId"].clear();
     client["_collabDocIds"].clear();

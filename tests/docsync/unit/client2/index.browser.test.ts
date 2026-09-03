@@ -453,6 +453,9 @@ describe("Client 2", () => {
       if (!importHistory) throw new Error("Expected history support");
       const importError = new Error("history import failed");
       docBinding.importHistory = () => {
+        // Simulates a local edit landing while the replacement doc is being
+        // set up: the sync is queued as pushing-with-pending and must survive
+        // the throw below.
         void client["_sync"](docId);
         throw importError;
       };
