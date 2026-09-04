@@ -86,9 +86,13 @@ if (loaded.length === 0) {
 
 let releaseTag: string;
 try {
+  const releaseCommitSubject = captureRequired(
+    process.env.GITHUB_EVENT_NAME === "workflow_dispatch"
+      ? "git log -1 --format=%s --grep='^chore: release v'"
+      : "git log -1 --pretty=%s",
+  );
   releaseTag = resolveReleaseTag(
-    process.env.RELEASE_TAG,
-    captureRequired("git log -1 --pretty=%s"),
+    releaseCommitSubject,
     loaded.flatMap(({ pkg }) => (pkg.version ? [pkg.version] : [])),
   );
 } catch (error) {

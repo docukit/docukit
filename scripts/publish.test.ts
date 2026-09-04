@@ -2,18 +2,9 @@ import { describe, expect, test } from "vitest";
 import { resolveReleaseTag, verifyPublishedSpecs } from "./publish-utils.ts";
 
 describe("resolveReleaseTag", () => {
-  test("uses the explicit tag for a manual recovery run", () => {
-    expect(
-      resolveReleaseTag("v0.4.1-alpha.2", "fix: make publishing resilient", [
-        "0.4.1",
-        "0.4.1-alpha.2",
-      ]),
-    ).toBe("v0.4.1-alpha.2");
-  });
-
   test("reads the tag from a squash-merged release commit", () => {
     expect(
-      resolveReleaseTag(undefined, "chore: release v0.4.1-alpha.2 (#62)", [
+      resolveReleaseTag("chore: release v0.4.1-alpha.2 (#62)", [
         "0.4.1",
         "0.4.1-alpha.2",
       ]),
@@ -22,10 +13,22 @@ describe("resolveReleaseTag", () => {
 
   test("rejects a tag that does not match a publishable package", () => {
     expect(() =>
-      resolveReleaseTag("v0.4.2", "", ["0.4.1", "0.4.1-alpha.2"]),
+      resolveReleaseTag("chore: release v0.4.2 (#63)", [
+        "0.4.1",
+        "0.4.1-alpha.2",
+      ]),
     ).toThrow(
       "release tag v0.4.2 does not match a publishable package version",
     );
+  });
+
+  test("rejects a commit that is not a release", () => {
+    expect(() =>
+      resolveReleaseTag("fix: make publishing resilient", [
+        "0.4.1",
+        "0.4.1-alpha.2",
+      ]),
+    ).toThrow("cannot derive release tag from a 'chore: release v...' commit");
   });
 });
 

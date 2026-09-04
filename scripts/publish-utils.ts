@@ -1,27 +1,17 @@
-const releaseTagPattern = /^v\d+\.\d+\.\d+(?:-alpha\.\d+)?$/;
 const releaseCommitPattern =
   /^chore: release (v\d+\.\d+\.\d+(?:-alpha\.\d+)?)(?: \(#\d+\))?$/;
 
 export const resolveReleaseTag = (
-  explicitTag: string | undefined,
   commitSubject: string,
   packageVersions: string[],
 ) => {
-  const requestedTag = explicitTag?.trim();
   const commitMatch = releaseCommitPattern.exec(commitSubject.trim());
-  const releaseTag =
-    requestedTag === undefined || requestedTag === ""
-      ? commitMatch?.[1]
-      : requestedTag;
+  const releaseTag = commitMatch?.[1];
 
   if (!releaseTag) {
     throw new Error(
-      "cannot derive release tag: use RELEASE_TAG or a 'chore: release v...' commit",
+      "cannot derive release tag from a 'chore: release v...' commit",
     );
-  }
-
-  if (!releaseTagPattern.test(releaseTag)) {
-    throw new Error(`invalid release tag: ${releaseTag}`);
   }
 
   const releaseVersion = releaseTag.slice(1);

@@ -2,11 +2,6 @@ name: Release
 
 on:
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "Release tag to publish or recover (for example, v0.4.1-alpha.2)"
-        required: true
-        type: string
   pull_request:
     types: [opened, edited, synchronize, reopened]
     branches: [main]
@@ -78,8 +73,6 @@ jobs:
 
       - name: Publish to npm
         id: publish
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag || '' }}
         run: node scripts/publish.ts
 
       - name: Create GitHub Release
