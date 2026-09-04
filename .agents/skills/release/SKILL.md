@@ -162,4 +162,4 @@ Report the PR URL back. Remind the user:
 - Merging into main (squash merge) triggers the `publish` job, which pushes to npm and creates the GitHub release.
 - The Discord copy is ready at `changelog/<tag>_DISCORD.md` for after publish.
 
-If publishing fails after npm accepted the packages, inspect the registry before retrying. Once the fix is on `main`, rerun the workflow manually. It finds the most recent `chore: release v...` commit, skips versions already on npm, and finishes the missing release steps.
+If npm accepts a package but registry metadata is still propagating after the verification window, treat that delay as a warning and continue the release. Only an actual `npm publish` failure blocks the workflow. If an older workflow already failed after npm accepted the packages, inspect the registry before retrying. Once the fix is on `main`, rerun the workflow manually. It finds the most recent `chore: release v...` commit, skips versions already on npm, and finishes the missing release steps.

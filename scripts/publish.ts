@@ -161,11 +161,14 @@ console.log(`failed (${results.failed.length}):`);
 for (const s of results.failed) console.log(`  ✖ ${s}`);
 
 if (verifyFailed.length) {
-  console.error("\n✖ post-publish verification failed:");
-  for (const s of verifyFailed) console.error(`  - ${s}`);
+  console.warn("\n⚠ npm registry propagation is still pending:");
+  for (const s of verifyFailed) console.warn(`  - ${s}`);
+  console.warn(
+    "npm accepted the publish; continuing while registry metadata propagates.",
+  );
 }
 
-if (results.failed.length || verifyFailed.length) process.exit(1);
+if (results.failed.length) process.exit(1);
 
 if (process.env.GITHUB_OUTPUT) {
   appendFileSync(process.env.GITHUB_OUTPUT, `release_tag=${releaseTag}\n`);
