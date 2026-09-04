@@ -2695,17 +2695,30 @@ describe("DocSyncClient", () => {
         callback,
       );
 
+      // Wait for the first request to go out and be rejected. Polling the
+      // query instead would race: it reaches `success` as soon as the document
+      // loads from local storage, before any sync has been emitted.
       await expect
-        .poll(() => callback.mock.calls.at(-1)?.[0])
-        .toMatchObject({ status: "success", data: { docId } });
-      expect(callback.mock.calls.at(-1)?.[0].error).toBeUndefined();
+        .poll(
+          () =>
+            getSocketEmitMock(client).mock.calls.filter(
+              ([event]) => event === "sync",
+            ).length,
+        )
+        .toBe(1);
+      await expect
+        .poll(() => client["_syncRetryState"].get(docId)?.attempts)
+        .toBe(1);
 
-      const syncCallsAfterFailure = getSocketEmitMock(client).mock.calls.filter(
-        ([event]) => event === "sync",
-      ).length;
-      expect(syncCallsAfterFailure).toBe(1);
-      // A scheduled retry is still network work, so the query must not claim
-      // it has settled while the backoff is pending.
+      expect(callback.mock.calls.at(-1)?.[0]).toMatchObject({
+        status: "success",
+        data: { docId },
+      });
+      expect(callback.mock.calls.at(-1)?.[0].error).toBeUndefined();
+      // This document has never completed a sync, so it still cannot serve an
+      // authoritative result and stays `fetching` across the backoff. A failed
+      // attempt must neither settle it nor surface an error while a retry can
+      // still succeed.
       expect(callback.mock.calls.at(-1)?.[0].fetchStatus).toBe("fetching");
       expect(
         callback.mock.calls.some(
