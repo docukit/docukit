@@ -14,9 +14,10 @@ import type { DocSyncClient } from "../index.js";
  * The budget covers one episode of failure, not the document's whole lifetime:
  * a successful sync, a reconnect, and exhausting the budget all reset it, so a
  * later edit gets its own bounded chain. Keeping a spent counter around would
- * be worse, not safer — every later edit would fail hard on its first attempt,
- * which against a 50ms collab debounce is a higher sustained request rate than
- * a backed-off chain.
+ * be cheaper in requests — a document that burned its budget would never retry
+ * again while the socket stays up — but that is the worse failure mode: the
+ * document stops recovering on its own for the rest of the connection, and the
+ * user has no way to ask it to try again beyond reloading.
  */
 const SYNC_RETRY_BASE_DELAY = 300;
 const SYNC_RETRY_MAX_DELAY = 5_000;

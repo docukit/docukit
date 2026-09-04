@@ -2338,6 +2338,42 @@ describe("DocSyncClient", () => {
       });
     });
 
+    describe("Background syncs", () => {
+      test("should not emit a query result for a sync that changes nothing", async () => {
+        const client = createClient();
+        const callback = createCallback();
+        const docId = ulid().toLowerCase();
+
+        subscribeToDoc(
+          client,
+          { type: "test", id: docId, createIfMissing: true },
+          callback,
+        );
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0].fetchStatus)
+          .toBe("idle");
+
+        const settledResult = callback.mock.calls.at(-1)?.[0];
+        const callsAfterLoad = callback.mock.calls.length;
+
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          await client["_sync"](docId);
+        }
+
+        // A push does not stop the query from serving the document, and remote
+        // operations reach the live instance instead of replacing `data`, so a
+        // background sync has nothing to report. This is what keeps `useDoc`
+        // from re-rendering its whole subtree on every sync — at the 50ms
+        // collaborative debounce, roughly 40 times a second. Reintroducing a
+        // `fetchStarted` dispatch, or emitting an equal-but-new result, breaks
+        // exactly this and nothing else.
+        expect(callback.mock.calls.length).toBe(callsAfterLoad);
+        expect(client["_docsCache"].get(docId)?.queryResult).toBe(
+          settledResult,
+        );
+      });
+    });
+
     describe("Sync vs async behavior", () => {
       test("should emit pending before success when creating by id", async () => {
         const client = createClient();

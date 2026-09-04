@@ -28,6 +28,13 @@ so a later edit gets its own bounded chain. If a newer sync was queued while an
 attempt was in flight, the queued sync runs before the failed attempt can
 become a terminal query error.
 
+A loaded document whose background syncs start failing therefore keeps
+reporting `success` for as long as the retry chain lasts — up to about 24
+seconds — before `error` appears on the query. The edits are already in local
+storage, so nothing is lost, but an application that wants to react sooner
+should listen to the `sync` event, which fires on every attempt including the
+failed ones.
+
 For user interfaces, treat `error` as actionable and `paused` as potentially
 temporary. An application can keep rendering stale data alongside an error and
 may delay a connectivity notice to avoid flashing warnings during brief

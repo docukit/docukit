@@ -278,6 +278,12 @@ the query result at all. After the retry budget is exhausted, the query reports
 `error` and keeps its data. At that point `error` means DocSync has stopped
 trying on its own.
 
+That means a loaded document whose background syncs start failing keeps
+reporting `success` for up to 24 seconds before the failure reaches
+`QueryResult`. Nothing is lost — the edits were already written to local
+storage — but if you want to react sooner, listen to the `sync` event, which
+fires on every attempt including the failed ones.
+
 A transport disconnect cancels that per-document retry and moves the query to
 `paused`. Socket.IO then owns reconnecting the transport. When the connection
 returns, DocSync resumes the document sync. The retry budget covers one episode
