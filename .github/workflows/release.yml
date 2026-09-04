@@ -2,6 +2,11 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to publish or recover (for example, v0.4.1-alpha.2)"
+        required: true
+        type: string
   pull_request:
     types: [opened, edited, synchronize, reopened]
     branches: [main]
@@ -37,7 +42,7 @@ jobs:
   publish:
     if: "github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: release v'))"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: write
       id-token: write
@@ -73,6 +78,8 @@ jobs:
 
       - name: Publish to npm
         id: publish
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || '' }}
         run: node scripts/publish.ts
 
       - name: Create GitHub Release
