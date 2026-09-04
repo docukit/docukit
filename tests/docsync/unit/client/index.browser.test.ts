@@ -2756,7 +2756,9 @@ describe("DocSyncClient", () => {
       await flushMicrotasks();
 
       expect(socketMockState.deferredSyncAcks.get(docId)).toHaveLength(1);
-      expect(client["_syncRetryState"].get(docId)?.timeout).toBeDefined();
+      await expect
+        .poll(() => client["_syncRetryState"].get(docId)?.timeout)
+        .toBeDefined();
       expect(callback.mock.calls.at(-1)?.[0]).toMatchObject({
         status: "success",
         fetchStatus: "fetching",
@@ -2780,15 +2782,19 @@ describe("DocSyncClient", () => {
         callback,
       );
 
+      // Wait on the retry, not on the query. The query reaches
+      // `success` / `fetching` as soon as the document loads from local
+      // storage, which is a different async path from the sync request that
+      // fails — polling the first and then asserting the second races them.
       await expect
-        .poll(() => callback.mock.calls.at(-1)?.[0])
-        .toMatchObject({
-          status: "success",
-          fetchStatus: "fetching",
-          data: { docId },
-        });
+        .poll(() => client["_syncRetryState"].get(docId)?.attempts)
+        .toBe(1);
+      expect(callback.mock.calls.at(-1)?.[0]).toMatchObject({
+        status: "success",
+        fetchStatus: "fetching",
+        data: { docId },
+      });
       expect(callback.mock.calls.at(-1)?.[0].error).toBeUndefined();
-      expect(client["_syncRetryState"].get(docId)?.attempts).toBe(1);
 
       socketMockState.syncErrors.delete(docId);
       await client["_sync"](docId);
