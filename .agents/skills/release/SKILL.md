@@ -28,9 +28,9 @@ When the user reports the bump is done, continue.
 Silently verify the bump makes sense. If anything is off, flag it to the user before drafting notes.
 
 1. Run `git diff --name-only` — should show only `packages/*/package.json` files. Flag anything else.
-2. Read each bumped `package.json` and confirm all publishable packages agree on `major.minor.patch`. Alpha packages may carry `-alpha.N`.
-3. Derive the target release tag:
-   - If at least one publishable package is stable (no `-alpha.`), tag = `v<major>.<minor>.<patch>`.
+2. Read each bumped `package.json` and confirm all bumped publishable packages agree on `major.minor.patch`. Alpha packages may carry `-alpha.N`.
+3. Derive the target release tag from the bumped packages only. Unchanged package versions never determine the tag:
+   - If at least one bumped package is stable (no `-alpha.`), tag = `v<major>.<minor>.<patch>`.
    - Otherwise (alpha-only release), tag = `v<major>.<minor>.<patch>-alpha.<N>`.
 4. Determine the baseline: the most recent `changelog/v*.md` file, or the first commit if none exists.
 5. Count commits between baseline and HEAD (`git log BASELINE..HEAD --no-merges --oneline | wc -l`). If zero, stop — there is nothing to release.
@@ -161,3 +161,5 @@ Report the PR URL back. Remind the user:
 - The `validate` workflow job runs on PR open — it should turn green.
 - Merging into main (squash merge) triggers the `publish` job, which pushes to npm and creates the GitHub release.
 - The Discord copy is ready at `changelog/<tag>_DISCORD.md` for after publish.
+
+If npm accepts a package but registry metadata is still propagating after the verification window, treat that delay as a warning and continue the release. Only an actual `npm publish` failure blocks the workflow. If an older workflow already failed after npm accepted the packages, inspect the registry before retrying. Once the fix is on `main`, rerun the workflow manually. It finds the most recent `chore: release v...` commit, skips versions already on npm, and finishes the missing release steps.

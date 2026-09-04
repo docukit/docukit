@@ -11,6 +11,7 @@ import { execSync } from "node:child_process";
 import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { resolveReleaseTag, verifyPublishedSpecs } from "./publish-utils.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -32,11 +33,6 @@ const capture = (cmd: string): string | undefined => {
     return undefined;
   }
 };
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolveSleep) => {
-    setTimeout(resolveSleep, ms);
-  });
-
 function readWorkspaceGlobs(): string[] {
   const yaml = readFileSync(join(ROOT, "pnpm-workspace.yaml"), "utf8");
   const globs: string[] = [];
@@ -88,6 +84,22 @@ if (loaded.length === 0) {
   process.exit(1);
 }
 
+let releaseTag: string;
+try {
+  const releaseCommitSubject = captureRequired(
+    process.env.GITHUB_EVENT_NAME === "workflow_dispatch"
+      ? "git log -1 --format=%s --grep='^chore: release v'"
+      : "git log -1 --pretty=%s",
+  );
+  releaseTag = resolveReleaseTag(
+    releaseCommitSubject,
+    loaded.flatMap(({ pkg }) => (pkg.version ? [pkg.version] : [])),
+  );
+} catch (error) {
+  console.error(`✖ ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+}
+
 const packDir = mkdtempSync(join(tmpdir(), "docukit-publish-"));
 
 const results: { published: string[]; skipped: string[]; failed: string[] } = {
@@ -120,40 +132,25 @@ for (const { dir, pkg } of loaded) {
       `npm publish ${JSON.stringify(tarball)} --access public --provenance${tagFlag}`,
     );
     results.published.push(spec);
-  } catch (err) {
+  } catch (error) {
     results.failed.push(spec);
-    console.error(`✖ publish failed for ${spec}: ${(err as Error).message}`);
+    console.error(
+      `✖ publish failed for ${spec}: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 
-const verifySpec = async (spec: string): Promise<string | undefined> => {
-  const parts = spec.split("@");
-  const expected = parts[parts.length - 1];
-  const attempts = 8;
-  const delayMs = 5_000;
-
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const actual = capture(`npm view ${spec} version 2>/dev/null`);
-    if (actual === expected) return undefined;
-
-    if (attempt < attempts) {
+const verifyFailed = await verifyPublishedSpecs(
+  [...results.published, ...results.skipped],
+  {
+    readVersion: (spec) => capture(`npm view ${spec} version 2>/dev/null`),
+    onRetry: (spec, attempt, attempts) => {
       console.log(
         `Waiting for ${spec} to appear on npm (${attempt}/${attempts})...`,
       );
-      await sleep(delayMs);
-    } else {
-      return `${spec} (registry: ${actual ?? "not found"})`;
-    }
-  }
-
-  return `${spec} (registry: not found)`;
-};
-
-const verifyFailed: string[] = [];
-for (const spec of [...results.published, ...results.skipped]) {
-  const failure = await verifySpec(spec);
-  if (failure) verifyFailed.push(failure);
-}
+    },
+  },
+);
 
 console.log("\n=== Publish summary ===");
 console.log(`published (${results.published.length}):`);
@@ -164,23 +161,16 @@ console.log(`failed (${results.failed.length}):`);
 for (const s of results.failed) console.log(`  ✖ ${s}`);
 
 if (verifyFailed.length) {
-  console.error("\n✖ post-publish verification failed:");
-  for (const s of verifyFailed) console.error(`  - ${s}`);
+  console.warn("\n⚠ npm registry propagation is still pending:");
+  for (const s of verifyFailed) console.warn(`  - ${s}`);
+  console.warn(
+    "npm accepted the publish; continuing while registry metadata propagates.",
+  );
 }
 
-if (results.failed.length || verifyFailed.length) process.exit(1);
-
-// Release tag: prefer a stable (non-alpha) version. If only alpha packages exist,
-// use the full alpha version. Sort by package name for determinism.
-const sorted = [...loaded].sort((a, b) => a.pkg.name.localeCompare(b.pkg.name));
-const stable = sorted.find((l) => !l.pkg.version?.includes("-alpha."));
-const releaseVersion = (stable ?? sorted[0])?.pkg.version;
-if (!releaseVersion) {
-  console.error("✖ cannot derive release tag");
-  process.exit(1);
-}
+if (results.failed.length) process.exit(1);
 
 if (process.env.GITHUB_OUTPUT) {
-  appendFileSync(process.env.GITHUB_OUTPUT, `release_tag=v${releaseVersion}\n`);
+  appendFileSync(process.env.GITHUB_OUTPUT, `release_tag=${releaseTag}\n`);
 }
-console.log(`\n✓ release tag: v${releaseVersion}`);
+console.log(`\n✓ release tag: ${releaseTag}`);
