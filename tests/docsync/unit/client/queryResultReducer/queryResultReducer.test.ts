@@ -9,19 +9,20 @@ describe("createQueryResultReducer", () => {
   test.each(combinations)(
     "$stateCase.name + $actionCase.name",
     ({ stateCase, actionCase }) => {
-      // A settled query already holds the newest attempt's result, so a
-      // terminal network action from a superseded attempt leaves it untouched.
-      if (
-        actionCase.ignoredWhenSettled &&
-        stateCase.state.fetchStatus === "idle"
-      ) {
-        expect(actionCase.run(stateCase.state)).toBe(stateCase.state);
-        return;
-      }
+      const next = actionCase.run(stateCase.state);
+      expect(next).toStrictEqual(actionCase.expected(stateCase.state));
 
-      expect(actionCase.run(stateCase.state)).toStrictEqual(
-        actionCase.expected(stateCase.state),
-      );
+      // A sync that only confirms what the query already holds must return the
+      // very same object. Reporting an equal-but-new result would re-render
+      // every `useDoc` consumer on every background sync, which is the whole
+      // reason `fetchStatus` no longer tracks routine pushes.
+      if (
+        actionCase.unchangedWhenConfirming &&
+        stateCase.state.status === "success" &&
+        stateCase.state.fetchStatus !== "fetching"
+      ) {
+        expect(next).toBe(stateCase.state);
+      }
     },
   );
 });

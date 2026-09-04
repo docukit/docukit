@@ -20,8 +20,8 @@ export function pauseQueries<
   connectionError: DocSyncError | undefined,
 ): void {
   client["_connectionFetchStatus"] = "paused";
-  if (connectionError) client["_connectionError"] = connectionError;
   if (connectionError) {
+    client["_connectionError"] = connectionError;
     dispatchAllDocQueriesConnectionError(client, connectionError);
   } else {
     dispatchAllDocQueriesDisconnected(client);

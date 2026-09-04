@@ -9,8 +9,14 @@ import type { DocSyncClient } from "../index.js";
  *
  * The attempts below span 300, 600, 1200, 2400, 4800 and then 5000ms three
  * times — roughly 24 seconds, long enough to ride out a server restart without
- * retrying a genuinely broken document forever. Any successful sync or
- * reconnect resets the counter, so a later edit starts over.
+ * retrying a genuinely broken document forever.
+ *
+ * The budget covers one episode of failure, not the document's whole lifetime:
+ * a successful sync, a reconnect, and exhausting the budget all reset it, so a
+ * later edit gets its own bounded chain. Keeping a spent counter around would
+ * be worse, not safer — every later edit would fail hard on its first attempt,
+ * which against a 50ms collab debounce is a higher sustained request rate than
+ * a backed-off chain.
  */
 const SYNC_RETRY_BASE_DELAY = 300;
 const SYNC_RETRY_MAX_DELAY = 5_000;
@@ -34,7 +40,14 @@ export function scheduleSyncRetry<
   const retryStates = client["_syncRetryState"];
   const previousState = retryStates.get(docId);
   const attempts = (previousState?.attempts ?? 0) + 1;
-  if (attempts > SYNC_RETRY_MAX_ATTEMPTS) return false;
+  if (attempts > SYNC_RETRY_MAX_ATTEMPTS) {
+    // Forget the spent budget instead of leaving it at the ceiling. Nothing is
+    // scheduled here, so the caller still settles the query and this cannot
+    // loop; it only means the next failure — from a user edit, a `dirty`
+    // event, or a reconnect — starts its own chain.
+    clearSyncRetry(client, docId);
+    return false;
+  }
 
   const delay = Math.min(
     SYNC_RETRY_BASE_DELAY * 2 ** (attempts - 1),

@@ -46,16 +46,27 @@ export function handleDisconnect<
             `The server disconnected the DocSync client (${reason})`,
           )
         : undefined;
-    pauseQueries(client, connectionError);
-    broadcastPresenceLeft(client);
-    client["_events"].emit("disconnect", { reason });
+    // Pausing notifies query listeners, and a listener that throws must not
+    // strand the rest of the teardown: without the broadcast the other tabs
+    // keep rendering this client's presence forever, and without the event the
+    // application never learns it went offline. Run both, then let the
+    // listener failure keep propagating.
+    try {
+      pauseQueries(client, connectionError);
+    } finally {
+      broadcastPresenceLeft(client);
+      client["_events"].emit("disconnect", { reason });
+    }
   });
   client["_socket"].on("connect_error", (err) => {
     delete client["_connectionAttempt"];
     const connectionError = client["_socket"].active
       ? undefined
       : new DocSyncError("ConnectionError", err.message, { cause: err });
-    pauseQueries(client, connectionError);
-    client["_events"].emit("disconnect", { reason: err.message });
+    try {
+      pauseQueries(client, connectionError);
+    } finally {
+      client["_events"].emit("disconnect", { reason: err.message });
+    }
   });
 }

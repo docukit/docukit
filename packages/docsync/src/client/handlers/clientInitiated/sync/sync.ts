@@ -1,7 +1,6 @@
 import type { SyncRequest, SyncResponse } from "../../../../shared/types.js";
 import type { DocSyncClient } from "../../../index.js";
 import {
-  dispatchDocQueryFetchStarted,
   dispatchLocalDocFound,
   dispatchNetworkDocFound,
   dispatchNetworkDocNotFound,
@@ -325,7 +324,6 @@ export const handleSync = async <
   // syncing until a reload. Reset the status and rethrow so the failure stays
   // loud.
   try {
-    dispatchDocQueryFetchStarted(client, docId);
     if (client["_localOpsBatchState"].has(docId)) {
       await client["_flushLocalOperations"](docId, { sync: false });
     }
@@ -513,12 +511,16 @@ export const handleSync = async <
     });
   } catch (error) {
     if (didFinishSyncAttempt) throw error;
-    // A superseded attempt has no state left to protect and no authority to
-    // surface failures. The current attempt still reports and rethrows so a
-    // provider or binding bug remains loud.
     const hasPendingSync =
       pushStatusByDocId.get(docId) === "pushing-with-pending";
-    if (!finishSyncAttempt(client, docId, syncAttempt)) return;
+    // A superseded attempt loses the right to report on the query — a newer
+    // attempt owns it now — but not the failure itself, which is just as real
+    // whichever attempt hit it. So it skips the dispatch and still rethrows,
+    // exactly like the current attempt does below. Callers use
+    // `void handleSync(...)`, so both paths surface as an unhandled rejection:
+    // loud in the console, and a failing test under Vitest, which is what a
+    // provider or binding bug has to be.
+    if (!finishSyncAttempt(client, docId, syncAttempt)) throw error;
     if (!hasPendingSync) {
       try {
         dispatchNetworkQueryError(

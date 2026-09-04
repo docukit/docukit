@@ -211,6 +211,12 @@ export class DocSyncClient<
     delete this._connectionAttempt;
     this._socket.disconnect();
     this._connectionFetchStatus = "paused";
+    // `_connectionError` is deliberately left in place. Disconnecting on
+    // purpose adds no error, but it does not undo one either: if the previous
+    // connection was rejected permanently, that rejection is still the last
+    // thing that happened, and hiding it here would make a query created after
+    // this call report a clean `pending` while every query loaded before it
+    // still reports the error. Only a successful `connect` clears it.
     // Socket.IO only emits "disconnect" for a socket that had connected.
     // Disconnecting mid-handshake would otherwise leave every query on
     // "fetching" forever, because no listener ever runs.

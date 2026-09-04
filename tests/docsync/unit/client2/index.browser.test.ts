@@ -467,20 +467,26 @@ describe("Client 2", () => {
       }
 
       await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
-      expect(client["_docsCache"].get(docId)?.queryResult).toMatchObject({
+      // The queued push is in flight, but the document is loaded and up to
+      // date, so the query stays settled: a background push is not a reason to
+      // tell the application it cannot serve the document.
+      const queryDuringQueuedSync =
+        client["_docsCache"].get(docId)?.queryResult;
+      expect(queryDuringQueuedSync).toMatchObject({
         status: "success",
-        fetchStatus: "fetching",
+        fetchStatus: "idle",
       });
-      expect(
-        client["_docsCache"].get(docId)?.queryResult.error,
-      ).toBeUndefined();
+      expect(queryDuringQueuedSync?.error).toBeUndefined();
 
       if (!finishQueuedRequest) throw new Error("Expected queued sync request");
       finishQueuedRequest({ data: s({ docId, clock: 2 }) });
 
-      await expect
-        .poll(() => client["_docsCache"].get(docId)?.queryResult)
-        .toMatchObject({ status: "success", fetchStatus: "idle" });
+      // Confirming the same document reports nothing new, so the identity of
+      // the result survives the whole queued sync.
+      await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
+      expect(client["_docsCache"].get(docId)?.queryResult).toBe(
+        queryDuringQueuedSync,
+      );
     });
 
     test("should delete operations after successful push", async () => {

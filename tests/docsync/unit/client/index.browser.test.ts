@@ -2897,14 +2897,17 @@ describe("DocSyncClient", () => {
       }
       await client["_sync"](docId);
 
-      expect(client["_syncRetryState"].get(docId)).toStrictEqual({
-        attempts: 8,
-      });
+      // Exhausting the budget forgets it, so the next failure is free to open
+      // its own bounded chain instead of failing hard forever.
+      expect(client["_syncRetryState"].has(docId)).toBe(false);
       expect(callback.mock.calls.at(-1)?.[0]).toMatchObject({
         status: "error",
         fetchStatus: "idle",
         error: { type: "DatabaseError" },
       });
+
+      await client["_sync"](docId);
+      expect(client["_syncRetryState"].get(docId)?.attempts).toBe(1);
 
       socketMockState.syncResponses.delete(docId);
       await client["_sync"](docId);

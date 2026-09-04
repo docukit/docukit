@@ -13,8 +13,12 @@ type ActionCase = {
   name: string;
   run: (state: State) => State;
   expected: (state: State) => State;
-  /** Terminal network actions leave a settled query untouched. */
-  ignoredWhenSettled?: boolean;
+  /**
+   * The action confirms what the query already holds, so it must return the
+   * very same object. That identity is what keeps a settled document from
+   * re-rendering on every background sync.
+   */
+  unchangedWhenConfirming?: boolean;
 };
 
 type ActionCasesByReducerAction = {
@@ -133,13 +137,6 @@ const actionCasesByReducerAction = {
         errorState(state, terminalFetchStatus(state), localError),
     },
   ],
-  fetchStarted: [
-    {
-      name: "fetchStarted",
-      run: (state) => reducerFor(state).action.fetchStarted(undefined),
-      expected: (state) => withFetchStatus(state, "fetching"),
-    },
-  ],
   connected: [
     {
       name: "connected",
@@ -168,23 +165,28 @@ const actionCasesByReducerAction = {
   networkDocFound: [
     {
       name: "networkDocFound",
-      ignoredWhenSettled: true,
       run: (state) =>
         reducerFor(state).action.networkDocFound({ data: "network" }),
       expected: (state) => success("network", terminalFetchStatus(state)),
+    },
+    {
+      // The routine case: a background sync confirming the loaded document.
+      name: "networkDocFound confirming the current data",
+      unchangedWhenConfirming: true,
+      run: (state) =>
+        reducerFor(state).action.networkDocFound({ data: state.data }),
+      expected: (state) => success(state.data, terminalFetchStatus(state)),
     },
   ],
   networkDocNotFound: [
     {
       name: "networkDocNotFound optional data",
-      ignoredWhenSettled: true,
       run: (state) =>
         reducerFor(state).action.networkDocNotFound({ createIfMissing: false }),
       expected: (state) => networkDocNotFoundExpected(state, false),
     },
     {
       name: "networkDocNotFound required data",
-      ignoredWhenSettled: true,
       run: (state) =>
         reducerFor(state).action.networkDocNotFound({ createIfMissing: true }),
       expected: (state) => networkDocNotFoundExpected(state, true),
@@ -193,7 +195,6 @@ const actionCasesByReducerAction = {
   networkQueryError: [
     {
       name: "networkQueryError",
-      ignoredWhenSettled: true,
       run: (state) =>
         reducerFor(state).action.networkQueryError({ error: networkError }),
       expected: (state) =>
