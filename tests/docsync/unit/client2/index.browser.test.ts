@@ -402,10 +402,91 @@ describe("Client 2", () => {
       expect(replacementDoc).toBeDefined();
       expect(replacementDoc).not.toBe(liveDoc);
       expect(replacementDoc?.root.first?.type).toBe("child");
+      expect(client["_docsCache"].get(docId)?.queryResult).toMatchObject({
+        status: "error",
+        fetchStatus: "idle",
+        error: importError,
+      });
 
       await client["_sync"](docId);
       expect(requestSpy).toHaveBeenCalledTimes(2);
       expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+      expect(client["_docsCache"].get(docId)?.queryResult).toMatchObject({
+        status: "success",
+        fetchStatus: "idle",
+      });
+    });
+
+    test("runs a queued sync when history import throws", async () => {
+      const client = await createClient();
+      const docId = generateDocId();
+      const docBinding = client["_docBinding"];
+      const { doc: liveDoc } = await setupDocWithOperations(client, docId, {
+        operations: [],
+      });
+      cacheDoc(client, docId, liveDoc);
+
+      const { doc: serverDoc } = docBinding.create("test", docId);
+      serverDoc.root.append(serverDoc.createNode(ChildNode));
+      serverDoc.forceCommit();
+
+      let finishQueuedRequest:
+        | ((response: { data: ReturnType<typeof s> }) => void)
+        | undefined;
+      const requestSpy = spyOnRequest(client);
+      requestSpy
+        .mockResolvedValueOnce({
+          data: s({
+            docId,
+            clock: 1,
+            serializedDoc: docBinding.serialize(serverDoc),
+          }),
+        })
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishQueuedRequest = resolve;
+            }),
+        );
+
+      const importHistory = docBinding.importHistory;
+      if (!importHistory) throw new Error("Expected history support");
+      const importError = new Error("history import failed");
+      docBinding.importHistory = () => {
+        // Simulates a local edit landing while the replacement doc is being
+        // set up: the sync is queued as pushing-with-pending and must survive
+        // the throw below.
+        void client["_sync"](docId);
+        throw importError;
+      };
+
+      try {
+        await expect(client["_sync"](docId)).rejects.toBe(importError);
+      } finally {
+        docBinding.importHistory = importHistory;
+      }
+
+      await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
+      // The queued push is in flight, but the document is loaded and up to
+      // date, so the query stays settled: a background push is not a reason to
+      // tell the application it cannot serve the document.
+      const queryDuringQueuedSync =
+        client["_docsCache"].get(docId)?.queryResult;
+      expect(queryDuringQueuedSync).toMatchObject({
+        status: "success",
+        fetchStatus: "idle",
+      });
+      expect(queryDuringQueuedSync?.error).toBeUndefined();
+
+      if (!finishQueuedRequest) throw new Error("Expected queued sync request");
+      finishQueuedRequest({ data: s({ docId, clock: 2 }) });
+
+      // Confirming the same document reports nothing new, so the identity of
+      // the result survives the whole queued sync.
+      await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
+      expect(client["_docsCache"].get(docId)?.queryResult).toBe(
+        queryDuringQueuedSync,
+      );
     });
 
     test("should delete operations after successful push", async () => {

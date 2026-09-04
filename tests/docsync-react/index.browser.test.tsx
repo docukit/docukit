@@ -137,6 +137,60 @@ test("createDocSyncClient", async () => {
   >();
 }, 5000);
 
+test("useDoc never renders the previous document after its id changes", async () => {
+  localStorage.removeItem("docsync:localUserId");
+  const firstId = id.ending("101");
+  const secondId = id.ending("102");
+  const { useDoc, client } = createDocSyncClient({
+    server: {
+      url: testServerUrl(),
+      auth: { mode: "token", getToken: () => "test-token-id-change" },
+    },
+    local: { provider: indexedDBProvider },
+    docBinding: DocNodeBinding([docConfig]),
+  });
+  if (!client) throw new Error("Expected browser client");
+
+  const secondObserver = client.getDocObserver({
+    type: "test",
+    id: secondId,
+    createIfMissing: true,
+  });
+  const unsubscribeSecond = secondObserver.subscribe(() => undefined);
+  await expect
+    .poll(() => secondObserver.getSnapshot().fetchStatus)
+    .toBe("idle");
+
+  const renderedDocIds: string[] = [];
+  const hook = await renderHook(
+    (props?: { docId: string }) => {
+      const result = useDoc({
+        type: "test",
+        id: props?.docId ?? firstId,
+        createIfMissing: true,
+      });
+      if (result.status === "success") {
+        renderedDocIds.push(result.data.docId);
+      }
+      return result;
+    },
+    { initialProps: { docId: firstId } },
+  );
+  await expect.poll(() => hook.result.current.fetchStatus).toBe("idle");
+  expect(hook.result.current.data?.docId).toBe(firstId);
+
+  renderedDocIds.length = 0;
+  await hook.rerender({ docId: secondId });
+
+  expect(hook.result.current.data?.docId).toBe(secondId);
+  expect(renderedDocIds).not.toContain(firstId);
+
+  await hook.unmount();
+  unsubscribeSecond();
+  client.disconnect();
+  client["_bcHelper"]?.close();
+}, 5000);
+
 test("client keeps own presence for debounced outgoing sync", async () => {
   localStorage.setItem("docsync:localUserId", reactUserId);
   const { useDoc, usePresence, client } = createDocSyncClient({

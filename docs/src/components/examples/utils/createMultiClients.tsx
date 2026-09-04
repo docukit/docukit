@@ -14,9 +14,16 @@ const createClientForUser = (
   deviceId: string,
   docConfigs: DocConfig[],
 ) => {
-  // Force specific deviceId in localStorage before creating client
+  // This demo fakes several users inside a single browser origin, which DocSync
+  // does not support on its own: it keeps one local identity per origin, so the
+  // first client to be authenticated would make every later client claim that
+  // same user and the server would reject the mismatched ones. Pinning both
+  // keys before constructing each client keeps every synthetic user claiming
+  // the user its token actually authenticates as. Real applications have one
+  // user per origin and never need this.
   if (typeof window !== "undefined") {
     localStorage.setItem("docsync:deviceId", deviceId);
+    localStorage.setItem("docsync:localUserId", userId);
   }
 
   return createDocSyncClient({

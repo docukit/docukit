@@ -339,18 +339,21 @@ const createClientUtils = async (
         throw new Error("Doc already loaded. Call unLoadDoc() first.");
       }
       await new Promise<void>((resolve, reject) => {
-        cleanup = client.getDoc(
-          { type: "test", id: docId, createIfMissing: true },
-          (result) => {
-            if (result.status === "success" && result.data) {
-              cachedDoc = result.data.doc;
-              resolve();
-            }
-            if (result.status === "error") {
-              reject(result.error);
-            }
-          },
-        );
+        const observer = client.getDocObserver({
+          type: "test",
+          id: docId,
+          createIfMissing: true,
+        });
+        const handleResult = () => {
+          const result = observer.getSnapshot();
+          if (result.status === "success") {
+            cachedDoc = result.data.doc;
+            resolve();
+          }
+          if (result.status === "error") reject(result.error);
+        };
+        cleanup = observer.subscribe(handleResult);
+        handleResult();
       });
     },
     unLoadDoc: () => {

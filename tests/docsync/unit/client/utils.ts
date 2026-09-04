@@ -7,6 +7,7 @@ import {
   type DocData,
   type ClientConfig,
   type Identity,
+  type GetDocArgs,
 } from "@docukit/docsync/client";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import {
@@ -102,6 +103,27 @@ type DocCallback = Mock<
 >;
 
 export const createCallback = () => vi.fn() as DocCallback;
+
+export const subscribeToDoc = <
+  D extends object,
+  S extends object,
+  O extends object,
+  T extends GetDocArgs,
+>(
+  client: DocSyncClient<D, S, O>,
+  args: T,
+  onChange: (
+    result: QueryResult<
+      T extends { createIfMissing: true } ? DocData<D> : DocData<D> | undefined
+    >,
+  ) => void,
+): (() => void) => {
+  const observer = client.getDocObserver(args);
+  const notify = () => onChange(observer.getSnapshot());
+  const unsubscribe = observer.subscribe(notify);
+  notify();
+  return unsubscribe;
+};
 
 /**
  * Extracts the successful result from a callback mock.

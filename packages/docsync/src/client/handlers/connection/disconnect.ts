@@ -1,5 +1,22 @@
 import type { DocSyncClient } from "../../index.js";
-import { dispatchDocQueryDisconnected } from "../../utils/dispatchDocQueryAction.js";
+import { DocSyncError } from "../../utils/DocSyncError.js";
+import { pauseQueries } from "../../utils/pauseQueries.js";
+import { clearAllSyncRetries } from "../../utils/syncRetry.js";
+
+/** Tells the other tabs this client is gone from every document it had open. */
+function broadcastPresenceLeft<
+  D extends object,
+  S extends object,
+  O extends object,
+>(client: DocSyncClient<D, S, O>): void {
+  for (const docId of client["_docsCache"].keys()) {
+    client["_bcHelper"]?.broadcast({
+      type: "PRESENCE",
+      docId,
+      presence: { [client["_clientId"]]: null },
+    });
+  }
+}
 
 export function handleDisconnect<
   D extends object = object,
@@ -7,26 +24,49 @@ export function handleDisconnect<
   O extends object = object,
 >({ client }: { client: DocSyncClient<D, S, O> }): void {
   client["_socket"].on("disconnect", (reason) => {
+    delete client["_connectionAttempt"];
+    // Invalidate in-flight syncs before releasing their push locks. A reconnect
+    // may start a newer attempt while an abandoned Socket.IO ack still arrives;
+    // the attempt token prevents that old response from mutating current state.
+    for (const cacheEntry of client["_docsCache"].values()) {
+      cacheEntry.activeSyncAttempt = undefined;
+    }
     client["_pushStatusByDocId"].clear();
     client["_collabDocIds"].clear();
+    clearAllSyncRetries(client);
     for (const state of client["_presenceDebounceState"].values()) {
       clearTimeout(state.timeout);
       delete state.timeout;
     }
-    for (const docId of client["_docsCache"].keys()) {
-      dispatchDocQueryDisconnected(client, docId);
-      client["_bcHelper"]?.broadcast({
-        type: "PRESENCE",
-        docId,
-        presence: { [client["_clientId"]]: null },
-      });
+    // A manual disconnect is not a failure, so it pauses without an error.
+    const connectionError =
+      !client["_socket"].active && reason !== "io client disconnect"
+        ? new DocSyncError(
+            "ConnectionError",
+            `The server disconnected the DocSync client (${reason})`,
+          )
+        : undefined;
+    // Pausing notifies query listeners, and a listener that throws must not
+    // strand the rest of the teardown: without the broadcast the other tabs
+    // keep rendering this client's presence forever, and without the event the
+    // application never learns it went offline. Run both, then let the
+    // listener failure keep propagating.
+    try {
+      pauseQueries(client, connectionError);
+    } finally {
+      broadcastPresenceLeft(client);
+      client["_events"].emit("disconnect", { reason });
     }
-    client["_events"].emit("disconnect", { reason });
   });
   client["_socket"].on("connect_error", (err) => {
-    for (const docId of client["_docsCache"].keys()) {
-      dispatchDocQueryDisconnected(client, docId);
+    delete client["_connectionAttempt"];
+    const connectionError = client["_socket"].active
+      ? undefined
+      : new DocSyncError("ConnectionError", err.message, { cause: err });
+    try {
+      pauseQueries(client, connectionError);
+    } finally {
+      client["_events"].emit("disconnect", { reason: err.message });
     }
-    client["_events"].emit("disconnect", { reason: err.message });
   });
 }

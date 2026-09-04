@@ -36,6 +36,10 @@ export class DocNodeHelper extends HelperBase {
     await page.goto(`examples/subdocs?docId=${helper.docId}`);
     await page.waitForLoadState("networkidle");
     await page.locator("#reference").first().waitFor({ state: "visible" });
+    // The example keeps rendering documents when a query carries an error, so
+    // a broken demo no longer hides the panels. Assert the error is absent, or
+    // a regression like a rejected handshake would pass every subdocs test.
+    await expect(page.getByTestId("query-error")).toHaveCount(0);
     return helper as T;
   }
 

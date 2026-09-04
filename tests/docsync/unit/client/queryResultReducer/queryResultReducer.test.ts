@@ -6,23 +6,23 @@ const combinations = stateCases.flatMap((stateCase) =>
 );
 
 describe("createQueryResultReducer", () => {
-  test("declares every state and action combination", () => {
-    expect(combinations).toHaveLength(stateCases.length * actionCases.length);
-  });
-
   test.each(combinations)(
     "$stateCase.name + $actionCase.name",
     ({ stateCase, actionCase }) => {
-      const invalidReason = actionCase.invalid?.(stateCase.state);
+      const next = actionCase.run(stateCase.state);
+      expect(next).toStrictEqual(actionCase.expected(stateCase.state));
 
-      if (invalidReason) {
-        expect(() => actionCase.run(stateCase.state)).toThrow(invalidReason);
-        return;
+      // A sync that only confirms what the query already holds must return the
+      // very same object. Reporting an equal-but-new result would re-render
+      // every `useDoc` consumer on every background sync, which is the whole
+      // reason `fetchStatus` no longer tracks routine pushes.
+      if (
+        actionCase.unchangedWhenConfirming &&
+        stateCase.state.status === "success" &&
+        stateCase.state.fetchStatus !== "fetching"
+      ) {
+        expect(next).toBe(stateCase.state);
       }
-
-      expect(actionCase.run(stateCase.state)).toStrictEqual(
-        actionCase.expected(stateCase.state),
-      );
     },
   );
 });

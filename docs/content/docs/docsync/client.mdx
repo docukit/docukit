@@ -94,7 +94,7 @@ document grants.
   type={{
     client: {
       description:
-        "The underlying DocSyncClient instance. May be undefined during SSR.",
+        "The underlying DocSyncClient instance. May be undefined during SSR. Use getDocObserver(args) for imperative access to a stable QueryResult snapshot and later updates.",
       type: "DocSyncClient | undefined",
     },
     useDoc: {
@@ -109,6 +109,49 @@ document grants.
     },
   }}
 />
+
+---
+
+## getDocObserver
+
+Creates a lazy observer for imperative code. Calling `getSnapshot()` does not
+load the document. The first subscriber starts the query, and removing the last
+subscriber releases it. One observer can have multiple subscribers while using
+only one underlying document subscription.
+
+```ts
+const observer = client.getDocObserver({
+  type: "notes",
+  id: "doc-123",
+  createIfMissing: true,
+});
+
+const render = () => {
+  const result = observer.getSnapshot();
+  if (result.status === "success") console.log(result.data.doc);
+};
+
+const unsubscribe = observer.subscribe(render);
+render();
+
+// Later, when this consumer no longer needs the document:
+unsubscribe();
+```
+
+`getSnapshot()` returns the same object until the query state changes. This is
+the contract expected by external-store integrations such as React's
+`useSyncExternalStore`; `useDoc` uses this observer internally.
+
+`getSnapshot()` reports the state of the document itself, not of this observer.
+A document is shared by every consumer in the client, so an observer that has
+not subscribed yet already reports whatever another consumer has loaded for the
+same `id` — which is what lets a second component render a loaded document on
+its very first render instead of flashing `pending`. The same rule applies
+after `unsubscribe()`: the snapshot keeps reporting the document while another
+consumer holds it, and reports the last value it saw once nobody does. Only
+while at least one subscriber is active is the snapshot guaranteed to track a
+document that is still loaded, so read it outside a subscription for display
+only, and subscribe before using `data.doc`.
 
 ---
 
@@ -156,15 +199,100 @@ const result = useDoc({ type: "notes", id: "doc-123", createIfMissing: true });
     },
     data: {
       description:
-        "The document data when status is 'success'. Contains doc (the DocNode instance) and id (document ID). Undefined if document not found.",
-      type: "{ doc: D; id: string } | undefined",
+        "The document data: doc (the DocNode instance) and docId (document ID). Undefined when the document was not found, and still present when a later sync fails, so stale content stays renderable alongside an error.",
+      type: "{ doc: D; docId: string } | undefined",
     },
     error: {
-      description: "Error information when status is 'error'.",
+      description:
+        "The terminal failure that produced an error state. DocSync's own failures are DocSyncError instances, whose type field ('AuthorizationError', 'ConnectionError', 'DatabaseError', 'NetworkError' or 'ValidationError') can be branched on without matching the message.",
       type: "Error",
+    },
+    fetchStatus: {
+      description:
+        "Whether the query can serve the authoritative document. Fetching means not yet, because it is loading for the first time or resynchronising after a reconnect. Paused means it cannot until the connection returns. Idle means it can, and is up to date. Routine background syncs and their retries do not change it.",
+      type: '"fetching" | "paused" | "idle"',
+      required: true,
     },
   }}
 />
+
+`status` describes the available result. `fetchStatus` answers a different
+question: can the query serve the authoritative document right now? Because the
+two are independent, local or stale data stays available while synchronization
+is paused or a later sync has failed.
+
+| Situation                                                  | `status`                         | `fetchStatus`      | Result                                                                                     |
+| ---------------------------------------------------------- | -------------------------------- | ------------------ | ------------------------------------------------------------------------------------------ |
+| Loading for the first time, or resyncing after a reconnect | `pending`, `success`, or `error` | `fetching`         | Existing local data and errors are preserved                                               |
+| Temporarily offline or manually disconnected               | `pending`, `success`, or `error` | `paused`           | Existing local data and errors are preserved                                               |
+| Document available and up to date                          | `success`                        | `idle`             | Server result is available, including `undefined` when an optional document does not exist |
+| A routine background sync is in flight                     | unchanged                        | unchanged          | Nothing is emitted: the document on screen is already correct                              |
+| Local storage failed                                       | `error`                          | `idle` or `paused` | `error` contains the local failure; a disconnected query remains paused                    |
+| Authentication or permanent connection rejection           | `error`                          | `paused`           | `error` contains the connection failure                                                    |
+| Server permanently rejected a sync                         | `error`                          | `idle`             | Existing data is preserved and `error` contains the authorization or validation failure    |
+| Network or database attempt failed and is retrying         | unchanged                        | unchanged          | The query result remains unchanged while DocSync retries                                   |
+
+### Background syncs do not report `fetching`
+
+DocSync is realtime over a persistent socket and applies your edits
+optimistically, so while a push travels to the server the document you are
+rendering is already correct. Remote operations coming back from other clients
+are applied to the same live document instance. Neither produces a new query
+result, so a document that is loaded and connected simply stays
+`success` / `idle` through all of it. Only a wholesale document replacement
+changes `data`, and that is rare.
+
+The alternative was considered and rejected: reporting every push as
+`idle → fetching → idle`, the way TanStack Query reports a background refetch.
+It overloads `fetchStatus` with a second meaning applications cannot act on,
+and it emits two new query results per sync — at the 50ms collaborative
+debounce, roughly 40 re-renders per second of everything under `useDoc`, for a
+document that never changed.
+
+**Want a "Saving…" indicator** like Google Docs? Build it from the client's
+`sync` event, which fires once per sync with the request and its outcome. That
+is the signal such an indicator actually needs, and keeping it out of
+`fetchStatus` costs nothing to applications that do not want one.
+
+```tsx
+const [saving, setSaving] = useState(false);
+
+useEffect(() => {
+  if (!client) return;
+  return client.on("sync", ({ error }) => {
+    setSaving(false);
+    if (error) console.warn("sync failed", error);
+  });
+}, []);
+```
+
+Because `data` and a terminal `error` can exist at the same time, applications
+should keep rendering usable data and show the later error separately. A paused
+state is often transient, so applications may delay a connectivity notice to
+avoid a flash during short interruptions.
+
+Retries are not unlimited. While the current socket connection remains active,
+a failed sync request or a `DatabaseError` response is retried with exponential
+backoff for about 24 seconds. Failed attempts during that backoff do not change
+the query result at all. After the retry budget is exhausted, the query reports
+`error` and keeps its data. At that point `error` means DocSync has stopped
+trying on its own.
+
+That means a loaded document whose background syncs start failing keeps
+reporting `success` for up to 24 seconds before the failure reaches
+`QueryResult`. Nothing is lost — the edits were already written to local
+storage — but if you want to react sooner, listen to the `sync` event, which
+fires on every attempt including the failed ones.
+
+A transport disconnect cancels that per-document retry and moves the query to
+`paused`. Socket.IO then owns reconnecting the transport. When the connection
+returns, DocSync resumes the document sync. The retry budget covers one episode
+of failure, so a later edit gets its own bounded chain rather than failing on
+its first attempt.
+The package README contains the complete
+[error and retry policy](https://github.com/docukit/docukit/tree/main/packages/docsync#error-and-retry-policy),
+including permanent connection failures and errors raised by configured local
+providers or document bindings.
 
 ---
 

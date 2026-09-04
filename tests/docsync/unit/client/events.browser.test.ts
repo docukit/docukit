@@ -160,12 +160,14 @@ describe("Client Events", () => {
         loadSource = event.source;
       });
 
-      const cleanup = client.getDoc(
-        { type: "test", id: docId, createIfMissing: true },
-        () => {
-          /* doc updates callback */
-        },
-      );
+      const observer = client.getDocObserver({
+        type: "test",
+        id: docId,
+        createIfMissing: true,
+      });
+      const cleanup = observer.subscribe(() => {
+        /* doc updates callback */
+      });
       await expect.poll(() => loadSource).toBe("created");
 
       cleanup();
@@ -188,7 +190,8 @@ describe("Client Events", () => {
         unloadRefCount = event.refCount;
       });
 
-      const cleanup = client.getDoc({ type: "test", id: docId }, () => {
+      const observer = client.getDocObserver({ type: "test", id: docId });
+      const cleanup = observer.subscribe(() => {
         /* doc updates callback */
       });
       cleanup();

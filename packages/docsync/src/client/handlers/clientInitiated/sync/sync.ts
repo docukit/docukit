@@ -4,11 +4,18 @@ import {
   dispatchLocalDocFound,
   dispatchNetworkDocFound,
   dispatchNetworkDocNotFound,
+  dispatchNetworkQueryError,
 } from "../../../utils/dispatchDocQueryAction.js";
+import { DocSyncError } from "../../../utils/DocSyncError.js";
 import { getOwnPresencePatch } from "../../../utils/getOwnPresencePatch.js";
 import { getLocalDocVersion } from "../../../utils/localDocVersion.js";
 import { request } from "../../../utils/request.js";
 import { setupDocChangeListener } from "../../../utils/setupDocChangeListener.js";
+import {
+  cancelPendingSyncRetry,
+  clearSyncRetry,
+  scheduleSyncRetry,
+} from "../../../utils/syncRetry.js";
 import {
   finalizeSyncReconciliation,
   prepareSyncReconciliation,
@@ -21,13 +28,17 @@ async function applyServerOperations<
   O extends object,
 >(
   client: DocSyncClient<D, S, O>,
-  args: { docId: string; operations: O[] },
+  args: { docId: string; operations: O[]; syncAttempt: symbol },
 ): Promise<void> {
   const cacheEntry = client["_docsCache"].get(args.docId);
-  if (!cacheEntry) return;
+  if (cacheEntry?.activeSyncAttempt !== args.syncAttempt) return;
 
   const doc = await cacheEntry.promisedDoc;
   if (!doc) return;
+  if (
+    client["_docsCache"].get(args.docId)?.activeSyncAttempt !== args.syncAttempt
+  )
+    return;
 
   for (const op of args.operations) {
     client["_applyOperationsFrom"]("network", doc, op, { skipUndo: true });
@@ -67,6 +78,7 @@ function replaceDocInCache<
 
   client["_docsCache"].set(args.docId, {
     promisedDoc: nextPromisedDoc,
+    activeSyncAttempt: cacheEntry.activeSyncAttempt,
     refCount: cacheEntry.refCount,
     localVersion: cacheEntry.localVersion,
     type: cacheEntry.type,
@@ -197,6 +209,80 @@ function broadcastServerOperations<
   }
 }
 
+function isCurrentSyncAttempt<
+  D extends object,
+  S extends object,
+  O extends object,
+>(client: DocSyncClient<D, S, O>, docId: string, syncAttempt: symbol): boolean {
+  return client["_docsCache"].get(docId)?.activeSyncAttempt === syncAttempt;
+}
+
+/** Releases flow control only when this is still the newest sync attempt. */
+function finishSyncAttempt<
+  D extends object,
+  S extends object,
+  O extends object,
+>(client: DocSyncClient<D, S, O>, docId: string, syncAttempt: symbol): boolean {
+  const cacheEntry = client["_docsCache"].get(docId);
+  if (cacheEntry?.activeSyncAttempt !== syncAttempt) return false;
+  cacheEntry.activeSyncAttempt = undefined;
+  client["_pushStatusByDocId"].set(docId, "idle");
+  return true;
+}
+
+function finishFailedSyncAttempt<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
+  client: DocSyncClient<D, S, O>,
+  docId: string,
+  syncAttempt: symbol,
+  shouldRetry: boolean,
+): { hasPendingSync: boolean; retrying: boolean } | undefined {
+  const hasPendingSync =
+    client["_pushStatusByDocId"].get(docId) === "pushing-with-pending";
+  if (!finishSyncAttempt(client, docId, syncAttempt)) return;
+
+  const retrying =
+    shouldRetry &&
+    scheduleSyncRetry(client, docId, () => {
+      void handleSync(client, docId);
+    });
+  return { hasPendingSync, retrying };
+}
+
+/**
+ * Reports a finished attempt once. A scheduled retry or a sync queued during
+ * the failed request keeps the existing query result unchanged; the queued
+ * sync starts here only when no retry already covers it.
+ */
+function reportFinishedSyncError<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
+  client: DocSyncClient<D, S, O>,
+  docId: string,
+  error: Error,
+  continuation: { hasPendingSync: boolean; retrying: boolean },
+): void {
+  const { hasPendingSync, retrying } = continuation;
+  try {
+    if (!retrying && !hasPendingSync) {
+      dispatchNetworkQueryError(client, docId, error);
+    }
+  } finally {
+    if (
+      hasPendingSync &&
+      !retrying &&
+      client["_pushStatusByDocId"].get(docId) === "idle"
+    ) {
+      void handleSync(client, docId);
+    }
+  }
+}
+
 /**
  * Sync (push) a document to the server. Queues if already pushing (sets
  * pushing-with-pending), otherwise sets pushing and runs the sync.
@@ -222,6 +308,17 @@ export const handleSync = async <
     return;
   }
   pushStatusByDocId.set(docId, "pushing");
+  const initialCacheEntry = client["_docsCache"].get(docId);
+  if (!initialCacheEntry) {
+    // The document was unloaded; a missing entry already reads as idle, and
+    // nothing would ever delete an entry created here.
+    pushStatusByDocId.delete(docId);
+    return;
+  }
+  cancelPendingSyncRetry(client, docId);
+  const syncAttempt = Symbol(docId);
+  initialCacheEntry.activeSyncAttempt = syncAttempt;
+  let didFinishSyncAttempt = false;
   // Any throw below would leave the push status stuck on "pushing", and every
   // later handleSync call would early-return on it — the document would stop
   // syncing until a reload. Reset the status and rethrow so the failure stays
@@ -230,9 +327,11 @@ export const handleSync = async <
     if (client["_localOpsBatchState"].has(docId)) {
       await client["_flushLocalOperations"](docId, { sync: false });
     }
+    if (!isCurrentSyncAttempt(client, docId, syncAttempt)) return;
     const requestLocalVersion = getLocalDocVersion(client, docId);
 
     const { provider } = await client["_localPromise"];
+    if (!isCurrentSyncAttempt(client, docId, syncAttempt)) return;
     const socket = client["_socket"];
 
     // Prepare payload: read operations and clock from provider.
@@ -245,6 +344,7 @@ export const handleSync = async <
         ]);
       },
     );
+    if (!isCurrentSyncAttempt(client, docId, syncAttempt)) return;
     const operations = operationsBatches.flat();
     const clientClock = stored?.clock ?? 0;
 
@@ -268,25 +368,54 @@ export const handleSync = async <
     try {
       response = await request(socket, "sync", payload);
     } catch (error) {
+      if (!isCurrentSyncAttempt(client, docId, syncAttempt)) return;
+      const queryError = new DocSyncError(
+        "NetworkError",
+        error instanceof Error ? error.message : String(error),
+        { cause: error },
+      );
       client["_events"].emit("sync", {
         req,
-        error: {
-          type: "NetworkError",
-          message: error instanceof Error ? error.message : String(error),
-        },
+        error: { type: "NetworkError", message: queryError.message },
       });
-      pushStatusByDocId.set(docId, "idle");
-      void handleSync(client, docId);
+      if (!isCurrentSyncAttempt(client, docId, syncAttempt)) return;
+      const continuation = finishFailedSyncAttempt(
+        client,
+        docId,
+        syncAttempt,
+        true,
+      );
+      if (!continuation) return;
+      didFinishSyncAttempt = true;
+      reportFinishedSyncError(client, docId, queryError, continuation);
       return;
     }
+
+    if (!isCurrentSyncAttempt(client, docId, syncAttempt)) return;
 
     if ("error" in response && response.error) {
       client["_events"].emit("sync", { req, error: response.error });
-      pushStatusByDocId.set(docId, "idle");
-      void handleSync(client, docId);
+      if (!isCurrentSyncAttempt(client, docId, syncAttempt)) return;
+      const queryError = new DocSyncError(
+        response.error.type,
+        response.error.message,
+      );
+      // Only a DatabaseError is transient. Authorization and validation
+      // failures would be rejected identically on every retry, so retrying
+      // them is a loop that can never converge.
+      const continuation = finishFailedSyncAttempt(
+        client,
+        docId,
+        syncAttempt,
+        response.error.type === "DatabaseError",
+      );
+      if (!continuation) return;
+      didFinishSyncAttempt = true;
+      reportFinishedSyncError(client, docId, queryError, continuation);
       return;
     }
 
+    clearSyncRetry(client, docId);
     const { data } = response;
     client["_events"].emit("sync", { req, data });
 
@@ -301,13 +430,16 @@ export const handleSync = async <
           data.operations.length > 0 && operations.length > 0,
       },
     );
+    if (!isCurrentSyncAttempt(client, docId, syncAttempt)) return;
     const preparedReconciliation = await prepareSyncReconciliation(client, {
       provider,
       docId,
       operationsBatches,
       localOperations: operations,
       data,
+      isCurrent: () => isCurrentSyncAttempt(client, docId, syncAttempt),
     });
+    if (!isCurrentSyncAttempt(client, docId, syncAttempt)) return;
 
     // Keep this section synchronous. Exporting DocNode history force-commits a
     // pending edit, finalize then applies that operation to the replacement,
@@ -346,7 +478,9 @@ export const handleSync = async <
       await applyServerOperations(client, {
         docId,
         operations: reconcileResult.operations,
+        syncAttempt,
       });
+      if (!isCurrentSyncAttempt(client, docId, syncAttempt)) return;
       broadcastServerOperations(client, {
         docId,
         operations: reconcileResult.operations,
@@ -355,14 +489,14 @@ export const handleSync = async <
 
     const currentStatus = pushStatusByDocId.get(docId);
     const shouldRetry = currentStatus === "pushing-with-pending";
-    pushStatusByDocId.set(docId, "idle");
+    if (!finishSyncAttempt(client, docId, syncAttempt)) return;
+    didFinishSyncAttempt = true;
     if (shouldRetry) {
       void handleSync(client, docId);
       return;
     }
     const latestCacheEntry = client["_docsCache"].get(docId);
     if (!latestCacheEntry) return;
-    if (latestCacheEntry.queryResult.fetchStatus === "idle") return;
 
     if (
       latestCacheEntry.queryResult.status === "success" &&
@@ -376,7 +510,32 @@ export const handleSync = async <
       createIfMissing: latestCacheEntry.localLoadMode === "loadOrCreate",
     });
   } catch (error) {
-    pushStatusByDocId.set(docId, "idle");
+    if (didFinishSyncAttempt) throw error;
+    const hasPendingSync =
+      pushStatusByDocId.get(docId) === "pushing-with-pending";
+    // A superseded attempt loses the right to report on the query — a newer
+    // attempt owns it now — but not the failure itself, which is just as real
+    // whichever attempt hit it. So it skips the dispatch and still rethrows,
+    // exactly like the current attempt does below. Callers use
+    // `void handleSync(...)`, so both paths surface as an unhandled rejection:
+    // loud in the console, and a failing test under Vitest, which is what a
+    // provider or binding bug has to be.
+    if (!finishSyncAttempt(client, docId, syncAttempt)) throw error;
+    if (!hasPendingSync) {
+      try {
+        dispatchNetworkQueryError(
+          client,
+          docId,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      } catch {
+        // Reporting the failure on the query must never replace the failure
+        // itself — the rethrow below is what keeps it loud.
+      }
+    }
+    if (hasPendingSync && pushStatusByDocId.get(docId) === "idle") {
+      void handleSync(client, docId);
+    }
     throw error;
   }
 };

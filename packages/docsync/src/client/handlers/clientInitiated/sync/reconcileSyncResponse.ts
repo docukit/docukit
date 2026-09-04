@@ -46,16 +46,26 @@ export async function prepareSyncReconciliation<
     operationsBatches: O[][];
     localOperations: O[];
     data: Extract<SyncResponse<S, O>, { data: unknown }>["data"];
+    isCurrent: () => boolean;
   },
 ): Promise<PreparedSyncReconciliation<D, O>> {
-  const { provider, docId, operationsBatches, localOperations, data } = args;
+  const {
+    provider,
+    docId,
+    operationsBatches,
+    localOperations,
+    data,
+    isCurrent,
+  } = args;
   const hasServerSnapshot = data.serializedDoc !== null;
   let didConsolidate = false;
   let pendingProviderOperations: O[] = [];
   let replacementDoc: D | undefined;
 
   await provider.transaction("readwrite", async (ctx) => {
+    if (!isCurrent()) return;
     const stored = await ctx.getSerializedDoc({ docId });
+    if (!isCurrent()) return;
     // A newer sync already updated IndexedDB; this response must not rewind it.
     if (stored !== undefined && stored.clock > data.clock) {
       return;
@@ -83,6 +93,7 @@ export async function prepareSyncReconciliation<
     }
 
     const currentOperationsBatches = await ctx.getOperations({ docId });
+    if (!isCurrent()) return;
     pendingProviderOperations = currentOperationsBatches
       .slice(operationsBatches.length)
       .flat();
@@ -93,9 +104,14 @@ export async function prepareSyncReconciliation<
     const serializedDoc = client["_docBinding"].serialize(doc);
 
     const recheckStored = await ctx.getSerializedDoc({ docId });
+    if (!isCurrent()) return;
     if (stored !== undefined && recheckStored?.clock !== stored.clock) return;
     if (stored === undefined && recheckStored !== undefined) return;
 
+    // Once the snapshot write starts, finish the matching operation cleanup in
+    // this transaction even if the connection changes. Returning between the
+    // two writes could commit a snapshot that already contains the operations
+    // while leaving those same operations queued to be applied a second time.
     await ctx.saveSerializedDoc({ serializedDoc, docId, clock: data.clock });
     if (operationsBatches.length > 0) {
       await ctx.deleteOperations({ docId, count: operationsBatches.length });

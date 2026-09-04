@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   DocSyncClient,
   type ClientConfig,
@@ -39,6 +45,12 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
       : undefined;
 
   type DocData = { doc: D; docId: string };
+  const serverSnapshot: QueryResult<DocData | undefined> = {
+    status: "pending",
+    fetchStatus: "fetching",
+  };
+  const getServerSnapshot = () => serverSnapshot;
+  const subscribeWithoutClient = () => () => undefined;
 
   function useDoc(args: {
     type: string;
@@ -51,10 +63,6 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
     createIfMissing?: boolean;
   }): QueryResult<DocData | undefined>;
   function useDoc(args: GetDocArgs): QueryResult<DocData | undefined> {
-    const [result, setResult] = useState<QueryResult<DocData | undefined>>({
-      status: "pending",
-      fetchStatus: "fetching",
-    });
     const id = args.id;
     const createIfMissing = "createIfMissing" in args && args.createIfMissing;
     const type = args.type;
@@ -62,13 +70,20 @@ export function createDocSyncClient<T extends ClientConfig<any, any, any>>(
       () => ({ type, id, createIfMissing }),
       [id, type, createIfMissing],
     );
+    const observer = useMemo(
+      () => client?.getDocObserver(getDocArgs),
+      [getDocArgs],
+    );
 
-    useEffect(() => {
-      if (!client) return;
-      return client.getDoc(getDocArgs, setResult);
-    }, [getDocArgs]);
-
-    return result;
+    // One snapshot source is used for both the first client render and every
+    // later update. This prevents a changed id from briefly rendering the
+    // previous document and gives React the consistency checks it needs for an
+    // external store. SSR uses a stable pending snapshot until hydration.
+    return useSyncExternalStore(
+      observer?.subscribe ?? subscribeWithoutClient,
+      observer?.getSnapshot ?? getServerSnapshot,
+      getServerSnapshot,
+    );
   }
 
   function usePresence(args: { docId: string | undefined }) {

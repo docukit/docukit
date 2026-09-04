@@ -158,10 +158,10 @@ function SubDocContent({
     createIfMissing: true,
   });
   const secondaryDocReady =
-    activeDoc &&
-    secondaryResult.status === "success" &&
-    secondaryResult.data.docId === activeDoc;
-  const secondaryDoc = secondaryDocReady ? secondaryResult.data.doc : undefined;
+    activeDoc && secondaryResult.data?.docId === activeDoc;
+  const secondaryDoc = secondaryDocReady
+    ? secondaryResult.data?.doc
+    : undefined;
 
   useEffect(() => {
     if (!shouldInitialize) return;
@@ -180,15 +180,23 @@ function SubDocContent({
     );
   }, [data, shouldInitialize]);
 
-  const isReady = status === "success" && data.docId === docId;
-  const indexDoc = isReady ? data.doc : undefined;
+  const isReady = data?.docId === docId;
+  const indexDoc = isReady ? data?.doc : undefined;
 
-  if (status === "error") {
+  if (!isReady && status === "error") {
     return <div className="text-destructive">Error: {error.message}</div>;
   }
 
   return (
     <SubdocsPanelFrame isLoading={!isReady}>
+      {status === "error" ? (
+        <div
+          data-testid="query-error"
+          className="text-destructive px-2 py-1 text-sm"
+        >
+          {error.message}
+        </div>
+      ) : null}
       {indexDoc ? (
         <div className="flex gap-3" id={clientId} key={`${clientId}:${docId}`}>
           <div className="main-doc flex-1">
@@ -201,7 +209,22 @@ function SubDocContent({
           <div className="bg-fd-border w-px" />
           {secondaryDoc ? (
             <div className="secondary-doc flex-1">
+              {secondaryResult.status === "error" ? (
+                <div
+                  data-testid="query-error"
+                  className="text-destructive px-2 py-1 text-sm"
+                >
+                  {secondaryResult.error.message}
+                </div>
+              ) : null}
               <IndexDoc doc={secondaryDoc} />
+            </div>
+          ) : activeDoc && secondaryResult.status === "error" ? (
+            <div
+              data-testid="query-error"
+              className="text-destructive secondary-doc flex-1 px-2 py-1 text-sm"
+            >
+              {secondaryResult.error.message}
             </div>
           ) : activeDoc ? (
             <SecondaryDocLoading />

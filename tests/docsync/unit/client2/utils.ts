@@ -191,6 +191,7 @@ export const cacheDoc = (
 ) => {
   client["_docsCache"].set(docId, {
     promisedDoc: Promise.resolve(doc),
+    activeSyncAttempt: undefined,
     refCount: 1,
     localVersion: 0,
     type: "test",
