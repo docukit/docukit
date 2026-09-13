@@ -19,6 +19,7 @@ import type {
 import { handleDeleteDoc } from "./handlers/deleteDoc.js";
 import { handleDisconnect } from "./handlers/disconnect.js";
 import { handlePresence } from "./handlers/presence.js";
+import { handleSubscribeDoc } from "./handlers/subscribe.js";
 import { handleSync } from "./handlers/sync.js";
 import { handleUnsubscribeDoc } from "./handlers/unsubscribe.js";
 import { startupLog } from "./utils/startupLog.js";
@@ -180,6 +181,8 @@ export class DocSyncServer<
       handleDisconnect({ server, socket, userId, deviceId, clientId });
       // prettier-ignore
       handleSync({ server, socket, userId, deviceId, clientId, context });
+      // prettier-ignore
+      handleSubscribeDoc({ server, socket, userId, deviceId, clientId, context });
       handleUnsubscribeDoc({ server, socket, userId, deviceId, clientId });
       handlePresence({ server, socket, userId, clientId, context });
       handleDeleteDoc({ server, socket, userId, context });

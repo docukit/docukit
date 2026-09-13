@@ -26,8 +26,10 @@ const createMockDocSyncClient = (serverOverrides?: {
   auth?: ClientAuthConfig;
   localUserId?: string;
 }): TestClient => {
-  // mock window
-  globalThis.window = {} as Window & typeof globalThis;
+  // mock window: the client registers a pagehide listener on construction
+  globalThis.window = {
+    addEventListener: () => undefined,
+  } as unknown as Window & typeof globalThis;
   // mock localStorage
   const storage = new Map<string, string>([["docsync:deviceId", "asd"]]);
   if (serverOverrides?.localUserId !== undefined) {

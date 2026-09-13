@@ -1,7 +1,7 @@
 import type { SyncRequest, SyncResponse } from "../../shared/types.js";
 import type { ServerConnectionSocket } from "../types.js";
 import type { DocSyncServer } from "../index.js";
-import { broadcastCollaborationState } from "../utils/broadcastCollaborationState.js";
+import { subscribeSocketToDoc } from "../utils/subscribeSocketToDoc.js";
 
 const OPERATION_THRESHOLD = 100;
 
@@ -67,31 +67,15 @@ export function handleSync<
       const io = server["_io"];
       const provider = server["_provider"];
       const docBinding = server["_docBinding"];
-      const socketToDocsMap = server["_socketToDocsMap"];
-      const presenceByDoc = server["_presenceByDoc"];
 
-      const room = io.sockets.adapter.rooms.get(`doc:${docId}`);
-      if (!room?.has(socket.id)) {
-        await socket.join(`doc:${docId}`);
-
-        let subscribedDocs = socketToDocsMap.get(socket.id);
-        if (!subscribedDocs) {
-          subscribedDocs = new Set();
-          socketToDocsMap.set(socket.id, subscribedDocs);
-        }
-        subscribedDocs.add(docId);
-
-        server["_emit"](server["_docSubscribeEventListeners"], {
-          userId,
-          deviceId,
-          clientId,
-          docId,
-        });
-
-        const presence = presenceByDoc.get(docId);
-        if (presence) socket.emit("presence", { docId, presence });
-        broadcastCollaborationState(server, docId);
-      }
+      await subscribeSocketToDoc({
+        server,
+        socket,
+        userId,
+        deviceId,
+        clientId,
+        docId,
+      });
 
       try {
         const result = await provider.transaction("readwrite", async (ctx) => {

@@ -24,6 +24,7 @@ import { handleCollaboration } from "./handlers/serverInitiated/collaboration.js
 import { handleDirty } from "./handlers/serverInitiated/dirty.js";
 import { handlePresence } from "./handlers/clientInitiated/presence.js";
 import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
+import { handleSubscribe } from "./handlers/clientInitiated/subscribe.js";
 import { handleSync } from "./handlers/clientInitiated/sync/sync.js";
 import { handleUnsubscribe } from "./handlers/clientInitiated/unsubscribe.js";
 import { handleIdentity } from "./handlers/serverInitiated/identity.js";
@@ -33,6 +34,7 @@ import {
   dispatchAllDocQueriesDisconnected,
   dispatchLocalDocFound,
   dispatchLocalQueryError,
+  dispatchNetworkDocFound,
 } from "./utils/dispatchDocQueryAction.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
 import {
@@ -44,6 +46,14 @@ import { pauseQueries } from "./utils/pauseQueries.js";
 import { setupLocalPromise } from "./utils/setupLocalPromise.js";
 import { clearSyncRetry, type SyncRetryState } from "./utils/syncRetry.js";
 import { DocSyncError } from "./utils/DocSyncError.js";
+import {
+  acquireOwnership,
+  createDocOwnership,
+  releaseAllOwnership,
+  releaseOwnership,
+  takeOwnership,
+  type DocOwnership,
+} from "./utils/ownership.js";
 
 // TODO: review this type!
 type LocalResolved<S extends object, O extends object> = {
@@ -64,11 +74,13 @@ type SyncDebounceState = {
  * A sync in flight. `rerun` records that another sync was asked for meanwhile;
  * `token` is what the attempt was started for, so a request for a reloaded
  * document or a new connection starts its own attempt instead of waiting on
- * one that can no longer report.
+ * one that can no longer report. `done` settles once the attempt has
+ * released the document.
  */
 type SyncQueueSlot = {
   rerun: boolean;
   token: { generation: number; cacheEntry: object };
+  done: Promise<void>;
 };
 type ChangeOrigin = "local" | "network" | "local-broadcast";
 type LocalLoadMode = "load" | "loadOrCreate";
@@ -78,6 +90,7 @@ type DocCacheEntry<D> = {
   refCount: number;
   localVersion: number;
   type: string;
+  ownership: DocOwnership;
   localLoadMode?: LocalLoadMode;
   queryResult: QueryResult<DocData<D> | undefined>;
   queryListeners: Set<QueryListener>;
@@ -204,6 +217,10 @@ export class DocSyncClient<
     handleCollaboration({ client: this });
     handleDirty({ client: this });
     handleServerPresence({ client: this });
+    // A tab that goes away hands its documents to the tabs that keep them
+    // open. The browser releases the locks either way; the broadcast is what
+    // tells those tabs to take over without waiting for their next edit.
+    window.addEventListener("pagehide", () => this._releaseAllOwnership());
   }
 
   connect() {
@@ -361,28 +378,32 @@ export class DocSyncClient<
         !hasDoc
       ) {
         existingCacheEntry.localLoadMode = "loadOrCreate";
-        const promisedDoc = this._loadOrCreateDoc(docId, type);
+        const promisedDoc = this._loadOwnedDoc(docId, type);
         existingCacheEntry.promisedDoc = promisedDoc;
         this._observePromisedDoc(docId, promisedDoc, "loadOrCreate");
       }
     } else {
-      // Create cache entry immediately so getPresence can subscribe
-      const promisedDoc = this._loadOrCreateDoc(
-        docId,
-        createIfMissing ? type : undefined,
-      );
+      // Register the entry before loading: ownership is tracked on it, and
+      // getPresence can subscribe right away.
       const queryResult = this._initialQueryResult();
-      this._docsCache.set(docId, {
-        promisedDoc,
+      const cacheEntry: DocCacheEntry<D> = {
+        promisedDoc: Promise.resolve(undefined),
         refCount: 1,
         localVersion: 0,
         type,
+        ownership: createDocOwnership(),
         localLoadMode,
         queryResult,
         queryListeners: new Set([listener]),
         presence: {},
         presenceListeners: new Set(),
-      });
+      };
+      this._docsCache.set(docId, cacheEntry);
+      const promisedDoc = this._loadOwnedDoc(
+        docId,
+        createIfMissing ? type : undefined,
+      );
+      cacheEntry.promisedDoc = promisedDoc;
       listener(queryResult);
       this._observePromisedDoc(docId, promisedDoc, localLoadMode);
     }
@@ -457,10 +478,22 @@ export class DocSyncClient<
 
         if (doc) {
           dispatchLocalDocFound(this, docId, { doc, docId });
+          // A mirror has no sync of its own to settle its query with. The
+          // owner keeps the document fresh, and its later syncs reach this
+          // query through `SYNCED`.
+          if (cacheEntry.ownership.role !== "owner") {
+            dispatchNetworkDocFound(this, docId, { doc, docId });
+          }
         }
 
         if (this._socket.connected) {
-          void handleSync(this, docId);
+          // The owner syncs. A mirror only subscribes, so the document's
+          // presence and collaboration updates still reach it.
+          if (cacheEntry.ownership.role === "owner") {
+            void handleSync(this, docId);
+          } else {
+            void handleSubscribe(this._socket, { docId });
+          }
         }
       } catch (e) {
         const cacheEntry = this._docsCache.get(docId);
@@ -530,6 +563,37 @@ export class DocSyncClient<
     }
   }
 
+  /**
+   * Loads the document as its owner, or as a mirror when another tab owns it
+   * and the store already has it: that tab keeps it fresh, and the first
+   * edit here takes it over. A document the store does not have is fetched
+   * or created, which needs ownership, so it is taken over first. Acquiring
+   * before loading matters: the load then reads what the previous owner
+   * persisted while handing over, and no other tab writes meanwhile.
+   */
+  private async _loadOwnedDoc(
+    docId: string,
+    type?: string,
+  ): Promise<D | undefined> {
+    const cacheEntry = this._docsCache.get(docId);
+    if (!cacheEntry) return undefined;
+    if (!(await acquireOwnership(this, docId, { ifAvailable: true }))) {
+      if (this._docsCache.get(docId) !== cacheEntry) return undefined;
+      const mirrored = await this._loadOrCreateDoc(docId);
+      if (mirrored || cacheEntry.ownership.role === "owner") return mirrored;
+      if (!(await acquireOwnership(this, docId))) return undefined;
+    }
+    const doc = await this._loadOrCreateDoc(docId, type);
+    const ownership = this._docsCache.get(docId)?.ownership;
+    if (ownership?.pendingRequest !== undefined) {
+      delete ownership.pendingRequest;
+      void releaseOwnership(this, docId, ownership, {
+        broadcastReleased: false,
+      });
+    }
+    return doc;
+  }
+
   private async _loadOrCreateDoc(
     docId: string,
     type?: string,
@@ -588,9 +652,15 @@ export class DocSyncClient<
       this._events.emit("docUnload", { docId, refCount: 0 });
 
       // Dispose when promise resolves
-      const doc = await cacheEntry.promisedDoc;
+      await cacheEntry.promisedDoc;
       const currentEntry = this._docsCache.get(docId);
       if (currentEntry?.refCount === 0) {
+        // Persist what the editor left in memory before giving the document
+        // up, so the tab that takes it over can push it.
+        if (currentEntry.ownership.role === "owner") {
+          await this._flushLocalOperations(docId, { sync: false });
+          if (this._docsCache.get(docId)?.refCount !== 0) return;
+        }
         this._docsCache.delete(docId);
         const syncState = this._syncDebounceState.get(docId);
         clearTimeout(syncState?.timeout);
@@ -600,6 +670,12 @@ export class DocSyncClient<
         this._presenceDebounceState.delete(docId);
         this._collabDocIds.delete(docId);
         clearSyncRetry(this, docId);
+        void releaseOwnership(this, docId, currentEntry.ownership, {
+          broadcastReleased: true,
+        });
+        // A reconciliation or a takeover may have replaced the doc while this
+        // waited; the entry holds the one that is live now.
+        const doc = await currentEntry.promisedDoc;
         if (doc) {
           await handleUnsubscribe(this._socket, { docId });
           this._docBinding.dispose(doc);
@@ -625,6 +701,13 @@ export class DocSyncClient<
     // Add operations to queue
     if (operations.length > 0) {
       state.data.push(...operations);
+    }
+
+    if (this._docsCache.get(docId)?.ownership.role !== "owner") {
+      // Editing a document another tab owns takes it over. The batch waits in
+      // memory until then; taking over persists and syncs it.
+      void takeOwnership(this, docId);
+      return;
     }
 
     if (now - state.startedAt >= LOCAL_IDB_MAX_DEBOUNCE) {
@@ -678,6 +761,9 @@ export class DocSyncClient<
   ): Promise<boolean> {
     const currentState = this._localOpsBatchState.get(docId);
     if (!currentState) return false;
+    // Only the owner writes the document's store. A mirror keeps its batch in
+    // memory until it takes the document over.
+    if (this._docsCache.get(docId)?.ownership.role !== "owner") return false;
 
     const opsToSave = currentState.data;
     clearTimeout(currentState.timeout);
@@ -692,6 +778,11 @@ export class DocSyncClient<
       return true;
     }
     return false;
+  }
+
+  /** Hands every owned document over, as when this tab is closing. */
+  protected _releaseAllOwnership(): void {
+    releaseAllOwnership(this);
   }
 
   protected async _deleteDoc(docId: string): Promise<boolean> {

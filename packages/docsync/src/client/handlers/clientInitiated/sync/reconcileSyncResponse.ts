@@ -33,6 +33,10 @@ function applyOperations<D extends object, S extends object, O extends object>(
 /**
  * Performs the asynchronous provider transaction and prepares a possible
  * replacement. The live in-memory document is intentionally left untouched.
+ *
+ * Only the tab that owns a document runs this, so the store cannot change
+ * under the transaction except through this tab's own flushes, which are the
+ * `pendingProviderOperations` picked up below.
  */
 export async function prepareSyncReconciliation<
   D extends object,
@@ -66,26 +70,10 @@ export async function prepareSyncReconciliation<
     if (!isCurrent()) return;
     const stored = await ctx.getSerializedDoc({ docId });
     if (!isCurrent()) return;
-    // A newer sync already updated IndexedDB; this response must not rewind it.
-    if (stored !== undefined && stored.clock > data.clock) {
-      return;
-    }
-    if (
-      stored !== undefined &&
-      stored.clock >= data.clock &&
-      localOperations.length === 0 &&
-      data.operations.length > 0
-    ) {
-      return;
-    }
-
     const baseSerializedDoc = data.serializedDoc ?? stored?.serializedDoc;
     if (baseSerializedDoc === undefined) return;
-
     if (
       !hasServerSnapshot &&
-      stored !== undefined &&
-      stored.clock >= data.clock &&
       data.operations.length === 0 &&
       localOperations.length === 0
     ) {
@@ -103,11 +91,8 @@ export async function prepareSyncReconciliation<
     applyOperations(client, doc, localOperations, { skipUndo: true });
     const serializedDoc = client["_docBinding"].serialize(doc);
 
-    const recheckStored = await ctx.getSerializedDoc({ docId });
-    if (!isCurrent()) return;
-    if (stored !== undefined && recheckStored?.clock !== stored.clock) return;
-    if (stored === undefined && recheckStored !== undefined) return;
-
+    // This tab is the only writer of the document's store, so the snapshot
+    // read above is still what is stored: nothing has to be checked again.
     // Once the snapshot write starts, finish the matching operation cleanup in
     // this transaction even if the connection changes. Returning between the
     // two writes could commit a snapshot that already contains the operations
