@@ -25,13 +25,11 @@ export function handleDisconnect<
 >({ client }: { client: DocSyncClient<D, S, O> }): void {
   client["_socket"].on("disconnect", (reason) => {
     delete client["_connectionAttempt"];
-    // Invalidate in-flight syncs before releasing their push locks. A reconnect
-    // may start a newer attempt while an abandoned Socket.IO ack still arrives;
-    // the attempt token prevents that old response from mutating current state.
-    for (const cacheEntry of client["_docsCache"].values()) {
-      cacheEntry.activeSyncAttempt = undefined;
-    }
-    client["_pushStatusByDocId"].clear();
+    // In-flight syncs belong to the connection that just dropped. Moving the
+    // generation on makes their late acks fall silent, and clearing the queue
+    // lets the reconnect start fresh attempts without waiting for them.
+    client["_connectionGeneration"] += 1;
+    client["_syncQueue"].clear();
     client["_collabDocIds"].clear();
     clearAllSyncRetries(client);
     for (const state of client["_presenceDebounceState"].values()) {

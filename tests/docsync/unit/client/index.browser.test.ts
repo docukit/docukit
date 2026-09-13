@@ -366,7 +366,6 @@ describe("DocSyncClient", () => {
     const doc = { docId };
     client["_docsCache"].set(docId, {
       promisedDoc: Promise.resolve(doc),
-      activeSyncAttempt: undefined,
       refCount: 1,
       localVersion: 0,
       type: "test",
@@ -1797,6 +1796,56 @@ describe("DocSyncClient", () => {
         expect(secondCallback.mock.calls[0]?.[0].data?.doc).toBe(loadedDoc);
       });
 
+      test("should start a fresh sync for a document reloaded while its sync is in flight", async () => {
+        const client = createClient();
+        const docId = ulid().toLowerCase();
+        socketMockState.deferSyncDocIds.add(docId);
+
+        const unsubscribe = subscribeToDoc(
+          client,
+          { type: "test", id: docId, createIfMissing: true },
+          createCallback(),
+        );
+        await expect
+          .poll(() => socketMockState.deferredSyncAcks.get(docId)?.length)
+          .toBe(1);
+
+        // Unloading drops the entry, so the attempt in flight can no longer
+        // report. Loading again must not queue behind it: that attempt would
+        // exit without running the sync the new query is waiting for.
+        unsubscribe();
+        await expect.poll(() => client["_docsCache"].has(docId)).toBe(false);
+
+        const callback = createCallback();
+        subscribeToDoc(
+          client,
+          { type: "test", id: docId, createIfMissing: true },
+          callback,
+        );
+        await expect
+          .poll(() => socketMockState.deferredSyncAcks.get(docId)?.length)
+          .toBe(2);
+
+        const [staleAck, freshAck] =
+          socketMockState.deferredSyncAcks.get(docId) ?? [];
+        if (!staleAck || !freshAck) {
+          throw new Error("Expected both deferred sync acks");
+        }
+        socketMockState.deferSyncDocIds.delete(docId);
+        freshAck({
+          data: { docId, operations: [], serializedDoc: null, clock: 0 },
+        });
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0])
+          .toMatchObject({ status: "success", fetchStatus: "idle" });
+
+        // The stale ack still arrives; it belongs to a document that is gone.
+        const settledResult = callback.mock.calls.at(-1)?.[0];
+        staleAck({ error: { type: "ValidationError", message: "too late" } });
+        await flushMicrotasks();
+        expect(callback.mock.calls.at(-1)?.[0]).toBe(settledResult);
+      });
+
       test("should discard an older sync after the newer sync succeeds", async () => {
         const client = createClient();
         const callback = createCallback();
@@ -2650,9 +2699,7 @@ describe("DocSyncClient", () => {
         .toBe(1);
 
       await client["_sync"](docId);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe(
-        "pushing-with-pending",
-      );
+      expect(client["_syncQueue"].get(docId)?.rerun).toBe(true);
 
       const rejectedAck = socketMockState.deferredSyncAcks.get(docId)?.[0];
       if (!rejectedAck) throw new Error("Expected deferred sync ack");

@@ -12,6 +12,7 @@ import {
   ChildNode,
   s,
   spyOnRequest,
+  syncStatus,
   triggerSync,
   cacheDoc,
 } from "./utils.js";
@@ -51,7 +52,7 @@ describe("Client 2", () => {
       triggerSync(client, docId);
 
       await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId))
+        .poll(() => syncStatus(client, docId))
         .toBe("pushing-with-pending");
     });
 
@@ -74,12 +75,8 @@ describe("Client 2", () => {
 
       triggerSync(client, docId1);
       triggerSync(client, docId2);
-      await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId1))
-        .toBe("pushing");
-      await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId2))
-        .toBe("pushing");
+      await expect.poll(() => syncStatus(client, docId1)).toBe("pushing");
+      await expect.poll(() => syncStatus(client, docId2)).toBe("pushing");
     });
 
     test("should be idempotent for same docId during push", async () => {
@@ -96,9 +93,7 @@ describe("Client 2", () => {
       triggerSync(client, docId);
       triggerSync(client, docId);
       await expect.poll(() => requestSpy.mock.calls.length).toBe(1);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe(
-        "pushing-with-pending",
-      );
+      expect(syncStatus(client, docId)).toBe("pushing-with-pending");
     });
 
     test("should handle rapid successive calls correctly", async () => {
@@ -118,9 +113,7 @@ describe("Client 2", () => {
       triggerSync(client, docId);
 
       await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
-      await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId))
-        .toBe("idle");
+      await expect.poll(() => syncStatus(client, docId)).toBe("idle");
     });
   });
 
@@ -167,7 +160,7 @@ describe("Client 2", () => {
       let statusDuringPush: string | undefined;
       // eslint-disable-next-line @typescript-eslint/require-await -- sync mock of async interface
       spyOnRequest(client).mockImplementation(async () => {
-        statusDuringPush = client["_pushStatusByDocId"].get(docId);
+        statusDuringPush = syncStatus(client, docId);
         return { data: s({ docId }) };
       });
 
@@ -226,9 +219,7 @@ describe("Client 2", () => {
         "sync",
         expect.objectContaining({ docId, operations: [ops({ test: "data" })] }),
       );
-      await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId))
-        .toBe("idle");
+      await expect.poll(() => syncStatus(client, docId)).toBe("idle");
       expect(await getOperationsCount(client, docId)).toBe(0);
     });
 
@@ -255,9 +246,7 @@ describe("Client 2", () => {
         "sync",
         expect.objectContaining({ docId, operations: [ops({ client: "op" })] }),
       );
-      await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId))
-        .toBe("idle");
+      await expect.poll(() => syncStatus(client, docId)).toBe("idle");
       expect(await getOperationsCount(client, docId)).toBe(0);
     });
 
@@ -285,9 +274,7 @@ describe("Client 2", () => {
         "sync",
         expect.objectContaining({ docId, operations: [] }),
       );
-      await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId))
-        .toBe("idle");
+      await expect.poll(() => syncStatus(client, docId)).toBe("idle");
     });
 
     test("should handle client sends no operations + server returns operations (pull with updates)", async () => {
@@ -336,9 +323,7 @@ describe("Client 2", () => {
         "sync",
         expect.objectContaining({ docId, operations: [] }),
       );
-      await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId))
-        .toBe("idle");
+      await expect.poll(() => syncStatus(client, docId)).toBe("idle");
 
       // Verify server operations were applied to stored document
       const storedDoc = await provider.transaction("readonly", async (ctx) => {
@@ -397,7 +382,7 @@ describe("Client 2", () => {
         docBinding.importHistory = importHistory;
       }
 
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+      expect(syncStatus(client, docId)).toBe("idle");
       const replacementDoc = await client["_docsCache"].get(docId)?.promisedDoc;
       expect(replacementDoc).toBeDefined();
       expect(replacementDoc).not.toBe(liveDoc);
@@ -410,7 +395,7 @@ describe("Client 2", () => {
 
       await client["_sync"](docId);
       expect(requestSpy).toHaveBeenCalledTimes(2);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe("idle");
+      expect(syncStatus(client, docId)).toBe("idle");
       expect(client["_docsCache"].get(docId)?.queryResult).toMatchObject({
         status: "success",
         fetchStatus: "idle",
@@ -577,9 +562,7 @@ describe("Client 2", () => {
 
       await setupDocWithOperations(client, docId);
       triggerSync(client, docId);
-      await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId))
-        .toBe("idle");
+      await expect.poll(() => syncStatus(client, docId)).toBe("idle");
     });
   });
 
@@ -621,9 +604,7 @@ describe("Client 2", () => {
       await setupDocWithOperations(client, docId);
       triggerSync(client, docId);
       await expect.poll(() => requestSpy.mock.calls.length).toBe(2);
-      await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId))
-        .toBe("idle");
+      await expect.poll(() => syncStatus(client, docId)).toBe("idle");
     });
 
     test("should set status to idle before retry", async () => {
@@ -632,7 +613,7 @@ describe("Client 2", () => {
       const statusHistory: (string | undefined)[] = [];
       const requestSpy = spyOnRequest(client);
       requestSpy.mockImplementation(() => {
-        statusHistory.push(client["_pushStatusByDocId"].get(docId));
+        statusHistory.push(syncStatus(client, docId));
         if (statusHistory.length === 1)
           return Promise.reject(new Error("Network error"));
         return Promise.resolve({ data: s({ docId }) });
@@ -764,18 +745,12 @@ describe("Client 2", () => {
       await setupDocWithOperations(client, docId);
 
       triggerSync(client, docId);
-      await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId))
-        .toBe("pushing");
+      await expect.poll(() => syncStatus(client, docId)).toBe("pushing");
 
       triggerSync(client, docId);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe(
-        "pushing-with-pending",
-      );
+      expect(syncStatus(client, docId)).toBe("pushing-with-pending");
 
-      await expect
-        .poll(() => client["_pushStatusByDocId"].get(docId))
-        .toBe("idle");
+      await expect.poll(() => syncStatus(client, docId)).toBe("idle");
     });
   });
 });
