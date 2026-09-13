@@ -286,6 +286,34 @@ describe("Server Events", () => {
       });
     });
 
+    test("should emit when a client subscribes without syncing", async () => {
+      const auth = tokenAuth("valid-user-doc-subscribe-only");
+      await testWrapper({ auth }, async (T) => {
+        let capturedEvent: DocSubscribeEvent | undefined;
+        const clientId = T.client["_clientId"];
+
+        T.server.onDocSubscribe((event) => {
+          capturedEvent = event;
+        });
+
+        await T.waitForConnect();
+        const response = await new Promise((resolve) => {
+          T.socket.emit(
+            "subscribe-doc",
+            { docId: "doc-subscribe-only" },
+            resolve,
+          );
+        });
+
+        expect(response).toStrictEqual({ success: true });
+        expect(capturedEvent).toMatchObject({
+          userId: "user-doc-subscribe-only",
+          docId: "doc-subscribe-only",
+          clientId,
+        });
+      });
+    });
+
     test("should emit when client explicitly unsubscribes from a document", async () => {
       const auth = tokenAuth("valid-user-doc-unsubscribe");
       await testWrapper({ auth }, async (T) => {

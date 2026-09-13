@@ -3,6 +3,7 @@
 import type { DeleteDocHandler } from "../server/handlers/deleteDoc.js";
 import type { PresenceHandler } from "../server/handlers/presence.js";
 import type { SyncHandler } from "../server/handlers/sync.js";
+import type { SubscribeDocHandler } from "../server/handlers/subscribe.js";
 import type { UnsubscribeDocHandler } from "../server/handlers/unsubscribe.js";
 
 /**
@@ -91,10 +92,15 @@ export type DeleteDocResponse = { success: boolean };
 export type UnsubscribeDocRequest = { docId: string };
 export type UnsubscribeDocResponse = { success: boolean };
 
+/** Shared request/response for the subscribe-doc event. */
+export type SubscribeDocRequest = { docId: string };
+export type SubscribeDocResponse = { success: boolean };
+
 export type DocSyncEventName =
   | "sync"
   | "presence"
   | "delete-doc"
+  | "subscribe-doc"
   | "unsubscribe-doc";
 
 // ============================================================================
@@ -131,6 +137,7 @@ export type ClientToServerEvents<S, O> = {
   sync: SyncHandler<S, O>;
   presence: PresenceHandler;
   "delete-doc": DeleteDocHandler;
+  "subscribe-doc": SubscribeDocHandler;
   "unsubscribe-doc": UnsubscribeDocHandler;
 };
 

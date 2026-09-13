@@ -594,6 +594,30 @@ describe("Ownership", () => {
     );
   });
 
+  test("a mirror receives collaborator presence through its subscription", async () => {
+    await testWrapper(async ({ docId, reference, otherTab, otherDevice }) => {
+      await reference.loadDoc();
+      await otherTab.loadDoc();
+      await otherDevice.loadDoc();
+      expect(otherTab.role()).toBe("mirror");
+
+      const seen: Record<string, unknown>[] = [];
+      const off = otherTab.client.getPresence({ docId }, (presence) => {
+        seen.push(presence);
+      });
+      // Presence reaches the server only once the document has collaborators.
+      await expect
+        .poll(() => otherDevice.client["_collabDocIds"].has(docId))
+        .toBe(true);
+      otherDevice.client.setPresence({ docId, presence: { cursor: 1 } });
+
+      await expect
+        .poll(() => seen.at(-1)?.[otherDevice.client["_clientId"]])
+        .toStrictEqual({ cursor: 1 });
+      off();
+    });
+  });
+
   test("a mirror settles its query on the owner's syncs", async () => {
     await testWrapper(async ({ docId, reference, otherTab }) => {
       await reference.loadDoc();

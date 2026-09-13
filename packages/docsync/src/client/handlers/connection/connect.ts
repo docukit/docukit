@@ -1,5 +1,6 @@
 import type { DocSyncClient } from "../../index.js";
 import { dispatchAllDocQueriesConnected } from "../../utils/dispatchDocQueryAction.js";
+import { handleSubscribe } from "../clientInitiated/subscribe.js";
 import { handleSync } from "../clientInitiated/sync/sync.js";
 
 export function handleConnect<
@@ -24,8 +25,12 @@ export function handleConnect<
           client["_flushLocalOperations"](docId, { sync: false }),
         ),
       );
-      for (const docId of client["_docsCache"].keys()) {
-        void handleSync(client, docId);
+      for (const [docId, cacheEntry] of client["_docsCache"]) {
+        if (cacheEntry.ownership.role === "owner") {
+          void handleSync(client, docId);
+        } else {
+          void handleSubscribe(client["_socket"], { docId });
+        }
       }
     })();
   });

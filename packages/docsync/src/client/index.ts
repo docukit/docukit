@@ -24,6 +24,7 @@ import { handleCollaboration } from "./handlers/serverInitiated/collaboration.js
 import { handleDirty } from "./handlers/serverInitiated/dirty.js";
 import { handlePresence } from "./handlers/clientInitiated/presence.js";
 import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
+import { handleSubscribe } from "./handlers/clientInitiated/subscribe.js";
 import { handleSync } from "./handlers/clientInitiated/sync/sync.js";
 import { handleUnsubscribe } from "./handlers/clientInitiated/unsubscribe.js";
 import { handleIdentity } from "./handlers/serverInitiated/identity.js";
@@ -486,7 +487,13 @@ export class DocSyncClient<
         }
 
         if (this._socket.connected) {
-          void handleSync(this, docId);
+          // The owner syncs. A mirror only subscribes, so the document's
+          // presence and collaboration updates still reach it.
+          if (cacheEntry.ownership.role === "owner") {
+            void handleSync(this, docId);
+          } else {
+            void handleSubscribe(this._socket, { docId });
+          }
         }
       } catch (e) {
         const cacheEntry = this._docsCache.get(docId);
