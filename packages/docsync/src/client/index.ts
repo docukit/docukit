@@ -33,6 +33,7 @@ import {
   dispatchAllDocQueriesDisconnected,
   dispatchLocalDocFound,
   dispatchLocalQueryError,
+  dispatchNetworkDocFound,
 } from "./utils/dispatchDocQueryAction.js";
 import { getDeviceId } from "./utils/getDeviceId.js";
 import {
@@ -476,6 +477,12 @@ export class DocSyncClient<
 
         if (doc) {
           dispatchLocalDocFound(this, docId, { doc, docId });
+          // A mirror has no sync of its own to settle its query with. The
+          // owner keeps the document fresh, and its later syncs reach this
+          // query through `SYNCED`.
+          if (cacheEntry.ownership.role !== "owner") {
+            dispatchNetworkDocFound(this, docId, { doc, docId });
+          }
         }
 
         if (this._socket.connected) {
@@ -550,15 +557,25 @@ export class DocSyncClient<
   }
 
   /**
-   * Takes the document over from whichever tab owns it, then loads it. The
-   * order matters: the load reads what the previous owner persisted while
-   * handing over, and no other tab writes the store while this one loads.
+   * Loads the document as its owner, or as a mirror when another tab owns it
+   * and the store already has it: that tab keeps it fresh, and the first
+   * edit here takes it over. A document the store does not have is fetched
+   * or created, which needs ownership, so it is taken over first. Acquiring
+   * before loading matters: the load then reads what the previous owner
+   * persisted while handing over, and no other tab writes meanwhile.
    */
   private async _loadOwnedDoc(
     docId: string,
     type?: string,
   ): Promise<D | undefined> {
-    if (!(await acquireOwnership(this, docId))) return undefined;
+    const cacheEntry = this._docsCache.get(docId);
+    if (!cacheEntry) return undefined;
+    if (!(await acquireOwnership(this, docId, { ifAvailable: true }))) {
+      if (this._docsCache.get(docId) !== cacheEntry) return undefined;
+      const mirrored = await this._loadOrCreateDoc(docId);
+      if (mirrored || cacheEntry.ownership.role === "owner") return mirrored;
+      if (!(await acquireOwnership(this, docId))) return undefined;
+    }
     const doc = await this._loadOrCreateDoc(docId, type);
     const ownership = this._docsCache.get(docId)?.ownership;
     if (ownership?.pendingRequest !== undefined) {

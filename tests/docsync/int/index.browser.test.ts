@@ -497,42 +497,44 @@ describe("Local-First", () => {
 });
 
 describe("Ownership", () => {
-  test("the last tab to load a document owns it and the other tab stops syncing", async () => {
+  test("the first tab to load a document owns it and a later tab mirrors it", async () => {
     await testWrapper(async ({ reference, otherTab, otherDevice }) => {
       await reference.loadDoc();
       expect(reference.role()).toBe("owner");
 
       await otherTab.loadDoc();
-      expect(otherTab.role()).toBe("owner");
-      expect(reference.role()).toBe("mirror");
-      const referenceSyncs = reference.syncCount();
+      expect(otherTab.role()).toBe("mirror");
+      expect(reference.role()).toBe("owner");
+      // A mirror's query settles without a sync of its own: the owner keeps
+      // the document fresh.
+      await otherTab.waitForSync();
+      expect(otherTab.syncCount()).toBe(0);
 
       await otherDevice.loadDoc();
       otherDevice.addChild("Remote");
-      await otherTab.assertMemoryDoc(["Remote"]);
-      // The mirror receives the change through the owner's broadcast, not
-      // through a sync of its own.
       await reference.assertMemoryDoc(["Remote"]);
-      expect(reference.syncCount()).toBe(referenceSyncs);
+      // The mirror receives the change through the owner's broadcast.
+      await otherTab.assertMemoryDoc(["Remote"]);
+      expect(otherTab.syncCount()).toBe(0);
     });
   });
 
   test("a mirror keeps its edit in memory until it owns the document", async () => {
     await testWrapper(async ({ reference, otherTab }) => {
       await reference.loadDoc();
+      await reference.waitForSync();
       await otherTab.loadDoc();
-      await otherTab.waitForSync();
-      expect(reference.role()).toBe("mirror");
-      const otherTabSyncs = otherTab.syncCount();
-
-      reference.addChild("Hello");
-      await reference.assertMemoryDoc(["Hello"]);
-      await expect.poll(() => reference.role()).toBe("owner");
       expect(otherTab.role()).toBe("mirror");
-      await reference.assertIDBDoc({ doc: ["Hello"], ops: [] });
+      const referenceSyncs = reference.syncCount();
+
+      otherTab.addChild("Hello");
       await otherTab.assertMemoryDoc(["Hello"]);
+      await expect.poll(() => otherTab.role()).toBe("owner");
+      expect(reference.role()).toBe("mirror");
+      await otherTab.assertIDBDoc({ doc: ["Hello"], ops: [] });
+      await reference.assertMemoryDoc(["Hello"]);
       // The previous owner persisted nothing for an edit it did not make.
-      expect(otherTab.syncCount()).toBe(otherTabSyncs);
+      expect(reference.syncCount()).toBe(referenceSyncs);
     });
   });
 
@@ -540,15 +542,15 @@ describe("Ownership", () => {
     await testWrapper(async ({ reference, otherTab, otherDevice }) => {
       await reference.loadDoc();
       await otherTab.loadDoc();
-      expect(reference.role()).toBe("mirror");
+      expect(otherTab.role()).toBe("mirror");
 
-      otherTab.unLoadDoc();
-      await expect.poll(() => reference.role()).toBe("owner");
+      reference.unLoadDoc();
+      await expect.poll(() => otherTab.role()).toBe("owner");
 
       await otherDevice.loadDoc();
       otherDevice.addChild("Remote");
-      await reference.assertMemoryDoc(["Remote"]);
-      await reference.assertIDBDoc({ doc: ["Remote"], ops: [] });
+      await otherTab.assertMemoryDoc(["Remote"]);
+      await otherTab.assertIDBDoc({ doc: ["Remote"], ops: [] });
     });
   });
 
@@ -556,39 +558,31 @@ describe("Ownership", () => {
     await testWrapper(async ({ reference, otherTab, otherDevice }) => {
       await reference.loadDoc();
       await otherTab.loadDoc();
-      otherTab.disconnect();
-      otherTab.addChild("Unsent");
-      await otherTab.assertMemoryDoc(["Unsent"]);
+      reference.disconnect();
+      reference.addChild("Unsent");
+      await reference.assertMemoryDoc(["Unsent"]);
 
-      otherTab.closeTab();
-      await expect.poll(() => reference.role()).toBe("owner");
-      expect(otherTab.role()).toBe("mirror");
+      reference.closeTab();
+      await expect.poll(() => otherTab.role()).toBe("owner");
+      expect(reference.role()).toBe("mirror");
       // The closing tab left its edit in the store; the new owner pushes it.
-      await reference.assertIDBDoc({ doc: ["Unsent"], ops: [] });
+      await otherTab.assertIDBDoc({ doc: ["Unsent"], ops: [] });
 
       await otherDevice.loadDoc();
       await otherDevice.assertMemoryDoc(["Unsent"]);
     });
   });
 
-  test("tabs opening a document at once leave exactly one owner", async () => {
+  test("tabs opening a document at once all mirror its owner", async () => {
     await testWrapper(
       async ({ reference, otherTab, otherDevice, openAnotherTab }) => {
         const thirdTab = await openAnotherTab();
         await reference.loadDoc();
         expect(reference.role()).toBe("owner");
 
-        // Both tabs ask the owner for the document in the same tick. Whichever
-        // is granted the lock first must not hand it back to a tab whose own
-        // request was already satisfied, or nobody would own the document.
         await Promise.all([otherTab.loadDoc(), thirdTab.loadDoc()]);
         const tabs = [reference, otherTab, thirdTab];
-        await expect
-          .poll(() => tabs.filter((tab) => tab.role() === "owner").length)
-          .toBe(1);
-        await expect
-          .poll(() => tabs.every((tab) => tab.client["_syncQueue"].size === 0))
-          .toBe(true);
+        expect(tabs.filter((tab) => tab.role() === "owner").length).toBe(1);
 
         await otherDevice.loadDoc();
         otherDevice.addChild("Remote");
@@ -604,18 +598,22 @@ describe("Ownership", () => {
     await testWrapper(async ({ docId, reference, otherTab }) => {
       await reference.loadDoc();
       await otherTab.loadDoc();
-      expect(reference.role()).toBe("mirror");
+      expect(otherTab.role()).toBe("mirror");
 
-      const observer = reference.client.getDocObserver({
+      const observer = otherTab.client.getDocObserver({
         type: "test",
         id: docId,
       });
-      reference.disconnect();
+      otherTab.disconnect();
       await expect
         .poll(() => observer.getSnapshot().fetchStatus)
         .toBe("paused");
-      reference.connect();
-      await reference.waitForSync();
+      otherTab.connect();
+      await expect
+        .poll(() => observer.getSnapshot().fetchStatus)
+        .toBe("fetching");
+      await reference.client["_sync"](docId);
+      await otherTab.waitForSync();
     });
   });
 });

@@ -14,8 +14,10 @@ import {
 /**
  * One tab owns a document at a time. Only the owner writes the document's
  * local store and syncs it with the server; every other tab that has the
- * document loaded is a mirror, kept current by the owner's broadcasts. The
- * owner is whichever tab loaded or edited the document last.
+ * document loaded is a mirror, kept current by the owner's broadcasts. A tab
+ * takes a document over when it edits it, or when it loads a document that
+ * is not in the store yet; opening a document another tab already owns
+ * leaves that tab in charge.
  *
  * Ownership is a Web Lock named after the user and the document, so it is
  * released by the browser when the owning tab goes away. Handing it over on
@@ -25,30 +27,26 @@ import {
  */
 export type DocOwnership = {
   role: "owner" | "mirror";
-  /** Gives the lock up. Present only while this tab is the owner. */
-  release?: () => void;
+  /**
+   * Gives the lock up, settling once it is free. Present only while this tab
+   * is the owner.
+   */
+  release?: () => Promise<void>;
   acquiring?: Promise<boolean>;
   releasing?: Promise<void>;
-  /**
-   * The tab that asked for the document while this one was still taking it,
-   * and that has not been seen taking it since.
-   */
+  /** The tab that asked for the document while this one was still taking it. */
   pendingRequest?: string;
   /** Settles this tab's request once the owner acknowledges it. */
   acknowledged?: () => void;
-  /** Wakes this tab's request when the lock went to another tab. */
-  takenByOther?: () => void;
 };
 
 /**
- * Handoff messages carry the requesting tab's client id, so an owner can
- * answer the right tab and a tab still waiting can tell whether the lock it
- * saw taken was the one it asked for.
+ * Handoff messages carry the requesting tab's client id, so an owner answers
+ * the right tab.
  */
 export type OwnershipMessage =
   | { type: "OWNERSHIP_REQUEST"; docId: string; requestId: string }
   | { type: "OWNERSHIP_RELEASING"; docId: string; requestId: string }
-  | { type: "OWNERSHIP_TAKEN"; docId: string; requestId: string }
   | { type: "OWNERSHIP_RELEASED"; docId: string }
   | { type: "SYNCED"; docId: string; found: boolean };
 
@@ -67,7 +65,8 @@ const lockName = (userId: string, docId: string) =>
 const hasWebLocks = () =>
   typeof navigator !== "undefined" && "locks" in navigator;
 
-type HeldLock = { release: () => void };
+/** A held lock. `release` settles once the lock is actually free again. */
+type HeldLock = { release: () => Promise<void> };
 
 /**
  * Requests a Web Lock and resolves once it is held, or with `undefined` when
@@ -80,29 +79,39 @@ function requestLock(
 ): Promise<HeldLock | undefined> {
   return new Promise((resolve) => {
     let granted = false;
-    void navigator.locks
-      .request(name, options, (lock) => {
-        if (!lock) {
-          resolve(undefined);
-          return;
-        }
-        granted = true;
-        return new Promise<void>((release) => resolve({ release }));
-      })
-      .catch(() => {
-        // Rejected before the callback ran: the request was aborted. Rejected
-        // after: another tab stole the lock.
-        if (granted) onLost();
-        else resolve(undefined);
+    const request = navigator.locks.request(name, options, (lock) => {
+      if (!lock) {
+        resolve(undefined);
+        return;
+      }
+      granted = true;
+      return new Promise<void>((release) => {
+        resolve({
+          release: () => {
+            release();
+            return settled;
+          },
+        });
       });
+    });
+    const settled: Promise<void> = request.then(
+      () => undefined,
+      () => undefined,
+    );
+    void request.catch(() => {
+      // Rejected before the callback ran: the request was aborted. Rejected
+      // after: another tab stole the lock.
+      if (granted) onLost();
+      else resolve(undefined);
+    });
   });
 }
 
 /**
- * Asks the owner for the document and waits for its lock. The blocking lock
- * request queues behind every other tab that is waiting, so the lock can be
- * granted to one of them first; that tab announces it, and this one asks
- * again until the lock reaches it.
+ * Asks the owner for the document and waits for its lock. Requests do not
+ * overlap in practice: a tab asks when it is edited, and one keyboard edits
+ * one tab at a time. If two tabs ever ask at once, the lock goes to the
+ * first and that tab passes the document on (see `pendingRequest`).
  */
 async function takeOverLock<
   D extends object,
@@ -115,42 +124,32 @@ async function takeOverLock<
   name: string,
   onLost: () => void,
 ): Promise<HeldLock | undefined> {
-  const requestId = client["_clientId"];
+  const acknowledged = new Promise<{ type: "acknowledged" | "silent" }>(
+    (resolve) => {
+      ownership.acknowledged = () => resolve({ type: "acknowledged" });
+      setTimeout(() => resolve({ type: "silent" }), OWNERSHIP_ACK_TIMEOUT);
+    },
+  );
+  client["_bcHelper"]?.broadcast({
+    type: "OWNERSHIP_REQUEST",
+    docId,
+    requestId: client["_clientId"],
+  });
   const controller = new AbortController();
   const pending = requestLock(name, { signal: controller.signal }, onLost).then(
     (held) => ({ type: "lock" as const, held }),
   );
   try {
-    for (;;) {
-      const acknowledged = new Promise<{ type: "acknowledged" | "silent" }>(
-        (resolve) => {
-          ownership.acknowledged = () => resolve({ type: "acknowledged" });
-          setTimeout(() => resolve({ type: "silent" }), OWNERSHIP_ACK_TIMEOUT);
-        },
-      );
-      client["_bcHelper"]?.broadcast({
-        type: "OWNERSHIP_REQUEST",
-        docId,
-        requestId,
-      });
-      const answer = await Promise.race([pending, acknowledged]);
-      if (answer.type === "lock") return answer.held;
-      if (answer.type === "silent") {
-        // Nobody answered: the owner is gone, or frozen. Its lock is taken.
-        controller.abort();
-        const granted = (await pending).held;
-        if (granted) return granted;
-        return requestLock(name, { steal: true }, onLost);
-      }
-      const takenByOther = new Promise<{ type: "taken" }>((resolve) => {
-        ownership.takenByOther = () => resolve({ type: "taken" });
-      });
-      const outcome = await Promise.race([pending, takenByOther]);
-      if (outcome.type === "lock") return outcome.held;
-    }
+    const answer = await Promise.race([pending, acknowledged]);
+    if (answer.type === "lock") return answer.held;
+    if (answer.type === "acknowledged") return (await pending).held;
+    // Nobody answered: the owner is gone, or frozen. Its lock is taken.
+    controller.abort();
+    const granted = (await pending).held;
+    if (granted) return granted;
+    return requestLock(name, { steal: true }, onLost);
   } finally {
     delete ownership.acknowledged;
-    delete ownership.takenByOther;
   }
 }
 
@@ -171,8 +170,13 @@ export async function acquireOwnership<
   const entry = client["_docsCache"].get(docId);
   if (!entry) return false;
   const ownership = entry.ownership;
+  if (ownership.acquiring) {
+    // Join the attempt in flight. If it comes back empty-handed, the lock may
+    // have been freed since, so this call makes an attempt of its own.
+    if (await ownership.acquiring) return true;
+    if (client["_docsCache"].get(docId) !== entry) return false;
+  }
   if (ownership.role === "owner") return true;
-  if (ownership.acquiring) return ownership.acquiring;
 
   const acquiring = (async () => {
     const { identity } = await client["_localPromise"];
@@ -194,16 +198,11 @@ export async function acquireOwnership<
     }
     if (!held) return false;
     if (client["_docsCache"].get(docId) !== entry) {
-      held.release();
+      void held.release();
       return false;
     }
     ownership.role = "owner";
     ownership.release = held.release;
-    client["_bcHelper"]?.broadcast({
-      type: "OWNERSHIP_TAKEN",
-      docId,
-      requestId: client["_clientId"],
-    });
     return true;
   })();
   ownership.acquiring = acquiring;
@@ -234,9 +233,14 @@ export function releaseOwnership<
 
   const releasing = (async () => {
     await client["_flushLocalOperations"](docId, { sync: false });
-    await client["_syncQueue"].get(docId)?.done;
+    // A sync in flight for a document that is still loaded writes the store
+    // when its response arrives, so it gets to finish first. One for a
+    // document that was unloaded is stale and writes nothing.
+    if (client["_docsCache"].get(docId)?.ownership === ownership) {
+      await client["_syncQueue"].get(docId)?.done;
+    }
     ownership.role = "mirror";
-    ownership.release?.();
+    await ownership.release?.();
     delete ownership.release;
     if (options.broadcastReleased) {
       client["_bcHelper"]?.broadcast({ type: "OWNERSHIP_RELEASED", docId });
@@ -268,7 +272,7 @@ export function releaseAllOwnership<
     if (ownership.role !== "owner") continue;
     void client["_flushLocalOperations"](docId, { sync: false });
     ownership.role = "mirror";
-    ownership.release?.();
+    void ownership.release?.();
     delete ownership.release;
     client["_bcHelper"]?.broadcast({ type: "OWNERSHIP_RELEASED", docId });
   }
@@ -408,8 +412,7 @@ export function handleOwnershipMessage<
         });
       } else if (ownership.acquiring) {
         // This tab is in line for the lock. It answers now and passes the
-        // document on as soon as it has it, unless the asking tab is seen
-        // taking the lock first.
+        // document on as soon as it has it.
         answer();
         ownership.pendingRequest = message.requestId;
       }
@@ -417,13 +420,6 @@ export function handleOwnershipMessage<
     }
     case "OWNERSHIP_RELEASING": {
       if (message.requestId === client["_clientId"]) ownership.acknowledged?.();
-      return;
-    }
-    case "OWNERSHIP_TAKEN": {
-      if (ownership.pendingRequest === message.requestId) {
-        delete ownership.pendingRequest;
-      }
-      ownership.takenByOther?.();
       return;
     }
     case "OWNERSHIP_RELEASED": {
