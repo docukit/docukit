@@ -369,6 +369,7 @@ describe("DocSyncClient", () => {
       refCount: 1,
       localVersion: 0,
       type: "test",
+      ownership: { role: "owner" },
       queryResult: {
         status: "success",
         fetchStatus: "idle",
@@ -1039,6 +1040,7 @@ describe("DocSyncClient", () => {
           timing: { collabMaxDebounce: 50, singleClientMaxDebounce: 1000 },
         });
         await client["_localPromise"];
+        cacheDebounceTestDoc(client, "doc-1");
 
         client.onLocalOperations({
           docId: "doc-1",
@@ -3142,7 +3144,7 @@ describe("DocSyncClient", () => {
   describe("BroadcastChannel", () => {
     test("should send OPERATIONS message to BroadcastChannel on document change", async () => {
       const originalBroadcastChannel = globalThis.BroadcastChannel;
-      const postMessageSpy = vi.fn();
+      const postMessageSpy = vi.fn<(message: { type: string }) => void>();
 
       class MockBroadcastChannel {
         onmessage: ((ev: MessageEvent) => void) | null = null;
@@ -3172,8 +3174,12 @@ describe("DocSyncClient", () => {
         // Trigger a document change
         doc.root.append(doc.createNode(ChildNode));
         await expect
-          .poll(() => postMessageSpy.mock.calls.length)
-          .toBeGreaterThan(0);
+          .poll(() =>
+            postMessageSpy.mock.calls.some(
+              ([message]) => message.type === "OPERATIONS",
+            ),
+          )
+          .toBe(true);
         expect(postMessageSpy).toHaveBeenCalledWith({
           type: "OPERATIONS",
           docId,

@@ -8,9 +8,14 @@ import {
 } from "../../../utils/dispatchDocQueryAction.js";
 import { DocSyncError } from "../../../utils/DocSyncError.js";
 import { getOwnPresencePatch } from "../../../utils/getOwnPresencePatch.js";
+import {
+  exportHistoryFromCurrentSource,
+  replaceDocInCache,
+  resolveHistorySource,
+  resolvePendingMemoryOperations,
+} from "../../../utils/liveDoc.js";
 import { getLocalDocVersion } from "../../../utils/localDocVersion.js";
 import { request } from "../../../utils/request.js";
-import { setupDocChangeListener } from "../../../utils/setupDocChangeListener.js";
 import {
   cancelPendingSyncRetry,
   clearSyncRetry,
@@ -23,10 +28,10 @@ import {
 
 /**
  * What a sync attempt was started for. It stays valid while the connection it
- * was sent on is still the current one and the document is still the same
- * loaded instance. Once either changes, the attempt has nothing left to report
- * to: the query was already paused or removed, and a newer attempt may own the
- * document on the new connection.
+ * was sent on is still the current one, the document is still the same loaded
+ * instance, and this tab still owns it. Once any of those changes, the attempt
+ * has nothing left to report to: the query was paused or removed, or another
+ * tab is syncing the document now.
  */
 type SyncAttemptToken = { generation: number; cacheEntry: object };
 
@@ -44,9 +49,11 @@ function isLiveSyncAttempt<
   docId: string,
   token: SyncAttemptToken,
 ): boolean {
+  const cacheEntry = client["_docsCache"].get(docId);
   return (
     client["_connectionGeneration"] === token.generation &&
-    client["_docsCache"].get(docId) === token.cacheEntry
+    cacheEntry === token.cacheEntry &&
+    cacheEntry?.ownership.role === "owner"
   );
 }
 
@@ -68,137 +75,6 @@ async function applyServerOperations<
   for (const op of args.operations) {
     client["_applyOperationsFrom"]("network", doc, op, { skipUndo: true });
   }
-}
-
-function replaceDocInCache<
-  D extends object,
-  S extends object,
-  O extends object,
->(
-  client: DocSyncClient<D, S, O>,
-  args: {
-    docId: string;
-    doc: D;
-    exportedHistory?: { promisedDoc: Promise<D | undefined>; value: unknown };
-  },
-) {
-  const cacheEntry = client["_docsCache"].get(args.docId);
-  if (!cacheEntry) return;
-
-  const previousPromisedDoc = cacheEntry.promisedDoc;
-  const nextPromisedDoc = Promise.resolve(args.doc);
-  const docBinding = client["_docBinding"];
-  let historyImportError: { historyImportError: unknown } | undefined;
-  if (
-    args.exportedHistory?.promisedDoc === previousPromisedDoc &&
-    docBinding.importHistory
-  ) {
-    try {
-      docBinding.importHistory(args.doc, args.exportedHistory.value);
-    } catch (error) {
-      historyImportError = { historyImportError: error };
-    }
-  }
-  setupDocChangeListener(client, args);
-  // The entry itself is kept: it identifies the loaded document for the sync
-  // attempt that is replacing its doc, and for any subscriber holding it.
-  cacheEntry.promisedDoc = nextPromisedDoc;
-
-  void previousPromisedDoc
-    .then((previousDoc) => {
-      const currentEntry = client["_docsCache"].get(args.docId);
-      if (
-        currentEntry?.promisedDoc === nextPromisedDoc &&
-        previousDoc &&
-        previousDoc !== args.doc
-      ) {
-        client["_docBinding"].dispose(previousDoc);
-      }
-    })
-    .catch(() => undefined);
-
-  return historyImportError;
-}
-
-type HistorySource<D extends object> = {
-  doc: D;
-  promisedDoc: Promise<D | undefined>;
-};
-
-async function resolveHistorySourceForPotentialReplacement<
-  D extends object,
-  S extends object,
-  O extends object,
->(
-  client: DocSyncClient<D, S, O>,
-  args: {
-    docId: string;
-    hasServerSnapshot: boolean;
-    hasConcurrentOperations: boolean;
-  },
-): Promise<HistorySource<D> | undefined> {
-  if (!args.hasServerSnapshot && !args.hasConcurrentOperations) return;
-  const docBinding = client["_docBinding"];
-  if (!docBinding.exportHistory) return;
-  const cacheEntry = client["_docsCache"].get(args.docId);
-  if (!cacheEntry) return;
-  const doc = await cacheEntry.promisedDoc;
-  if (!doc) return;
-  return { doc, promisedDoc: cacheEntry.promisedDoc };
-}
-
-function exportHistoryFromCurrentSource<
-  D extends object,
-  S extends object,
-  O extends object,
->(
-  client: DocSyncClient<D, S, O>,
-  docId: string,
-  source: HistorySource<D> | undefined,
-): { promisedDoc: Promise<D | undefined>; value: unknown } | undefined {
-  if (!source) return;
-  const cacheEntry = client["_docsCache"].get(docId);
-  const docBinding = client["_docBinding"];
-  if (
-    cacheEntry?.promisedDoc !== source.promisedDoc ||
-    !docBinding.exportHistory
-  )
-    return;
-  return {
-    promisedDoc: source.promisedDoc,
-    value: docBinding.exportHistory(source.doc),
-  };
-}
-
-/**
- * Resolves the in-memory operations batch across the history export.
- *
- * `exportHistory` force-commits the live doc, which pushes the resulting
- * operation into the batch *and* can flush it in the same synchronous turn:
- * `_flushLocalOperations` deletes the batch entry before its first await, so
- * reading the batch only after the export would miss that operation. The
- * replacement doc would then be swapped in without an edit whose undo entry we
- * just exported. The flush keeps the array it took, and the push happens before
- * it, so the reference captured beforehand still holds the operation.
- */
-function resolvePendingMemoryOperations<
-  D extends object,
-  S extends object,
-  O extends object,
->(
-  client: DocSyncClient<D, S, O>,
-  docId: string,
-  batchBeforeExport: O[] | undefined,
-): O[] {
-  const batchAfterExport = client["_localOpsBatchState"].get(docId)?.data;
-  if (batchBeforeExport === undefined) return batchAfterExport ?? [];
-  if (
-    batchAfterExport === undefined ||
-    batchAfterExport === batchBeforeExport
-  ) {
-    return batchBeforeExport;
-  }
-  return [...batchBeforeExport, ...batchAfterExport];
 }
 
 function broadcastServerOperations<
@@ -306,15 +182,12 @@ async function runSyncAttempt<
 
   // Resolve the live doc before starting the asynchronous provider work. The
   // history itself is exported only in the synchronous final section below.
-  const historySource = await resolveHistorySourceForPotentialReplacement(
-    client,
-    {
-      docId,
-      hasServerSnapshot: data.serializedDoc !== null,
-      hasConcurrentOperations:
-        data.operations.length > 0 && operations.length > 0,
-    },
-  );
+  const mayReplaceDoc =
+    data.serializedDoc !== null ||
+    (data.operations.length > 0 && operations.length > 0);
+  const historySource = mayReplaceDoc
+    ? await resolveHistorySource(client, docId)
+    : undefined;
   if (!isLive()) return stale;
   const preparedReconciliation = await prepareSyncReconciliation(client, {
     provider,
@@ -407,17 +280,27 @@ export const handleSync = async <
     return;
   }
   const cacheEntry = client["_docsCache"].get(docId);
-  if (!cacheEntry) return;
+  // Only the tab that owns the document syncs it; a mirror is kept current by
+  // the owner's broadcasts.
+  if (cacheEntry?.ownership.role !== "owner") return;
 
   cancelPendingSyncRetry(client, docId);
   const token: SyncAttemptToken = {
     generation: client["_connectionGeneration"],
     cacheEntry,
   };
-  const slot = { rerun: false, token };
+  let finish: () => void = () => undefined;
+  const slot = {
+    rerun: false,
+    token,
+    done: new Promise<void>((resolve) => {
+      finish = resolve;
+    }),
+  };
   queue.set(docId, slot);
   const release = () => {
     if (queue.get(docId) === slot) queue.delete(docId);
+    finish();
   };
   const isLive = () => isLiveSyncAttempt(client, docId, token);
 
@@ -480,10 +363,12 @@ export const handleSync = async <
 
   const latestCacheEntry = client["_docsCache"].get(docId);
   if (!latestCacheEntry) return;
-  if (
+  const found =
     latestCacheEntry.queryResult.status === "success" &&
-    latestCacheEntry.queryResult.data !== undefined
-  ) {
+    latestCacheEntry.queryResult.data !== undefined;
+  // The mirrors of this document settle their queries on the owner's syncs.
+  client["_bcHelper"]?.broadcast({ type: "SYNCED", docId, found });
+  if (latestCacheEntry.queryResult.data !== undefined) {
     dispatchNetworkDocFound(client, docId, latestCacheEntry.queryResult.data);
     return;
   }

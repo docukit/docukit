@@ -146,8 +146,18 @@ type ClientUtils = {
   doc: Doc | undefined;
   loadDoc: () => Promise<void>;
   unLoadDoc: () => void;
+  /** Hands every owned document over, as a tab that is closing does. */
+  closeTab: () => void;
   addChild: (text: string) => void;
   addChildSkippingUndo: (text: string) => void;
+  /** "owner" or "mirror" for the test document, `undefined` when not loaded. */
+  role: () => "owner" | "mirror" | undefined;
+  /** Number of sync requests this client sent for the test document. */
+  syncCount: () => number;
+  /** Resolves once the test document's query is no longer fetching. */
+  waitForSync: () => Promise<void>;
+  readMemoryDoc: () => string[] | undefined;
+  readIDBDoc: () => Promise<{ doc: string[]; ops: string[] } | undefined>;
   assertIDBDoc: (expected?: { doc: string[]; ops: string[] }) => Promise<void>;
   assertMemoryDoc: (children?: string[]) => Promise<void>;
   assertCanUndo: (expected: boolean) => Promise<void>;
@@ -166,6 +176,8 @@ type ClientsSetup = {
   reference: ClientUtils;
   otherTab: ClientUtils;
   otherDevice: ClientUtils;
+  /** Opens one more tab for the reference user, sharing its store. */
+  openAnotherTab: () => Promise<ClientUtils>;
 };
 
 // ============================================================================
@@ -179,7 +191,8 @@ type ClientsSetup = {
 export const testWrapper = async (
   callback: (clients: ClientsSetup) => Promise<void>,
 ): Promise<void> => {
-  const clients = await setupClients();
+  const extraTabs: ClientUtils[] = [];
+  const clients = await setupClients((tab) => extraTabs.push(tab));
 
   try {
     await callback(clients);
@@ -188,12 +201,14 @@ export const testWrapper = async (
     clients.reference.unLoadDoc();
     clients.otherTab.unLoadDoc();
     clients.otherDevice.unLoadDoc();
+    for (const tab of extraTabs) tab.unLoadDoc();
 
     // Cleanup: close connections
     const allClients = [
       clients.reference.client,
       clients.otherTab.client,
       clients.otherDevice.client,
+      ...extraTabs.map((tab) => tab.client),
     ];
 
     for (const client of allClients) {
@@ -254,7 +269,9 @@ const createClientWithConfig = (config: {
 // Client Setup (Internal)
 // ============================================================================
 
-const setupClients = async (): Promise<ClientsSetup> => {
+const setupClients = async (
+  onExtraTab: (tab: ClientUtils) => void,
+): Promise<ClientsSetup> => {
   const docId = generateDocId();
   const docBinding = createDocBinding();
 
@@ -295,6 +312,20 @@ const setupClients = async (): Promise<ClientsSetup> => {
       docId,
       otherDeviceUserId,
     ),
+    openAnotherTab: async () => {
+      const tab = await createClientUtils(
+        createClientWithConfig({
+          userId: referenceUserId,
+          deviceId: referenceDeviceId,
+          token: createTestToken(referenceUserId),
+          docBinding,
+        }),
+        docId,
+        referenceUserId,
+      );
+      onExtraTab(tab);
+      return tab;
+    },
   };
 };
 
@@ -327,6 +358,48 @@ const createClientUtils = async (
     .toStrictEqual({ connected: true, userId });
   const local = await client["_localPromise"];
 
+  const childrenOf = (doc: Doc) => {
+    const children: string[] = [];
+    doc.root.children().forEach((child) => {
+      const typedChild = child as unknown as DocNode<typeof ChildNode>;
+      children.push(typedChild.state.value.get());
+    });
+    return children;
+  };
+
+  const readIDBDoc = async () => {
+    const result = await local.provider.transaction("readonly", async (ctx) => {
+      const docResult = await ctx.getSerializedDoc({ docId });
+      const operations = await ctx.getOperations({ docId });
+      return { docResult, operations };
+    });
+    if (!result.docResult) return undefined;
+
+    const opsChildren: string[] = [];
+    for (const batch of result.operations) {
+      for (const item of batch) {
+        if (!Array.isArray(item) || item.length < 2) continue;
+        const stateUpdates = item[1];
+        if (!stateUpdates || typeof stateUpdates !== "object") continue;
+        for (const [, nodeState] of Object.entries(stateUpdates)) {
+          if (
+            nodeState &&
+            typeof nodeState === "object" &&
+            "value" in nodeState
+          ) {
+            opsChildren.push(JSON.parse(nodeState.value) as string);
+          }
+        }
+      }
+    }
+    return {
+      doc: childrenOf(
+        client["_docBinding"].deserialize(result.docResult.serializedDoc),
+      ),
+      ops: opsChildren,
+    };
+  };
+
   return {
     client,
     get doc() {
@@ -334,6 +407,20 @@ const createClientUtils = async (
       return cachedDoc;
     },
     reqSpy,
+    closeTab: () => {
+      client["_releaseAllOwnership"]();
+    },
+    role: () => client["_docsCache"].get(docId)?.ownership.role,
+    syncCount: () =>
+      reqSpy.mock.calls.filter(
+        ([event, payload]) => event === "sync" && payload.docId === docId,
+      ).length,
+    waitForSync: async () => {
+      const observer = client.getDocObserver({ type: "test", id: docId });
+      await expect.poll(() => observer.getSnapshot().fetchStatus).toBe("idle");
+    },
+    readMemoryDoc: () => (cachedDoc ? childrenOf(cachedDoc) : undefined),
+    readIDBDoc,
     loadDoc: async () => {
       if (cleanup) {
         throw new Error("Doc already loaded. Call unLoadDoc() first.");
@@ -384,67 +471,17 @@ const createClientUtils = async (
     assertIDBDoc: async (expected?: { doc: string[]; ops: string[] }) => {
       await expect
         .poll(async () => {
-          if (!local) {
-            throw new Error("Client has no local provider configured");
-          }
-
-          const result = await local.provider.transaction(
-            "readonly",
-            async (ctx) => {
-              const docResult = await ctx.getSerializedDoc({ docId });
-              const operations = await ctx.getOperations({ docId });
-              return { docResult, operations };
-            },
-          );
-
+          const stored = await readIDBDoc();
           if (!expected) {
-            expect(result.docResult).toBeUndefined();
-            expect(result.operations).toStrictEqual([]);
+            expect(stored).toBeUndefined();
             return true;
           }
-
-          if (!result.docResult) {
+          if (!stored) {
             throw new Error(
               `Document ${docId} not found in IndexedDB for user ${userId}`,
             );
           }
-
-          const deserializedDoc = client["_docBinding"].deserialize(
-            result.docResult.serializedDoc,
-          );
-
-          const actualDocChildren: string[] = [];
-          deserializedDoc.root.children().forEach((child) => {
-            const typedChild = child as unknown as DocNode<typeof ChildNode>;
-            actualDocChildren.push(typedChild.state.value.get());
-          });
-
-          const opsChildren: string[] = [];
-
-          for (const batch of result.operations) {
-            if (batch.length === 0) continue;
-            for (const item of batch) {
-              if (!Array.isArray(item) || item.length < 2) continue;
-              const stateUpdates = item[1];
-              if (!stateUpdates || typeof stateUpdates !== "object") continue;
-
-              for (const [, nodeState] of Object.entries(stateUpdates)) {
-                if (
-                  nodeState &&
-                  typeof nodeState === "object" &&
-                  "value" in nodeState
-                ) {
-                  const jsonValue = nodeState.value;
-                  const parsedValue = JSON.parse(jsonValue) as string;
-                  opsChildren.push(parsedValue);
-                }
-              }
-            }
-          }
-
-          expect({ doc: actualDocChildren, ops: opsChildren }).toStrictEqual(
-            expected,
-          );
+          expect(stored).toStrictEqual(expected);
           return true;
         })
         .toBe(true);
@@ -456,17 +493,9 @@ const createClientUtils = async (
             expect(cachedDoc).toBeUndefined();
             return true;
           }
-
           if (!cachedDoc)
             throw new Error("Doc not loaded - cannot assert memory doc");
-
-          const actualChildren: string[] = [];
-          cachedDoc.root.children().forEach((child) => {
-            const typedChild = child as unknown as DocNode<typeof ChildNode>;
-            actualChildren.push(typedChild.state.value.get());
-          });
-
-          expect(actualChildren).toStrictEqual(expectedChildren);
+          expect(childrenOf(cachedDoc)).toStrictEqual(expectedChildren);
           return true;
         })
         .toBe(true);

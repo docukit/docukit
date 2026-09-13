@@ -194,6 +194,7 @@ export const cacheDoc = (
     refCount: 1,
     localVersion: 0,
     type: "test",
+    ownership: { role: "owner" },
     queryResult: {
       status: "success",
       fetchStatus: "idle",

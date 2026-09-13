@@ -256,7 +256,8 @@ function mockBrowserGlobals(deviceId: string): void {
   const storage = new Map<string, string>([["docsync:deviceId", deviceId]]);
   Object.defineProperty(globalThis, "window", {
     configurable: true,
-    value: {},
+    // The client registers a pagehide listener on construction.
+    value: { addEventListener: () => undefined },
   });
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,

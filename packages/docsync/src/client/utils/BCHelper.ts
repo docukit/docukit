@@ -1,5 +1,6 @@
 import type { DocSyncClient } from "../index.js";
 import { applyPresencePatch } from "./applyPresencePatch.js";
+import { handleOwnershipMessage, type OwnershipMessage } from "./ownership.js";
 
 type BroadcastSource = "network" | "local-broadcast";
 
@@ -12,7 +13,8 @@ type BroadcastMessage<O> =
       flags: { skipUndo?: boolean };
       presence: Record<string, unknown>;
     }
-  | { type: "PRESENCE"; docId: string; presence: Record<string, unknown> };
+  | { type: "PRESENCE"; docId: string; presence: Record<string, unknown> }
+  | OwnershipMessage;
 
 export class BCHelper<
   D extends object,
@@ -29,10 +31,6 @@ export class BCHelper<
       const msg = ev.data;
       if (msg.type === "OPERATIONS") {
         const { docId, flags, operations, presence, source } = msg;
-        // Operations from another tab landed while a sync was in flight; that
-        // sync goes again when it finishes so the server sees them too.
-        const runningSync = client["_syncQueue"].get(docId);
-        if (runningSync) runningSync.rerun = true;
         void this._applyOperations(client, operations, docId, source, flags);
         const cacheEntry = client["_docsCache"].get(docId);
         if (cacheEntry)
@@ -44,7 +42,9 @@ export class BCHelper<
         const cacheEntry = client["_docsCache"].get(docId);
         if (!cacheEntry) return;
         applyPresencePatch(client["_clientId"], cacheEntry, presence);
+        return;
       }
+      handleOwnershipMessage(client, msg);
     };
   }
 

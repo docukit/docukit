@@ -413,39 +413,47 @@ describe("Local-First", () => {
       otherTab.disconnect();
       otherDevice.disconnect();
 
-      // fastest operations - synchronous
+      // Each tab applies its own edit at once. The tab that owned the document
+      // persists its edit; the other one takes the document over to persist
+      // its own, and rebuilds its live doc from the shared store on the way.
       reference.addChild("A");
       otherTab.addChild("B");
       otherDevice.addChild("C");
-      await reference.assertMemoryDoc(["A"]);
-      await otherTab.assertMemoryDoc(["B"]);
       await otherDevice.assertMemoryDoc(["C"]);
-      await reference.assertIDBDoc({ doc: [], ops: [] });
-
-      await reference.assertMemoryDoc(["A", "B"]);
-      await otherTab.assertMemoryDoc(["B", "A"]);
-      await otherDevice.assertMemoryDoc(["C"]);
-      // IDB has ops persisted (throttle); doc is only updated after sync
-      await reference.assertIDBDoc({ doc: [], ops: ["A", "B"] });
-      await otherTab.assertIDBDoc({ doc: [], ops: ["A", "B"] });
       await otherDevice.assertIDBDoc({ doc: [], ops: ["C"] });
+
+      // Both tabs end up with the same order, which is the order the store
+      // holds: there is only one writer.
+      await expect
+        .poll(() => ({
+          reference: reference.readMemoryDoc(),
+          otherTab: otherTab.readMemoryDoc(),
+        }))
+        .toSatisfy(
+          (docs: { reference?: string[]; otherTab?: string[] }) =>
+            docs.reference?.length === 2 &&
+            docs.reference.includes("A") &&
+            docs.reference.includes("B") &&
+            JSON.stringify(docs.otherTab) === JSON.stringify(docs.reference),
+        );
+      const localOrder = reference.readMemoryDoc()!;
+      await reference.assertIDBDoc({ doc: [], ops: localOrder });
 
       // without connecting, ws doesn't work
       await otherDevice.assertMemoryDoc(["C"]);
-      await reference.assertMemoryDoc(["A", "B"]);
-      await otherTab.assertMemoryDoc(["B", "A"]);
 
       // connecting
       reference.connect();
       otherTab.connect();
       otherDevice.connect();
-      await reference.assertMemoryDoc(["A", "B", "C"]);
-      await otherTab.assertMemoryDoc(["B", "A", "C"]);
-      await otherDevice.assertMemoryDoc(["A", "B", "C"]);
+      const merged = [...localOrder, "C"];
+      await reference.assertMemoryDoc(merged);
+      await otherTab.assertMemoryDoc(merged);
+      await otherDevice.assertMemoryDoc(merged);
 
-      await reference.assertIDBDoc({ doc: ["A", "B", "C"], ops: [] });
-      await otherTab.assertIDBDoc({ doc: ["A", "B", "C"], ops: [] });
-      await otherDevice.assertIDBDoc({ doc: ["A", "B", "C"], ops: [] });
+      await reference.assertIDBDoc({ doc: merged, ops: [] });
+      await otherTab.assertIDBDoc({ doc: merged, ops: [] });
+      await otherDevice.assertIDBDoc({ doc: merged, ops: [] });
     });
   });
 
@@ -484,6 +492,130 @@ describe("Local-First", () => {
       expect(
         reference.reqSpy.mock.calls.length - requestsAfterFirstBatch,
       ).toBeLessThan(4);
+    });
+  });
+});
+
+describe("Ownership", () => {
+  test("the last tab to load a document owns it and the other tab stops syncing", async () => {
+    await testWrapper(async ({ reference, otherTab, otherDevice }) => {
+      await reference.loadDoc();
+      expect(reference.role()).toBe("owner");
+
+      await otherTab.loadDoc();
+      expect(otherTab.role()).toBe("owner");
+      expect(reference.role()).toBe("mirror");
+      const referenceSyncs = reference.syncCount();
+
+      await otherDevice.loadDoc();
+      otherDevice.addChild("Remote");
+      await otherTab.assertMemoryDoc(["Remote"]);
+      // The mirror receives the change through the owner's broadcast, not
+      // through a sync of its own.
+      await reference.assertMemoryDoc(["Remote"]);
+      expect(reference.syncCount()).toBe(referenceSyncs);
+    });
+  });
+
+  test("a mirror keeps its edit in memory until it owns the document", async () => {
+    await testWrapper(async ({ reference, otherTab }) => {
+      await reference.loadDoc();
+      await otherTab.loadDoc();
+      await otherTab.waitForSync();
+      expect(reference.role()).toBe("mirror");
+      const otherTabSyncs = otherTab.syncCount();
+
+      reference.addChild("Hello");
+      await reference.assertMemoryDoc(["Hello"]);
+      await expect.poll(() => reference.role()).toBe("owner");
+      expect(otherTab.role()).toBe("mirror");
+      await reference.assertIDBDoc({ doc: ["Hello"], ops: [] });
+      await otherTab.assertMemoryDoc(["Hello"]);
+      // The previous owner persisted nothing for an edit it did not make.
+      expect(otherTab.syncCount()).toBe(otherTabSyncs);
+    });
+  });
+
+  test("unloading the owner hands the document to a tab that still has it", async () => {
+    await testWrapper(async ({ reference, otherTab, otherDevice }) => {
+      await reference.loadDoc();
+      await otherTab.loadDoc();
+      expect(reference.role()).toBe("mirror");
+
+      otherTab.unLoadDoc();
+      await expect.poll(() => reference.role()).toBe("owner");
+
+      await otherDevice.loadDoc();
+      otherDevice.addChild("Remote");
+      await reference.assertMemoryDoc(["Remote"]);
+      await reference.assertIDBDoc({ doc: ["Remote"], ops: [] });
+    });
+  });
+
+  test("closing the owner tab hands the document over and persists its edit", async () => {
+    await testWrapper(async ({ reference, otherTab, otherDevice }) => {
+      await reference.loadDoc();
+      await otherTab.loadDoc();
+      otherTab.disconnect();
+      otherTab.addChild("Unsent");
+      await otherTab.assertMemoryDoc(["Unsent"]);
+
+      otherTab.closeTab();
+      await expect.poll(() => reference.role()).toBe("owner");
+      expect(otherTab.role()).toBe("mirror");
+      // The closing tab left its edit in the store; the new owner pushes it.
+      await reference.assertIDBDoc({ doc: ["Unsent"], ops: [] });
+
+      await otherDevice.loadDoc();
+      await otherDevice.assertMemoryDoc(["Unsent"]);
+    });
+  });
+
+  test("tabs opening a document at once leave exactly one owner", async () => {
+    await testWrapper(
+      async ({ reference, otherTab, otherDevice, openAnotherTab }) => {
+        const thirdTab = await openAnotherTab();
+        await reference.loadDoc();
+        expect(reference.role()).toBe("owner");
+
+        // Both tabs ask the owner for the document in the same tick. Whichever
+        // is granted the lock first must not hand it back to a tab whose own
+        // request was already satisfied, or nobody would own the document.
+        await Promise.all([otherTab.loadDoc(), thirdTab.loadDoc()]);
+        const tabs = [reference, otherTab, thirdTab];
+        await expect
+          .poll(() => tabs.filter((tab) => tab.role() === "owner").length)
+          .toBe(1);
+        await expect
+          .poll(() => tabs.every((tab) => tab.client["_syncQueue"].size === 0))
+          .toBe(true);
+
+        await otherDevice.loadDoc();
+        otherDevice.addChild("Remote");
+        await reference.assertMemoryDoc(["Remote"]);
+        await otherTab.assertMemoryDoc(["Remote"]);
+        await thirdTab.assertMemoryDoc(["Remote"]);
+        expect(tabs.filter((tab) => tab.role() === "owner").length).toBe(1);
+      },
+    );
+  });
+
+  test("a mirror settles its query on the owner's syncs", async () => {
+    await testWrapper(async ({ docId, reference, otherTab }) => {
+      await reference.loadDoc();
+      await otherTab.loadDoc();
+      expect(reference.role()).toBe("mirror");
+
+      const observer = reference.client.getDocObserver({
+        type: "test",
+        id: docId,
+      });
+      reference.disconnect();
+      await expect
+        .poll(() => observer.getSnapshot().fetchStatus)
+        .toBe("paused");
+      reference.connect();
+      await reference.waitForSync();
     });
   });
 });
