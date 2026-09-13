@@ -60,8 +60,16 @@ type SyncDebounceState = {
   startedAt: number;
 };
 
-/** A sync in flight; `rerun` records that another sync was asked for meanwhile. */
-type SyncQueueSlot = { rerun: boolean };
+/**
+ * A sync in flight. `rerun` records that another sync was asked for meanwhile;
+ * `token` is what the attempt was started for, so a request for a reloaded
+ * document or a new connection starts its own attempt instead of waiting on
+ * one that can no longer report.
+ */
+type SyncQueueSlot = {
+  rerun: boolean;
+  token: { generation: number; cacheEntry: object };
+};
 type ChangeOrigin = "local" | "network" | "local-broadcast";
 type LocalLoadMode = "load" | "loadOrCreate";
 type QueryListener = (result: QueryResult<DocData<object> | undefined>) => void;

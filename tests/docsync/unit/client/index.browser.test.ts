@@ -1796,6 +1796,56 @@ describe("DocSyncClient", () => {
         expect(secondCallback.mock.calls[0]?.[0].data?.doc).toBe(loadedDoc);
       });
 
+      test("should start a fresh sync for a document reloaded while its sync is in flight", async () => {
+        const client = createClient();
+        const docId = ulid().toLowerCase();
+        socketMockState.deferSyncDocIds.add(docId);
+
+        const unsubscribe = subscribeToDoc(
+          client,
+          { type: "test", id: docId, createIfMissing: true },
+          createCallback(),
+        );
+        await expect
+          .poll(() => socketMockState.deferredSyncAcks.get(docId)?.length)
+          .toBe(1);
+
+        // Unloading drops the entry, so the attempt in flight can no longer
+        // report. Loading again must not queue behind it: that attempt would
+        // exit without running the sync the new query is waiting for.
+        unsubscribe();
+        await expect.poll(() => client["_docsCache"].has(docId)).toBe(false);
+
+        const callback = createCallback();
+        subscribeToDoc(
+          client,
+          { type: "test", id: docId, createIfMissing: true },
+          callback,
+        );
+        await expect
+          .poll(() => socketMockState.deferredSyncAcks.get(docId)?.length)
+          .toBe(2);
+
+        const [staleAck, freshAck] =
+          socketMockState.deferredSyncAcks.get(docId) ?? [];
+        if (!staleAck || !freshAck) {
+          throw new Error("Expected both deferred sync acks");
+        }
+        socketMockState.deferSyncDocIds.delete(docId);
+        freshAck({
+          data: { docId, operations: [], serializedDoc: null, clock: 0 },
+        });
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0])
+          .toMatchObject({ status: "success", fetchStatus: "idle" });
+
+        // The stale ack still arrives; it belongs to a document that is gone.
+        const settledResult = callback.mock.calls.at(-1)?.[0];
+        staleAck({ error: { type: "ValidationError", message: "too late" } });
+        await flushMicrotasks();
+        expect(callback.mock.calls.at(-1)?.[0]).toBe(settledResult);
+      });
+
       test("should discard an older sync after the newer sync succeeds", async () => {
         const client = createClient();
         const callback = createCallback();

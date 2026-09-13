@@ -399,7 +399,10 @@ export const handleSync = async <
 
   const queue = client["_syncQueue"];
   const running = queue.get(docId);
-  if (running) {
+  // A running attempt that is still live takes the request as a rerun. One
+  // that is not, because the document was reloaded or the connection changed,
+  // can only exit; the request gets an attempt of its own.
+  if (running && isLiveSyncAttempt(client, docId, running.token)) {
     running.rerun = true;
     return;
   }
@@ -411,7 +414,7 @@ export const handleSync = async <
     generation: client["_connectionGeneration"],
     cacheEntry,
   };
-  const slot = { rerun: false };
+  const slot = { rerun: false, token };
   queue.set(docId, slot);
   const release = () => {
     if (queue.get(docId) === slot) queue.delete(docId);
