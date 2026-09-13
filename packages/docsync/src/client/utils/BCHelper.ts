@@ -29,10 +29,10 @@ export class BCHelper<
       const msg = ev.data;
       if (msg.type === "OPERATIONS") {
         const { docId, flags, operations, presence, source } = msg;
-        const currentStatus = client["_pushStatusByDocId"].get(docId) ?? "idle";
-        if (currentStatus === "pushing") {
-          client["_pushStatusByDocId"].set(docId, "pushing-with-pending");
-        }
+        // Operations from another tab landed while a sync was in flight; that
+        // sync goes again when it finishes so the server sees them too.
+        const runningSync = client["_syncQueue"].get(docId);
+        if (runningSync) runningSync.rerun = true;
         void this._applyOperations(client, operations, docId, source, flags);
         const cacheEntry = client["_docsCache"].get(docId);
         if (cacheEntry)

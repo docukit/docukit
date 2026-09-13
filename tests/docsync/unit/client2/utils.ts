@@ -191,7 +191,6 @@ export const cacheDoc = (
 ) => {
   client["_docsCache"].set(docId, {
     promisedDoc: Promise.resolve(doc),
-    activeSyncAttempt: undefined,
     refCount: 1,
     localVersion: 0,
     type: "test",
@@ -205,6 +204,24 @@ export const cacheDoc = (
     presenceListeners: new Set(),
   });
   return doc;
+};
+
+// ============================================================================
+// Sync Status (for tests)
+// ============================================================================
+
+/**
+ * Reads the sync flow-control state of a document off the client's queue:
+ * "idle" when nothing is in flight, "pushing" while one sync runs, and
+ * "pushing-with-pending" when another sync was requested during that run.
+ */
+export const syncStatus = (
+  client: DocSyncClient<Doc, JsonDoc, Operations>,
+  docId: string,
+) => {
+  const slot = client["_syncQueue"].get(docId);
+  if (!slot) return "idle";
+  return slot.rerun ? "pushing-with-pending" : "pushing";
 };
 
 // ============================================================================

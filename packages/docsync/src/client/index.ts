@@ -60,14 +60,13 @@ type SyncDebounceState = {
   startedAt: number;
 };
 
-type PushStatus = "idle" | "pushing" | "pushing-with-pending";
+/** A sync in flight; `rerun` records that another sync was asked for meanwhile. */
+type SyncQueueSlot = { rerun: boolean };
 type ChangeOrigin = "local" | "network" | "local-broadcast";
 type LocalLoadMode = "load" | "loadOrCreate";
 type QueryListener = (result: QueryResult<DocData<object> | undefined>) => void;
 type DocCacheEntry<D> = {
   promisedDoc: Promise<D | undefined>;
-  /** Token of the sync in flight; `undefined` when none is running. */
-  activeSyncAttempt: symbol | undefined;
   refCount: number;
   localVersion: number;
   type: string;
@@ -111,7 +110,14 @@ export class DocSyncClient<
   protected _singleClientMaxDebounce: number;
   protected _collabDocIds = new Set<string>();
   protected _presenceDebounceState = new Map<string, DeferredState<unknown>>();
-  protected _pushStatusByDocId = new Map<string, PushStatus>();
+  /** Documents with a sync in flight, at most one attempt per document. */
+  protected _syncQueue = new Map<string, SyncQueueSlot>();
+  /**
+   * Bumped on every disconnect. A sync attempt remembers the generation it
+   * started on and goes silent once it changes, so an ack that arrives after
+   * a reconnect cannot touch state that a newer attempt owns.
+   */
+  protected _connectionGeneration = 0;
   protected _syncRetryState = new Map<string, SyncRetryState>();
 
   /** Typed as unknown so DocSyncClient remains covariant in O, S (assignable to DocSyncClient base). */
@@ -360,7 +366,6 @@ export class DocSyncClient<
       const queryResult = this._initialQueryResult();
       this._docsCache.set(docId, {
         promisedDoc,
-        activeSyncAttempt: undefined,
         refCount: 1,
         localVersion: 0,
         type,
@@ -586,7 +591,6 @@ export class DocSyncClient<
         clearTimeout(presenceState?.timeout);
         this._presenceDebounceState.delete(docId);
         this._collabDocIds.delete(docId);
-        this._pushStatusByDocId.delete(docId);
         clearSyncRetry(this, docId);
         if (doc) {
           await handleUnsubscribe(this._socket, { docId });

@@ -366,7 +366,6 @@ describe("DocSyncClient", () => {
     const doc = { docId };
     client["_docsCache"].set(docId, {
       promisedDoc: Promise.resolve(doc),
-      activeSyncAttempt: undefined,
       refCount: 1,
       localVersion: 0,
       type: "test",
@@ -2650,9 +2649,7 @@ describe("DocSyncClient", () => {
         .toBe(1);
 
       await client["_sync"](docId);
-      expect(client["_pushStatusByDocId"].get(docId)).toBe(
-        "pushing-with-pending",
-      );
+      expect(client["_syncQueue"].get(docId)?.rerun).toBe(true);
 
       const rejectedAck = socketMockState.deferredSyncAcks.get(docId)?.[0];
       if (!rejectedAck) throw new Error("Expected deferred sync ack");

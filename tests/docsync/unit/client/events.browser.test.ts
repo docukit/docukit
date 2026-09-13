@@ -61,19 +61,17 @@ describe("Client Events", () => {
       await expect.poll(() => disconnectReason).toBe("transport close");
     });
 
-    test("should clear push status on disconnect", async () => {
+    test("should clear the sync queue on disconnect", async () => {
       const client = await createClient();
       const docId = generateDocId();
 
       await saveOperations(client, docId);
       triggerSync(client, docId);
-      await expect
-        .poll(() => client["_pushStatusByDocId"].size)
-        .toBeGreaterThan(0);
+      await expect.poll(() => client["_syncQueue"].size).toBeGreaterThan(0);
 
-      client["_pushStatusByDocId"].clear();
+      client["_syncQueue"].clear();
       client["_events"].emit("disconnect", { reason: "test" });
-      await expect.poll(() => client["_pushStatusByDocId"].size).toBe(0);
+      await expect.poll(() => client["_syncQueue"].size).toBe(0);
     });
   });
 

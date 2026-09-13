@@ -17,24 +17,15 @@ export function handleConnect<
     dispatchAllDocQueriesConnected(client);
     client["_events"].emit("connect");
     void (async () => {
-      const syncedDocIds = new Set<string>();
+      // Persist every pending batch first so the syncs below push it. A doc
+      // whose sync is already running just gets a rerun; nothing starts twice.
       await Promise.all(
-        [...client["_localOpsBatchState"].keys()].map(async (docId) => {
-          const didFlush = await client["_flushLocalOperations"](docId, {
-            sync: false,
-          });
-          if (didFlush) {
-            syncedDocIds.add(docId);
-            void handleSync(client, docId);
-          }
-        }),
+        [...client["_localOpsBatchState"].keys()].map((docId) =>
+          client["_flushLocalOperations"](docId, { sync: false }),
+        ),
       );
-
       for (const docId of client["_docsCache"].keys()) {
-        const pushStatus = client["_pushStatusByDocId"].get(docId) ?? "idle";
-        if (!syncedDocIds.has(docId) && pushStatus === "idle") {
-          void handleSync(client, docId);
-        }
+        void handleSync(client, docId);
       }
     })();
   });
