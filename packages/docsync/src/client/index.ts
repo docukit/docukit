@@ -46,6 +46,7 @@ import { pauseQueries } from "./utils/pauseQueries.js";
 import { setupLocalPromise } from "./utils/setupLocalPromise.js";
 import { clearSyncRetry, type SyncRetryState } from "./utils/syncRetry.js";
 import { DocSyncError } from "./utils/DocSyncError.js";
+import type { DocSyncState } from "./handlers/clientInitiated/sync/reconcileSyncResponse.js";
 import {
   acquireOwnership,
   createDocOwnership,
@@ -85,12 +86,14 @@ type SyncQueueSlot = {
 type ChangeOrigin = "local" | "network" | "local-broadcast";
 type LocalLoadMode = "load" | "loadOrCreate";
 type QueryListener = (result: QueryResult<DocData<object> | undefined>) => void;
-type DocCacheEntry<D> = {
+type DocCacheEntry<D, S extends object, O extends object> = {
   promisedDoc: Promise<D | undefined>;
   refCount: number;
   localVersion: number;
   type: string;
   ownership: DocOwnership;
+  /** Held while this tab owns the document; see `DocSyncState`. */
+  syncState?: DocSyncState<S, O>;
   localLoadMode?: LocalLoadMode;
   queryResult: QueryResult<DocData<D> | undefined>;
   queryListeners: Set<QueryListener>;
@@ -106,7 +109,7 @@ export class DocSyncClient<
   O extends object = object,
 > {
   protected _docBinding: DocBinding<D, S, O>;
-  protected _docsCache = new Map<string, DocCacheEntry<D>>();
+  protected _docsCache = new Map<string, DocCacheEntry<D, S, O>>();
   protected _localPromise: Promise<LocalResolved<S, O>>;
   protected _deviceId: string;
   /** Client-generated id for presence (works offline; sent in auth so server uses same key) */
@@ -386,7 +389,7 @@ export class DocSyncClient<
       // Register the entry before loading: ownership is tracked on it, and
       // getPresence can subscribe right away.
       const queryResult = this._initialQueryResult();
-      const cacheEntry: DocCacheEntry<D> = {
+      const cacheEntry: DocCacheEntry<D, S, O> = {
         promisedDoc: Promise.resolve(undefined),
         refCount: 1,
         localVersion: 0,
@@ -601,41 +604,71 @@ export class DocSyncClient<
     const local = await this._localPromise;
     if (!local) return undefined;
 
-    return local.provider.transaction("readwrite", async (ctx) => {
-      // Try to load existing doc
-      const stored = await ctx.getSerializedDoc({ docId });
-      const localOperations = await ctx.getOperations({ docId });
+    const loaded = await local.provider.transaction(
+      "readwrite",
+      async (ctx) => {
+        // Try to load existing doc
+        const stored = await ctx.getSerializedDoc({ docId });
+        const pending = await ctx.getOperations({ docId });
 
-      if (stored) {
-        const doc = this._docBinding.deserialize(stored.serializedDoc);
-        localOperations.forEach((operationsBatch) => {
-          operationsBatch.forEach((operations) => {
-            this._docBinding.applyOperations(doc, operations, {
-              skipUndo: true,
+        if (stored) {
+          const doc = this._docBinding.deserialize(stored.serializedDoc);
+          pending.forEach((operationsBatch) => {
+            operationsBatch.forEach((operations) => {
+              this._docBinding.applyOperations(doc, operations, {
+                skipUndo: true,
+              });
             });
           });
-        });
-        return doc;
-      }
+          const state: DocSyncState<S, O> = {
+            base: stored.serializedDoc,
+            clock: stored.clock,
+            pending,
+          };
+          return { doc, state, created: false };
+        }
 
-      // Create new doc if type provided
-      if (type) {
-        const { doc } = this._docBinding.create(type, docId);
-        if (localOperations.length)
-          throw new Error(
-            `Doc ${docId} has operations stored locally but no serialized doc found`,
-          );
-        // Save the new doc to IDB
-        await ctx.saveSerializedDoc({
-          serializedDoc: this._docBinding.serialize(doc),
-          docId,
+        // Create new doc if type provided
+        if (type) {
+          const { doc } = this._docBinding.create(type, docId);
+          if (pending.length)
+            throw new Error(
+              `Doc ${docId} has operations stored locally but no serialized doc found`,
+            );
+          const serializedDoc = this._docBinding.serialize(doc);
+          // Save the new doc to IDB
+          await ctx.saveSerializedDoc({ serializedDoc, docId, clock: 0 });
+          const state: DocSyncState<S, O> = {
+            base: serializedDoc,
+            clock: 0,
+            pending: [],
+          };
+          return { doc, state, created: true };
+        }
+
+        const state: DocSyncState<S, O> = {
+          base: undefined,
           clock: 0,
-        });
-        return doc;
+          pending: [],
+        };
+        return { doc: undefined, state, created: false };
+      },
+    );
+    // Acquiring ownership read the state already; creating the document is
+    // the one store write since then, so the held state takes its snapshot.
+    const cacheEntry = this._docsCache.get(docId);
+    if (cacheEntry?.ownership.role === "owner") {
+      const held = cacheEntry.syncState;
+      if (held) {
+        if (loaded.created) {
+          held.base = loaded.state.base;
+          held.clock = 0;
+        }
+      } else {
+        cacheEntry.syncState = loaded.state;
       }
-
-      return undefined;
-    });
+    }
+    return loaded.doc;
   }
 
   /**
@@ -770,6 +803,11 @@ export class DocSyncClient<
     this._localOpsBatchState.delete(docId);
 
     if (opsToSave.length > 0) {
+      // The state leads and the store follows: a sync that starts while this
+      // write is still out already sends the batch, and its own store write
+      // queues behind this one. A state read from the store later sees the
+      // batch there instead.
+      this._docsCache.get(docId)?.syncState?.pending.push(opsToSave);
       const local = await this._localPromise;
       await local?.provider.transaction("readwrite", (ctx) =>
         ctx.saveOperations({ docId, operations: opsToSave }),

@@ -21,10 +21,8 @@ import {
   clearSyncRetry,
   scheduleSyncRetry,
 } from "../../../utils/syncRetry.js";
-import {
-  finalizeSyncReconciliation,
-  prepareSyncReconciliation,
-} from "./reconcileSyncResponse.js";
+import { ensureSyncState } from "../../../utils/syncState.js";
+import { reconcileSyncResponse } from "./reconcileSyncResponse.js";
 
 /**
  * What a sync attempt was started for. It stays valid while the connection it
@@ -121,29 +119,19 @@ async function runSyncAttempt<
   if (!isLive()) return stale;
   const requestLocalVersion = getLocalDocVersion(client, docId);
 
-  const { provider } = await client["_localPromise"];
-  if (!isLive()) return stale;
-
-  // Prepare payload: read operations and clock from provider.
-  const [operationsBatches, stored] = await provider.transaction(
-    "readonly",
-    async (ctx) => {
-      return Promise.all([
-        ctx.getOperations({ docId }),
-        ctx.getSerializedDoc({ docId }),
-      ]);
-    },
-  );
-  if (!isLive()) return stale;
+  const state = await ensureSyncState(client, docId);
+  if (!state || !isLive()) return stale;
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return stale;
-  const operations = operationsBatches.flat();
+  // Batches persisted while the request is out are appended to `pending`;
+  // the count taken here is what the response acknowledges.
+  const sentBatches = state.pending.length;
   const req: SyncRequest<S, O> = {
     type: cacheEntry.type,
-    clock: stored?.clock ?? 0,
+    clock: state.clock,
     docId,
-    operations,
-    serializedDoc: stored?.serializedDoc ?? null,
+    operations: state.pending.flat(),
+    serializedDoc: state.base ?? null,
   };
 
   let response: SyncResponse<S, O>;
@@ -180,69 +168,100 @@ async function runSyncAttempt<
   const { data } = response;
   client["_events"].emit("sync", { req, data });
 
-  // Resolve the live doc before starting the asynchronous provider work. The
-  // history itself is exported only in the synchronous final section below.
-  const mayReplaceDoc =
-    data.serializedDoc !== null ||
-    (data.operations.length > 0 && operations.length > 0);
-  const historySource = mayReplaceDoc
+  const docBinding = client["_docBinding"];
+  const reconciled = reconcileSyncResponse(docBinding, {
+    state,
+    sentBatches,
+    data,
+  });
+  if (!reconciled) return { type: "synced" };
+
+  // Resolve the live doc before the asynchronous store write. The history
+  // itself is exported only in the synchronous section below.
+  const historySource = reconciled.shouldReplaceDoc
     ? await resolveHistorySource(client, docId)
     : undefined;
-  if (!isLive()) return stale;
-  const preparedReconciliation = await prepareSyncReconciliation(client, {
-    provider,
-    docId,
-    operationsBatches,
-    localOperations: operations,
-    data,
-    isCurrent: isLive,
+  if (!isLive()) {
+    docBinding.dispose(reconciled.doc);
+    return stale;
+  }
+
+  // The store follows the state: one write, no reads. Once the snapshot
+  // write starts, the matching operation cleanup finishes in the same
+  // transaction even if the connection drops, so the store can never hold a
+  // snapshot that already contains batches still queued to be applied.
+  const { provider } = await client["_localPromise"];
+  await provider.transaction("readwrite", async (ctx) => {
+    await ctx.saveSerializedDoc({
+      docId,
+      serializedDoc: reconciled.base,
+      clock: reconciled.clock,
+    });
+    if (sentBatches > 0) {
+      await ctx.deleteOperations({ docId, count: sentBatches });
+    }
   });
-  if (!isLive()) return stale;
+  if (cacheEntry.syncState === state) {
+    state.base = reconciled.base;
+    state.clock = reconciled.clock;
+    state.pending = state.pending.slice(sentBatches);
+  }
+  if (!isLive()) {
+    docBinding.dispose(reconciled.doc);
+    return stale;
+  }
 
   // Keep this section synchronous. Exporting DocNode history force-commits a
-  // pending edit, finalize then applies that operation to the replacement,
-  // and replacement imports the matching history before another user event
-  // can run.
+  // pending edit, which the replacement then receives, and the replacement
+  // imports the matching history before another user event can run.
   const batchBeforeExport = client["_localOpsBatchState"].get(docId)?.data;
-  const exportedHistory =
-    preparedReconciliation.replacementDoc &&
-    preparedReconciliation.shouldReplaceDoc
-      ? exportHistoryFromCurrentSource(client, docId, historySource)
-      : undefined;
-  const reconcileResult = finalizeSyncReconciliation(client, {
+  const exportedHistory = reconciled.shouldReplaceDoc
+    ? exportHistoryFromCurrentSource(client, docId, historySource)
+    : undefined;
+  const pendingMemoryOperations = resolvePendingMemoryOperations(
+    client,
     docId,
-    prepared: preparedReconciliation,
-    requestLocalVersion,
-    pendingMemoryOperations: resolvePendingMemoryOperations(
-      client,
-      docId,
-      batchBeforeExport,
-    ),
-  });
+    batchBeforeExport,
+  );
+  const unsentOperations = state.pending.flat();
+  // A live doc that changed without leaving operations behind, such as one
+  // that applied another tab's broadcast, cannot be rebuilt from the state.
+  const hasUnrebuildableLocalMemory =
+    getLocalDocVersion(client, docId) > requestLocalVersion &&
+    unsentOperations.length === 0 &&
+    pendingMemoryOperations.length === 0;
 
-  if (reconcileResult.type === "replaceDoc") {
+  if (reconciled.shouldReplaceDoc && !hasUnrebuildableLocalMemory) {
+    for (const operations of [
+      ...unsentOperations,
+      ...pendingMemoryOperations,
+    ]) {
+      docBinding.applyOperations(reconciled.doc, operations, {
+        skipUndo: true,
+      });
+    }
     const replaceResult = replaceDocInCache(client, {
       docId,
-      doc: reconcileResult.doc,
+      doc: reconciled.doc,
       ...(exportedHistory && { exportedHistory }),
     });
-    dispatchLocalDocFound(client, docId, { doc: reconcileResult.doc, docId });
+    dispatchLocalDocFound(client, docId, { doc: reconciled.doc, docId });
     broadcastServerOperations(client, { docId, operations: data.operations });
-    // IndexedDB was already reconciled before the history import. Finish the
+    // The store was already reconciled before the history import. Finish the
     // cache swap first so persistent and visible content cannot diverge, then
     // keep the binding failure loud for the caller.
     if (replaceResult) throw replaceResult.historyImportError;
-  } else if (reconcileResult.type === "applyServerOperations") {
-    await applyServerOperations(client, {
-      docId,
-      operations: reconcileResult.operations,
-      isLive,
-    });
-    if (!isLive()) return stale;
-    broadcastServerOperations(client, {
-      docId,
-      operations: reconcileResult.operations,
-    });
+  } else {
+    docBinding.dispose(reconciled.doc);
+    if (data.operations.length > 0) {
+      await applyServerOperations(client, {
+        docId,
+        operations: data.operations,
+        isLive,
+      });
+      if (!isLive()) return stale;
+      broadcastServerOperations(client, { docId, operations: data.operations });
+    }
   }
   return { type: "synced" };
 }

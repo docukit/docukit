@@ -154,6 +154,8 @@ export const saveOperations = async (
   await provider.transaction("readwrite", (ctx) =>
     ctx.saveOperations({ docId, operations }),
   );
+  // The store only follows the owner's state, as a flush of the client does.
+  client["_docsCache"].get(docId)?.syncState?.pending.push(operations);
 };
 
 /**
