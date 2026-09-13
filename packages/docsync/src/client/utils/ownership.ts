@@ -10,6 +10,7 @@ import {
   replaceDocInCache,
   resolvePendingMemoryOperations,
 } from "./liveDoc.js";
+import { readSyncState } from "./syncState.js";
 
 /**
  * One tab owns a document at a time. Only the owner writes the document's
@@ -181,28 +182,34 @@ export async function acquireOwnership<
   const acquiring = (async () => {
     const { identity } = await client["_localPromise"];
     if (client["_docsCache"].get(docId) !== entry) return false;
-    if (!hasWebLocks()) {
-      // Without Web Locks every tab owns its documents, as before.
-      ownership.role = "owner";
-      return true;
+    // Without Web Locks every tab owns its documents, as before.
+    let held: HeldLock | undefined;
+    if (hasWebLocks()) {
+      const name = lockName(identity.userId, docId);
+      const onLost = () => {
+        if (ownership.role !== "owner") return;
+        ownership.role = "mirror";
+        delete ownership.release;
+        forgetSyncState(client, docId, ownership);
+      };
+      held = await requestLock(name, { ifAvailable: true }, onLost);
+      if (!held && !options.ifAvailable) {
+        held = await takeOverLock(client, docId, ownership, name, onLost);
+      }
+      if (!held) return false;
     }
-    const name = lockName(identity.userId, docId);
-    const onLost = () => {
-      if (ownership.role !== "owner") return;
-      ownership.role = "mirror";
-      delete ownership.release;
-    };
-    let held = await requestLock(name, { ifAvailable: true }, onLost);
-    if (!held && !options.ifAvailable) {
-      held = await takeOverLock(client, docId, ownership, name, onLost);
-    }
-    if (!held) return false;
+
+    // The store is read exactly once per stretch of ownership, here, while
+    // the lock is held and before this tab starts writing: the previous
+    // owner's last writes are in, and nothing of this tab's can be missing.
+    const state = await readSyncState(client, docId);
     if (client["_docsCache"].get(docId) !== entry) {
-      void held.release();
+      void held?.release();
       return false;
     }
+    entry.syncState = state;
     ownership.role = "owner";
-    ownership.release = held.release;
+    if (held) ownership.release = held.release;
     return true;
   })();
   ownership.acquiring = acquiring;
@@ -242,6 +249,7 @@ export function releaseOwnership<
     ownership.role = "mirror";
     await ownership.release?.();
     delete ownership.release;
+    forgetSyncState(client, docId, ownership);
     if (options.broadcastReleased) {
       client["_bcHelper"]?.broadcast({ type: "OWNERSHIP_RELEASED", docId });
     }
@@ -274,8 +282,19 @@ export function releaseAllOwnership<
     ownership.role = "mirror";
     void ownership.release?.();
     delete ownership.release;
+    forgetSyncState(client, docId, ownership);
     client["_bcHelper"]?.broadcast({ type: "OWNERSHIP_RELEASED", docId });
   }
+}
+
+/** The store belongs to another tab now; what this tab knew of it is stale. */
+function forgetSyncState<D extends object, S extends object, O extends object>(
+  client: DocSyncClient<D, S, O>,
+  docId: string,
+  ownership: DocOwnership,
+): void {
+  const entry = client["_docsCache"].get(docId);
+  if (entry?.ownership === ownership) delete entry.syncState;
 }
 
 const serializedEquals = (left: unknown, right: unknown) =>
@@ -283,11 +302,11 @@ const serializedEquals = (left: unknown, right: unknown) =>
 
 /**
  * Brings the live doc of a document this tab just took over in line with the
- * local store. As a mirror, the tab applied the owner's broadcasts and its
- * own edits in the order they happened here, which is not necessarily the
- * order the previous owner persisted. The store is rebuilt with this tab's
- * unpersisted batch on top; when the result differs from the live doc, the
- * live doc is replaced, keeping its undo history.
+ * sync state read on acquisition. As a mirror, the tab applied the owner's
+ * broadcasts and its own edits in the order they happened here, which is not
+ * necessarily the order the previous owner persisted. The state is rebuilt
+ * with this tab's unpersisted batch on top; when the result differs from the
+ * live doc, the live doc is replaced, keeping its undo history.
  */
 async function reconcileOwnedDocWithStorage<
   D extends object,
@@ -300,28 +319,17 @@ async function reconcileOwnedDocWithStorage<
   if (!liveDoc) return;
   const isCurrent = () =>
     client["_docsCache"].get(docId) === entry &&
-    entry.ownership.role === "owner" &&
-    entry.promisedDoc !== undefined;
+    entry.ownership.role === "owner";
   if (!isCurrent()) return;
 
   const docBinding = client["_docBinding"];
-  const { provider } = await client["_localPromise"];
-  const rebuilt = await provider.transaction("readonly", async (ctx) => {
-    const stored = await ctx.getSerializedDoc({ docId });
-    if (!stored) return undefined;
-    const batches = await ctx.getOperations({ docId });
-    const doc = docBinding.deserialize(stored.serializedDoc);
-    for (const batch of batches) {
-      for (const operations of batch) {
-        docBinding.applyOperations(doc, operations, { skipUndo: true });
-      }
+  const state = entry.syncState;
+  if (state?.base === undefined) return;
+  const rebuilt = docBinding.deserialize(state.base);
+  for (const batch of state.pending) {
+    for (const operations of batch) {
+      docBinding.applyOperations(rebuilt, operations, { skipUndo: true });
     }
-    return doc;
-  });
-  if (!rebuilt) return;
-  if (!isCurrent()) {
-    docBinding.dispose(rebuilt);
-    return;
   }
 
   // Synchronous from here: exporting the history force-commits a pending
