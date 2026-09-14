@@ -1,4 +1,4 @@
-import type { DocSyncClient } from "../index.js";
+import type { DocSyncCore } from "../core.js";
 import type { DocSyncError } from "./DocSyncError.js";
 import {
   dispatchAllDocQueriesConnectionError,
@@ -16,7 +16,7 @@ export function pauseQueries<
   S extends object,
   O extends object,
 >(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   connectionError: DocSyncError | undefined,
 ): void {
   client["_connectionFetchStatus"] = "paused";

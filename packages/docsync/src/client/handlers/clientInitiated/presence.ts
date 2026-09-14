@@ -1,5 +1,5 @@
 import type { PresenceRequest } from "../../../shared/types.js";
-import type { DocSyncClient } from "../../index.js";
+import type { DocSyncCore } from "../../core.js";
 import { request } from "../../utils/request.js";
 
 /** Set presence for a document: debounce outgoing updates, then emit to active channels. */
@@ -8,7 +8,7 @@ export function handlePresence<
   S extends object,
   O extends object,
 >(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   args: { docId: string; presence: unknown },
 ): void {
   const { docId, presence } = args;
@@ -53,7 +53,7 @@ export function flushPresenceDebounce<
   S extends object,
   O extends object,
 >(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   docId: string,
   args?: { timeoutBeforeChange: ReturnType<typeof setTimeout> | undefined },
 ): void {
@@ -70,7 +70,7 @@ export function emitCurrentServerPresence<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, docId: string): void {
+>(client: DocSyncCore<D, S, O>, docId: string): void {
   if (!client["_collabDocIds"].has(docId)) return;
 
   const state = client["_presenceDebounceState"].get(docId);
@@ -81,7 +81,7 @@ export function emitCurrentServerPresence<
 }
 
 function emitPresence<D extends object, S extends object, O extends object>(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   args: { docId: string; presence: unknown },
 ): void {
   const { docId, presence } = args;
@@ -97,7 +97,7 @@ function emitServerPresence<
   S extends object,
   O extends object,
 >(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   args: { docId: string; presence: unknown },
 ): void {
   const { docId, presence } = args;

@@ -1,4 +1,4 @@
-import type { DocSyncClient } from "../index.js";
+import type { DocSyncCore } from "../core.js";
 import { applyPresencePatch } from "./applyPresencePatch.js";
 
 type BroadcastSource = "network" | "local-broadcast";
@@ -22,7 +22,7 @@ export class BCHelper<
   private _channel: BroadcastChannel;
   private _closed = false;
 
-  constructor(client: DocSyncClient<D, S, O>, userId: string) {
+  constructor(client: DocSyncCore<D, S, O>, userId: string) {
     const channelName = `docsync:${userId}`;
     this._channel = new BroadcastChannel(channelName);
     this._channel.onmessage = (ev: MessageEvent<BroadcastMessage<O>>) => {
@@ -49,7 +49,7 @@ export class BCHelper<
   }
 
   private async _applyOperations(
-    client: DocSyncClient<D, S, O>,
+    client: DocSyncCore<D, S, O>,
     operations: O,
     docId: string,
     source: BroadcastSource,

@@ -1,14 +1,57 @@
 Visit [our website](https://docukit.dev) for documentation and more.
 
-## Syncing across browser contexts
+## A shared engine for pages and workers
 
-Sync attempts for the same user and document use a Web Lock when available.
-The lock covers the storage read, request and reconciliation. Disconnecting or
-unloading cancels the old request so it does not hold the lock until timeout.
+Pages import `DocSyncClient` from `@docukit/docsync/client` as before. It extends
+`DocSyncCore`, adding stable document observers for external-store consumers
+and the public presence methods. Workers can import `DocSyncCore` directly
+from `@docukit/docsync/core` and subscribe to document state without that adapter.
+Both constructors accept the same configuration and use the same socket,
+IndexedDB identity, reconciliation, retries and live document cache.
 
-Before handing a closed document to a worker, commit the editor's transaction
-and await `client.flush(docId)` to persist its delivered operations, including
-writes already in flight. This does not require a network connection.
+```ts
+import { DocSyncCore } from "@docukit/docsync/core";
+
+// Use the same server, local provider and document binding configuration.
+const core = new DocSyncCore(config);
+const release = core.subscribeDoc({ type: "notes", id: docId }, (result) => {
+  // Called immediately with the current state, then on loading/sync changes.
+  // Observe result.data.doc.onChange separately for document content edits.
+});
+// When the document is no longer needed:
+release();
+```
+
+The constructor stays synchronous. The engine waits for IndexedDB before
+socket authentication and local document access. A core subscription starts
+local loading and network synchronization, stays subscribed across reconnects,
+and receives errors through the same query states as the UI client.
+
+The core retains the presence protocol and CRDT instances used by synchronization.
+This separation removes the external-store adapter from the worker entry; it
+does not introduce a separate transport or a second reconciliation algorithm.
+
+`deviceId` and the cached `userId` live in a small `docsync:metadata` database.
+Concurrent starts choose one device ID in one transaction. Document databases
+remain separate for each user. The cached user ID is a namespace hint; the
+server still authenticates every connection.
+
+Existing localStorage IDs are migrated once when a page starts the client.
+On the first run after upgrading an existing installation, initialize that
+page client before starting its worker. A worker cannot read the old
+localStorage values. Later starts use IndexedDB in both environments.
+
+`await client.clearLocalIdentity()` clears the cached user ID, keeps the device
+ID and prevents legacy storage from restoring the user ID. Await it before
+navigating away on logout.
+
+Concurrent sync attempts for the same user and document use a Web Lock when
+available. When closing an editor, first commit its binding's pending changes,
+then `await client.flush(docId)` before releasing any application lock that
+allows a background worker to open that document.
+
+This does not extend the lifetime of a worker. The application still controls
+which documents it observes, authentication credentials, and worker lifetime.
 
 ## Error and retry policy
 

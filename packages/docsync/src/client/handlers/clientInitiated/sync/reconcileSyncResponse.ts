@@ -2,7 +2,7 @@ import type {
   SyncResponse,
   TransactionFlags,
 } from "../../../../shared/types.js";
-import type { DocSyncClient } from "../../../index.js";
+import type { DocSyncCore } from "../../../core.js";
 import type { ClientProvider } from "../../../types.js";
 import { getLocalDocVersion } from "../../../utils/localDocVersion.js";
 
@@ -20,7 +20,7 @@ type PreparedSyncReconciliation<D extends object, O extends object> = {
 };
 
 function applyOperations<D extends object, S extends object, O extends object>(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   doc: D,
   operations: O[],
   flags?: TransactionFlags,
@@ -39,7 +39,7 @@ export async function prepareSyncReconciliation<
   S extends object,
   O extends object,
 >(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   args: {
     provider: ClientProvider<S, O>;
     docId: string;
@@ -144,7 +144,7 @@ export function finalizeSyncReconciliation<
   S extends object,
   O extends object,
 >(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   args: {
     docId: string;
     prepared: PreparedSyncReconciliation<D, O>;

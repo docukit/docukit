@@ -1,4 +1,4 @@
-import type { DocSyncClient } from "../index.js";
+import type { DocSyncCore } from "../core.js";
 
 /**
  * Transient sync failures (network drops, a server database hiccup) are worth
@@ -37,7 +37,7 @@ export function scheduleSyncRetry<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, docId: string, retry: () => void): boolean {
+>(client: DocSyncCore<D, S, O>, docId: string, retry: () => void): boolean {
   const retryStates = client["_syncRetryState"];
   const previousState = retryStates.get(docId);
   const attempts = (previousState?.attempts ?? 0) + 1;
@@ -71,7 +71,7 @@ export function cancelPendingSyncRetry<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, docId: string): void {
+>(client: DocSyncCore<D, S, O>, docId: string): void {
   const retryState = client["_syncRetryState"].get(docId);
   if (!retryState?.timeout) return;
   clearTimeout(retryState.timeout);
@@ -83,7 +83,7 @@ export function clearSyncRetry<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, docId: string): void {
+>(client: DocSyncCore<D, S, O>, docId: string): void {
   const retryState = client["_syncRetryState"].get(docId);
   if (!retryState) return;
   clearTimeout(retryState.timeout);
@@ -95,7 +95,7 @@ export function clearAllSyncRetries<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>): void {
+>(client: DocSyncCore<D, S, O>): void {
   for (const retryState of client["_syncRetryState"].values()) {
     clearTimeout(retryState.timeout);
   }

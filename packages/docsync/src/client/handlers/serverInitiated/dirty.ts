@@ -1,11 +1,11 @@
-import type { DocSyncClient } from "../../index.js";
+import type { DocSyncCore } from "../../core.js";
 import { handleSync } from "../clientInitiated/sync/sync.js";
 
 export function handleDirty<
   D extends object = object,
   S extends object = object,
   O extends object = object,
->({ client }: { client: DocSyncClient<D, S, O> }): void {
+>({ client }: { client: DocSyncCore<D, S, O> }): void {
   client["_socket"].on("dirty", (payload) => {
     void handleSync(client, payload.docId);
   });

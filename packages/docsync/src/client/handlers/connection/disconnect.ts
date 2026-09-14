@@ -1,4 +1,4 @@
-import type { DocSyncClient } from "../../index.js";
+import type { DocSyncCore } from "../../core.js";
 import { DocSyncError } from "../../utils/DocSyncError.js";
 import { pauseQueries } from "../../utils/pauseQueries.js";
 import { clearAllSyncRetries } from "../../utils/syncRetry.js";
@@ -8,7 +8,7 @@ function broadcastPresenceLeft<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>): void {
+>(client: DocSyncCore<D, S, O>): void {
   for (const docId of client["_docsCache"].keys()) {
     client["_bcHelper"]?.broadcast({
       type: "PRESENCE",
@@ -22,7 +22,7 @@ export function handleDisconnect<
   D extends object = object,
   S extends object = object,
   O extends object = object,
->({ client }: { client: DocSyncClient<D, S, O> }): void {
+>({ client }: { client: DocSyncCore<D, S, O> }): void {
   client["_socket"].on("disconnect", (reason) => {
     delete client["_connectionAttempt"];
     // In-flight syncs belong to the connection that just dropped. Moving the

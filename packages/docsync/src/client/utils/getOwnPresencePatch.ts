@@ -1,10 +1,10 @@
-import type { DocSyncClient } from "../index.js";
+import type { DocSyncCore } from "../core.js";
 
 export function getOwnPresencePatch<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, docId: string): Record<string, unknown> {
+>(client: DocSyncCore<D, S, O>, docId: string): Record<string, unknown> {
   const state = client["_presenceDebounceState"].get(docId);
   if (state) return { [client["_clientId"]]: state.data };
   return {};

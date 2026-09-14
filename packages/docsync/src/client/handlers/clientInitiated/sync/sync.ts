@@ -1,6 +1,6 @@
 import type { SyncRequest, SyncResponse } from "../../../../shared/types.js";
 import { withSyncLock } from "../../../../shared/withSyncLock.js";
-import type { DocSyncClient } from "../../../index.js";
+import type { DocSyncCore } from "../../../core.js";
 import {
   dispatchLocalDocFound,
   dispatchNetworkDocFound,
@@ -41,7 +41,7 @@ function isLiveSyncAttempt<
   S extends object,
   O extends object,
 >(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   docId: string,
   token: SyncAttemptToken,
 ): boolean {
@@ -57,7 +57,7 @@ async function applyServerOperations<
   S extends object,
   O extends object,
 >(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   args: { docId: string; operations: O[]; isLive: () => boolean },
 ): Promise<void> {
   const cacheEntry = client["_docsCache"].get(args.docId);
@@ -76,7 +76,7 @@ function replaceDocInCache<
   S extends object,
   O extends object,
 >(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   args: {
     docId: string;
     doc: D;
@@ -131,7 +131,7 @@ async function resolveHistorySourceForPotentialReplacement<
   S extends object,
   O extends object,
 >(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   args: {
     docId: string;
     hasServerSnapshot: boolean;
@@ -153,7 +153,7 @@ function exportHistoryFromCurrentSource<
   S extends object,
   O extends object,
 >(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   docId: string,
   source: HistorySource<D> | undefined,
 ): { promisedDoc: Promise<D | undefined>; value: unknown } | undefined {
@@ -187,7 +187,7 @@ function resolvePendingMemoryOperations<
   S extends object,
   O extends object,
 >(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   docId: string,
   batchBeforeExport: O[] | undefined,
 ): O[] {
@@ -207,7 +207,7 @@ function broadcastServerOperations<
   S extends object,
   O extends object,
 >(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   args: { docId: string; operations: O[] },
 ): void {
   const presence = getOwnPresencePatch(client, args.docId);
@@ -233,7 +233,7 @@ async function runSyncAttempt<
   S extends object,
   O extends object,
 >(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   docId: string,
   token: SyncAttemptToken,
   signal: AbortSignal,
@@ -392,7 +392,7 @@ export const handleSync = async <
   S extends object,
   O extends object,
 >(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   docId: string,
 ): Promise<void> => {
   if (!client["_socket"].connected) return;

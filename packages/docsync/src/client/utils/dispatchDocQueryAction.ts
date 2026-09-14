@@ -1,4 +1,4 @@
-import type { DocSyncClient } from "../index.js";
+import type { DocSyncCore } from "../core.js";
 import type { DocData } from "../types.js";
 import { createQueryResultReducer } from "./queryResultReducer.js";
 
@@ -6,7 +6,7 @@ export function dispatchLocalDocFound<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, docId: string, data: DocData<D>): void {
+>(client: DocSyncCore<D, S, O>, docId: string, data: DocData<D>): void {
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return;
 
@@ -21,7 +21,7 @@ export function dispatchLocalQueryError<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, docId: string, error: Error): void {
+>(client: DocSyncCore<D, S, O>, docId: string, error: Error): void {
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return;
 
@@ -36,7 +36,7 @@ export function dispatchAllDocQueriesConnected<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>): void {
+>(client: DocSyncCore<D, S, O>): void {
   const updates = [...client["_docsCache"]].map(([docId, cacheEntry]) => ({
     docId,
     result: createQueryResultReducer({
@@ -50,7 +50,7 @@ export function dispatchAllDocQueriesConnectionError<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, error: Error): void {
+>(client: DocSyncCore<D, S, O>, error: Error): void {
   const updates = [...client["_docsCache"]].map(([docId, cacheEntry]) => ({
     docId,
     result: createQueryResultReducer({
@@ -64,7 +64,7 @@ export function dispatchAllDocQueriesDisconnected<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>): void {
+>(client: DocSyncCore<D, S, O>): void {
   const updates = [...client["_docsCache"]].map(([docId, cacheEntry]) => ({
     docId,
     result: createQueryResultReducer({
@@ -78,7 +78,7 @@ export function dispatchNetworkDocFound<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, docId: string, data: DocData<D>): void {
+>(client: DocSyncCore<D, S, O>, docId: string, data: DocData<D>): void {
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return;
 
@@ -94,7 +94,7 @@ export function dispatchNetworkDocNotFound<
   S extends object,
   O extends object,
 >(
-  client: DocSyncClient<D, S, O>,
+  client: DocSyncCore<D, S, O>,
   docId: string,
   payload: { createIfMissing: boolean },
 ): void {
@@ -112,7 +112,7 @@ export function dispatchNetworkQueryError<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, docId: string, error: Error): void {
+>(client: DocSyncCore<D, S, O>, docId: string, error: Error): void {
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return;
 

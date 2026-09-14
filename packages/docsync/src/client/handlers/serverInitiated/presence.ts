@@ -1,4 +1,4 @@
-import type { DocSyncClient } from "../../index.js";
+import type { DocSyncCore } from "../../core.js";
 import { applyPresencePatch } from "../../utils/applyPresencePatch.js";
 
 /** Registers the socket listener for incoming presence updates from the server. */
@@ -6,7 +6,7 @@ export function handlePresence<
   D extends object = object,
   S extends object = object,
   O extends object = object,
->({ client }: { client: DocSyncClient<D, S, O> }): void {
+>({ client }: { client: DocSyncCore<D, S, O> }): void {
   client["_socket"].on("presence", (payload) => {
     const cacheEntry = client["_docsCache"].get(payload.docId);
     if (!cacheEntry) return;
