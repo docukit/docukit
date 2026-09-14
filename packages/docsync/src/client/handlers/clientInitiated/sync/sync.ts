@@ -1,4 +1,5 @@
 import type { SyncRequest, SyncResponse } from "../../../../shared/types.js";
+import { withSyncLock } from "../../../../shared/withSyncLock.js";
 import type { DocSyncClient } from "../../../index.js";
 import {
   dispatchLocalDocFound,
@@ -235,13 +236,16 @@ async function runSyncAttempt<
   client: DocSyncClient<D, S, O>,
   docId: string,
   token: SyncAttemptToken,
+  signal: AbortSignal,
 ): Promise<SyncAttemptOutcome> {
   const isLive = () => isLiveSyncAttempt(client, docId, token);
   const stale: SyncAttemptOutcome = { type: "stale" };
 
-  if (client["_localOpsBatchState"].has(docId)) {
-    await client["_flushLocalOperations"](docId, { sync: false });
-  }
+  // The connection or loaded document may have changed while waiting for
+  // another tab. A superseded attempt must not flush, send or write.
+  if (!isLive()) return stale;
+
+  await client.flush(docId);
   if (!isLive()) return stale;
   const requestLocalVersion = getLocalDocVersion(client, docId);
 
@@ -272,7 +276,7 @@ async function runSyncAttempt<
 
   let response: SyncResponse<S, O>;
   try {
-    response = await request(client["_socket"], "sync", req);
+    response = await request(client["_socket"], "sync", req, undefined, signal);
   } catch (error) {
     if (!isLive()) return stale;
     const queryError = new DocSyncError(
@@ -414,7 +418,7 @@ export const handleSync = async <
     generation: client["_connectionGeneration"],
     cacheEntry,
   };
-  const slot = { rerun: false, token };
+  const slot = { rerun: false, token, controller: new AbortController() };
   queue.set(docId, slot);
   const release = () => {
     if (queue.get(docId) === slot) queue.delete(docId);
@@ -425,7 +429,10 @@ export const handleSync = async <
   try {
     do {
       slot.rerun = false;
-      outcome = await runSyncAttempt(client, docId, token);
+      const { identity } = await client["_localPromise"];
+      outcome = await withSyncLock(identity.userId, docId, () =>
+        runSyncAttempt(client, docId, token, slot.controller.signal),
+      );
       if (
         outcome.type === "failed" &&
         outcome.transient &&

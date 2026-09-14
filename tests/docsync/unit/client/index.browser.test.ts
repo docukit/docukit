@@ -1016,10 +1016,14 @@ describe("DocSyncClient", () => {
         await vi.advanceTimersByTimeAsync(1);
         await flushMicrotasks();
 
-        expect(emitMock).toHaveBeenCalledWith(
-          "sync",
-          expect.objectContaining({ docId: "doc-1" }),
-          expect.any(Function),
+        await vi.waitFor(
+          () =>
+            expect(emitMock).toHaveBeenCalledWith(
+              "sync",
+              expect.objectContaining({ docId: "doc-1" }),
+              expect.any(Function),
+            ),
+          { interval: 1 },
         );
         client.disconnect();
       } finally {

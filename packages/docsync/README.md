@@ -1,5 +1,15 @@
 Visit [our website](https://docukit.dev) for documentation and more.
 
+## Syncing across browser contexts
+
+Sync attempts for the same user and document use a Web Lock when available.
+The lock covers the storage read, request and reconciliation. Disconnecting or
+unloading cancels the old request so it does not hold the lock until timeout.
+
+Before handing a closed document to a worker, commit the editor's transaction
+and await `client.flush(docId)` to persist its delivered operations, including
+writes already in flight. This does not require a network connection.
+
 ## Error and retry policy
 
 DocSync reports every server response or transport-level request failure

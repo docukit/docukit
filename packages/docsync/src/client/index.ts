@@ -69,6 +69,7 @@ type SyncDebounceState = {
 type SyncQueueSlot = {
   rerun: boolean;
   token: { generation: number; cacheEntry: object };
+  controller: AbortController;
 };
 type ChangeOrigin = "local" | "network" | "local-broadcast";
 type LocalLoadMode = "load" | "loadOrCreate";
@@ -113,6 +114,7 @@ export class DocSyncClient<
 
   // Flow control state (batching, debouncing, push queueing)
   protected _localOpsBatchState = new Map<string, LocalOpsBatchState<O>>();
+  protected _localWrites = new Map<string, Promise<void>>();
   protected _syncDebounceState = new Map<string, SyncDebounceState>();
   protected _collabMaxDebounce: number;
   protected _singleClientMaxDebounce: number;
@@ -591,6 +593,7 @@ export class DocSyncClient<
       const doc = await cacheEntry.promisedDoc;
       const currentEntry = this._docsCache.get(docId);
       if (currentEntry?.refCount === 0) {
+        this._syncQueue.get(docId)?.controller.abort();
         this._docsCache.delete(docId);
         const syncState = this._syncDebounceState.get(docId);
         clearTimeout(syncState?.timeout);
@@ -672,6 +675,16 @@ export class DocSyncClient<
     return handleSync(this, docId);
   }
 
+  /**
+   * Persist delivered local operations, including writes already in flight.
+   * Finish the editor's transaction before calling this. This does not wait
+   * for the network, so a document can be closed while offline.
+   */
+  async flush(docId: string) {
+    await this._flushLocalOperations(docId, { sync: false });
+    await this._localWrites.get(docId);
+  }
+
   protected async _flushLocalOperations(
     docId: string,
     options?: { sync?: boolean },
@@ -684,10 +697,21 @@ export class DocSyncClient<
     this._localOpsBatchState.delete(docId);
 
     if (opsToSave.length > 0) {
-      const local = await this._localPromise;
-      await local?.provider.transaction("readwrite", (ctx) =>
-        ctx.saveOperations({ docId, operations: opsToSave }),
-      );
+      const previous = this._localWrites.get(docId);
+      const write = (async () => {
+        await previous;
+        const local = await this._localPromise;
+        await local.provider.transaction("readwrite", (ctx) =>
+          ctx.saveOperations({ docId, operations: opsToSave }),
+        );
+      })();
+      this._localWrites.set(docId, write);
+      try {
+        await write;
+      } finally {
+        if (this._localWrites.get(docId) === write)
+          this._localWrites.delete(docId);
+      }
       if (options?.sync !== false) void handleSync(this, docId);
       return true;
     }

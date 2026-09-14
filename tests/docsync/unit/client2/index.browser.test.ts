@@ -644,6 +644,7 @@ describe("Client 2", () => {
         operations: [ops({ op: "1" })],
       });
       triggerSync(client, docId);
+      await expect.poll(() => receivedOperations.length).toBe(1);
       await saveOperations(client, docId, [ops({ op: "2" })]);
       triggerSync(client, docId);
 
@@ -695,6 +696,7 @@ describe("Client 2", () => {
       });
 
       triggerSync(client, docId);
+      await expect.poll(() => requestSpy.mock.calls.length).toBe(1);
       await saveOperations(client, docId, [ops({ second: "true" })]);
       triggerSync(client, docId);
       await saveOperations(client, docId, [ops({ third: "true" })]);
