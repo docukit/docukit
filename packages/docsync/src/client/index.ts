@@ -69,6 +69,7 @@ type SyncDebounceState = {
 type SyncQueueSlot = {
   rerun: boolean;
   token: { generation: number; cacheEntry: object };
+  settled: Promise<void>;
 };
 type ChangeOrigin = "local" | "network" | "local-broadcast";
 type LocalLoadMode = "load" | "loadOrCreate";
@@ -77,6 +78,7 @@ type DocCacheEntry<D> = {
   promisedDoc: Promise<D | undefined>;
   refCount: number;
   localVersion: number;
+  closing?: symbol;
   type: string;
   localLoadMode?: LocalLoadMode;
   queryResult: QueryResult<DocData<D> | undefined>;
@@ -113,6 +115,7 @@ export class DocSyncClient<
 
   // Flow control state (batching, debouncing, push queueing)
   protected _localOpsBatchState = new Map<string, LocalOpsBatchState<O>>();
+  protected _localWrites = new Map<string, Promise<void>>();
   protected _syncDebounceState = new Map<string, SyncDebounceState>();
   protected _collabMaxDebounce: number;
   protected _singleClientMaxDebounce: number;
@@ -587,10 +590,28 @@ export class DocSyncClient<
       cacheEntry.refCount = 0;
       this._events.emit("docUnload", { docId, refCount: 0 });
 
-      // Dispose when promise resolves
+      const closing = Symbol();
+      cacheEntry.closing = closing;
+      const canDispose = () =>
+        this._docsCache.get(docId) === cacheEntry &&
+        cacheEntry.refCount === 0 &&
+        cacheEntry.closing === closing;
+
+      await cacheEntry.promisedDoc;
+      // Keep the same instance available to a quick reopen until storage is
+      // durable. This also waits for a write that already took the batch.
+      await this._flushLocalOperations(docId, { sync: false });
+      if (!canDispose()) return;
+      if (this._socket.connected) {
+        await handleSync(this, docId);
+        // A request made during an existing sync queues a follow-up. Keep the
+        // entry until that running attempt and its follow-up have settled.
+        await this._syncQueue.get(docId)?.settled;
+      }
+      if (!canDispose()) return;
+      // Reconciliation may have replaced the instance during the final sync.
       const doc = await cacheEntry.promisedDoc;
-      const currentEntry = this._docsCache.get(docId);
-      if (currentEntry?.refCount === 0) {
+      if (canDispose()) {
         this._docsCache.delete(docId);
         const syncState = this._syncDebounceState.get(docId);
         clearTimeout(syncState?.timeout);
@@ -676,6 +697,11 @@ export class DocSyncClient<
     docId: string,
     options?: { sync?: boolean },
   ): Promise<boolean> {
+    const previous = this._localWrites.get(docId);
+    if (previous) {
+      await previous;
+      return this._flushLocalOperations(docId, options);
+    }
     const currentState = this._localOpsBatchState.get(docId);
     if (!currentState) return false;
 
@@ -684,10 +710,26 @@ export class DocSyncClient<
     this._localOpsBatchState.delete(docId);
 
     if (opsToSave.length > 0) {
-      const local = await this._localPromise;
-      await local?.provider.transaction("readwrite", (ctx) =>
-        ctx.saveOperations({ docId, operations: opsToSave }),
-      );
+      const write = (async () => {
+        const local = await this._localPromise;
+        await local?.provider.transaction("readwrite", (ctx) =>
+          ctx.saveOperations({ docId, operations: opsToSave }),
+        );
+      })();
+      this._localWrites.set(docId, write);
+      try {
+        await write;
+      } catch (error) {
+        const newer = this._localOpsBatchState.get(docId);
+        this._localOpsBatchState.set(docId, {
+          ...newer,
+          startedAt: currentState.startedAt,
+          data: [...opsToSave, ...(newer?.data ?? [])],
+        });
+        throw error;
+      } finally {
+        this._localWrites.delete(docId);
+      }
       if (options?.sync !== false) void handleSync(this, docId);
       return true;
     }

@@ -1,5 +1,23 @@
 Visit [our website](https://docukit.dev) for documentation and more.
 
+## Closing a document
+
+When the last observer unsubscribes, DocSync saves pending local operations and
+waits for any local write already in progress. If connected, it then attempts a
+final sync before removing the document from its cache and disposing it. This
+also waits for a follow-up queued behind an existing sync. Applications do not
+need to call a separate flush method when closing a document.
+
+A failed server request leaves the changes in local storage; closing does not
+wait through the retry schedule. A failed local write instead keeps the document
+and its pending operations available. Reopening during closing reuses the cached
+document and prevents its disposal while subscribed.
+
+This applies to edits already delivered to DocSync by the document binding. An
+editor must commit its own pending transaction before unsubscribing. It does not
+guarantee completion when the browser terminates a page or worker, or discover
+unloaded documents that still need synchronization after a restart.
+
 ## Error and retry policy
 
 DocSync reports every server response or transport-level request failure

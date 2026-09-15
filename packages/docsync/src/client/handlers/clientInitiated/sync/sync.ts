@@ -414,10 +414,15 @@ export const handleSync = async <
     generation: client["_connectionGeneration"],
     cacheEntry,
   };
-  const slot = { rerun: false, token };
+  let settle!: () => void;
+  const settled = new Promise<void>((resolve) => {
+    settle = resolve;
+  });
+  const slot = { rerun: false, token, settled };
   queue.set(docId, slot);
   const release = () => {
     if (queue.get(docId) === slot) queue.delete(docId);
+    settle();
   };
   const isLive = () => isLiveSyncAttempt(client, docId, token);
 
