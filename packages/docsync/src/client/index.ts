@@ -67,6 +67,7 @@ type SyncDebounceState = {
 type SyncQueueSlot = {
   rerun: boolean;
   token: { generation: number; cacheEntry: object };
+  controller: AbortController;
   settled: Promise<void>;
 };
 type ChangeOrigin = "local" | "network" | "local-broadcast";
@@ -608,6 +609,7 @@ export class DocSyncClient<
       // Reconciliation may have replaced the instance during the final sync.
       const doc = await cacheEntry.promisedDoc;
       if (canDispose()) {
+        this._syncQueue.get(docId)?.controller.abort();
         this._docsCache.delete(docId);
         const syncState = this._syncDebounceState.get(docId);
         clearTimeout(syncState?.timeout);
@@ -687,6 +689,16 @@ export class DocSyncClient<
 
   protected _sync(docId: string) {
     return handleSync(this, docId);
+  }
+
+  /**
+   * Persist delivered local operations, including writes already in flight.
+   * Finish the editor's transaction before calling this. This does not wait
+   * for the network, so a document can be closed while offline.
+   */
+  async flush(docId: string) {
+    await this._flushLocalOperations(docId, { sync: false });
+    await this._localWrites.get(docId);
   }
 
   protected async _flushLocalOperations(

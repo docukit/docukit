@@ -24,6 +24,21 @@ ID. Await it before navigating away on logout.
 This does not extend the lifetime of a worker. The application still controls
 which documents it observes, authentication credentials, and worker lifetime.
 
+## Coordinating concurrent syncs
+
+When Web Locks are available, sync attempts for the same user and document
+read pending operations, exchange a server request, and reconcile the response
+one at a time across tabs and workers. Other documents can sync concurrently.
+Without Web Locks, the existing per-client queue and clock checks still apply.
+Disconnecting cancels the local wait for an in-flight response so it can release
+its sync lock; it does not undo a request already received by the server.
+
+`await client.flush(docId)` explicitly persists operations already delivered by
+the binding and waits for local writes in flight. It does not wait for server
+confirmation or commit the editor's own transaction. The normal unsubscribe
+flow already persists automatically; worker compatibility does not require this
+public method.
+
 ## Closing a document
 
 When the last observer unsubscribes, DocSync saves pending local operations and
