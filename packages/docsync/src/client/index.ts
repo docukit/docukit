@@ -26,7 +26,6 @@ import { handlePresence } from "./handlers/clientInitiated/presence.js";
 import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
 import { handleSync } from "./handlers/clientInitiated/sync/sync.js";
 import { handleUnsubscribe } from "./handlers/clientInitiated/unsubscribe.js";
-import { handleIdentity } from "./handlers/serverInitiated/identity.js";
 import type { BCHelper } from "./utils/BCHelper.js";
 import {
   dispatchAllDocQueriesConnected,
@@ -34,10 +33,9 @@ import {
   dispatchLocalDocFound,
   dispatchLocalQueryError,
 } from "./utils/dispatchDocQueryAction.js";
-import { getDeviceId } from "./utils/getDeviceId.js";
 import {
   clearLocalIdentity as clearStoredLocalIdentity,
-  readLocalIdentity,
+  readLocalMetadata,
 } from "./utils/localIdentity.js";
 import { setupDocChangeListener } from "./utils/setupDocChangeListener.js";
 import { pauseQueries } from "./utils/pauseQueries.js";
@@ -97,7 +95,6 @@ export class DocSyncClient<
   protected _docBinding: DocBinding<D, S, O>;
   protected _docsCache = new Map<string, DocCacheEntry<D>>();
   protected _localPromise: Promise<LocalResolved<S, O>>;
-  protected _deviceId: string;
   /** Client-generated id for presence (works offline; sent in auth so server uses same key) */
   protected _clientId: string;
   protected _bcHelper?: BCHelper<D, S, O>;
@@ -135,8 +132,6 @@ export class DocSyncClient<
   protected _events = createClientEventEmitter();
 
   constructor(config: ClientConfig<D, S, O>) {
-    if (typeof window === "undefined")
-      throw new Error("DocSyncClient can only be used in the browser");
     const { docBinding, local } = config;
     this._docBinding = docBinding;
     this._clientId = crypto.randomUUID();
@@ -147,29 +142,26 @@ export class DocSyncClient<
       timing?.singleClientMaxDebounce ?? 3000,
     );
 
-    const cachedIdentity = readLocalIdentity();
-    this._deviceId = getDeviceId();
+    const metadata = readLocalMetadata();
     this._socket = io(config.server.url, {
       auth: (cb) => {
-        const authPayload = {
-          deviceId: this._deviceId,
-          clientId: this._clientId,
-          claimedUserId: cachedIdentity?.userId ?? null,
-        };
-
-        if (config.server.auth.mode === "request") {
-          cb(authPayload);
-          return;
-        }
-        const getToken = config.server.auth.getToken;
         const connectionAttempt = Symbol();
         this._connectionAttempt = connectionAttempt;
+        const auth = config.server.auth;
 
-        // Start with a resolved promise so both a synchronous throw and a
-        // rejected token promise follow the same connection-error path.
-        void Promise.resolve()
-          .then(() => getToken())
-          .then((token) => {
+        void metadata
+          .then(async ({ deviceId, identity }) => {
+            if (this._connectionAttempt !== connectionAttempt) return;
+            const authPayload = {
+              deviceId,
+              clientId: this._clientId,
+              claimedUserId: identity?.userId ?? null,
+            };
+            if (auth.mode === "request") {
+              cb(authPayload);
+              return;
+            }
+            const token = await auth.getToken();
             if (this._connectionAttempt !== connectionAttempt) return;
             cb({ ...authPayload, token });
           })
@@ -198,10 +190,14 @@ export class DocSyncClient<
     this._localPromise = setupLocalPromise({
       client: this,
       providerFactory: local.provider,
-      cachedIdentity,
+      cachedIdentity: metadata.then(({ identity }) => identity),
     });
 
-    handleIdentity({ client: this });
+    // Queries surface local initialization failures, even when no socket identity arrives.
+    void this._localPromise.catch(() => {
+      // Handled by each document query when it awaits local initialization.
+    });
+
     handleConnect({ client: this });
     handleDisconnect({ client: this });
     handleCollaboration({ client: this });
@@ -243,7 +239,7 @@ export class DocSyncClient<
   }
 
   clearLocalIdentity() {
-    clearStoredLocalIdentity();
+    return clearStoredLocalIdentity();
   }
 
   private _initialQueryResult(): QueryResult<DocData<D> | undefined> {

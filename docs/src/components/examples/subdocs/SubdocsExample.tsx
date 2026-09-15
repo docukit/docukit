@@ -7,7 +7,7 @@ import { createMultiClients } from "../utils/createMultiClients";
 import { MultiClientLayout } from "../utils/MultiClientLayout";
 import { IndexDoc } from "./IndexDoc";
 
-const clients = createMultiClients([indexDocConfig]);
+const useClients = createMultiClients([indexDocConfig]);
 
 type SeedSkeletonNode = {
   children?: readonly SeedSkeletonNode[];
@@ -138,7 +138,7 @@ function SubDocContent({
   clientId: string;
   docId: string;
   shouldInitialize?: boolean;
-  useDocHook: typeof clients.useReferenceDoc;
+  useDocHook: NonNullable<ReturnType<typeof useClients>>["useReferenceDoc"];
 }) {
   const { status, data, error } = useDocHook({
     type: "indexDoc",
@@ -250,6 +250,8 @@ export function SubdocsExample({
   docId: string;
   shouldInitialize?: boolean;
 }) {
+  const clients = useClients();
+  if (!clients) return <SubdocsExampleLoading />;
   return (
     <MultiClientLayout
       referenceClient={clients.referenceClient}
@@ -293,9 +295,9 @@ export function SubdocsExample({
 export function SubdocsExampleLoading() {
   return (
     <MultiClientLayout
-      referenceClient={clients.referenceClient}
-      otherTabClient={clients.otherTabClient}
-      otherDeviceClient={clients.otherDeviceClient}
+      referenceClient={undefined}
+      otherTabClient={undefined}
+      otherDeviceClient={undefined}
     >
       {() => (
         <SubdocsPanelFrame isLoading>

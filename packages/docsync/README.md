@@ -1,5 +1,29 @@
 Visit [our website](https://docukit.dev) for documentation and more.
 
+## The same client in a page and a worker
+
+Import `DocSyncClient` from `@docukit/docsync/client` in either environment.
+The constructor stays synchronous. Internally, the client waits for IndexedDB
+before authenticating its socket and opening the user's local document store.
+It uses the same socket, reconciliation, retries and document observers in both
+environments. No separate HTTP endpoint or identity messages are required.
+
+`deviceId` and the cached `userId` live in a small `docsync:metadata` database.
+Concurrent starts choose one device ID in one transaction. Document databases
+remain separate for each user. The cached user ID is a namespace hint; the
+server still authenticates every connection.
+
+Legacy localStorage identity is ignored. The first start after upgrading needs
+an authenticated connection to learn the user ID; the existing document database
+for that same user is then reused, including pending operations. Subsequent starts
+can use the IndexedDB identity offline.
+
+`await client.clearLocalIdentity()` clears the cached user ID and keeps the device
+ID. Await it before navigating away on logout.
+
+This does not extend the lifetime of a worker. The application still controls
+which documents it observes, authentication credentials, and worker lifetime.
+
 ## Closing a document
 
 When the last observer unsubscribes, DocSync saves pending local operations and

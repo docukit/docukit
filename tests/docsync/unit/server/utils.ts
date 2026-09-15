@@ -1,3 +1,5 @@
+import { vi } from "vitest";
+
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { DocSyncServer, inMemoryServerProvider } from "@docukit/docsync/server";
 import {
@@ -7,6 +9,29 @@ import {
 } from "@docukit/docsync/client";
 import { Doc, type JsonDoc, type Operations } from "@docukit/docnode";
 import { testDocConfig } from "../../int/utils.js";
+
+vi.mock(
+  process.env.CI
+    ? "../../../../packages/docsync/dist/src/client/utils/localIdentity.js"
+    : "../../../../packages/docsync/src/client/utils/localIdentity.js",
+  () => ({
+    readLocalMetadata: () => {
+      const userId = localStorage.getItem("docsync:localUserId");
+      return Promise.resolve({
+        deviceId: localStorage.getItem("docsync:deviceId") ?? "test-device",
+        identity: userId ? { userId } : undefined,
+      });
+    },
+    saveLocalIdentity: ({ userId }: { userId: string }) => {
+      localStorage.setItem("docsync:localUserId", userId);
+      return Promise.resolve();
+    },
+    clearLocalIdentity: () => {
+      localStorage.removeItem("docsync:localUserId");
+      return Promise.resolve();
+    },
+  }),
+);
 
 type TestClient = DocSyncClient<Doc, JsonDoc, Operations>;
 

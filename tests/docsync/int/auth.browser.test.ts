@@ -1,3 +1,4 @@
+import { seedMetadata } from "../metadataUtils.js";
 // TODO: move to unit tests
 
 import { describe, expect, inject, test } from "vitest";
@@ -9,8 +10,6 @@ import {
 } from "@docukit/docsync/client";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { defineNode, string, type Doc } from "@docukit/docnode";
-
-const LOCAL_IDENTITY_KEY = "docsync:localUserId";
 
 const docBinding = DocNodeBinding([
   {
@@ -27,8 +26,8 @@ const getTestServerUrl = () => {
   return `ws://localhost:${port}`;
 };
 
-const createClient = (token: string) => {
-  localStorage.removeItem(LOCAL_IDENTITY_KEY);
+const createClient = async (token: string) => {
+  await seedMetadata();
 
   return new DocSyncClient({
     server: {
@@ -51,14 +50,14 @@ const waitForConnection = (socket: {
 
 describe("Authentication", () => {
   test("client with valid token connects successfully", async () => {
-    const client = createClient("test-token-user1");
+    const client = await createClient("test-token-user1");
     const socket = client["_socket"];
     await waitForConnection(socket);
     socket.disconnect();
   });
 
   test("client with invalid token is rejected", async () => {
-    const client = createClient("invalid");
+    const client = await createClient("invalid");
     const socket = client["_socket"];
     const error = await new Promise<Error>((r) =>
       socket.once("connect_error", r),
@@ -68,7 +67,7 @@ describe("Authentication", () => {
   });
 
   test("document query exposes an authentication rejection as error and paused", async () => {
-    const client = createClient("invalid");
+    const client = await createClient("invalid");
     const results: QueryResult<DocData<Doc> | undefined>[] = [];
 
     const observer = client.getDocObserver({ type: "t", id: "auth-rejection" });
