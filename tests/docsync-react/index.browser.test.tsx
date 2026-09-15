@@ -1,3 +1,4 @@
+import { seedMetadata } from "../docsync/metadataUtils.js";
 import { expect, expectTypeOf, inject, test } from "vitest";
 import {
   createDocSyncClient,
@@ -29,7 +30,7 @@ const countChildren = (doc: Doc): number => {
 const reactUserId = "John";
 
 test("createDocSyncClient", async () => {
-  localStorage.setItem("docsync:localUserId", reactUserId);
+  await seedMetadata(reactUserId);
   const { useDoc } = createDocSyncClient({
     server: {
       url: testServerUrl(),
@@ -138,7 +139,7 @@ test("createDocSyncClient", async () => {
 }, 5000);
 
 test("useDoc never renders the previous document after its id changes", async () => {
-  localStorage.removeItem("docsync:localUserId");
+  await seedMetadata();
   const firstId = id.ending("101");
   const secondId = id.ending("102");
   const { useDoc, client } = createDocSyncClient({
@@ -192,7 +193,7 @@ test("useDoc never renders the previous document after its id changes", async ()
 }, 5000);
 
 test("client keeps own presence for debounced outgoing sync", async () => {
-  localStorage.setItem("docsync:localUserId", reactUserId);
+  await seedMetadata(reactUserId);
   const { useDoc, usePresence, client } = createDocSyncClient({
     server: {
       url: testServerUrl(),
@@ -252,7 +253,7 @@ test("client keeps own presence for debounced outgoing sync", async () => {
 test("useDoc rerenders with the server doc after replacing an optimistic local doc", async () => {
   const docId = id.ending(Date.now().toString().slice(-6));
 
-  localStorage.removeItem("docsync:localUserId");
+  await seedMetadata();
   const source = createDocSyncClient({
     server: {
       url: testServerUrl(),
@@ -307,7 +308,7 @@ test("useDoc rerenders with the server doc after replacing an optimistic local d
   sourceClient.disconnect();
   sourceClient["_bcHelper"]?.close();
 
-  localStorage.removeItem("docsync:localUserId");
+  await seedMetadata();
   const reader = createDocSyncClient({
     server: {
       url: testServerUrl(),

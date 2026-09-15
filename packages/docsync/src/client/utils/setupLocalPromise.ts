@@ -8,7 +8,7 @@ type ResolvedLocal<S extends object, O extends object> = {
   identity: Identity;
 };
 
-export const setupLocalPromise = <
+export const setupLocalPromise = async <
   D extends object,
   S extends object,
   O extends object,
@@ -19,28 +19,17 @@ export const setupLocalPromise = <
 }: {
   client: DocSyncClient<D, S, O>;
   providerFactory: ClientConfig<D, S, O>["local"]["provider"];
-  cachedIdentity: Identity | undefined;
+  cachedIdentity: Promise<Identity | undefined>;
 }): Promise<ResolvedLocal<S, O>> => {
-  if (cachedIdentity) {
-    client["_bcHelper"]?.close();
-    client["_bcHelper"] = new BCHelper(client, cachedIdentity.userId);
-    return Promise.resolve({
-      provider: providerFactory(cachedIdentity),
-      identity: cachedIdentity,
-    });
-  }
-
-  return new Promise((resolve) => {
-    let didResolve = false;
+  // Register before awaiting IDB so a fast handshake cannot lose identity.
+  const serverIdentity = new Promise<Identity>((resolve) => {
     client["_socket"].on("identity", (payload) => {
-      if (didResolve) return;
-      didResolve = true;
-
-      const identity = { userId: payload.userId };
-      saveLocalIdentity(identity);
-      client["_bcHelper"]?.close();
-      client["_bcHelper"] = new BCHelper(client, identity.userId);
-      resolve({ provider: providerFactory(identity), identity });
+      resolve({ userId: payload.userId });
     });
   });
+  const cached = await cachedIdentity;
+  const identity = cached ?? (await serverIdentity);
+  if (!cached) await saveLocalIdentity(identity);
+  client["_bcHelper"] = new BCHelper(client, identity.userId);
+  return { provider: providerFactory(identity), identity };
 };

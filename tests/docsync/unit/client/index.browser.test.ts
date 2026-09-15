@@ -1,3 +1,4 @@
+import { withMetadataStore, readMetadata } from "../../metadataUtils.js";
 import { beforeEach, describe, test, expect, vi, expectTypeOf } from "vitest";
 import {
   DocSyncClient,
@@ -30,7 +31,7 @@ import {
   getErrorResult,
   cacheLocalIdentity,
   clearCachedLocalIdentity,
-  LOCAL_IDENTITY_KEY,
+  readCachedLocalIdentity,
   subscribeToDoc,
 } from "./utils.js";
 
@@ -137,7 +138,7 @@ vi.mock("socket.io-client", () => ({ io: ioMock }));
 // ============================================================================
 
 describe("DocSyncClient", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     ioMock.mockClear();
     socketMockState.autoIdentity = true;
     socketMockState.identityPayload = undefined;
@@ -145,7 +146,7 @@ describe("DocSyncClient", () => {
     socketMockState.syncErrors.clear();
     socketMockState.deferSyncDocIds.clear();
     socketMockState.deferredSyncAcks.clear();
-    clearCachedLocalIdentity();
+    await clearCachedLocalIdentity();
   });
 
   type DebounceTestDoc = { docId: string };
@@ -156,7 +157,7 @@ describe("DocSyncClient", () => {
     operations: DebounceTestOperation[];
   }) => Promise<void>;
 
-  const createDebounceTestClient = ({
+  const createDebounceTestClient = async ({
     saveOperations,
     timing,
   }: {
@@ -194,7 +195,7 @@ describe("DocSyncClient", () => {
         }),
     };
 
-    cacheLocalIdentity("mock-user");
+    await cacheLocalIdentity("mock-user");
 
     const config: ClientConfig<
       DebounceTestDoc,
@@ -213,7 +214,9 @@ describe("DocSyncClient", () => {
       config.timing = timing;
     }
 
-    return new DocSyncClient(config);
+    const client = new DocSyncClient(config);
+    await client["_localPromise"];
+    return client;
   };
 
   const flushMicrotasks = async () => {
@@ -222,7 +225,7 @@ describe("DocSyncClient", () => {
     await Promise.resolve();
   };
 
-  test("request auth sends handshake metadata without reading a token", () => {
+  test("request auth sends handshake metadata without reading a token", async () => {
     ioMock.mockClear();
 
     const client = new DocSyncClient({
@@ -242,12 +245,14 @@ describe("DocSyncClient", () => {
     });
 
     expect(options.withCredentials).toBe(true);
-    expect(authPayload).toBeDefined();
+    await expect.poll(() => authPayload).toBeDefined();
     if (!authPayload) {
       throw new Error("Expected socket auth payload");
     }
     expect(typeof authPayload.deviceId).toBe("string");
-    expect(authPayload).toMatchObject({ clientId: client["_clientId"] });
+    await expect
+      .poll(() => authPayload)
+      .toMatchObject({ clientId: client["_clientId"] });
     expect(authPayload).not.toHaveProperty("token");
     expect(authPayload.claimedUserId).toBe(null);
   });
@@ -396,13 +401,13 @@ describe("DocSyncClient", () => {
       ).toThrow("Duplicate doc type: test");
     });
 
-    test("should initialize with valid config", () => {
-      const client = createClient();
+    test("should initialize with valid config", async () => {
+      const client = await createClient();
       expect(client).toBeInstanceOf(DocSyncClient);
     });
 
-    test("should initialize with local provider config", () => {
-      const client = createClient();
+    test("should initialize with local provider config", async () => {
+      const client = await createClient();
       expect(client).toBeInstanceOf(DocSyncClient);
     });
 
@@ -488,7 +493,7 @@ describe("DocSyncClient", () => {
       }
       const authCallback = vi.fn();
       options.auth(authCallback);
-      await flushMicrotasks();
+      await expect.poll(() => rejectToken).toBeDefined();
       if (!rejectToken) throw new Error("Expected pending token request");
 
       client.disconnect();
@@ -506,7 +511,10 @@ describe("DocSyncClient", () => {
       socketMockState.autoIdentity = false;
 
       const providerFactory = createIndexedDBProviderSpy();
-      const client = createClientWithProvider(providerFactory, "cached-user");
+      const client = await createClientWithProvider(
+        providerFactory,
+        "cached-user",
+      );
       await client["_localPromise"];
 
       const options = ioMock.mock.calls.at(-1)?.[1];
@@ -536,7 +544,10 @@ describe("DocSyncClient", () => {
       socketMockState.autoIdentity = false;
 
       const providerFactory = createIndexedDBProviderSpy();
-      const client = createClientWithProvider(providerFactory, "offline-user");
+      const client = await createClientWithProvider(
+        providerFactory,
+        "offline-user",
+      );
       await client["_localPromise"];
       client["_socket"].connected = false;
 
@@ -562,17 +573,35 @@ describe("DocSyncClient", () => {
       );
     });
 
+    test("simultaneously starting clients send one persistent device ID", async () => {
+      await withMetadataStore("readwrite", (store) => store.delete("deviceId"));
+      const provider = createIndexedDBProviderSpy();
+      const clients = await Promise.all([
+        createClientWithProvider(provider),
+        createClientWithProvider(provider),
+      ]);
+      const payloads: SocketAuthPayload[] = [];
+      for (const [, options] of ioMock.mock.calls) {
+        options?.auth?.((payload) => payloads.push(payload));
+      }
+      await expect.poll(() => payloads.length).toBe(2);
+      expect(payloads[0]?.deviceId).toBe(await readMetadata("deviceId"));
+      expect(payloads[1]?.deviceId).toBe(payloads[0]?.deviceId);
+      expect(payloads[1]?.clientId).not.toBe(payloads[0]?.clientId);
+      for (const client of clients) client.disconnect();
+    });
+
     test("opens provider when server identity arrives", async () => {
       socketMockState.identityPayload = { userId: "plain-user" };
 
       const providerFactory = createIndexedDBProviderSpy();
-      const client = createClientWithProvider(providerFactory);
+      const client = await createClientWithProvider(providerFactory);
 
       await expect
         .poll(async () => (await client["_localPromise"]).identity.userId)
         .toBe("plain-user");
 
-      expect(localStorage.getItem(LOCAL_IDENTITY_KEY)).toBe("plain-user");
+      expect(await readCachedLocalIdentity()).toBe("plain-user");
       expect(
         providerFactory.mock.calls.map(([identity]) => identity),
       ).toStrictEqual([{ userId: "plain-user" }]);
@@ -582,13 +611,14 @@ describe("DocSyncClient", () => {
       socketMockState.identityPayload = { userId: "same-user" };
       const providerFactory = createIndexedDBProviderSpy();
 
-      const client = createClientWithProvider(providerFactory, "same-user");
+      const client = await createClientWithProvider(
+        providerFactory,
+        "same-user",
+      );
       await client["_localPromise"];
       await flushMicrotasks();
 
-      await expect
-        .poll(() => localStorage.getItem(LOCAL_IDENTITY_KEY))
-        .toBe("same-user");
+      await expect.poll(() => readCachedLocalIdentity()).toBe("same-user");
       expect(providerFactory).toHaveBeenCalledTimes(1);
       expect((await client["_localPromise"]).identity).toStrictEqual({
         userId: "same-user",
@@ -602,14 +632,17 @@ describe("DocSyncClient", () => {
       socketMockState.autoIdentity = false;
 
       const providerFactory = createIndexedDBProviderSpy();
-      const client = createClientWithProvider(providerFactory, "logout-user");
+      const client = await createClientWithProvider(
+        providerFactory,
+        "logout-user",
+      );
       await client["_localPromise"];
 
-      expect(localStorage.getItem(LOCAL_IDENTITY_KEY)).toBe("logout-user");
+      expect(await readCachedLocalIdentity()).toBe("logout-user");
 
-      client.clearLocalIdentity();
+      await client.clearLocalIdentity();
 
-      expect(localStorage.getItem(LOCAL_IDENTITY_KEY)).toBeNull();
+      expect(await readCachedLocalIdentity()).toBeUndefined();
       expect((await client["_localPromise"]).identity).toStrictEqual({
         userId: "logout-user",
       });
@@ -634,7 +667,7 @@ describe("DocSyncClient", () => {
 
       try {
         // Need local config to initialize BroadcastChannel
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
 
         // Trigger _localPromise resolution by calling getDoc
@@ -677,7 +710,7 @@ describe("DocSyncClient", () => {
         MockBroadcastChannel as unknown as typeof BroadcastChannel;
 
       try {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
 
         subscribeToDoc(
@@ -715,7 +748,7 @@ describe("DocSyncClient", () => {
         const saveOperations = vi.fn<SaveOperations>(() =>
           Promise.resolve(undefined),
         );
-        const client = createDebounceTestClient({
+        const client = await createDebounceTestClient({
           saveOperations,
           timing: { collabMaxDebounce: 50, singleClientMaxDebounce: 3000 },
         });
@@ -761,7 +794,7 @@ describe("DocSyncClient", () => {
         const saveOperations = vi.fn<SaveOperations>(() =>
           Promise.resolve(undefined),
         );
-        const client = createDebounceTestClient({
+        const client = await createDebounceTestClient({
           saveOperations,
           timing: { collabMaxDebounce: 50 },
         });
@@ -798,7 +831,7 @@ describe("DocSyncClient", () => {
         const saveOperations = vi.fn<SaveOperations>(() =>
           Promise.resolve(undefined),
         );
-        const client = createDebounceTestClient({
+        const client = await createDebounceTestClient({
           saveOperations,
           timing: { collabMaxDebounce: 50 },
         });
@@ -837,7 +870,7 @@ describe("DocSyncClient", () => {
         const saveOperations = vi.fn<SaveOperations>(() =>
           Promise.resolve(undefined),
         );
-        const client = createDebounceTestClient({
+        const client = await createDebounceTestClient({
           saveOperations,
           timing: { collabMaxDebounce: 50 },
         });
@@ -970,7 +1003,7 @@ describe("DocSyncClient", () => {
         const saveOperations = vi.fn<SaveOperations>(() =>
           Promise.resolve(undefined),
         );
-        const client = createDebounceTestClient({
+        const client = await createDebounceTestClient({
           saveOperations,
           timing: { collabMaxDebounce: 1000 },
         });
@@ -1016,10 +1049,15 @@ describe("DocSyncClient", () => {
         await vi.advanceTimersByTimeAsync(1);
         await flushMicrotasks();
 
-        expect(emitMock).toHaveBeenCalledWith(
-          "sync",
-          expect.objectContaining({ docId: "doc-1" }),
-          expect.any(Function),
+        // The debounce elapsed; Web Locks still schedules acquisition asynchronously.
+        await vi.waitFor(
+          () =>
+            expect(emitMock).toHaveBeenCalledWith(
+              "sync",
+              expect.objectContaining({ docId: "doc-1" }),
+              expect.any(Function),
+            ),
+          { interval: 1 },
         );
         client.disconnect();
       } finally {
@@ -1034,7 +1072,7 @@ describe("DocSyncClient", () => {
         const saveOperations = vi.fn<SaveOperations>(() =>
           Promise.resolve(undefined),
         );
-        const client = createDebounceTestClient({
+        const client = await createDebounceTestClient({
           saveOperations,
           timing: { collabMaxDebounce: 50, singleClientMaxDebounce: 1000 },
         });
@@ -1092,7 +1130,7 @@ describe("DocSyncClient", () => {
         const saveOperations = vi.fn<SaveOperations>(() =>
           Promise.resolve(undefined),
         );
-        const client = createDebounceTestClient({
+        const client = await createDebounceTestClient({
           saveOperations,
           timing: { collabMaxDebounce: 50, singleClientMaxDebounce: 3000 },
         });
@@ -1143,7 +1181,7 @@ describe("DocSyncClient", () => {
       const saveOperations = vi.fn<SaveOperations>(() =>
         Promise.resolve(undefined),
       );
-      const client = createDebounceTestClient({
+      const client = await createDebounceTestClient({
         saveOperations,
         timing: { singleClientMaxDebounce: 1000 },
       });
@@ -1180,7 +1218,7 @@ describe("DocSyncClient", () => {
       const saveOperations = vi.fn<SaveOperations>(() =>
         Promise.resolve(undefined),
       );
-      const client = createDebounceTestClient({
+      const client = await createDebounceTestClient({
         saveOperations,
         timing: { singleClientMaxDebounce: 1000 },
       });
@@ -1212,8 +1250,8 @@ describe("DocSyncClient", () => {
     type MaybeDocResult = QueryResult<DocData<Doc> | undefined>;
 
     // These tests only verify types at compile time, no runtime assertions needed
-    test("callback receives correct types based on args", () => {
-      const client = createClient();
+    test("callback receives correct types based on args", async () => {
+      const client = await createClient();
       const id = ulid().toLowerCase();
 
       // with id, without createIfMissing → MaybeDocResult
@@ -1243,7 +1281,7 @@ describe("DocSyncClient", () => {
     test("type errors for invalid arguments", () => {
       // These are compile-time checks only - we use a function that's never called
       // to avoid runtime execution while still getting TypeScript to check the types
-      const typeCheck = (client: ReturnType<typeof createClient>) => {
+      const typeCheck = (client: Awaited<ReturnType<typeof createClient>>) => {
         // @ts-expect-error - type is required (even with id)
         client.getDocObserver({ id: "123" });
 
@@ -1293,7 +1331,9 @@ describe("DocSyncClient", () => {
   // ──────────────────────────────────────────────────────────────────────────
 
   describe("getDocObserver", () => {
-    const createDocWithChild = (client: ReturnType<typeof createClient>) => {
+    const createDocWithChild = (
+      client: Awaited<ReturnType<typeof createClient>>,
+    ) => {
       const docId = ulid().toLowerCase();
       const { doc } = client["_docBinding"].create("test", docId);
       doc.root.append(doc.createNode(ChildNode));
@@ -1307,7 +1347,7 @@ describe("DocSyncClient", () => {
 
     describe("Get existing document", () => {
       test("should stay lazy until its first subscriber and share one document subscription", async () => {
-        const client = createClient();
+        const client = await createClient();
         const docId = ulid().toLowerCase();
         const observer = client.getDocObserver({ type: "test", id: docId });
 
@@ -1327,8 +1367,8 @@ describe("DocSyncClient", () => {
         await expect.poll(() => client["_docsCache"].has(docId)).toBe(false);
       });
 
-      test("should emit pending status initially", () => {
-        const client = createClient();
+      test("should emit pending status initially", async () => {
+        const client = await createClient();
         const callback = createCallback();
 
         subscribeToDoc(client, { type: "test", id: "test-id" }, callback);
@@ -1339,8 +1379,8 @@ describe("DocSyncClient", () => {
         });
       });
 
-      test("should remain fetching while the initial connection is active", () => {
-        const client = createClient();
+      test("should remain fetching while the initial connection is active", async () => {
+        const client = await createClient();
         const callback = createCallback();
 
         setSocketState(client, { active: true, connected: false });
@@ -1353,7 +1393,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should pause an idle query after a manual disconnect", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
@@ -1376,7 +1416,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should pause a transient connection failure without reporting an error", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
@@ -1403,7 +1443,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should preserve local data with a permanent connection error", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const connectionError = new Error("Authentication failed");
         const docId = ulid().toLowerCase();
@@ -1434,7 +1474,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should report a server-initiated disconnect as an error", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
@@ -1462,7 +1502,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should recover a permanent connection error after reconnecting", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
@@ -1489,8 +1529,8 @@ describe("DocSyncClient", () => {
           .toMatchObject({ status: "success", fetchStatus: "idle" });
       });
 
-      test("observer should report the state a new subscription starts from", () => {
-        const client = createClient();
+      test("observer should report the state a new subscription starts from", async () => {
+        const client = await createClient();
 
         expect(
           client.getDocObserver({ type: "test", id: "unknown" }).getSnapshot(),
@@ -1513,7 +1553,7 @@ describe("DocSyncClient", () => {
       });
 
       test("observer should return the cached result of a loaded document", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
@@ -1534,7 +1574,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should report the same fetch status for every subscription during a transient failure", async () => {
-        const client = createClient();
+        const client = await createClient();
         const loadedCallback = createCallback();
         const lateCallback = createCallback();
 
@@ -1569,8 +1609,8 @@ describe("DocSyncClient", () => {
         });
       });
 
-      test("should pause queries when disconnecting before the connection is established", () => {
-        const client = createClient();
+      test("should pause queries when disconnecting before the connection is established", async () => {
+        const client = await createClient();
         const callback = createCallback();
 
         setSocketState(client, { active: true, connected: false });
@@ -1585,8 +1625,8 @@ describe("DocSyncClient", () => {
         });
       });
 
-      test("should keep a permanent connection error visible while reconnecting", () => {
-        const client = createClient();
+      test("should keep a permanent connection error visible while reconnecting", async () => {
+        const client = await createClient();
         const callback = createCallback();
         const connectionError = new Error("Authentication failed");
 
@@ -1605,7 +1645,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should leave an already connected client and its queries unchanged", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
@@ -1627,7 +1667,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should preserve paused state when starting the socket throws", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
@@ -1651,7 +1691,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should update every query before notifying reconnect listeners", async () => {
-        const client = createClient();
+        const client = await createClient();
         const firstId = ulid().toLowerCase();
         const secondId = ulid().toLowerCase();
         const firstObserver = client.getDocObserver({
@@ -1692,7 +1732,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should resume loaded queries when reconnecting, not just new ones", async () => {
-        const client = createClient();
+        const client = await createClient();
         const loadedCallback = createCallback();
         const lateCallback = createCallback();
         const docId = ulid().toLowerCase();
@@ -1740,7 +1780,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should resume loaded queries synchronously on automatic reconnect", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
@@ -1766,7 +1806,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should keep the document instance when subscribing while an error is visible", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
@@ -1797,7 +1837,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should start a fresh sync after closing offline with an old request in flight", async () => {
-        const client = createClient();
+        const client = await createClient();
         const docId = ulid().toLowerCase();
         socketMockState.deferSyncDocIds.add(docId);
 
@@ -1850,7 +1890,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should discard an older sync after the newer sync succeeds", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
         socketMockState.deferSyncDocIds.add(docId);
@@ -1894,7 +1934,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should let a newer sync succeed after the older sync fails first", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
         const syncEvents: unknown[] = [];
@@ -1947,7 +1987,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should finish provider consolidation when a sync is invalidated after saving its snapshot", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
@@ -2006,7 +2046,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should return undefined when document does not exist and createIfMissing is false", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
 
         subscribeToDoc(
@@ -2020,7 +2060,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should load a server-only document when createIfMissing is false", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const serverDoc = createDocWithChild(client);
 
@@ -2059,7 +2099,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should return cached document when requested multiple times", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
         const docId = ulid().toLowerCase();
@@ -2085,7 +2125,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should emit cached query state immediately", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
         const docId = ulid().toLowerCase();
@@ -2114,7 +2154,7 @@ describe("DocSyncClient", () => {
 
     describe("Create new document", () => {
       test("should create new document with provided ID when createIfMissing is true", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
@@ -2127,8 +2167,8 @@ describe("DocSyncClient", () => {
         await expect.poll(() => getSuccessData(callback)?.docId).toBe(docId);
       });
 
-      test("should return unsubscribe function", () => {
-        const client = createClient();
+      test("should return unsubscribe function", async () => {
+        const client = await createClient();
         const callback = createCallback();
 
         const unsubscribe = subscribeToDoc(
@@ -2143,7 +2183,7 @@ describe("DocSyncClient", () => {
 
     describe("Get or create", () => {
       test("should create document with provided id when createIfMissing is true", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const customId = ulid().toLowerCase();
 
@@ -2156,7 +2196,7 @@ describe("DocSyncClient", () => {
       });
 
       test("createIfMissing true should promote an existing shared query", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
         const customId = ulid().toLowerCase();
@@ -2184,7 +2224,7 @@ describe("DocSyncClient", () => {
       });
 
       test("createIfMissing true should send the optimistic local snapshot to sync", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const customId = ulid().toLowerCase();
 
@@ -2210,7 +2250,7 @@ describe("DocSyncClient", () => {
       });
 
       test("createIfMissing true should reconcile with an existing server snapshot", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const serverDoc = createDocWithChild(client);
 
@@ -2258,7 +2298,7 @@ describe("DocSyncClient", () => {
       });
 
       test("createIfMissing true should invalidate the optimistic doc after reconciling with a server snapshot", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const serverDoc = createDocWithChild(client);
 
@@ -2312,7 +2352,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should emit local success while network fetch is still active", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const customId = ulid().toLowerCase();
 
@@ -2334,7 +2374,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should emit local success as paused when disconnected", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const customId = ulid().toLowerCase();
 
@@ -2357,7 +2397,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should emit a new result object when network settles after local success", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const customId = ulid().toLowerCase();
 
@@ -2392,7 +2432,7 @@ describe("DocSyncClient", () => {
 
     describe("Background syncs", () => {
       test("should not emit a query result for a sync that changes nothing", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
 
@@ -2428,7 +2468,7 @@ describe("DocSyncClient", () => {
 
     describe("Sync vs async behavior", () => {
       test("should emit pending before success when creating by id", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const customId = ulid().toLowerCase();
 
@@ -2443,7 +2483,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should emit pending before success when fetching by id", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const customId = ulid().toLowerCase();
 
@@ -2460,7 +2500,7 @@ describe("DocSyncClient", () => {
 
     describe("Unsubscribe", () => {
       test("should remove doc from cache and call dispose when last subscriber unsubscribes", async () => {
-        const { client, disposeSpy } = createClientWithDisposeSpy();
+        const { client, disposeSpy } = await createClientWithDisposeSpy();
         const callback = createCallback();
         const createdId = ulid().toLowerCase();
 
@@ -2485,7 +2525,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should NOT call dispose when non-last subscriber unsubscribes", async () => {
-        const { client, disposeSpy } = createClientWithDisposeSpy();
+        const { client, disposeSpy } = await createClientWithDisposeSpy();
         const callback1 = createCallback();
         const callback2 = createCallback();
         const createdId = ulid().toLowerCase();
@@ -2525,7 +2565,7 @@ describe("DocSyncClient", () => {
 
     describe("refCount / multiple subscriptions", () => {
       test("should increment refCount for each subscription to same doc", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
         const callback3 = createCallback();
@@ -2553,7 +2593,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should share same doc instance across multiple subscriptions", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
         const createdId = ulid().toLowerCase();
@@ -2581,7 +2621,7 @@ describe("DocSyncClient", () => {
       });
 
       test("should NOT notify callback when document content changes", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const createdId = ulid().toLowerCase();
 
@@ -2607,7 +2647,7 @@ describe("DocSyncClient", () => {
 
     describe("Concurrency", () => {
       test("should share promise when multiple requests for same doc happen simultaneously", async () => {
-        const client = createClient();
+        const client = await createClient();
         const callback1 = createCallback();
         const callback2 = createCallback();
         const customId = ulid().toLowerCase();
@@ -2644,7 +2684,7 @@ describe("DocSyncClient", () => {
     test.each(["DatabaseError", "AuthorizationError", "NetworkError"] as const)(
       "closing after %s keeps local edits and releases without waiting for retries",
       async (type) => {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
         const unsubscribe = subscribeToDoc(
@@ -2703,7 +2743,7 @@ describe("DocSyncClient", () => {
     };
 
     test("should expose a permanent sync rejection without retrying", async () => {
-      const client = createClient();
+      const client = await createClient();
       const callback = createCallback();
       const docId = ulid().toLowerCase();
       socketMockState.syncResponses.set(docId, {
@@ -2731,7 +2771,7 @@ describe("DocSyncClient", () => {
     });
 
     test("should run a queued sync after a permanent rejection", async () => {
-      const client = createClient();
+      const client = await createClient();
       const callback = createCallback();
       const docId = ulid().toLowerCase();
       socketMockState.deferSyncDocIds.add(docId);
@@ -2776,7 +2816,7 @@ describe("DocSyncClient", () => {
     });
 
     test("should not stop other documents from syncing after a rejection", async () => {
-      const client = createClient();
+      const client = await createClient();
       const rejectedCallback = createCallback();
       const healthyCallback = createCallback();
       const rejectedDocId = ulid().toLowerCase();
@@ -2812,7 +2852,7 @@ describe("DocSyncClient", () => {
     });
 
     test("should retry a database error with backoff until it succeeds", async () => {
-      const client = createClient();
+      const client = await createClient();
       const callback = createCallback();
       const docId = ulid().toLowerCase();
       socketMockState.syncResponses.set(docId, {
@@ -2876,7 +2916,7 @@ describe("DocSyncClient", () => {
     });
 
     test("should let a scheduled retry absorb a queued sync", async () => {
-      const client = createClient();
+      const client = await createClient();
       const callback = createCallback();
       const docId = ulid().toLowerCase();
       socketMockState.deferSyncDocIds.add(docId);
@@ -2913,7 +2953,7 @@ describe("DocSyncClient", () => {
     });
 
     test("should retry a rejected sync request as a network error", async () => {
-      const client = createClient();
+      const client = await createClient();
       const callback = createCallback();
       const docId = ulid().toLowerCase();
       const networkFailure = new Error("network unavailable");
@@ -2950,7 +2990,7 @@ describe("DocSyncClient", () => {
     });
 
     test("should cancel a pending document retry when the transport disconnects", async () => {
-      const client = createClient();
+      const client = await createClient();
       const callback = createCallback();
       const docId = ulid().toLowerCase();
       socketMockState.syncResponses.set(docId, {
@@ -2986,7 +3026,7 @@ describe("DocSyncClient", () => {
     });
 
     test("should cancel a pending retry when a manual sync starts", async () => {
-      const client = createClient();
+      const client = await createClient();
       const callback = createCallback();
       const docId = ulid().toLowerCase();
       socketMockState.syncResponses.set(docId, {
@@ -3024,7 +3064,7 @@ describe("DocSyncClient", () => {
     });
 
     test("should settle on idle after exhausting the bounded retries", async () => {
-      const client = createClient();
+      const client = await createClient();
       const callback = createCallback();
       const docId = ulid().toLowerCase();
       socketMockState.syncResponses.set(docId, {
@@ -3066,7 +3106,7 @@ describe("DocSyncClient", () => {
     test("should emit error status when provider throws", async () => {
       const errorMessage = "IndexedDB connection failed";
       const FailingProvider = createFailingProvider(errorMessage);
-      const client = createClientWithProvider(FailingProvider);
+      const client = await createClientWithProvider(FailingProvider);
       const callback = createCallback();
 
       // Suppress expected unhandled rejection
@@ -3093,7 +3133,7 @@ describe("DocSyncClient", () => {
     });
 
     test("should emit error status when docBinding.new throws for unknown type", async () => {
-      const client = createClient();
+      const client = await createClient();
       const callback = createCallback();
 
       // Suppress expected unhandled rejection
@@ -3121,7 +3161,7 @@ describe("DocSyncClient", () => {
     test("should emit pending then error (not just error)", async () => {
       const errorMessage = "Provider failed";
       const FailingProvider = createFailingProvider(errorMessage);
-      const client = createClientWithProvider(FailingProvider);
+      const client = await createClientWithProvider(FailingProvider);
       const callback = createCallback();
 
       // Suppress expected unhandled rejection
@@ -3157,7 +3197,7 @@ describe("DocSyncClient", () => {
           throw "string error message";
         },
       });
-      const client = createClientWithProvider(StringThrowingProvider);
+      const client = await createClientWithProvider(StringThrowingProvider);
       const callback = createCallback();
 
       // Suppress expected unhandled rejection
@@ -3203,7 +3243,7 @@ describe("DocSyncClient", () => {
         MockBroadcastChannel as unknown as typeof BroadcastChannel;
 
       try {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const createdId = ulid().toLowerCase();
 
@@ -3258,7 +3298,7 @@ describe("DocSyncClient", () => {
         MockBroadcastChannel as unknown as typeof BroadcastChannel;
 
       try {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const createdId = ulid().toLowerCase();
 
@@ -3329,7 +3369,7 @@ describe("DocSyncClient", () => {
         MockBroadcastChannel as unknown as typeof BroadcastChannel;
 
       try {
-        const client = createClient();
+        const client = await createClient();
         const callback = createCallback();
         const createdId = ulid().toLowerCase();
 
@@ -3369,8 +3409,8 @@ describe("DocSyncClient", () => {
   });
 
   describe("types", () => {
-    test("DocSyncClient<D,S,O> is assignable to DocSyncClient (base type)", () => {
-      const client = createClient();
+    test("DocSyncClient<D,S,O> is assignable to DocSyncClient (base type)", async () => {
+      const client = await createClient();
       expectTypeOf(client).toEqualTypeOf<
         DocSyncClient<Doc, JsonDoc, Operations>
       >();

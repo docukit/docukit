@@ -5,28 +5,42 @@ import {
   indexedDBProvider,
   createDocSyncClient,
 } from "@docukit/docsync-react/client";
+import { useEffect, useState } from "react";
 import type { DocConfig } from "@docukit/docnode";
 import { env } from "@/env";
 
-// Create 3 separate DocSyncClient instances with different deviceIds
-const createClientForUser = (
+// The demo simulates installations that normally live in separate origins.
+const seedDemoIdentity = (userId: string, deviceId: string) =>
+  new Promise<void>((resolve, reject) => {
+    const opening = indexedDB.open("docsync:metadata", 1);
+    opening.onupgradeneeded = () =>
+      opening.result.createObjectStore("metadata");
+    opening.onerror = () =>
+      reject(opening.error ?? new Error("Metadata database failed to open"));
+    opening.onsuccess = () => {
+      const db = opening.result;
+      const tx = db.transaction("metadata", "readwrite");
+      const store = tx.objectStore("metadata");
+      store.put(userId, "userId");
+      store.put(deviceId, "deviceId");
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onabort = () => {
+        db.close();
+        reject(tx.error ?? new Error("Metadata transaction aborted"));
+      };
+    };
+  });
+
+const createClientForUser = async (
   userId: string,
   deviceId: string,
   docConfigs: DocConfig[],
 ) => {
-  // This demo fakes several users inside a single browser origin, which DocSync
-  // does not support on its own: it keeps one local identity per origin, so the
-  // first client to be authenticated would make every later client claim that
-  // same user and the server would reject the mismatched ones. Pinning both
-  // keys before constructing each client keeps every synthetic user claiming
-  // the user its token actually authenticates as. Real applications have one
-  // user per origin and never need this.
-  if (typeof window !== "undefined") {
-    localStorage.setItem("docsync:deviceId", deviceId);
-    localStorage.setItem("docsync:localUserId", userId);
-  }
-
-  return createDocSyncClient({
+  await seedDemoIdentity(userId, deviceId);
+  const result = createDocSyncClient({
     server: {
       url: env.NEXT_PUBLIC_DOCSYNC_SERVER_URL,
       auth: {
@@ -37,29 +51,31 @@ const createClientForUser = (
     local: { provider: indexedDBProvider },
     docBinding: DocNodeBinding(docConfigs),
   });
+  await result.client?.["_localPromise"];
+  return result;
 };
 
-export function createMultiClients(docConfigs: DocConfig[]) {
+async function initializeMultiClients(docConfigs: DocConfig[]) {
   // Reference client (user1, device A)
   const {
     useDoc: useReferenceDoc,
     usePresence: useReferencePresence,
     client: referenceClient,
-  } = createClientForUser("user1", "device-a", docConfigs);
+  } = await createClientForUser("user1", "device-a", docConfigs);
 
   // Other tab client (user1, device A - same device as reference)
   const {
     useDoc: useOtherTabDoc,
     usePresence: useOtherTabPresence,
     client: otherTabClient,
-  } = createClientForUser("user1", "device-a", docConfigs);
+  } = await createClientForUser("user1", "device-a", docConfigs);
 
   // Other device client (user2, device B - different device)
   const {
     useDoc: useOtherDeviceDoc,
     usePresence: useOtherDevicePresence,
     client: otherDeviceClient,
-  } = createClientForUser("user2", "device-b", docConfigs);
+  } = await createClientForUser("user2", "device-b", docConfigs);
 
   return {
     useReferenceDoc,
@@ -71,5 +87,38 @@ export function createMultiClients(docConfigs: DocConfig[]) {
     useOtherDeviceDoc,
     useOtherDevicePresence,
     otherDeviceClient,
+  };
+}
+
+let initialization = Promise.resolve();
+
+export function createMultiClients(docConfigs: DocConfig[]) {
+  let pending: ReturnType<typeof initializeMultiClients> | undefined;
+  return function useClients() {
+    const [state, setState] = useState(
+      (): {
+        clients?: Awaited<ReturnType<typeof initializeMultiClients>>;
+        error?: Error;
+      } => ({}),
+    );
+    useEffect(() => {
+      // Capture each synthetic identity before another example can replace it.
+      if (!pending) {
+        pending = initialization.then(() => initializeMultiClients(docConfigs));
+        initialization = pending.then(
+          () => undefined,
+          () => undefined,
+        );
+      }
+      void pending.then(
+        (clients) => setState({ clients }),
+        (error: unknown) =>
+          setState({
+            error: error instanceof Error ? error : new Error(String(error)),
+          }),
+      );
+    }, []);
+    if (state.error) throw state.error;
+    return state.clients;
   };
 }
