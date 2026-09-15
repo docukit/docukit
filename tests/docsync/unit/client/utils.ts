@@ -1,6 +1,6 @@
 import { seedMetadata, readMetadata } from "../../metadataUtils.js";
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import { vi, type Mock } from "vitest";
+import { vi, onTestFinished, type Mock } from "vitest";
 import {
   DocSyncClient,
   indexedDBProvider,
@@ -62,21 +62,25 @@ const createValidConfig = () =>
 // Client Factory
 // ============================================================================
 
-export const createClient = async (userId = "mock-user") => {
-  await cacheLocalIdentity(userId);
-  const client = new DocSyncClient(createValidConfig());
-  await client["_localPromise"];
+const createTestClient = (config: ReturnType<typeof createValidConfig>) => {
+  const client = new DocSyncClient(config);
+  // Keep construction synchronous, but finish initialization before the next
+  // test clears identity storage. Otherwise a late write could contaminate it.
+  onTestFinished(async () => {
+    await client["_localPromise"];
+  });
   return client;
 };
+
+export const createClient = () => createTestClient(createValidConfig());
 
 /**
  * Creates a client with a spy on docBinding.dispose.
  * Useful for testing that listeners are properly cleaned up.
  */
-export const createClientWithDisposeSpy = async (userId = "mock-user") => {
+export const createClientWithDisposeSpy = () => {
   const docBinding = createDocBinding();
   const disposeSpy = vi.spyOn(docBinding, "dispose");
-  await cacheLocalIdentity(userId);
 
   const config = createClientConfig({
     server: {
@@ -87,8 +91,7 @@ export const createClientWithDisposeSpy = async (userId = "mock-user") => {
     local: { provider: indexedDBProvider },
   });
 
-  const client = new DocSyncClient(config);
-  await client["_localPromise"];
+  const client = createTestClient(config);
   return { client, disposeSpy };
 };
 

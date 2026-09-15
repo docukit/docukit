@@ -1,7 +1,6 @@
 import { expect, test } from "vitest";
 import { seedMetadata } from "../metadataUtils.js";
-import { testWrapper } from "./utils.js";
-import { runWorkerClient } from "./workerUtils.js";
+import { testWrapper, runWorkerClient } from "./utils.js";
 
 test("the full client uploads offline edits from a worker and notifies another device", async () => {
   await testWrapper(async ({ docId, reference, otherDevice }) => {

@@ -3,14 +3,11 @@ import { flushPresenceDebounce } from "../handlers/clientInitiated/presence.js";
 import { getOwnPresencePatch } from "./getOwnPresencePatch.js";
 import { markLocalDocChanged } from "./localDocVersion.js";
 
-const afterSelectionUpdate = (callback: () => void) => {
-  if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(() => requestAnimationFrame(callback));
-  } else {
-    // Workers without animation frames have no editor selection to wait for.
-    queueMicrotask(callback);
-  }
-};
+// Workers have no editor selection to wait for and may not have animation frames.
+const afterSelectionUpdate =
+  typeof requestAnimationFrame === "function"
+    ? requestAnimationFrame
+    : queueMicrotask;
 
 export function setupDocChangeListener<
   D extends object,
@@ -46,13 +43,15 @@ export function setupDocChangeListener<
     // Defer BC send so Lexical can update selection first; then the presence we
     // include is the new cursor. Two frames so setPresence (from selection change) has run.
     afterSelectionUpdate(() => {
-      client["_bcHelper"]?.broadcast({
-        type: "OPERATIONS",
-        source: "local-broadcast",
-        operations,
-        docId,
-        flags: flags?.skipUndo ? { skipUndo: true } : {},
-        presence: getOwnPresencePatch(client, docId),
+      afterSelectionUpdate(() => {
+        client["_bcHelper"]?.broadcast({
+          type: "OPERATIONS",
+          source: "local-broadcast",
+          operations,
+          docId,
+          flags: flags?.skipUndo ? { skipUndo: true } : {},
+          presence: getOwnPresencePatch(client, docId),
+        });
       });
     });
   });
