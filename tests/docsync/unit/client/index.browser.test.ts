@@ -1796,7 +1796,7 @@ describe("DocSyncClient", () => {
         expect(secondCallback.mock.calls[0]?.[0].data?.doc).toBe(loadedDoc);
       });
 
-      test("should start a fresh sync for a document reloaded while its sync is in flight", async () => {
+      test("should start a fresh sync after closing offline with an old request in flight", async () => {
         const client = createClient();
         const docId = ulid().toLowerCase();
         socketMockState.deferSyncDocIds.add(docId);
@@ -1810,12 +1810,15 @@ describe("DocSyncClient", () => {
           .poll(() => socketMockState.deferredSyncAcks.get(docId)?.length)
           .toBe(1);
 
-        // Unloading drops the entry, so the attempt in flight can no longer
-        // report. Loading again must not queue behind it: that attempt would
-        // exit without running the sync the new query is waiting for.
+        // Closing offline persists and releases without a final network
+        // attempt. A later load must not queue behind the stale request.
+        setSocketState(client, { active: false, connected: false });
+        emitMockedSocketEvent(client, "disconnect", "io client disconnect");
         unsubscribe();
         await expect.poll(() => client["_docsCache"].has(docId)).toBe(false);
 
+        setSocketState(client, { active: true, connected: true });
+        emitMockedSocketEvent(client, "connect");
         const callback = createCallback();
         subscribeToDoc(
           client,
@@ -2638,6 +2641,50 @@ describe("DocSyncClient", () => {
   // ──────────────────────────────────────────────────────────────────────────
 
   describe("Error handling", () => {
+    test.each(["DatabaseError", "AuthorizationError", "NetworkError"] as const)(
+      "closing after %s keeps local edits and releases without waiting for retries",
+      async (type) => {
+        const client = createClient();
+        const callback = createCallback();
+        const docId = ulid().toLowerCase();
+        const unsubscribe = subscribeToDoc(
+          client,
+          { type: "test", id: docId, createIfMissing: true },
+          callback,
+        );
+        await expect
+          .poll(() => callback.mock.calls.at(-1)?.[0].fetchStatus)
+          .toBe("idle");
+        const doc = getSuccessData(callback)?.doc;
+        if (!doc) throw new Error("Expected loaded document");
+        const callsBeforeClose = getSocketEmitMock(client).mock.calls.filter(
+          ([event]) => event === "sync",
+        ).length;
+        if (type === "NetworkError") {
+          socketMockState.syncErrors.set(docId, new Error("transport failed"));
+        } else {
+          socketMockState.syncResponses.set(docId, {
+            error: { type, message: "rejected" },
+          });
+        }
+        doc.root.append(doc.createNode(ChildNode));
+        doc.forceCommit();
+        unsubscribe();
+        await expect.poll(() => client["_docsCache"].has(docId)).toBe(false);
+        const { provider } = await client["_localPromise"];
+        const pending = await provider.transaction("readonly", (ctx) =>
+          ctx.getOperations({ docId }),
+        );
+        expect(pending.flat()).toHaveLength(1);
+        expect(client["_syncRetryState"].has(docId)).toBe(false);
+        expect(
+          getSocketEmitMock(client).mock.calls.filter(
+            ([event]) => event === "sync",
+          ),
+        ).toHaveLength(callsBeforeClose + 1);
+      },
+    );
+
     // Note: DocSyncClient re-throws errors after emitting to callback (for monitoring).
     // We suppress these expected unhandled rejections in each test.
 
