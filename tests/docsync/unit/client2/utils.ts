@@ -1,3 +1,4 @@
+import { seedMetadata } from "../../metadataUtils.js";
 import {
   DocSyncClient,
   indexedDBProvider,
@@ -63,7 +64,7 @@ export const emptyOps = (): Operations => [[], {}] as Operations;
 export const createClient = async () => {
   const docBinding = createDocBinding();
   const userId = generateTestUserId();
-  localStorage.setItem("docsync:localUserId", userId);
+  await seedMetadata(userId);
 
   const config: ClientConfig<Doc, JsonDoc, Operations> = {
     server: {

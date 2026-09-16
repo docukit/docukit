@@ -1,3 +1,4 @@
+import { withMetadataStore, readMetadata } from "../../metadataUtils.js";
 import { beforeEach, describe, test, expect, vi, expectTypeOf } from "vitest";
 import {
   DocSyncClient,
@@ -28,9 +29,8 @@ import {
   createCallback,
   getSuccessData,
   getErrorResult,
-  cacheLocalIdentity,
   clearCachedLocalIdentity,
-  LOCAL_IDENTITY_KEY,
+  readCachedLocalIdentity,
   subscribeToDoc,
 } from "./utils.js";
 
@@ -137,7 +137,7 @@ vi.mock("socket.io-client", () => ({ io: ioMock }));
 // ============================================================================
 
 describe("DocSyncClient", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     ioMock.mockClear();
     socketMockState.autoIdentity = true;
     socketMockState.identityPayload = undefined;
@@ -145,7 +145,7 @@ describe("DocSyncClient", () => {
     socketMockState.syncErrors.clear();
     socketMockState.deferSyncDocIds.clear();
     socketMockState.deferredSyncAcks.clear();
-    clearCachedLocalIdentity();
+    await clearCachedLocalIdentity();
   });
 
   type DebounceTestDoc = { docId: string };
@@ -194,8 +194,6 @@ describe("DocSyncClient", () => {
         }),
     };
 
-    cacheLocalIdentity("mock-user");
-
     const config: ClientConfig<
       DebounceTestDoc,
       DebounceTestSerializedDoc,
@@ -222,7 +220,7 @@ describe("DocSyncClient", () => {
     await Promise.resolve();
   };
 
-  test("request auth sends handshake metadata without reading a token", () => {
+  test("request auth sends handshake metadata without reading a token", async () => {
     ioMock.mockClear();
 
     const client = new DocSyncClient({
@@ -242,12 +240,14 @@ describe("DocSyncClient", () => {
     });
 
     expect(options.withCredentials).toBe(true);
-    expect(authPayload).toBeDefined();
+    await expect.poll(() => authPayload).toBeDefined();
     if (!authPayload) {
       throw new Error("Expected socket auth payload");
     }
     expect(typeof authPayload.deviceId).toBe("string");
-    expect(authPayload).toMatchObject({ clientId: client["_clientId"] });
+    await expect
+      .poll(() => authPayload)
+      .toMatchObject({ clientId: client["_clientId"] });
     expect(authPayload).not.toHaveProperty("token");
     expect(authPayload.claimedUserId).toBe(null);
   });
@@ -488,7 +488,7 @@ describe("DocSyncClient", () => {
       }
       const authCallback = vi.fn();
       options.auth(authCallback);
-      await flushMicrotasks();
+      await expect.poll(() => rejectToken).toBeDefined();
       if (!rejectToken) throw new Error("Expected pending token request");
 
       client.disconnect();
@@ -506,7 +506,10 @@ describe("DocSyncClient", () => {
       socketMockState.autoIdentity = false;
 
       const providerFactory = createIndexedDBProviderSpy();
-      const client = createClientWithProvider(providerFactory, "cached-user");
+      const client = await createClientWithProvider(
+        providerFactory,
+        "cached-user",
+      );
       await client["_localPromise"];
 
       const options = ioMock.mock.calls.at(-1)?.[1];
@@ -536,7 +539,10 @@ describe("DocSyncClient", () => {
       socketMockState.autoIdentity = false;
 
       const providerFactory = createIndexedDBProviderSpy();
-      const client = createClientWithProvider(providerFactory, "offline-user");
+      const client = await createClientWithProvider(
+        providerFactory,
+        "offline-user",
+      );
       await client["_localPromise"];
       client["_socket"].connected = false;
 
@@ -562,17 +568,35 @@ describe("DocSyncClient", () => {
       );
     });
 
+    test("simultaneously starting clients send one persistent device ID", async () => {
+      await withMetadataStore("readwrite", (store) => store.delete("deviceId"));
+      const provider = createIndexedDBProviderSpy();
+      const clients = await Promise.all([
+        createClientWithProvider(provider),
+        createClientWithProvider(provider),
+      ]);
+      const payloads: SocketAuthPayload[] = [];
+      for (const [, options] of ioMock.mock.calls) {
+        options?.auth?.((payload) => payloads.push(payload));
+      }
+      await expect.poll(() => payloads.length).toBe(2);
+      expect(payloads[0]?.deviceId).toBe(await readMetadata("deviceId"));
+      expect(payloads[1]?.deviceId).toBe(payloads[0]?.deviceId);
+      expect(payloads[1]?.clientId).not.toBe(payloads[0]?.clientId);
+      for (const client of clients) client.disconnect();
+    });
+
     test("opens provider when server identity arrives", async () => {
       socketMockState.identityPayload = { userId: "plain-user" };
 
       const providerFactory = createIndexedDBProviderSpy();
-      const client = createClientWithProvider(providerFactory);
+      const client = await createClientWithProvider(providerFactory);
 
       await expect
         .poll(async () => (await client["_localPromise"]).identity.userId)
         .toBe("plain-user");
 
-      expect(localStorage.getItem(LOCAL_IDENTITY_KEY)).toBe("plain-user");
+      expect(await readCachedLocalIdentity()).toBe("plain-user");
       expect(
         providerFactory.mock.calls.map(([identity]) => identity),
       ).toStrictEqual([{ userId: "plain-user" }]);
@@ -582,13 +606,14 @@ describe("DocSyncClient", () => {
       socketMockState.identityPayload = { userId: "same-user" };
       const providerFactory = createIndexedDBProviderSpy();
 
-      const client = createClientWithProvider(providerFactory, "same-user");
+      const client = await createClientWithProvider(
+        providerFactory,
+        "same-user",
+      );
       await client["_localPromise"];
       await flushMicrotasks();
 
-      await expect
-        .poll(() => localStorage.getItem(LOCAL_IDENTITY_KEY))
-        .toBe("same-user");
+      await expect.poll(() => readCachedLocalIdentity()).toBe("same-user");
       expect(providerFactory).toHaveBeenCalledTimes(1);
       expect((await client["_localPromise"]).identity).toStrictEqual({
         userId: "same-user",
@@ -602,14 +627,17 @@ describe("DocSyncClient", () => {
       socketMockState.autoIdentity = false;
 
       const providerFactory = createIndexedDBProviderSpy();
-      const client = createClientWithProvider(providerFactory, "logout-user");
+      const client = await createClientWithProvider(
+        providerFactory,
+        "logout-user",
+      );
       await client["_localPromise"];
 
-      expect(localStorage.getItem(LOCAL_IDENTITY_KEY)).toBe("logout-user");
+      expect(await readCachedLocalIdentity()).toBe("logout-user");
 
-      client.clearLocalIdentity();
+      await client.clearLocalIdentity();
 
-      expect(localStorage.getItem(LOCAL_IDENTITY_KEY)).toBeNull();
+      expect(await readCachedLocalIdentity()).toBeUndefined();
       expect((await client["_localPromise"]).identity).toStrictEqual({
         userId: "logout-user",
       });
@@ -1016,10 +1044,15 @@ describe("DocSyncClient", () => {
         await vi.advanceTimersByTimeAsync(1);
         await flushMicrotasks();
 
-        expect(emitMock).toHaveBeenCalledWith(
-          "sync",
-          expect.objectContaining({ docId: "doc-1" }),
-          expect.any(Function),
+        // The debounce elapsed; Web Locks still schedules acquisition asynchronously.
+        await vi.waitFor(
+          () =>
+            expect(emitMock).toHaveBeenCalledWith(
+              "sync",
+              expect.objectContaining({ docId: "doc-1" }),
+              expect.any(Function),
+            ),
+          { interval: 1 },
         );
         client.disconnect();
       } finally {
@@ -3066,7 +3099,7 @@ describe("DocSyncClient", () => {
     test("should emit error status when provider throws", async () => {
       const errorMessage = "IndexedDB connection failed";
       const FailingProvider = createFailingProvider(errorMessage);
-      const client = createClientWithProvider(FailingProvider);
+      const client = await createClientWithProvider(FailingProvider);
       const callback = createCallback();
 
       // Suppress expected unhandled rejection
@@ -3121,7 +3154,7 @@ describe("DocSyncClient", () => {
     test("should emit pending then error (not just error)", async () => {
       const errorMessage = "Provider failed";
       const FailingProvider = createFailingProvider(errorMessage);
-      const client = createClientWithProvider(FailingProvider);
+      const client = await createClientWithProvider(FailingProvider);
       const callback = createCallback();
 
       // Suppress expected unhandled rejection
@@ -3157,7 +3190,7 @@ describe("DocSyncClient", () => {
           throw "string error message";
         },
       });
-      const client = createClientWithProvider(StringThrowingProvider);
+      const client = await createClientWithProvider(StringThrowingProvider);
       const callback = createCallback();
 
       // Suppress expected unhandled rejection

@@ -1,3 +1,4 @@
+import { seedMetadata } from "../metadataUtils.js";
 import {
   DocSyncClient,
   indexedDBProvider,
@@ -222,14 +223,13 @@ export const testWrapper = async (
 /**
  * Creates a DocSyncClient with specific configuration.
  */
-const createClientWithConfig = (config: {
+const createClientWithConfig = async (config: {
   userId: string;
   deviceId: string;
   token: string;
   docBinding: ReturnType<typeof createDocBinding>;
-}): DocSyncClient<Doc, JsonDoc, Operations> => {
-  localStorage.setItem("docsync:localUserId", config.userId);
-  localStorage.setItem("docsync:deviceId", config.deviceId);
+}) => {
+  await seedMetadata(config.userId, config.deviceId);
 
   const clientConfig: ClientConfig<Doc, JsonDoc, Operations> = {
     server: {
@@ -244,7 +244,9 @@ const createClientWithConfig = (config: {
   const currentBroadcastChannel = globalThis.BroadcastChannel;
   globalThis.BroadcastChannel = testBroadcastChannel;
   try {
-    return new DocSyncClient(clientConfig);
+    const client = new DocSyncClient(clientConfig);
+    await client["_localPromise"];
+    return client;
   } finally {
     globalThis.BroadcastChannel = currentBroadcastChannel;
   }
@@ -261,7 +263,7 @@ const setupClients = async (): Promise<ClientsSetup> => {
   // Reference: local + RT + BC enabled (userId1)
   const referenceUserId = generateUserId();
   const referenceDeviceId = crypto.randomUUID();
-  const referenceClient = createClientWithConfig({
+  const referenceClient = await createClientWithConfig({
     userId: referenceUserId,
     deviceId: referenceDeviceId,
     token: createTestToken(referenceUserId),
@@ -269,7 +271,7 @@ const setupClients = async (): Promise<ClientsSetup> => {
   });
 
   // OtherTab: local + RT + BC enabled (same userId1 as reference)
-  const otherTabClient = createClientWithConfig({
+  const otherTabClient = await createClientWithConfig({
     userId: referenceUserId, // Same user for broadcast channel and IDB sharing
     deviceId: referenceDeviceId,
     token: createTestToken(referenceUserId),
@@ -279,7 +281,7 @@ const setupClients = async (): Promise<ClientsSetup> => {
   // OtherDevice: local enabled with different userId2, RT enabled, BC disabled
   const otherDeviceUserId = generateUserId();
   const otherDeviceId = crypto.randomUUID();
-  const otherDeviceClient = createClientWithConfig({
+  const otherDeviceClient = await createClientWithConfig({
     userId: otherDeviceUserId, // Different user = different IDB + BC namespace
     deviceId: otherDeviceId,
     token: createTestToken(otherDeviceUserId),
@@ -489,3 +491,27 @@ const createClientUtils = async (
 };
 
 export const emptyIDB = { doc: [], ops: [] };
+
+export const runWorkerClient = async (input: {
+  token: string;
+  docId: string;
+  offline?: boolean;
+  edit?: string;
+}) => {
+  const worker = new Worker(new URL("./client.worker.ts", import.meta.url), {
+    type: "module",
+  });
+  try {
+    const result = new Promise<unknown>((resolve, reject) => {
+      worker.onmessage = (event: MessageEvent<unknown>) => resolve(event.data);
+      worker.onerror = (event) => reject(new Error(event.message));
+    });
+    worker.postMessage({
+      ...input,
+      serverUrl: `ws://localhost:${inject("testServerPort")}`,
+    });
+    return await result;
+  } finally {
+    worker.terminate();
+  }
+};

@@ -3,6 +3,12 @@ import { flushPresenceDebounce } from "../handlers/clientInitiated/presence.js";
 import { getOwnPresencePatch } from "./getOwnPresencePatch.js";
 import { markLocalDocChanged } from "./localDocVersion.js";
 
+// Workers have no editor selection to wait for and may not have animation frames.
+const afterSelectionUpdate =
+  typeof requestAnimationFrame === "function"
+    ? requestAnimationFrame
+    : queueMicrotask;
+
 export function setupDocChangeListener<
   D extends object,
   S extends object,
@@ -36,8 +42,8 @@ export function setupDocChangeListener<
 
     // Defer BC send so Lexical can update selection first; then the presence we
     // include is the new cursor. Two frames so setPresence (from selection change) has run.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    afterSelectionUpdate(() => {
+      afterSelectionUpdate(() => {
         client["_bcHelper"]?.broadcast({
           type: "OPERATIONS",
           source: "local-broadcast",

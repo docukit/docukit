@@ -28,7 +28,7 @@ const USER_COLORS: Record<string, string> = {
   user2: "#22c55e",
 };
 
-const clients = createMultiClients([
+const useClients = createMultiClients([
   createLexicalDocNodeConfig({ undoManager: { maxUndoSteps: 100 } }),
 ]);
 
@@ -228,8 +228,10 @@ function EditorContent({
   initializeEditor?: InitializeEditor;
   userId: string;
   docId: string;
-  useDocHook: typeof clients.useReferenceDoc;
-  usePresenceHook: typeof clients.useReferencePresence;
+  useDocHook: NonNullable<ReturnType<typeof useClients>>["useReferenceDoc"];
+  usePresenceHook: NonNullable<
+    ReturnType<typeof useClients>
+  >["useReferencePresence"];
 }) {
   const { status, data, error } = useDocHook({
     type: "docnode-lexical",
@@ -286,9 +288,9 @@ export function EditorExampleLoading({ className }: { className?: string }) {
   return (
     <div className={cn("w-full", className)}>
       <MultiClientLayout
-        referenceClient={clients.referenceClient}
-        otherTabClient={clients.otherTabClient}
-        otherDeviceClient={clients.otherDeviceClient}
+        referenceClient={undefined}
+        otherTabClient={undefined}
+        otherDeviceClient={undefined}
       >
         {() => <EditorLoadingPanel />}
       </MultiClientLayout>
@@ -307,6 +309,8 @@ export function EditorExample({
   onDocIdChange?: (docId: string) => void;
   className?: string;
 }) {
+  const clients = useClients();
+  if (!clients) return <EditorExampleLoading className={className} />;
   return (
     <div className={cn("w-full", className)}>
       {onDocIdChange && (

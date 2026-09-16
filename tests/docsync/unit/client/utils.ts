@@ -1,5 +1,6 @@
+import { seedMetadata, readMetadata } from "../../metadataUtils.js";
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import { vi, type Mock } from "vitest";
+import { vi, onTestFinished, type Mock } from "vitest";
 import {
   DocSyncClient,
   indexedDBProvider,
@@ -43,15 +44,9 @@ const createDocBinding = () =>
     { type: "test", extensions: [{ nodes: [TestNode, ChildNode] }] },
   ]);
 
-export const LOCAL_IDENTITY_KEY = "docsync:localUserId";
-
-export const cacheLocalIdentity = (userId: string) => {
-  localStorage.setItem(LOCAL_IDENTITY_KEY, userId);
-};
-
-export const clearCachedLocalIdentity = () => {
-  localStorage.removeItem(LOCAL_IDENTITY_KEY);
-};
+export const cacheLocalIdentity = (userId: string) => seedMetadata(userId);
+export const clearCachedLocalIdentity = () => seedMetadata();
+export const readCachedLocalIdentity = () => readMetadata("userId");
 
 const createValidConfig = () =>
   createClientConfig({
@@ -67,19 +62,25 @@ const createValidConfig = () =>
 // Client Factory
 // ============================================================================
 
-export const createClient = (userId = "mock-user") => {
-  cacheLocalIdentity(userId);
-  return new DocSyncClient(createValidConfig());
+const createTestClient = (config: ReturnType<typeof createValidConfig>) => {
+  const client = new DocSyncClient(config);
+  // Keep construction synchronous, but finish initialization before the next
+  // test clears identity storage. Otherwise a late write could contaminate it.
+  onTestFinished(async () => {
+    await client["_localPromise"];
+  });
+  return client;
 };
+
+export const createClient = () => createTestClient(createValidConfig());
 
 /**
  * Creates a client with a spy on docBinding.dispose.
  * Useful for testing that listeners are properly cleaned up.
  */
-export const createClientWithDisposeSpy = (userId = "mock-user") => {
+export const createClientWithDisposeSpy = () => {
   const docBinding = createDocBinding();
   const disposeSpy = vi.spyOn(docBinding, "dispose");
-  cacheLocalIdentity(userId);
 
   const config = createClientConfig({
     server: {
@@ -90,7 +91,7 @@ export const createClientWithDisposeSpy = (userId = "mock-user") => {
     local: { provider: indexedDBProvider },
   });
 
-  const client = new DocSyncClient(config);
+  const client = createTestClient(config);
   return { client, disposeSpy };
 };
 
@@ -153,12 +154,12 @@ export const createFailingProvider = (errorMessage: string) => {
 /**
  * Creates a client with a custom provider class.
  */
-export const createClientWithProvider = (
+export const createClientWithProvider = async (
   ProviderClass: ClientConfig<Doc, JsonDoc, Operations>["local"]["provider"],
   localUserId?: string,
 ) => {
   if (localUserId !== undefined) {
-    cacheLocalIdentity(localUserId);
+    await cacheLocalIdentity(localUserId);
   }
 
   const config = createClientConfig({

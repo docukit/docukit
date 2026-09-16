@@ -1,20 +1,41 @@
+import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { Identity } from "../types.js";
 
-export const LOCAL_IDENTITY_KEY = "docsync:localUserId";
+interface MetadataDB extends DBSchema {
+  metadata: { key: string; value: string };
+}
 
-export const readLocalIdentity = (): Identity | undefined => {
-  if (typeof localStorage === "undefined") return undefined;
-  const userId = localStorage.getItem(LOCAL_IDENTITY_KEY);
-  if (!userId) return undefined;
-  return { userId };
+let database: Promise<IDBPDatabase<MetadataDB>> | undefined;
+
+const openMetadata = () => {
+  database ??= openDB("docsync:metadata", 1, {
+    upgrade(db) {
+      db.createObjectStore("metadata");
+    },
+  });
+  return database;
 };
 
-export const saveLocalIdentity = (identity: Identity): void => {
-  if (typeof localStorage === "undefined") return;
-  localStorage.setItem(LOCAL_IDENTITY_KEY, identity.userId);
+/** One transaction gives concurrently starting tabs and workers the same ID. */
+export const readLocalMetadata = async () => {
+  const db = await openMetadata();
+  const tx = db.transaction("metadata", "readwrite");
+  const [storedDeviceId, userId] = await Promise.all([
+    tx.store.get("deviceId"),
+    tx.store.get("userId"),
+  ]);
+  const deviceId = storedDeviceId ?? crypto.randomUUID();
+  if (deviceId !== storedDeviceId) await tx.store.put(deviceId, "deviceId");
+  await tx.done;
+  return { deviceId, identity: userId ? { userId } : undefined };
 };
 
-export const clearLocalIdentity = (): void => {
-  if (typeof localStorage === "undefined") return;
-  localStorage.removeItem(LOCAL_IDENTITY_KEY);
+export const saveLocalIdentity = async (identity: Identity) => {
+  const db = await openMetadata();
+  await db.put("metadata", identity.userId, "userId");
+};
+
+export const clearLocalIdentity = async () => {
+  const db = await openMetadata();
+  await db.delete("metadata", "userId");
 };
