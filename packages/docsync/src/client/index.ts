@@ -691,16 +691,6 @@ export class DocSyncClient<
     return handleSync(this, docId);
   }
 
-  /**
-   * Persist delivered local operations, including writes already in flight.
-   * Finish the editor's transaction before calling this. This does not wait
-   * for the network, so a document can be closed while offline.
-   */
-  async flush(docId: string) {
-    await this._flushLocalOperations(docId, { sync: false });
-    await this._localWrites.get(docId);
-  }
-
   protected async _flushLocalOperations(
     docId: string,
     options?: { sync?: boolean },

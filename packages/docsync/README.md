@@ -33,11 +33,14 @@ Without Web Locks, the existing per-client queue and clock checks still apply.
 Disconnecting cancels the local wait for an in-flight response so it can release
 its sync lock; it does not undo a request already received by the server.
 
-`await client.flush(docId)` explicitly persists operations already delivered by
-the binding and waits for local writes in flight. It does not wait for server
-confirmation or commit the editor's own transaction. The normal unsubscribe
-flow already persists automatically; worker compatibility does not require this
-public method.
+This prevents two clients from acknowledging the same pending batches and
+deleting a newer edit that neither request included. The lock covers the local
+read through the committed reconciliation. Local edits can still be saved while
+another client synchronizes; they remain pending for a later request.
+
+Coordination is internal. Applications use the normal observer lifecycle and
+do not need an explicit persistence or close method. Without Web Locks, shared
+storage across concurrent clients does not have this protection.
 
 ## Closing a document
 

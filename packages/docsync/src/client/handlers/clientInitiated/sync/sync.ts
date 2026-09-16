@@ -245,7 +245,7 @@ async function runSyncAttempt<
   // another tab. A superseded attempt must not flush, send or write.
   if (!isLive()) return stale;
 
-  await client.flush(docId);
+  await client["_flushLocalOperations"](docId, { sync: false });
   if (!isLive()) return stale;
   const requestLocalVersion = getLocalDocVersion(client, docId);
 
