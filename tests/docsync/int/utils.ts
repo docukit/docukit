@@ -142,6 +142,12 @@ const createTestToken = (userId: string) => `test-token-${userId}`;
 // Types
 // ============================================================================
 
+type EmitForTests = (
+  event: string,
+  payload: { docId: string; [key: string]: unknown },
+  ack?: (response: unknown) => void,
+) => void;
+
 type ClientUtils = {
   client: DocSyncClient<Doc, JsonDoc, Operations>;
   doc: Doc | undefined;
@@ -152,14 +158,19 @@ type ClientUtils = {
   assertIDBDoc: (expected?: { doc: string[]; ops: string[] }) => Promise<void>;
   assertMemoryDoc: (children?: string[]) => Promise<void>;
   assertCanUndo: (expected: boolean) => Promise<void>;
-  reqSpy: Mock<
-    (
-      event: string,
-      payload: { docId: string; [key: string]: unknown },
-    ) => Promise<unknown>
-  >;
+  reqSpy: Mock<EmitForTests>;
   disconnect: () => void;
   connect: () => void;
+  /**
+   * Simulates a slow uplink for this client: the next sync request is built
+   * normally (the pending batch is already read) but is not put on the wire
+   * until `release()` is called.
+   */
+  holdNextSyncRequest: () => {
+    captured: Promise<void>;
+    release: () => void;
+    restore: () => void;
+  };
 };
 
 type ClientsSetup = {
@@ -315,12 +326,11 @@ const createClientUtils = async (
   const api = client;
 
   const socket = api["_socket"];
-  const reqSpy = vi.spyOn(socket, "emit") as unknown as Mock<
-    (
-      event: string,
-      payload: { docId: string; [key: string]: unknown },
-    ) => Promise<unknown>
-  >;
+  // Captured before the spy replaces `emit`, so a mocked implementation can
+  // still put the real request on the wire. Narrowed the same way the client
+  // narrows it in `request.ts`: every client-to-server event is (payload, ack).
+  const sendToServer = socket.emit.bind(socket) as EmitForTests;
+  const reqSpy = vi.spyOn(socket, "emit") as unknown as Mock<EmitForTests>;
   await expect
     .poll(async () => ({
       connected: client["_socket"].connected,
@@ -423,7 +433,7 @@ const createClientUtils = async (
 
           const opsChildren: string[] = [];
 
-          for (const batch of result.operations) {
+          for (const { operations: batch } of result.operations) {
             if (batch.length === 0) continue;
             for (const item of batch) {
               if (!Array.isArray(item) || item.length < 2) continue;
@@ -486,6 +496,38 @@ const createClientUtils = async (
     },
     connect: () => {
       api.connect();
+    },
+    holdNextSyncRequest: () => {
+      let markCaptured!: () => void;
+      const captured = new Promise<void>((resolve) => {
+        markCaptured = resolve;
+      });
+      let held: (() => void) | undefined;
+      let alreadyHeld = false;
+      const release = () => {
+        const send = held;
+        held = undefined;
+        send?.();
+      };
+      reqSpy.mockImplementation((event, payload, ack) => {
+        if (event !== "sync" || alreadyHeld) {
+          sendToServer(event, payload, ack);
+          return;
+        }
+        alreadyHeld = true;
+        held = () => sendToServer(event, payload, ack);
+        markCaptured();
+      });
+      return {
+        captured,
+        release,
+        restore: () => {
+          release();
+          // `reqSpy` belongs to these utils, not to this helper: go back to
+          // passing requests through and keep recording them.
+          reqSpy.mockImplementation(sendToServer);
+        },
+      };
     },
   };
 };

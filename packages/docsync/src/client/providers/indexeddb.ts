@@ -56,8 +56,18 @@ export function indexedDBProvider<S extends object, O extends object>(
             // TODO: maybe I should add a docbinding.mergeOperations call here?
             const store = tx.objectStore("operations");
             const index = store.index("docId_idx");
-            const result = await index.getAll(docId);
-            return result.map((r) => r.operations);
+            // A cursor reads each batch together with the key the store gave
+            // it, so the id always belongs to the operations next to it.
+            const batches = [];
+            let cursor = await index.openCursor(IDBKeyRange.only(docId));
+            while (cursor) {
+              batches.push({
+                id: cursor.primaryKey,
+                operations: cursor.value.operations,
+              });
+              cursor = await cursor.continue();
+            }
+            return batches;
           },
 
           async saveOperations({ docId, operations }) {
@@ -65,17 +75,9 @@ export function indexedDBProvider<S extends object, O extends object>(
             await store.add({ operations, docId });
           },
 
-          async deleteOperations({ docId, count }) {
-            if (count <= 0) return;
+          async deleteOperations({ ids }) {
             const store = tx.objectStore("operations");
-            const index = store.index("docId_idx");
-            let cursor = await index.openCursor(IDBKeyRange.only(docId));
-            let deletedCount = 0;
-            while (cursor && deletedCount < count) {
-              await cursor.delete();
-              deletedCount++;
-              cursor = await cursor.continue();
-            }
+            await Promise.all(ids.map((id) => store.delete(id)));
           },
         });
         await tx.done;

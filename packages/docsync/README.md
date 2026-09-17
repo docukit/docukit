@@ -24,6 +24,18 @@ ID. Await it before navigating away on logout.
 This does not extend the lifetime of a worker. The application still controls
 which documents it observes, authentication credentials, and worker lifetime.
 
+## Concurrent clients over one store
+
+Tabs and workers signed in as the same user share one local store, and each
+keeps its own sync queue. A sync sends the batches of pending operations it
+read and, when the response comes back, deletes exactly those batches by the id
+the store gave them. Anything written while the request was in flight is not
+acknowledged, whichever client wrote it: it stays pending for a later request.
+
+This needs no coordination between clients and no platform lock, so it holds in
+every environment, including a slow client whose request reaches the server
+after another client has already consolidated the same batches.
+
 ## Closing a document
 
 When the last observer unsubscribes, DocSync saves pending local operations and

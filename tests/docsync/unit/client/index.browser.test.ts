@@ -2708,7 +2708,7 @@ describe("DocSyncClient", () => {
         const pending = await provider.transaction("readonly", (ctx) =>
           ctx.getOperations({ docId }),
         );
-        expect(pending.flat()).toHaveLength(1);
+        expect(pending.flatMap((batch) => batch.operations)).toHaveLength(1);
         expect(client["_syncRetryState"].has(docId)).toBe(false);
         expect(
           getSocketEmitMock(client).mock.calls.filter(

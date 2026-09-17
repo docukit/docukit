@@ -261,7 +261,7 @@ async function runSyncAttempt<
   if (!isLive()) return stale;
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return stale;
-  const operations = operationsBatches.flat();
+  const operations = operationsBatches.flatMap((batch) => batch.operations);
   const req: SyncRequest<S, O> = {
     type: cacheEntry.type,
     clock: stored?.clock ?? 0,

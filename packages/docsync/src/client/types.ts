@@ -132,6 +132,9 @@ export type ClientConfig<
 // Client Provider
 // ============================================================================
 
+/** A batch of operations as stored, identified by the id the store assigned. */
+export type OperationsBatch<O extends object> = { id: number; operations: O[] };
+
 /**
  * Context passed to client transaction callbacks.
  * All operations share the same underlying transaction.
@@ -140,8 +143,21 @@ export type ClientProviderContext<S extends object, O extends object> = {
   getSerializedDoc(arg: {
     docId: string;
   }): Promise<{ serializedDoc: S; clock: number } | undefined>;
-  getOperations(arg: { docId: string }): Promise<O[][]>;
-  deleteOperations(arg: { docId: string; count: number }): Promise<void>;
+  /**
+   * Pending batches in insertion order. Each carries the id the store assigned
+   * it, so a sync can later acknowledge exactly the batches it sent: clients
+   * in other tabs or workers share this store and append to it concurrently,
+   * which makes a positional acknowledgement delete the wrong batch.
+   */
+  getOperations(arg: { docId: string }): Promise<OperationsBatch<O>[]>;
+  /**
+   * Deletes exactly these batches. An id must never be reused, even after its
+   * batch was deleted: a sync acknowledges ids it read before a network round
+   * trip, and by then a reused id would name a batch it never sent. Deleting
+   * an id that is already gone must do nothing, because another client may
+   * have acknowledged the same batch first.
+   */
+  deleteOperations(arg: { docId: string; ids: number[] }): Promise<void>;
   saveOperations(arg: { docId: string; operations: O[] }): Promise<void>;
   saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
 };
