@@ -3,7 +3,7 @@ import type {
   TransactionFlags,
 } from "../../../../shared/types.js";
 import type { DocSyncClient } from "../../../index.js";
-import type { ClientProvider } from "../../../types.js";
+import type { ClientProvider, OperationsBatch } from "../../../types.js";
 import { getLocalDocVersion } from "../../../utils/localDocVersion.js";
 
 export type ReconcileSyncResult<D extends object, O extends object> =
@@ -43,7 +43,7 @@ export async function prepareSyncReconciliation<
   args: {
     provider: ClientProvider<S, O>;
     docId: string;
-    operationsBatches: O[][];
+    operationsBatches: OperationsBatch<O>[];
     localOperations: O[];
     data: Extract<SyncResponse<S, O>, { data: unknown }>["data"];
     isCurrent: () => boolean;
@@ -61,6 +61,8 @@ export async function prepareSyncReconciliation<
   let didConsolidate = false;
   let pendingProviderOperations: O[] = [];
   let replacementDoc: D | undefined;
+
+  const acknowledgedIds = new Set(operationsBatches.map((batch) => batch.id));
 
   await provider.transaction("readwrite", async (ctx) => {
     if (!isCurrent()) return;
@@ -94,9 +96,12 @@ export async function prepareSyncReconciliation<
 
     const currentOperationsBatches = await ctx.getOperations({ docId });
     if (!isCurrent()) return;
+    // Anything the request did not carry stays pending, whoever wrote it. The
+    // batches are identified rather than counted because another tab or worker
+    // may have appended to, or consolidated, this same store in the meantime.
     pendingProviderOperations = currentOperationsBatches
-      .slice(operationsBatches.length)
-      .flat();
+      .filter((batch) => !acknowledgedIds.has(batch.id))
+      .flatMap((batch) => batch.operations);
 
     const doc = client["_docBinding"].deserialize(baseSerializedDoc);
     applyOperations(client, doc, data.operations, { skipUndo: true });
@@ -113,8 +118,8 @@ export async function prepareSyncReconciliation<
     // two writes could commit a snapshot that already contains the operations
     // while leaving those same operations queued to be applied a second time.
     await ctx.saveSerializedDoc({ serializedDoc, docId, clock: data.clock });
-    if (operationsBatches.length > 0) {
-      await ctx.deleteOperations({ docId, count: operationsBatches.length });
+    if (acknowledgedIds.size > 0) {
+      await ctx.deleteOperations({ docId, ids: [...acknowledgedIds] });
     }
     replacementDoc = doc;
     didConsolidate = true;

@@ -67,7 +67,6 @@ type SyncDebounceState = {
 type SyncQueueSlot = {
   rerun: boolean;
   token: { generation: number; cacheEntry: object };
-  controller: AbortController;
   settled: Promise<void>;
 };
 type ChangeOrigin = "local" | "network" | "local-broadcast";
@@ -544,7 +543,7 @@ export class DocSyncClient<
 
       if (stored) {
         const doc = this._docBinding.deserialize(stored.serializedDoc);
-        localOperations.forEach((operationsBatch) => {
+        localOperations.forEach(({ operations: operationsBatch }) => {
           operationsBatch.forEach((operations) => {
             this._docBinding.applyOperations(doc, operations, {
               skipUndo: true,
@@ -609,7 +608,6 @@ export class DocSyncClient<
       // Reconciliation may have replaced the instance during the final sync.
       const doc = await cacheEntry.promisedDoc;
       if (canDispose()) {
-        this._syncQueue.get(docId)?.controller.abort();
         this._docsCache.delete(docId);
         const syncState = this._syncDebounceState.get(docId);
         clearTimeout(syncState?.timeout);

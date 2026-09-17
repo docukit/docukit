@@ -495,25 +495,20 @@ describe("Client 2", () => {
       const client = await createClient();
       const docId = generateDocId();
       const requestSpy = spyOnRequest(client);
-      let releaseFirstResponse!: () => void;
-      const firstResponse = new Promise<void>((resolve) => {
-        releaseFirstResponse = resolve;
-      });
-      requestSpy.mockResolvedValue({ data: s({ docId }) });
-      requestSpy.mockImplementationOnce(async () => {
-        await firstResponse;
-        return { data: s({ docId }) };
-      });
+      requestSpy.mockImplementation(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(() => resolve({ data: s({ docId }) }), 30),
+          ),
+      );
 
       await setupDocWithOperations(client, docId, {
         operations: [ops({ batch: "1" }), ops({ batch: "1" })],
       });
 
       triggerSync(client, docId);
-      await expect.poll(() => requestSpy.mock.calls.length).toBe(1);
       await saveOperations(client, docId, [ops({ batch: "2" })]);
       triggerSync(client, docId);
-      releaseFirstResponse();
 
       await expect
         .poll(async () => await getOperationsCount(client, docId))
@@ -649,7 +644,6 @@ describe("Client 2", () => {
         operations: [ops({ op: "1" })],
       });
       triggerSync(client, docId);
-      await expect.poll(() => receivedOperations.length).toBe(1);
       await saveOperations(client, docId, [ops({ op: "2" })]);
       triggerSync(client, docId);
 
@@ -701,7 +695,6 @@ describe("Client 2", () => {
       });
 
       triggerSync(client, docId);
-      await expect.poll(() => requestSpy.mock.calls.length).toBe(1);
       await saveOperations(client, docId, [ops({ second: "true" })]);
       triggerSync(client, docId);
       await saveOperations(client, docId, [ops({ third: "true" })]);

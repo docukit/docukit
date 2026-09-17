@@ -29,7 +29,6 @@ export function handleDisconnect<
     // generation on makes their late acks fall silent, and clearing the queue
     // lets the reconnect start fresh attempts without waiting for them.
     client["_connectionGeneration"] += 1;
-    for (const slot of client["_syncQueue"].values()) slot.controller.abort();
     client["_syncQueue"].clear();
     client["_collabDocIds"].clear();
     clearAllSyncRetries(client);

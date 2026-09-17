@@ -1,5 +1,4 @@
 import type { SyncRequest, SyncResponse } from "../../../../shared/types.js";
-import { withSyncLock } from "../../../../shared/withSyncLock.js";
 import type { DocSyncClient } from "../../../index.js";
 import {
   dispatchLocalDocFound,
@@ -236,16 +235,13 @@ async function runSyncAttempt<
   client: DocSyncClient<D, S, O>,
   docId: string,
   token: SyncAttemptToken,
-  signal: AbortSignal,
 ): Promise<SyncAttemptOutcome> {
   const isLive = () => isLiveSyncAttempt(client, docId, token);
   const stale: SyncAttemptOutcome = { type: "stale" };
 
-  // The connection or loaded document may have changed while waiting for
-  // another tab. A superseded attempt must not flush, send or write.
-  if (!isLive()) return stale;
-
-  await client["_flushLocalOperations"](docId, { sync: false });
+  if (client["_localOpsBatchState"].has(docId)) {
+    await client["_flushLocalOperations"](docId, { sync: false });
+  }
   if (!isLive()) return stale;
   const requestLocalVersion = getLocalDocVersion(client, docId);
 
@@ -265,7 +261,7 @@ async function runSyncAttempt<
   if (!isLive()) return stale;
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return stale;
-  const operations = operationsBatches.flat();
+  const operations = operationsBatches.flatMap((batch) => batch.operations);
   const req: SyncRequest<S, O> = {
     type: cacheEntry.type,
     clock: stored?.clock ?? 0,
@@ -276,7 +272,7 @@ async function runSyncAttempt<
 
   let response: SyncResponse<S, O>;
   try {
-    response = await request(client["_socket"], "sync", req, undefined, signal);
+    response = await request(client["_socket"], "sync", req);
   } catch (error) {
     if (!isLive()) return stale;
     const queryError = new DocSyncError(
@@ -422,12 +418,7 @@ export const handleSync = async <
   const settled = new Promise<void>((resolve) => {
     settle = resolve;
   });
-  const slot = {
-    rerun: false,
-    token,
-    settled,
-    controller: new AbortController(),
-  };
+  const slot = { rerun: false, token, settled };
   queue.set(docId, slot);
   const release = () => {
     if (queue.get(docId) === slot) queue.delete(docId);
@@ -439,10 +430,7 @@ export const handleSync = async <
   try {
     do {
       slot.rerun = false;
-      const { identity } = await client["_localPromise"];
-      outcome = await withSyncLock(identity.userId, docId, () =>
-        runSyncAttempt(client, docId, token, slot.controller.signal),
-      );
+      outcome = await runSyncAttempt(client, docId, token);
       if (
         outcome.type === "failed" &&
         outcome.transient &&

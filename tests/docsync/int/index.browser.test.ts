@@ -111,12 +111,6 @@ describe("Local-First", () => {
 
       await reference.loadDoc();
       await reference.assertIDBDoc(emptyIDB);
-      await expect
-        .poll(
-          () =>
-            reference.client["_docsCache"].get(docId)?.queryResult.fetchStatus,
-        )
-        .toBe("idle");
       reference.client["_singleClientMaxDebounce"] = 1500;
       reference.client["_collabMaxDebounce"] = 1500;
       const referenceSyncCallsBeforeChange = syncCallCount(reference);

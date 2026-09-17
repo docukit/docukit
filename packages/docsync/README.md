@@ -24,23 +24,17 @@ ID. Await it before navigating away on logout.
 This does not extend the lifetime of a worker. The application still controls
 which documents it observes, authentication credentials, and worker lifetime.
 
-## Coordinating concurrent syncs
+## Concurrent clients over one store
 
-When Web Locks are available, sync attempts for the same user and document
-read pending operations, exchange a server request, and reconcile the response
-one at a time across tabs and workers. Other documents can sync concurrently.
-Without Web Locks, the existing per-client queue and clock checks still apply.
-Disconnecting cancels the local wait for an in-flight response so it can release
-its sync lock; it does not undo a request already received by the server.
+Tabs and workers signed in as the same user share one local store, and each
+keeps its own sync queue. A sync sends the batches of pending operations it
+read and, when the response comes back, deletes exactly those batches by the id
+the store gave them. Anything written while the request was in flight is not
+acknowledged, whichever client wrote it: it stays pending for a later request.
 
-This prevents two clients from acknowledging the same pending batches and
-deleting a newer edit that neither request included. The lock covers the local
-read through the committed reconciliation. Local edits can still be saved while
-another client synchronizes; they remain pending for a later request.
-
-Coordination is internal. Applications use the normal observer lifecycle and
-do not need an explicit persistence or close method. Without Web Locks, shared
-storage across concurrent clients does not have this protection.
+This needs no coordination between clients and no platform lock, so it holds in
+every environment, including a slow client whose request reaches the server
+after another client has already consolidated the same batches.
 
 ## Closing a document
 
