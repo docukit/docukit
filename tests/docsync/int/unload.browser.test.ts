@@ -1,6 +1,24 @@
 import { expect, test, vi } from "vitest";
 import { holdNextWrite, withClosingDocument } from "./unloadUtils.js";
 
+test("closing an already-synced document does not repeat the sync", async () => {
+  await withClosingDocument(async ({ docId, reference }) => {
+    const sync = vi.fn();
+    const offSync = reference.client.on("sync", ({ req }) => {
+      if (req.docId === docId) sync();
+    });
+    try {
+      reference.unLoadDoc();
+      await expect
+        .poll(() => reference.client["_docsCache"].has(docId))
+        .toBe(false);
+      expect(sync).not.toHaveBeenCalled();
+    } finally {
+      offSync();
+    }
+  });
+});
+
 test("closing sends an edit before disposing instead of canceling its debounce", async () => {
   await withClosingDocument(async ({ docId, reference, otherDevice }) => {
     reference.addChild("closed before debounce");
