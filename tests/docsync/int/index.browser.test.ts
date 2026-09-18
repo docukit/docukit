@@ -1,6 +1,18 @@
 import { describe, test, expect, vi } from "vitest";
 import { emptyIDB, testWrapper, waitForLocalBroadcast } from "./utils.js";
 
+test("a document created with no operations is acknowledged with a clock", async () => {
+  await testWrapper(async ({ reference, otherDevice }) => {
+    // Nothing is typed: the document exists but carries no operations, so its
+    // clock can only come from the provider that stored it.
+    await reference.loadDoc();
+    await expect.poll(() => reference.localClock()).toBeGreaterThan(0);
+    await reference.assertIDBDoc(emptyIDB);
+    await otherDevice.loadDoc();
+    await expect.poll(() => otherDevice.localClock()).toBeGreaterThan(0);
+  });
+});
+
 describe("Local-First", () => {
   test("cannot load doc twice", async () => {
     await testWrapper(async (clients) => {

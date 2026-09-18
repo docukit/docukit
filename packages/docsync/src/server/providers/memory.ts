@@ -61,10 +61,15 @@ export function inMemoryServerProvider(): ServerProvider<any, any> {
         // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
         saveOperations: async ({ docId, operations }) => {
           if (operations.length === 0) {
+            // The current clock of a document includes its snapshot, not only
+            // its operations: compaction removes operation rows, and a document
+            // created without any never had one.
             const allOps = operationsMap.get(docId) ?? [];
-            return allOps.length > 0
-              ? Math.max(...allOps.map((op) => op.clock))
-              : 0;
+            return Math.max(
+              docs.get(docId)?.clock ?? 0,
+              ...allOps.map((op) => op.clock),
+              0,
+            );
           }
 
           const newClock = nextClock(docId);
@@ -78,7 +83,13 @@ export function inMemoryServerProvider(): ServerProvider<any, any> {
 
         // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
         saveSerializedDoc: async ({ docId, serializedDoc, clock }) => {
-          docs.set(docId, { serializedDoc, clock });
+          // A document stored for the first time at clock 0 was created offline
+          // and carries no operations to take a clock from. Give it one, or the
+          // client never hears a clock above its own and resends it forever.
+          const assigned =
+            clock === 0 && !docs.has(docId) ? nextClock(docId) : clock;
+          docs.set(docId, { serializedDoc, clock: assigned });
+          return assigned;
         },
       };
 
