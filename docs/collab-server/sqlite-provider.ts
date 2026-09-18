@@ -181,11 +181,21 @@ export function sqliteProvider({
           // eslint-disable-next-line @typescript-eslint/require-await -- sync SQLite implementation of async provider interface
           saveSerializedDoc: async ({ docId, serializedDoc, clock }) => {
             const now = Date.now();
+            const storedDoc = db
+              .select({ clock: schema.documents.clock })
+              .from(schema.documents)
+              .where(eq(schema.documents.docId, docId))
+              .get();
+            // Clocks here come from this database, not from the client. A
+            // document created offline arrives at clock 0 with no operations to
+            // take one from, so give it the first clock of its own. Without it
+            // the client never hears a clock above its own and resends forever.
+            const assigned = clock === 0 && storedDoc === undefined ? 1 : clock;
             db.insert(schema.documents)
               .values({
                 docId,
                 doc: JSON.stringify(serializedDoc),
-                clock,
+                clock: assigned,
                 createdAt: now,
                 updatedAt: now,
               })
@@ -193,11 +203,12 @@ export function sqliteProvider({
                 target: schema.documents.docId,
                 set: {
                   doc: JSON.stringify(serializedDoc),
-                  clock,
+                  clock: assigned,
                   updatedAt: now,
                 },
               })
               .run();
+            return assigned;
           },
         };
 

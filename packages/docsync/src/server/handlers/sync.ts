@@ -97,8 +97,13 @@ export function handleSync<
         const result = await provider.transaction("readwrite", async (ctx) => {
           const serverDoc = await ctx.getSerializedDoc({ docId });
 
+          let createdClock = 0;
           if (serverDoc === undefined && serializedDoc !== null) {
-            await ctx.saveSerializedDoc({ docId, serializedDoc, clock });
+            createdClock = await ctx.saveSerializedDoc({
+              docId,
+              serializedDoc,
+              clock,
+            });
           }
 
           let responseSerializedDoc: S | null = null;
@@ -115,7 +120,11 @@ export function handleSync<
             docId,
             clock: operationsClock,
           });
-          const newClock = await ctx.saveOperations({ docId, operations });
+          const savedClock = await ctx.saveOperations({ docId, operations });
+          // A document stored for the first time may have taken its clock from
+          // the provider. An empty batch does not advance that clock, so the
+          // response would otherwise send the client back to where it started.
+          const newClock = Math.max(savedClock, createdClock);
 
           return {
             docId,

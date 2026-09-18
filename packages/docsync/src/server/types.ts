@@ -156,7 +156,17 @@ export type ServerProviderContext<S extends object, O extends object> = {
   getOperations(arg: { docId: string; clock: number }): Promise<O[][]>;
   deleteOperations(arg: { docId: string; count: number }): Promise<void>;
   saveOperations(arg: { docId: string; operations: O[] }): Promise<number>;
-  saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
+  /**
+   * Stores the snapshot and returns the clock the document now has.
+   *
+   * A document reaching the server for the first time arrives with the clock
+   * its client had, which is `0` for one that was created offline. A provider
+   * whose clocks come from its own storage assigns one here and returns it, so
+   * a document that carries no operations still gets a clock; the client keeps
+   * resending a document it only ever hears back about at clock `0`. A provider
+   * that stores the clock it is given returns `arg.clock` unchanged.
+   */
+  saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<number>;
 };
 
 /**

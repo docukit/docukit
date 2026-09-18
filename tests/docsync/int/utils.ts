@@ -156,6 +156,8 @@ type ClientUtils = {
   addChild: (text: string) => void;
   addChildSkippingUndo: (text: string) => void;
   assertIDBDoc: (expected?: { doc: string[]; ops: string[] }) => Promise<void>;
+  /** Clock of this client's stored snapshot, or undefined when it has none. */
+  localClock: () => Promise<number | undefined>;
   assertMemoryDoc: (children?: string[]) => Promise<void>;
   assertCanUndo: (expected: boolean) => Promise<void>;
   reqSpy: Mock<EmitForTests>;
@@ -391,6 +393,13 @@ const createClientUtils = async (
           doc.root.append(child);
         },
         { skipUndo: true },
+      );
+    },
+    localClock: async () => {
+      if (!local) throw new Error("Client has no local provider configured");
+      return local.provider.transaction(
+        "readonly",
+        async (ctx) => (await ctx.getSerializedDoc({ docId }))?.clock,
       );
     },
     assertIDBDoc: async (expected?: { doc: string[]; ops: string[] }) => {

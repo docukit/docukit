@@ -552,13 +552,21 @@ describe("sync", () => {
 
       const saveRes = await T.sync({ docId, serializedDoc, clock: 0 });
       expect("error" in saveRes).toBe(false);
+      // The provider gave this document its clock, so "same clock" is the one
+      // the save answered with, not the 0 the client started from.
+      const storedClock = "data" in saveRes ? saveRes.data.clock : 0;
+      expect(storedClock).toBeGreaterThan(0);
 
-      const sameClockRes = await T.sync({ docId, serializedDoc, clock: 0 });
+      const sameClockRes = await T.sync({
+        docId,
+        serializedDoc,
+        clock: storedClock,
+      });
       expect("error" in sameClockRes).toBe(false);
       if ("data" in sameClockRes) {
         expect(sameClockRes.data.serializedDoc).toBe(null);
         expect(sameClockRes.data.operations).toStrictEqual([]);
-        expect(sameClockRes.data.clock).toBe(0);
+        expect(sameClockRes.data.clock).toBe(storedClock);
       }
 
       const noLocalSnapshotRes = await T.sync({
