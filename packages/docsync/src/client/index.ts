@@ -599,10 +599,19 @@ export class DocSyncClient<
       await this._flushLocalOperations(docId, { sync: false });
       if (!canDispose()) return;
       if (this._socket.connected) {
-        await handleSync(this, docId);
-        // A request made during an existing sync queues a follow-up. Keep the
-        // entry until that running attempt and its follow-up have settled.
+        // Let an existing request acknowledge only the batches it read, then
+        // send a follow-up only when newer local operations remain.
         await this._syncQueue.get(docId)?.settled;
+        if (!canDispose()) return;
+        const local = await this._localPromise;
+        const hasPendingOperations = await local.provider.transaction(
+          "readonly",
+          async (ctx) => (await ctx.getOperations({ docId })).length > 0,
+        );
+        if (hasPendingOperations) {
+          await handleSync(this, docId);
+          await this._syncQueue.get(docId)?.settled;
+        }
       }
       if (!canDispose()) return;
       // Reconciliation may have replaced the instance during the final sync.

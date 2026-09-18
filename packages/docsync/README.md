@@ -39,10 +39,11 @@ after another client has already consolidated the same batches.
 ## Closing a document
 
 When the last observer unsubscribes, DocSync saves pending local operations and
-waits for any local write already in progress. If connected, it then attempts a
-final sync before removing the document from its cache and disposing it. This
-also waits for a follow-up queued behind an existing sync. Applications do not
-need to call a separate flush method when closing a document.
+waits for any local write or sync already in progress. If connected and newer
+local operations remain afterward, it sends one follow-up before removing the
+document from its cache and disposing it. An already-synced document closes
+without another sync. Applications do not need to call a separate flush method
+when closing a document.
 
 A failed server request leaves the changes in local storage; closing does not
 wait through the retry schedule. A failed local write instead keeps the document
