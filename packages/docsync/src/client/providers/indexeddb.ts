@@ -6,7 +6,7 @@ import type { ClientProvider, Identity } from "../types.js";
  * The version this build knows how to read. Raise it whenever the stores or
  * indexes below change.
  */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 /**
  * Raised once the local database is no longer one this build can use: another
@@ -37,6 +37,7 @@ interface DocNodeIDB<S extends object, O extends object> extends DBSchema {
   docs: {
     key: string; // docId
     value: SerializedDocPayload<S>;
+    indexes: { clock_idx: number };
   };
   operations: {
     key: number;
@@ -76,13 +77,27 @@ export function indexedDBProvider<S extends object, O extends object>(
   }
 
   const dbPromise = openDB<DocNodeIDB<S, O>>(dbName, SCHEMA_VERSION, {
-    upgrade(db) {
-      if (db.objectStoreNames.contains("docs")) return;
-      db.createObjectStore("docs", { keyPath: "docId" });
-      const operationsStore = db.createObjectStore("operations", {
-        autoIncrement: true,
-      });
-      operationsStore.createIndex("docId_idx", "docId");
+    upgrade(db, _oldVersion, _newVersion, tx) {
+      // Declares the shape it wants rather than the steps from an earlier one:
+      // creating only what is missing lands in the same place from a database
+      // that has none of it, all of it, or the part a previous version made.
+      const docs = db.objectStoreNames.contains("docs")
+        ? tx.objectStore("docs")
+        : db.createObjectStore("docs", { keyPath: "docId" });
+      if (!docs.indexNames.contains("clock_idx"))
+        docs.createIndex("clock_idx", "clock");
+
+      const operations = db.objectStoreNames.contains("operations")
+        ? tx.objectStore("operations")
+        : db.createObjectStore("operations", { autoIncrement: true });
+      if (!operations.indexNames.contains("docId_idx"))
+        operations.createIndex("docId_idx", "docId");
+    },
+    blocked() {
+      // A tab from before the handler below will never let go, so stop waiting
+      // on it rather than leaving every read behind an open that never
+      // resolves. Reloading that tab is what clears it.
+      markOutdated();
     },
     blocking(_oldVersion, _newVersion, event) {
       // A tab on a newer build is waiting to change this database's version,
@@ -119,6 +134,24 @@ export function indexedDBProvider<S extends object, O extends object>(
 
       try {
         const result = await callback({
+          async listClocks(arg) {
+            // Reads index entries, never records. An entry holds the clock and
+            // the document id, so no document is deserialised to find out
+            // which version of it is stored.
+            const wanted = arg?.docIds && new Set(arg.docIds);
+            const clocks: Array<{ docId: string; clock: number }> = [];
+            let cursor = await tx
+              .objectStore("docs")
+              .index("clock_idx")
+              .openKeyCursor();
+            while (cursor) {
+              if (!wanted || wanted.has(cursor.primaryKey))
+                clocks.push({ docId: cursor.primaryKey, clock: cursor.key });
+              cursor = await cursor.continue();
+            }
+            return clocks;
+          },
+
           async getSerializedDoc({ docId }) {
             const store = tx.objectStore("docs");
             return await store.get(docId);

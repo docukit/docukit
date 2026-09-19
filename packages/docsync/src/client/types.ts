@@ -160,6 +160,17 @@ export type ClientProviderContext<S extends object, O extends object> = {
   deleteOperations(arg: { docId: string; ids: number[] }): Promise<void>;
   saveOperations(arg: { docId: string; operations: O[] }): Promise<void>;
   saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
+  /**
+   * Which version of each stored document is here, without its content.
+   *
+   * Optional: only implement it if your storage can read that one field on its
+   * own. A caller without it reads `getSerializedDoc` per document for the same
+   * answer. `docIds` narrows the result; documents that are not stored are left
+   * out rather than reported at clock zero.
+   */
+  listClocks?(arg?: {
+    docIds?: string[];
+  }): Promise<Array<{ docId: string; clock: number }>>;
 };
 
 /**
