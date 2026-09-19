@@ -2,6 +2,37 @@ import { openDB, type DBSchema } from "idb";
 import type { SerializedDocPayload } from "../../shared/types.js";
 import type { ClientProvider, Identity } from "../types.js";
 
+/**
+ * The version this build knows how to read. Raise it whenever the stores or
+ * indexes below change.
+ */
+const SCHEMA_VERSION = 1;
+
+/**
+ * Raised once the local database is no longer one this build can use: another
+ * tab running a newer build upgraded it, or it was already newer when this tab
+ * started. Nothing here can recover from that — the schema belongs to code this
+ * tab does not have — so the tab has to reload.
+ */
+export class OutdatedDatabaseError extends Error {
+  constructor(dbName: string) {
+    super(
+      `Local database ${dbName} belongs to a newer build of this app. Reload this tab to use it.`,
+    );
+    this.name = "OutdatedDatabaseError";
+  }
+}
+
+export type IndexedDBProviderOptions = {
+  /**
+   * Called once, as soon as the database turns out to belong to a newer build.
+   * Reloading the tab is the only thing that helps, so wire this to however the
+   * application already asks for a reload after a deployment. Every transaction
+   * from that point on rejects with `OutdatedDatabaseError`.
+   */
+  onOutdated?: () => void;
+};
+
 interface DocNodeIDB<S extends object, O extends object> extends DBSchema {
   docs: {
     key: string; // docId
@@ -19,10 +50,32 @@ interface DocNodeIDB<S extends object, O extends object> extends DBSchema {
  */
 export function indexedDBProvider<S extends object, O extends object>(
   identity: Identity,
+  { onOutdated }: IndexedDBProviderOptions = {},
 ): ClientProvider<S, O> {
   // Each user gets their own database for isolation and performance.
   const dbName = `docsync-${identity.userId}`;
-  const dbPromise = openDB<DocNodeIDB<S, O>>(dbName, 1, {
+  let outdated = false;
+  // Turning outdated has to interrupt whatever is waiting on the connection,
+  // not only refuse the next call: an open that is waiting on another tab does
+  // not settle on its own.
+  let giveUp: () => void;
+  const givenUp = new Promise<never>((_, reject) => {
+    giveUp = () => {
+      reject(new OutdatedDatabaseError(dbName));
+    };
+  });
+  void givenUp.catch(() => {
+    // Rejected on purpose, and reported to whoever is waiting on it below.
+  });
+
+  function markOutdated() {
+    if (outdated) return;
+    outdated = true;
+    onOutdated?.();
+    giveUp();
+  }
+
+  const dbPromise = openDB<DocNodeIDB<S, O>>(dbName, SCHEMA_VERSION, {
     upgrade(db) {
       if (db.objectStoreNames.contains("docs")) return;
       db.createObjectStore("docs", { keyPath: "docId" });
@@ -31,11 +84,35 @@ export function indexedDBProvider<S extends object, O extends object>(
       });
       operationsStore.createIndex("docId_idx", "docId");
     },
+    blocking(_oldVersion, _newVersion, event) {
+      // A tab on a newer build is waiting to change this database's version,
+      // and a browser will not let it while this connection is open — for as
+      // long as this tab lives, with every later open queueing behind it. Let
+      // go at once, and say so: what it puts there afterwards belongs to a
+      // schema this build does not know.
+      (event.target as IDBDatabase | null)?.close();
+      markOutdated();
+    },
   });
 
   return {
     async transaction(mode, callback) {
-      const db = await dbPromise;
+      if (outdated) throw new OutdatedDatabaseError(dbName);
+      const db = await Promise.race([dbPromise, givenUp]).catch(
+        (cause: unknown) => {
+          // Asking for a version below the one on disk is refused, which means
+          // the database was already a newer build's when this tab started.
+          // Asking for a version below the one on disk is refused, which
+          // means the database was already a newer build's when this tab
+          // started.
+          if (cause instanceof DOMException && cause.name === "VersionError") {
+            markOutdated();
+            throw new OutdatedDatabaseError(dbName);
+          }
+          throw cause;
+        },
+      );
+      if (outdated) throw new OutdatedDatabaseError(dbName);
 
       // Cast as readwrite to support all context operations in compile time
       const tx = db.transaction(["docs", "operations"], mode as "readwrite");

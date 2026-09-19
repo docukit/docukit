@@ -1,6 +1,10 @@
 export { createDocBinding } from "../bindings/index.js";
 export { DocSyncClient } from "../client/index.js";
-export { indexedDBProvider } from "../client/providers/indexeddb.js";
+export {
+  indexedDBProvider,
+  OutdatedDatabaseError,
+} from "../client/providers/indexeddb.js";
+export type { IndexedDBProviderOptions } from "../client/providers/indexeddb.js";
 export { DocSyncError } from "../client/utils/DocSyncError.js";
 export type { DocSyncErrorType } from "../client/utils/DocSyncError.js";
 export { createReducer as _INTERNAL_createReducer } from "../client/utils/reducer.js";
