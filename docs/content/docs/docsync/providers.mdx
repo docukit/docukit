@@ -325,6 +325,9 @@ type ClientProviderContext<S, O> = {
     serializedDoc: S;
     clock: number;
   }): Promise<void>;
+  listClocks?(arg?: {
+    docIds?: string[];
+  }): Promise<Array<{ docId: string; clock: number }>>;
 };
 ```
 
