@@ -330,6 +330,26 @@ type ClientProviderContext<S, O> = {
 
 The shape mirrors `ServerProviderContext` with two differences: `getOperations` does not take a `clock` (the client always loads everything it has locally), and `saveOperations` returns `void` (the client doesn't assign clocks — those come from the server).
 
+### When the local database belongs to a newer build
+
+`indexedDBProvider` reads a database whose shape it declares, and raises that
+declaration when the shape changes. A tab still running an older build cannot
+read what a newer one put there.
+
+It handles both directions of that: it releases the database at once when a
+newer tab needs to change it, so that tab is never left waiting, and it notices
+when the database was already newer at startup. Either way it calls `onOutdated`
+and every transaction after that rejects with `OutdatedDatabaseError`. Reloading
+the tab is the only thing that helps, so wire it to however the application
+already asks for a reload after a deployment:
+
+```ts
+local: {
+  provider: (identity) =>
+    indexedDBProvider(identity, { onOutdated: () => promptReload() }),
+}
+```
+
 In the client config, `provider` is a **factory** that receives an `Identity` and returns the provider instance:
 
 ```ts
