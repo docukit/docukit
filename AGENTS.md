@@ -53,8 +53,9 @@
 
 - **NEVER add `any` (or `as any`, `as unknown as ...`, etc.) without first stopping, presenting every alternative you can think of, and waiting for explicit approval.** This applies to both implementation code and tests, to both new code and edits to existing code, and to both function signatures (including generic defaults like `<T = any>`) and local values. If TS inference is failing, the right move is to surface the problem and the trade-offs — not to silence it with `any`. Even if the existing code already used `any`, do not preserve it without asking.
 - Use TypeScript inference as much as possible. Do not add explicit return types, object shape types, or wrapper aliases when the inferred type is clear and stable from the implementation.
-- Never call a function with an explicit type parameter. Let TypeScript infer it. For example, write `createQueryResultReducer(...)`, not `createQueryResultReducer<Data>(...)`.
+- For DocuKit functions and APIs whose implementation we control, never call a function with an explicit type parameter. Let TypeScript infer it. For example, write `createQueryResultReducer(...)`, not `createQueryResultReducer<Data>(...)`.
   - Accepted exception: `serverProvider` factory calls may use explicit type parameters when TypeScript cannot infer the serialized document and operation types from context.
+  - This restriction does not apply to external libraries. Explicit type parameters such as `openDB<DocNodeIDB<S, O>>(...)` are allowed; do not replace them with more complex variable annotations just to avoid type parameters.
 
 ## Export Rules
 

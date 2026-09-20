@@ -1,4 +1,4 @@
-import { openDB, type DBSchema, type IDBPDatabase } from "idb";
+import { openDB, type DBSchema } from "idb";
 import type { SerializedDocPayload } from "../../shared/types.js";
 import type { ClientProvider, Identity } from "../types.js";
 
@@ -27,7 +27,7 @@ export function indexedDBProvider<S extends object, O extends object>(
 ): ClientProvider<S, O> {
   // Each user gets their own database for isolation and performance.
   const dbName = `docsync:v${SCHEMA}:${identity.userId}`;
-  const dbPromise: Promise<IDBPDatabase<DocNodeIDB<S, O>>> = openDB(dbName, 1, {
+  const dbPromise = openDB<DocNodeIDB<S, O>>(dbName, 1, {
     upgrade(db) {
       const docs = db.createObjectStore("docs", { keyPath: "docId" });
       docs.createIndex("clock_idx", "clock");
