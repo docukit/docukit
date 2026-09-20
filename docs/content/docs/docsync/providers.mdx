@@ -357,7 +357,21 @@ new DocSyncClient({
 });
 ```
 
-Each user gets an isolated IndexedDB database (`docsync-${userId}`). The built-in provider stores plaintext local docs and operations.
+Each user gets an isolated IndexedDB database named `docsync:v${schema}:${userId}`.
+The built-in provider stores plaintext local docs and operations. Its `listClocks`
+method reads an index without loading document contents. Omit `docIds` to list
+all stored documents, or provide IDs to filter the result. Missing documents are
+left out. This method is optional for custom providers.
+
+**A storage schema change starts with an empty local database.** Documents already
+saved on the server can be downloaded again. Local-only documents and edits not
+yet sent to the server are not recovered automatically. Previously cached
+documents must be downloaded again before they are available offline.
+
+Earlier databases are neither migrated nor deleted. Tabs using them may continue
+to sync, but the new provider does not read their data. Reopening the same schema
+preserves its local data; an ordinary release without a schema change does not
+reset storage.
 
 If your app needs local encryption, implement or wrap a `ClientProvider` that
 encrypts before writes and decrypts after reads.

@@ -161,13 +161,9 @@ export type ClientProviderContext<S extends object, O extends object> = {
   saveOperations(arg: { docId: string; operations: O[] }): Promise<void>;
   saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
   /**
-   * Which version of each stored document is here, without its content.
-   *
-   * Optional, and can be missing from a provider that usually has it, so check
-   * before every use rather than once. A caller without it reads
-   * `getSerializedDoc` per document for the same answer. `docIds` narrows the
-   * result; documents that are not stored are left out rather than reported at
-   * clock zero.
+   * Read stored document clocks without loading document contents.
+   * Optional for providers that cannot read clocks separately. Omitting
+   * `docIds` lists all stored documents; missing documents are left out.
    */
   listClocks?(arg?: {
     docIds?: string[];
