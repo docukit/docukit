@@ -2,8 +2,8 @@ import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import type { SerializedDocPayload } from "../../shared/types.js";
 import type { ClientProvider, Identity } from "../types.js";
 
-// Bump when stores or indexes change. Each schema starts with empty local
-// storage; snapshots and unsent operations from other schemas are not carried over.
+// Bump when stores or indexes change. For migration policies, see
+// https://github.com/docukit/docukit/pull/81
 const SCHEMA = 2;
 
 interface DocNodeIDB<S extends object, O extends object> extends DBSchema {
