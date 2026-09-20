@@ -537,6 +537,44 @@ describe("sync", () => {
     });
   });
 
+  test("tells a second offline snapshot about the one already stored", async () => {
+    const auth: ClientAuthConfig = {
+      mode: "token",
+      getToken: () => "valid-user1",
+    };
+    await testWrapper({ auth }, async (T) => {
+      await T.waitForConnect();
+
+      // Two clients that created the same id offline both arrive at clock 0.
+      // The second one has to be told that a snapshot already exists, or the
+      // two versions stay divergent for good.
+      const docId = "01kfpgjsabrpdcw0qgh5evhy9z";
+      const docBinding = DocNodeBinding([testDocConfig]);
+      const childNodeDef = testDocConfig.extensions[0]?.nodes?.[0];
+      if (!childNodeDef) throw new Error("Missing child node definition");
+
+      const { doc: first } = docBinding.create("test", docId);
+      first.root.append(first.createNode(childNodeDef));
+      const firstSnapshot = docBinding.serialize(first);
+
+      const { doc: second } = docBinding.create("test", docId);
+      second.root.append(second.createNode(childNodeDef));
+      second.root.append(second.createNode(childNodeDef));
+      const secondSnapshot = docBinding.serialize(second);
+
+      await T.sync({ docId, serializedDoc: firstSnapshot, clock: 0 });
+      const secondRes = await T.sync({
+        docId,
+        serializedDoc: secondSnapshot,
+        clock: 0,
+      });
+      expect("error" in secondRes).toBe(false);
+      if ("data" in secondRes) {
+        expect(secondRes.data.serializedDoc).toStrictEqual(firstSnapshot);
+      }
+    });
+  });
+
   test("does not return a server snapshot when the client has a same-clock snapshot", async () => {
     const auth: ClientAuthConfig = {
       mode: "token",
@@ -1036,5 +1074,29 @@ describe("DocSyncServer assignability", () => {
     >;
 
     expectTypeOf<SpecificServer>().toExtend<DocSyncServer>();
+  });
+});
+
+describe("inMemoryServerProvider", () => {
+  test("gives an operation a clock above the one a stored document has", async () => {
+    const provider = inMemoryServerProvider();
+    const docId = "01kfpgjsabrpdcw0qgh5evhy8x";
+
+    // What the sync handler does for a document it stores for the first time.
+    await provider.transaction("readwrite", (ctx) =>
+      ctx.saveSerializedDoc({ docId, serializedDoc: { v: 1 }, clock: 1 }),
+    );
+    const opClock = await provider.transaction("readwrite", (ctx) =>
+      ctx.saveOperations({ docId, operations: [{ op: "x" }] }),
+    );
+    expect(opClock).toBe(2);
+
+    // A client holding the clock the document was stored at must still be sent
+    // that operation: an operation stored at the document's own clock would be
+    // filtered out and lost.
+    const pending = await provider.transaction("readonly", (ctx) =>
+      ctx.getOperations({ docId, clock: 1 }),
+    );
+    expect(pending.flat()).toHaveLength(1);
   });
 });

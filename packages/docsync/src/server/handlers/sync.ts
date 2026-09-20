@@ -97,12 +97,20 @@ export function handleSync<
         const result = await provider.transaction("readwrite", async (ctx) => {
           const serverDoc = await ctx.getSerializedDoc({ docId });
 
+          // A document stored for the first time is stored one clock above the
+          // one its client had. A document created offline and never typed into
+          // arrives at clock 0 with no operations to take a clock from, and
+          // would otherwise be stored, and answered, at 0 -- indistinguishable
+          // from a document the server has never seen. A second client that
+          // created the same id offline would then never be told that a
+          // snapshot already exists, and would keep its own for good.
           let createdClock = 0;
           if (serverDoc === undefined && serializedDoc !== null) {
-            createdClock = await ctx.saveSerializedDoc({
+            createdClock = clock + 1;
+            await ctx.saveSerializedDoc({
               docId,
               serializedDoc,
-              clock,
+              clock: createdClock,
             });
           }
 
@@ -121,9 +129,9 @@ export function handleSync<
             clock: operationsClock,
           });
           const savedClock = await ctx.saveOperations({ docId, operations });
-          // A document stored for the first time may have taken its clock from
-          // the provider. An empty batch does not advance that clock, so the
-          // response would otherwise send the client back to where it started.
+          // An empty batch does not advance the clock, so a document that was
+          // just created would otherwise be answered at the clock its client
+          // started from.
           const newClock = Math.max(savedClock, createdClock);
 
           return {

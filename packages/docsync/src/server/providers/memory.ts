@@ -18,13 +18,21 @@ interface StoredOperation {
 export function inMemoryServerProvider(): ServerProvider<any, any> {
   const docs = new Map<string, StoredDoc>();
   const operationsMap = new Map<string, StoredOperation[]>();
-  const clockCounterByDocId = new Map<string, number>();
 
-  function nextClock(docId: string): number {
-    const current = clockCounterByDocId.get(docId) ?? 0;
-    const next = current + 1;
-    clockCounterByDocId.set(docId, next);
-    return next;
+  /**
+   * The clock of a document covers its snapshot as well as its operations:
+   * compaction removes operation rows, a document created without any never had
+   * one, and the sync handler gives a newly stored document a clock of its own.
+   * Deriving the clock from what is stored, rather than from a counter kept
+   * beside it, is also what the documented SQLite provider does.
+   */
+  function currentClock(docId: string): number {
+    const allOps = operationsMap.get(docId) ?? [];
+    return Math.max(
+      docs.get(docId)?.clock ?? 0,
+      ...allOps.map((op) => op.clock),
+      0,
+    );
   }
 
   return {
@@ -60,19 +68,9 @@ export function inMemoryServerProvider(): ServerProvider<any, any> {
 
         // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
         saveOperations: async ({ docId, operations }) => {
-          if (operations.length === 0) {
-            // The current clock of a document includes its snapshot, not only
-            // its operations: compaction removes operation rows, and a document
-            // created without any never had one.
-            const allOps = operationsMap.get(docId) ?? [];
-            return Math.max(
-              docs.get(docId)?.clock ?? 0,
-              ...allOps.map((op) => op.clock),
-              0,
-            );
-          }
+          if (operations.length === 0) return currentClock(docId);
 
-          const newClock = nextClock(docId);
+          const newClock = currentClock(docId) + 1;
           const docOps = operationsMap.get(docId) ?? [];
           for (const op of operations) {
             docOps.push({ operations: op, clock: newClock });
@@ -83,13 +81,7 @@ export function inMemoryServerProvider(): ServerProvider<any, any> {
 
         // eslint-disable-next-line @typescript-eslint/require-await -- sync implementation of async interface
         saveSerializedDoc: async ({ docId, serializedDoc, clock }) => {
-          // A document stored for the first time at clock 0 was created offline
-          // and carries no operations to take a clock from. Give it one, or the
-          // client never hears a clock above its own and resends it forever.
-          const assigned =
-            clock === 0 && !docs.has(docId) ? nextClock(docId) : clock;
-          docs.set(docId, { serializedDoc, clock: assigned });
-          return assigned;
+          docs.set(docId, { serializedDoc, clock });
         },
       };
 
