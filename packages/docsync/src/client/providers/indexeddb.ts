@@ -2,10 +2,15 @@ import { openDB, type DBSchema } from "idb";
 import type { SerializedDocPayload } from "../../shared/types.js";
 import type { ClientProvider, Identity } from "../types.js";
 
+// Bump when stores or indexes change. For migration policies, see
+// https://github.com/docukit/docukit/pull/81
+const SCHEMA = 2;
+
 interface DocNodeIDB<S extends object, O extends object> extends DBSchema {
   docs: {
     key: string; // docId
     value: SerializedDocPayload<S>;
+    indexes: { clock_idx: number };
   };
   operations: {
     key: number;
@@ -21,11 +26,11 @@ export function indexedDBProvider<S extends object, O extends object>(
   identity: Identity,
 ): ClientProvider<S, O> {
   // Each user gets their own database for isolation and performance.
-  const dbName = `docsync-${identity.userId}`;
+  const dbName = `docsync:v${SCHEMA}:${identity.userId}`;
   const dbPromise = openDB<DocNodeIDB<S, O>>(dbName, 1, {
     upgrade(db) {
-      if (db.objectStoreNames.contains("docs")) return;
-      db.createObjectStore("docs", { keyPath: "docId" });
+      const docs = db.createObjectStore("docs", { keyPath: "docId" });
+      docs.createIndex("clock_idx", "clock");
       const operationsStore = db.createObjectStore("operations", {
         autoIncrement: true,
       });
@@ -42,6 +47,21 @@ export function indexedDBProvider<S extends object, O extends object>(
 
       try {
         const result = await callback({
+          async listClocks(arg) {
+            const wanted = arg?.docIds && new Set(arg.docIds);
+            const clocks: Array<{ docId: string; clock: number }> = [];
+            let cursor = await tx
+              .objectStore("docs")
+              .index("clock_idx")
+              .openKeyCursor();
+            while (cursor) {
+              if (!wanted || wanted.has(cursor.primaryKey))
+                clocks.push({ docId: cursor.primaryKey, clock: cursor.key });
+              cursor = await cursor.continue();
+            }
+            return clocks;
+          },
+
           async getSerializedDoc({ docId }) {
             const store = tx.objectStore("docs");
             return await store.get(docId);

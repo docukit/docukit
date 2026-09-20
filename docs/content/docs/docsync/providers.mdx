@@ -325,6 +325,9 @@ type ClientProviderContext<S, O> = {
     serializedDoc: S;
     clock: number;
   }): Promise<void>;
+  listClocks?(arg?: {
+    docIds?: string[];
+  }): Promise<Array<{ docId: string; clock: number }>>;
 };
 ```
 
@@ -354,7 +357,11 @@ new DocSyncClient({
 });
 ```
 
-Each user gets an isolated IndexedDB database (`docsync-${userId}`). The built-in provider stores plaintext local docs and operations.
+Each user gets an isolated IndexedDB database named `docsync:v${schema}:${userId}`.
+The built-in provider stores plaintext local docs and operations. Its `listClocks`
+method reads an index without loading document contents. Omit `docIds` to list
+all stored documents, or provide IDs to filter the result. Missing documents are
+left out. This method is optional for custom providers.
 
 If your app needs local encryption, implement or wrap a `ClientProvider` that
 encrypts before writes and decrypts after reads.

@@ -160,6 +160,14 @@ export type ClientProviderContext<S extends object, O extends object> = {
   deleteOperations(arg: { docId: string; ids: number[] }): Promise<void>;
   saveOperations(arg: { docId: string; operations: O[] }): Promise<void>;
   saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
+  /**
+   * Read stored document clocks without loading document contents.
+   * Optional for providers that cannot read clocks separately. Omitting
+   * `docIds` lists all stored documents; missing documents are left out.
+   */
+  listClocks?(arg?: {
+    docIds?: string[];
+  }): Promise<Array<{ docId: string; clock: number }>>;
 };
 
 /**
