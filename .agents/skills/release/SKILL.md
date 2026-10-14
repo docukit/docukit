@@ -77,6 +77,16 @@ Attribute each bullet to a PR number (squash-merge titles often end with `(#123)
 
 ### Template — `changelog/<tag>.md`
 
+For a small fixes-only release, use only the Fixes subheading and one line per PR:
+
+```
+## Fixes
+
+- [Description] (#125)
+```
+
+For larger releases, use the relevant parts of this template:
+
 ```
 # <tag> — YYYY-MM-DD
 
@@ -107,26 +117,29 @@ Attribute each bullet to a PR number (squash-merge titles often end with `(#123)
 
 Rules:
 
-- If no breaking changes were found, write `_No breaking changes in this release._` under that section. **Do not omit the section** — explicit emptiness lets a reviewer catch a false negative.
+- Omit Breaking changes when no breaking changes were found.
 - Keep bullets user-facing. "Renamed `foo` → `bar`" — not "refactored internal foo helpers".
-- Open with a market-facing **Highlights** section. Put the most important story first, not the biggest diff. Make the top bullets attractive and clear for readers who will only skim.
+- Include Highlights only when the release has a substantial story worth highlighting. Do not repeat a small fix in a separate Highlights section.
+- In Fixes, use at most one bullet, written on one line, per PR. Combine related fixes from the same PR into that line; for changes without a PR, group by commit.
+- For a small fixes-only release, omit the release title/date and all other sections. Do not add an Internal section solely for tests covering a listed fix.
 - Order bullets by user impact, not by commit order.
 - Link to documentation when it helps users adopt or understand the change.
 - Group related breaking changes by product area and shared migration so the section stays readable, but do not omit any real breaking change.
-- Omit empty Features/Fixes/Docs/Internal sections silently — only Breaking is mandatory.
+- Omit all empty sections silently.
 
-Use today's date from the environment.
+When including a release title/date, use today's date from the environment.
 
 ### Discord sibling — `changelog/<tag>_DISCORD.md`
 
 Same story, transformed for Discord:
 
+- Match the committed changelog's section choices and keep at most one Fixes bullet per PR. For a compact fixes-only release, use only `🐛 **FIXES**` and the fix lines, without a release announcement or footer.
 - **No `#` headings.** Use `**BREAKING CHANGES**`, `**FEATURES**`, etc. in bold+caps.
 - Emojis per section: ✨ Highlights/Features, 🚨 Breaking, 🐛 Fixes, 📚 Docs, 🛠 Internal.
 - Do **not** include PR links in the Discord file. The committed changelog has the PR attribution.
 - Include documentation links as plain text only when they are useful to readers. **No `[text](url)` markdown link syntax.**
-- Open with a one-line summary: `🚀 DocuKit <tag> released!` then a blank line.
-- End with this line: `Full release notes with PRs: https://github.com/docukit/docukit/releases/`
+- For larger releases, open with a one-line summary: `🚀 DocuKit <tag> released!` then a blank line.
+- For larger releases, end with this line: `Full release notes with PRs: https://github.com/docukit/docukit/releases/`
 - Keep it skimmable.
 
 This file is gitignored (`changelog/*_DISCORD.md`) — never let it be committed.
