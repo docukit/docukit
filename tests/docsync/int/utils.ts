@@ -101,7 +101,10 @@ const getTestServerUrl = (): string => {
 // Node Definitions
 // ============================================================================
 
-const ChildNode = defineNode({ type: "child", state: { value: string("") } });
+export const ChildNode = defineNode({
+  type: "child",
+  state: { value: string("") },
+});
 
 export const testDocConfig = {
   type: "test",
@@ -533,6 +536,30 @@ const createClientUtils = async (
 };
 
 export const emptyIDB = { doc: [], ops: [] };
+
+/** Run another client's download after the initial load read has finished. */
+export const afterInitialLocalRead = async (
+  client: ClientUtils,
+  callback: () => Promise<void>,
+) => {
+  const { provider } = await client.client["_localPromise"];
+  const transaction = provider.transaction.bind(provider);
+  let intercepted = false;
+  const spy = vi
+    .spyOn(provider, "transaction")
+    .mockImplementation(async (mode, fn) => {
+      const result = await transaction(mode, fn);
+      if (mode === "readwrite" && !intercepted) {
+        intercepted = true;
+        // The real transaction is already closed, so the other client can write.
+        await callback();
+      }
+      return result;
+    });
+  return () => {
+    spy.mockRestore();
+  };
+};
 
 export const runWorkerClient = async (input: {
   token: string;
