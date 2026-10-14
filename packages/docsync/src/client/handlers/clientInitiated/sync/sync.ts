@@ -262,6 +262,27 @@ async function runSyncAttempt<
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return stale;
   const operations = operationsBatches.flatMap((batch) => batch.operations);
+
+  // Another tab or worker can save the doc after the initial local load.
+  // Advertising that stored clock to the server is only safe once the missing
+  // live doc has also been loaded: an up-to-date server sends no snapshot.
+  if (stored) {
+    const promisedDoc = cacheEntry.promisedDoc;
+    const liveDoc = await promisedDoc;
+    if (!isLive()) return stale;
+    if (!liveDoc && cacheEntry.promisedDoc === promisedDoc) {
+      const doc = client["_docBinding"].deserialize(stored.serializedDoc);
+      for (const operation of operations) {
+        client["_docBinding"].applyOperations(doc, operation, {
+          skipUndo: true,
+        });
+      }
+      replaceDocInCache(client, { docId, doc });
+      dispatchLocalDocFound(client, docId, { doc, docId });
+      if (!isLive()) return stale;
+    }
+  }
+
   const req: SyncRequest<S, O> = {
     type: cacheEntry.type,
     clock: stored?.clock ?? 0,

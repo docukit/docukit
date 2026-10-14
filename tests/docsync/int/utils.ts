@@ -101,7 +101,10 @@ const getTestServerUrl = (): string => {
 // Node Definitions
 // ============================================================================
 
-const ChildNode = defineNode({ type: "child", state: { value: string("") } });
+export const ChildNode = defineNode({
+  type: "child",
+  state: { value: string("") },
+});
 
 export const testDocConfig = {
   type: "test",
@@ -533,6 +536,39 @@ const createClientUtils = async (
 };
 
 export const emptyIDB = { doc: [], ops: [] };
+
+/** Run another client's download after the initial load read has finished. */
+export const afterInitialLocalRead = async (
+  client: ClientUtils,
+  callback: () => Promise<void>,
+) => {
+  const { provider } = await client.client["_localPromise"];
+  const transaction = provider.transaction.bind(provider);
+  let intercepted = false;
+  const assertBeforeRequest = () => {
+    expect(
+      client.reqSpy.mock.calls.filter(([event]) => event === "sync"),
+    ).toHaveLength(0);
+  };
+  const spy = vi
+    .spyOn(provider, "transaction")
+    .mockImplementation(async (mode, fn) => {
+      const result = await transaction(mode, fn);
+      if (mode === "readwrite" && !intercepted) {
+        // A later reconciliation also uses readwrite. Do not silently pause it
+        // instead if the initial load ever switches to a readonly transaction.
+        assertBeforeRequest();
+        intercepted = true;
+        // The real transaction is already closed, so the other client can write.
+        await callback();
+      }
+      return result;
+    });
+  return () => {
+    spy.mockRestore();
+    expect(intercepted).toBe(true);
+  };
+};
 
 export const runWorkerClient = async (input: {
   token: string;

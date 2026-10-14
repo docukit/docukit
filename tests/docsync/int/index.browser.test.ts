@@ -1,7 +1,69 @@
 import { describe, test, expect, vi } from "vitest";
-import { emptyIDB, testWrapper, waitForLocalBroadcast } from "./utils.js";
+import {
+  afterInitialLocalRead,
+  ChildNode,
+  emptyIDB,
+  testWrapper,
+  waitForLocalBroadcast,
+} from "./utils.js";
 
 describe("Local-First", () => {
+  test.each([false, true])(
+    "loads a copy downloaded between local load and sync (pending edits: %s)",
+    async (pendingEdits) => {
+      await testWrapper(async ({ docId, reference, otherTab, otherDevice }) => {
+        await otherDevice.loadDoc();
+        otherDevice.addChild("Remote");
+        otherDevice.doc?.forceCommit();
+        await otherDevice.assertIDBDoc({ doc: ["Remote"], ops: [] });
+        await reference.assertIDBDoc();
+
+        const restoreRead = await afterInitialLocalRead(reference, async () => {
+          await otherTab.loadDoc();
+          await otherTab.assertIDBDoc({ doc: ["Remote"], ops: [] });
+          if (pendingEdits) {
+            otherTab.disconnect();
+            otherTab.addChild("Pending");
+            otherTab.doc?.forceCommit();
+            await otherTab.assertIDBDoc({ doc: ["Remote"], ops: ["Pending"] });
+          }
+        });
+        const observer = reference.client.getDocObserver({
+          id: docId,
+          type: "test",
+          createIfMissing: false,
+        });
+        const unsubscribe = observer.subscribe(() => undefined);
+        try {
+          await expect
+            .poll(() => observer.getSnapshot().fetchStatus)
+            .toBe("idle");
+          const result = observer.getSnapshot();
+          expect(result.status).toBe("success");
+          expect(result.data).toBeDefined();
+          if (!result.data || !otherTab.doc)
+            throw new Error("Document not loaded");
+          const binding = reference.client["_docBinding"];
+          expect(binding.serialize(result.data.doc)).toStrictEqual(
+            binding.serialize(otherTab.doc),
+          );
+          expect(result.data.doc.undoManager.canUndo()).toBe(false);
+
+          // The recovered instance must use the normal local save path too.
+          result.data.doc.root.append(result.data.doc.createNode(ChildNode));
+          result.data.doc.forceCommit();
+          await reference.assertIDBDoc({
+            doc: pendingEdits ? ["Remote", "Pending", ""] : ["Remote", ""],
+            ops: [],
+          });
+        } finally {
+          unsubscribe();
+          restoreRead();
+        }
+      });
+    },
+  );
+
   test("cannot load doc twice", async () => {
     await testWrapper(async (clients) => {
       // Initially doc is undefined
