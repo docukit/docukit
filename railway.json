@@ -5,7 +5,7 @@
     "buildCommand": "pnpm exec turbo build --filter='!@docukit/docs'"
   },
   "deploy": {
-    "startCommand": "pnpm --filter @docukit/docs docsync-server",
+    "startCommand": "cd docs && exec node --env-file-if-exists=.env ./collab-server/docsync-server.ts",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
