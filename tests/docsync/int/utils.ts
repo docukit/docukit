@@ -541,10 +541,12 @@ export const emptyIDB = { doc: [], ops: [] };
 export const afterInitialLocalRead = async (
   client: ClientUtils,
   callback: () => Promise<void>,
+  afterSyncRead?: () => Promise<void>,
 ) => {
   const { provider } = await client.client["_localPromise"];
   const transaction = provider.transaction.bind(provider);
   let intercepted = false;
+  let syncReadIntercepted = false;
   const assertBeforeRequest = () => {
     expect(
       client.reqSpy.mock.calls.filter(([event]) => event === "sync"),
@@ -561,12 +563,53 @@ export const afterInitialLocalRead = async (
         intercepted = true;
         // The real transaction is already closed, so the other client can write.
         await callback();
+      } else if (mode === "readonly" && afterSyncRead && !syncReadIntercepted) {
+        expect(intercepted).toBe(true);
+        assertBeforeRequest();
+        syncReadIntercepted = true;
+        // Delay only the completed read's result, not the IDB transaction.
+        await afterSyncRead();
       }
       return result;
     });
   return () => {
     spy.mockRestore();
     expect(intercepted).toBe(true);
+    if (afterSyncRead) expect(syncReadIntercepted).toBe(true);
+  };
+};
+
+/** Hold a write before it starts, leaving real IDB reads unblocked. */
+export const holdNextLocalWrite = async (client: ClientUtils) => {
+  const { provider } = await client.client["_localPromise"];
+  const transaction = provider.transaction.bind(provider);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let markCaptured!: () => void;
+  const captured = new Promise<void>((resolve) => {
+    markCaptured = resolve;
+  });
+  let intercepted = false;
+  const spy = vi
+    .spyOn(provider, "transaction")
+    .mockImplementation(async (mode, fn) => {
+      if (mode === "readwrite" && !intercepted) {
+        intercepted = true;
+        markCaptured();
+        await gate;
+      }
+      return transaction(mode, fn);
+    });
+  return {
+    captured,
+    release,
+    restore: () => {
+      release();
+      spy.mockRestore();
+      expect(intercepted).toBe(true);
+    },
   };
 };
 
