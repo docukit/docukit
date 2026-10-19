@@ -113,26 +113,6 @@ export function SyncBackendFeature() {
   );
 }
 
-export function PricingFeature() {
-  return (
-    <ClickableHoverCard
-      content={
-        <div className="prose prose-sm prose-a:text-inherit space-y-2">
-          <p className="text-sm">
-            Read our{" "}
-            <a href="/license" className="text-blue-600 hover:underline">
-              License and Pricing page
-            </a>
-            .
-          </p>
-        </div>
-      }
-    >
-      Pricing
-    </ClickableHoverCard>
-  );
-}
-
 export function LicenseFeature() {
   return (
     <ClickableHoverCard
@@ -141,7 +121,7 @@ export function LicenseFeature() {
           <p className="text-sm">
             Read our{" "}
             <a href="/license" className="text-blue-600 hover:underline">
-              License and Pricing page
+              License page
             </a>
             .
           </p>

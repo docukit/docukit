@@ -20,8 +20,7 @@ function CheckIcon({ className }: { className?: string }) {
 
 export function PricingCard({
   title,
-  price,
-  priceSubtext,
+  licenseNote,
   description,
   features,
   ctaText,
@@ -32,8 +31,7 @@ export function PricingCard({
   variant = "emerald",
 }: {
   title: string;
-  price: string;
-  priceSubtext: string;
+  licenseNote: string;
   description: string;
   features: { text: string; bold?: boolean }[];
   ctaText: string;
@@ -48,7 +46,6 @@ export function PricingCard({
       border: "border-emerald-500/50",
       shadow: "shadow-emerald-900/20",
       badge: "bg-emerald-600",
-      textGradient: "from-emerald-400 to-emerald-200",
       button: "bg-emerald-600 hover:bg-emerald-500 text-white",
       icon: "text-emerald-500",
     },
@@ -56,7 +53,6 @@ export function PricingCard({
       border: "border-blue-500/50",
       shadow: "shadow-blue-900/20",
       badge: "bg-blue-600",
-      textGradient: "from-blue-400 to-blue-200",
       button: "bg-blue-600 hover:bg-blue-500 text-white",
       icon: "text-blue-500",
     },
@@ -82,17 +78,12 @@ export function PricingCard({
 
       <div className="mb-4">
         <h3 className="text-2xl font-bold text-slate-100">{title}</h3>
-        <div className="mt-2 flex items-baseline gap-2">
-          <span
-            className={`bg-linear-to-r bg-clip-text text-4xl font-bold text-transparent ${theme.textGradient}`}
-          >
-            {price}
-          </span>
-          <span className="text-slate-400">{priceSubtext}</span>
-        </div>
       </div>
 
-      <p className="mb-6 text-slate-400">{description}</p>
+      <p className="mb-3 text-slate-400">{description}</p>
+      <p className="mb-6 text-sm leading-relaxed font-medium text-slate-200">
+        {licenseNote}
+      </p>
 
       <ul className="mb-6 grow space-y-3">
         {features.map((feature, index) => (

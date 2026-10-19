@@ -4,8 +4,8 @@ import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 import { PricingCard, PricingGrid } from "@/components/PricingCard";
 
 export const metadata: Metadata = {
-  title: "License and Pricing",
-  description: "Fair pricing that grows with your success",
+  title: "License",
+  description: "Usage permissions for DocNode and DocSync",
 };
 
 export default function LicensePage() {
@@ -13,20 +13,19 @@ export default function LicensePage() {
     <div className="relative min-h-screen text-slate-200 selection:bg-emerald-500/30">
       <main className="container mx-auto max-w-4xl px-4 py-16">
         <div className="mb-12">
-          <h1 className="mb-4 text-4xl font-bold">License and Pricing</h1>
+          <h1 className="mb-4 text-4xl font-bold">License</h1>
           <p className="text-lg text-slate-400">
-            Fair pricing that grows with your success
+            Usage permissions for DocNode and DocSync
           </p>
         </div>
 
         <section className="mb-16">
-          <h2 className="mb-8 text-2xl font-semibold">Simple and Fair</h2>
+          <h2 className="mb-8 text-2xl font-semibold">Usage permissions</h2>
           <PricingGrid>
             <PricingCard
               title="DocNode"
               variant="emerald"
-              price="Free"
-              priceSubtext="forever"
+              licenseNote="Available under the MIT License."
               description="Type-safe documents with conflict resolution. Faster than any CRDT."
               features={[
                 { text: "Open source and MIT licensed" },
@@ -44,9 +43,8 @@ export default function LicensePage() {
             <PricingCard
               title="DocSync"
               variant="blue"
-              price="Free"
-              priceSubtext="until revenue"
-              description="Local-first and real-time collaboration infrastructure. Only pay once you're making money."
+              licenseNote="A separate license is required for production use."
+              description="Local-first and real-time collaboration infrastructure. Source inspection for evaluation and personal, non-production use are permitted under the DocSync License."
               features={[
                 { text: "WebSocket-based real-time sync" },
                 { text: "IndexedDB as local persistence layer" },
@@ -59,9 +57,9 @@ export default function LicensePage() {
                 { text: "Real-time multi-tab and multi-device sync" },
                 { text: "Self-hosted" },
               ]}
-              ctaText="Contact for Pricing"
-              ctaHref="/contact"
-              footer="Free for non-commercial & pre-revenue startups"
+              ctaText="Read license"
+              ctaHref="https://github.com/docukit/docukit/blob/main/packages/docsync/LICENSE.md"
+              footer=""
               highlighted
             />
           </PricingGrid>
@@ -81,12 +79,8 @@ export default function LicensePage() {
                 stable, though minor changes may occur before v1.0.
               </p>
               <p className="mb-4">
-                <strong>DocSync</strong> is in alpha. We're looking for early
-                adopters to help shape the product.{" "}
-                <Link href="/contact" className="text-primary hover:underline">
-                  Contact us
-                </Link>{" "}
-                for a demo and to discuss your needs.
+                <strong>DocSync</strong> is in alpha. Its API may change before
+                a stable release.
               </p>
             </Accordion>
 
@@ -111,41 +105,32 @@ export default function LicensePage() {
               </p>
             </Accordion>
 
-            <Accordion title="Can I try DocSync before committing?" id="trial">
+            <Accordion
+              title="What can I do without a separate DocSync license?"
+              id="trial"
+            >
               <p>
-                Yes! You can try it for free in non-production environments.
+                You may inspect the source code for evaluation and use DocSync
+                for personal, non-production projects under the DocSync License.
+                Production use requires a separate license.
               </p>
             </Accordion>
 
             <Accordion
-              title="Do I need to request a license to use DocSync? What if my use is non-commercial or I'm pre-revenue?"
+              title="How do I obtain permission to use DocSync in production?"
               id="request-license"
             >
               <p className="mb-4">
-                Yes, all production use requires a license.
-              </p>
-              <p className="mb-4">
-                If your app is pre-revenue or non-commercial, you can request a
-                free license. Once you start generating revenue, you'll need to
-                upgrade to a commercial license.
+                All production use requires a separate license from the
+                copyright holder. The permissions granted are defined by that
+                license.
               </p>
               <p>
                 <Link href="/contact" className="text-primary hover:underline">
                   Contact us
                 </Link>{" "}
-                to request your license.
+                to request authorization for your intended use.
               </p>
-            </Accordion>
-
-            <Accordion
-              title="How does the pricing work? What happens if my revenues grow or fall?"
-              id="pricing"
-            >
-              <p className="mb-4">
-                We evaluate each case to ensure that pricing is accessible and
-                reasonable for all companies at any stage of their development.
-              </p>
-              <p>Please get in touch so we can give you a quote.</p>
             </Accordion>
 
             <Accordion
@@ -153,9 +138,8 @@ export default function LicensePage() {
               id="cloud-based-service"
             >
               <p>
-                At the moment, we only offer the possibility of self-hosting
-                under license. In the future, we may offer a managed hosting
-                option.
+                DocSync is self-hosted. Production use requires a separate
+                license.
               </p>
             </Accordion>
 
@@ -204,8 +188,8 @@ export default function LicensePage() {
                   DocSync License
                 </a>
                 . You can view the source code and use it for evaluation or
-                personal non-production projects, but to use it in production
-                you must request a license.
+                personal non-production projects. Production use requires a
+                separate license from the copyright holder.
               </p>
               <p>
                 Please refer to the actual license files for complete terms.
