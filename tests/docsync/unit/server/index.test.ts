@@ -585,20 +585,16 @@ describe("sync", () => {
 
       // Use a valid ULID for docId
       const docId = "01kfpgjsabrpdcw0qgh5evhy2g";
+      const docBinding = DocNodeBinding([testDocConfig]);
+      const serializedDoc = docBinding.serialize(
+        docBinding.create("test", docId).doc,
+      );
+      await T.sync({ docId, serializedDoc, clock: 0 });
 
-      // Send 100 operations individually
-      for (let i = 0; i < 100; i++) {
-        const operation = createTestOperation();
-        const res = await T.sync({ docId, operations: [operation], clock: i });
-
-        expect("error" in res).toBe(false);
-        if ("data" in res) {
-          expect(res.data.clock).toBe(i + 1);
-        }
-      }
+      await T.syncOperations(docId, 100);
 
       // First sync from clock 0: should receive all 100 operations
-      const res1 = await T.sync({ docId });
+      const res1 = await T.sync({ docId, serializedDoc });
 
       expect("error" in res1).toBe(false);
       if ("data" in res1) {
@@ -630,6 +626,27 @@ describe("sync", () => {
         expect(res3.data.serializedDoc).toBeDefined();
         expect(res3.data.operations).toStrictEqual([]);
       }
+    });
+  });
+
+  test("keeps the operation log when there is no snapshot to squash into", async () => {
+    const auth: ClientAuthConfig = {
+      mode: "token",
+      getToken: () => "valid-user1",
+    };
+    await testWrapper({ auth }, async (T) => {
+      await T.waitForConnect();
+
+      const docId = "01kfpgjsabrpdcw0qgh5evhy2k";
+      await T.syncOperations(docId, 100);
+      await T.sync({ docId });
+
+      // Wait for squashing to have had its chance (it runs after the response)
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const res = await T.sync({ docId });
+      expect(res).toMatchObject({ data: { clock: 100, serializedDoc: null } });
+      if ("data" in res) expect(res.data.operations).toHaveLength(100);
     });
   });
 });
