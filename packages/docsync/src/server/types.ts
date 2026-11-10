@@ -162,6 +162,12 @@ export type ServerProviderContext<S extends object, O extends object> = {
 /**
  * Storage provider for the server.
  * All operations must be performed within a transaction.
+ *
+ * `readwrite` transactions on the same document must run one at a time, from
+ * their first read until they commit. Consolidation rewrites the snapshot and
+ * the log from what it read, so an interleaved write would be lost. An
+ * isolation level is not enough on its own: in a database, a write can take a
+ * lower clock and commit after a higher one was already read.
  */
 export type ServerProvider<S extends object, O extends object> = {
   transaction<T>(

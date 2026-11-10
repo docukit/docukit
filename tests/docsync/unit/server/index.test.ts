@@ -2,10 +2,11 @@
 // (integration tests run server in globalSetup, excluded from coverage)
 
 /* eslint-disable @typescript-eslint/no-empty-object-type */
-import { describe, test, expect, expectTypeOf } from "vitest";
+import { describe, test, expect, expectTypeOf, vi } from "vitest";
 import {
   testWrapper,
   testPort,
+  createHoldableProvider,
   createTestClientProvider,
   createTestOperation,
 } from "./utils.js";
@@ -15,6 +16,11 @@ import { DocSyncClient } from "@docukit/docsync/client";
 import type { ClientAuthConfig } from "@docukit/docsync/client";
 import type { Doc, JsonDoc, Operations } from "@docukit/docnode";
 import { testDocConfig } from "../../int/utils.js";
+
+const validAuth: ClientAuthConfig = {
+  mode: "token",
+  getToken: () => "valid-user1",
+};
 
 describe("authentication", () => {
   test("rejects when credentials do not resolve an identity", async () => {
@@ -585,13 +591,7 @@ describe("sync", () => {
 
       // Use a valid ULID for docId
       const docId = "01kfpgjsabrpdcw0qgh5evhy2g";
-      const docBinding = DocNodeBinding([testDocConfig]);
-      const serializedDoc = docBinding.serialize(
-        docBinding.create("test", docId).doc,
-      );
-      await T.sync({ docId, serializedDoc, clock: 0 });
-
-      await T.syncOperations(docId, 100);
+      const serializedDoc = await T.seedDocument(docId, 100);
 
       // First sync from clock 0: should receive all 100 operations
       const res1 = await T.sync({ docId, serializedDoc });
@@ -604,8 +604,11 @@ describe("sync", () => {
         expect(res1.data.serializedDoc).toBe(null);
       }
 
-      // Wait for squashing to complete (it happens async after the response)
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Squashing runs after the response, so this waits for it
+      expect(await T.storedState(docId)).toMatchObject({
+        snapshot: { clock: 100 },
+        batches: [],
+      });
 
       // Second sync from clock 100: should receive serializedDoc (squashed)
       // because previous fetch triggered squashing (>= 100 operations)
@@ -641,13 +644,110 @@ describe("sync", () => {
       await T.syncOperations(docId, 100);
       await T.sync({ docId });
 
-      // Wait for squashing to have had its chance (it runs after the response)
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Squashing runs after the response, so this waits for its chance
+      const { snapshot, batches } = await T.storedState(docId);
+      expect(snapshot).toBeUndefined();
+      expect(batches).toHaveLength(100);
 
       const res = await T.sync({ docId });
       expect(res).toMatchObject({ data: { clock: 100, serializedDoc: null } });
       if ("data" in res) expect(res.data.operations).toHaveLength(100);
     });
+  });
+
+  test("does not squash below the threshold", async () => {
+    await testWrapper({ auth: validAuth }, async (T) => {
+      await T.waitForConnect();
+      const docId = "01kfpgjsabrpdcw0qgh5evhy2m";
+      const serializedDoc = await T.seedDocument(docId, 99);
+
+      await T.sync({ docId, serializedDoc });
+
+      const { snapshot, batches } = await T.storedState(docId);
+      expect(snapshot?.clock).toBe(0);
+      expect(batches).toHaveLength(99);
+    });
+  });
+
+  test("keeps a write that arrives during a squash", async () => {
+    const { provider, hold } = createHoldableProvider();
+    await testWrapper({ auth: validAuth, provider }, async (T) => {
+      await T.waitForConnect();
+      const docId = "01kfpgjsabrpdcw0qgh5evhy2n";
+      const serializedDoc = await T.seedDocument(docId, 100);
+      const lateOperation = createTestOperation();
+
+      // 1: the sync that triggers it, 2: the squash, 3: the late write
+      hold({ transaction: 2, until: 3 });
+      await T.sync({ docId, serializedDoc });
+      await T.sync({ docId, operations: [lateOperation], clock: 100 });
+
+      expect(await T.storedState(docId)).toMatchObject({
+        snapshot: { clock: 100 },
+        batches: [[lateOperation]],
+      });
+      expect(await T.sync({ docId, clock: 0 })).toMatchObject({
+        data: { clock: 101, operations: [lateOperation] },
+      });
+    });
+  });
+
+  test("does not delete a newer write when two squashes overlap", async () => {
+    const { provider, hold } = createHoldableProvider();
+    await testWrapper({ auth: validAuth, provider }, async (T) => {
+      await T.waitForConnect();
+      const docId = "01kfpgjsabrpdcw0qgh5evhy2p";
+      const serializedDoc = await T.seedDocument(docId, 100);
+      const lateOperation = createTestOperation();
+
+      // 1-2: two syncs that both trigger a squash, 3-4: the squashes,
+      // 5: a late write. Each hold makes sure the next ones have been requested.
+      hold({ transaction: 1, until: 2 }, { transaction: 3, until: 5 });
+      await Promise.all([
+        T.sync({ docId, serializedDoc }),
+        T.sync({ docId, serializedDoc }),
+      ]);
+      await T.sync({ docId, operations: [lateOperation], clock: 100 });
+
+      expect(await T.storedState(docId)).toMatchObject({
+        snapshot: { clock: 100 },
+        batches: [[lateOperation]],
+      });
+    });
+  });
+
+  test("does not report a sync as failed when its squash fails", async () => {
+    const inner = inMemoryServerProvider();
+    const failingProvider: typeof inner = {
+      transaction: (mode, callback) =>
+        inner.transaction(mode, (ctx) =>
+          callback({
+            ...ctx,
+            deleteOperations: () => Promise.reject(new Error("storage failed")),
+          }),
+        ),
+    };
+    const consoleError = vi.spyOn(console, "error").mockReturnValue();
+    await testWrapper(
+      { auth: validAuth, provider: failingProvider },
+      async (T) => {
+        await T.waitForConnect();
+        const docId = "01kfpgjsabrpdcw0qgh5evhy2q";
+        const serializedDoc = await T.seedDocument(docId, 100);
+        const statuses: string[] = [];
+        T.server.onSyncRequest(({ status }) => {
+          statuses.push(status);
+        });
+
+        const res = await T.sync({ docId, serializedDoc });
+        await T.storedState(docId);
+
+        expect("data" in res).toBe(true);
+        expect(statuses).toStrictEqual(["success"]);
+        expect(consoleError).toHaveBeenCalledOnce();
+      },
+    );
+    consoleError.mockRestore();
   });
 });
 
