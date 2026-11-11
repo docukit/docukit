@@ -94,36 +94,39 @@ export function handleSync<
       }
 
       try {
-        const result = await provider.transaction("readwrite", async (ctx) => {
-          const serverDoc = await ctx.getSerializedDoc({ docId });
+        const result = await provider.transaction(
+          { mode: "readwrite", docId },
+          async (ctx) => {
+            const serverDoc = await ctx.getSerializedDoc({ docId });
 
-          if (serverDoc === undefined && serializedDoc !== null) {
-            await ctx.saveSerializedDoc({ docId, serializedDoc, clock });
-          }
+            if (serverDoc === undefined && serializedDoc !== null) {
+              await ctx.saveSerializedDoc({ docId, serializedDoc, clock });
+            }
 
-          let responseSerializedDoc: S | null = null;
-          let operationsClock = clock;
-          if (
-            serverDoc !== undefined &&
-            (serializedDoc === null || serverDoc.clock > clock)
-          ) {
-            responseSerializedDoc = serverDoc.serializedDoc;
-            operationsClock = serverDoc.clock;
-          }
+            let responseSerializedDoc: S | null = null;
+            let operationsClock = clock;
+            if (
+              serverDoc !== undefined &&
+              (serializedDoc === null || serverDoc.clock > clock)
+            ) {
+              responseSerializedDoc = serverDoc.serializedDoc;
+              operationsClock = serverDoc.clock;
+            }
 
-          const serverOps = await ctx.getOperations({
-            docId,
-            clock: operationsClock,
-          });
-          const newClock = await ctx.saveOperations({ docId, operations });
+            const serverOps = await ctx.getOperations({
+              docId,
+              clock: operationsClock,
+            });
+            const newClock = await ctx.saveOperations({ docId, operations });
 
-          return {
-            docId,
-            operations: serverOps.flat(),
-            serializedDoc: responseSerializedDoc,
-            clock: newClock,
-          };
-        });
+            return {
+              docId,
+              operations: serverOps.flat(),
+              serializedDoc: responseSerializedDoc,
+              clock: newClock,
+            };
+          },
+        );
 
         cb({
           data: {
@@ -175,29 +178,32 @@ export function handleSync<
         });
 
         if (result.operations.length >= OPERATION_THRESHOLD) {
-          await provider.transaction("readwrite", async (ctx) => {
-            const current = await ctx.getSerializedDoc({ docId });
-            // Without a snapshot the log is the only copy of these edits.
-            if (current === undefined) return;
-            const batches = await ctx.getOperations({
-              docId,
-              clock: current.clock,
-            });
-            if (batches.length === 0) return;
+          await provider.transaction(
+            { mode: "readwrite", docId },
+            async (ctx) => {
+              const current = await ctx.getSerializedDoc({ docId });
+              // Without a snapshot the log is the only copy of these edits.
+              if (current === undefined) return;
+              const batches = await ctx.getOperations({
+                docId,
+                clock: current.clock,
+              });
+              if (batches.length === 0) return;
 
-            const doc = docBinding.deserialize(current.serializedDoc);
-            batches.flat().forEach((operation) => {
-              docBinding.applyOperations(doc, operation);
-            });
-            await ctx.saveSerializedDoc({
-              docId,
-              serializedDoc: docBinding.serialize(doc),
-              // Read here, not taken from the response: a sync that landed in
-              // between is part of `batches` and must be covered by the clock.
-              clock: await ctx.saveOperations({ docId, operations: [] }),
-            });
-            await ctx.deleteOperations({ docId, count: batches.length });
-          });
+              const doc = docBinding.deserialize(current.serializedDoc);
+              batches.flat().forEach((operation) => {
+                docBinding.applyOperations(doc, operation);
+              });
+              await ctx.saveSerializedDoc({
+                docId,
+                serializedDoc: docBinding.serialize(doc),
+                // Read here, not taken from the response: a sync that landed in
+                // between is part of `batches` and must be covered by the clock.
+                clock: await ctx.saveOperations({ docId, operations: [] }),
+              });
+              await ctx.deleteOperations({ docId, count: batches.length });
+            },
+          );
         }
       } catch (error) {
         const errorMessage =

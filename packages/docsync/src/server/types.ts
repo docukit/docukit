@@ -162,10 +162,17 @@ export type ServerProviderContext<S extends object, O extends object> = {
 /**
  * Storage provider for the server.
  * All operations must be performed within a transaction.
+ *
+ * Each transaction works on one document, `docId`. `readwrite` transactions
+ * on the same document must run one at a time, from their start until they
+ * commit. DocSync reads the snapshot and the log and then rewrites both, so an
+ * interleaved write could be lost without an error. An isolation level alone
+ * is not enough: in a database, a write can take a lower clock and commit
+ * after a higher one was already read.
  */
 export type ServerProvider<S extends object, O extends object> = {
   transaction<T>(
-    mode: "readonly" | "readwrite",
+    options: { mode: "readonly" | "readwrite"; docId: string },
     callback: (ctx: ServerProviderContext<S, O>) => Promise<T>,
   ): Promise<T>;
 };

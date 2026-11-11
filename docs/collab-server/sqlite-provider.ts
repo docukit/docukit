@@ -90,7 +90,7 @@ export function sqliteProvider({
 
   return {
     transaction<T>(
-      mode: "readonly" | "readwrite",
+      { mode }: { mode: "readonly" | "readwrite"; docId: string },
       callback: (ctx: ServerProviderContext<JsonDoc, Operations>) => Promise<T>,
     ): Promise<T> {
       const runTransaction = async () => {
