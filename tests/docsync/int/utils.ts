@@ -154,13 +154,15 @@ type EmitForTests = (
 type ClientUtils = {
   client: DocSyncClient<Doc, JsonDoc, Operations>;
   doc: Doc | undefined;
-  loadDoc: () => Promise<void>;
+  loadDoc: (options?: { createIfMissing: boolean }) => Promise<void>;
   unLoadDoc: () => void;
   addChild: (text: string) => void;
   addChildSkippingUndo: (text: string) => void;
   assertIDBDoc: (expected?: { doc: string[]; ops: string[] }) => Promise<void>;
   assertMemoryDoc: (children?: string[]) => Promise<void>;
   assertCanUndo: (expected: boolean) => Promise<void>;
+  /** The clock of the copy this client saved in IndexedDB. */
+  storedClock: () => Promise<number | undefined>;
   reqSpy: Mock<EmitForTests>;
   disconnect: () => void;
   connect: () => void;
@@ -181,6 +183,8 @@ type ClientsSetup = {
   reference: ClientUtils;
   otherTab: ClientUtils;
   otherDevice: ClientUtils;
+  /** A device that has never opened the document: its own user and IndexedDB. */
+  addNewDevice: () => Promise<ClientUtils>;
 };
 
 // ============================================================================
@@ -195,21 +199,28 @@ export const testWrapper = async (
   callback: (clients: ClientsSetup) => Promise<void>,
 ): Promise<void> => {
   const clients = await setupClients();
+  const newDevices: ClientUtils[] = [];
+  const addNewDevice = async () => {
+    const device = await createDevice(clients.docId, createDocBinding());
+    newDevices.push(device);
+    return device;
+  };
 
   try {
-    await callback(clients);
+    await callback({ ...clients, addNewDevice });
   } finally {
+    const allDevices = [
+      clients.reference,
+      clients.otherTab,
+      clients.otherDevice,
+      ...newDevices,
+    ];
+
     // Cleanup: unload docs
-    clients.reference.unLoadDoc();
-    clients.otherTab.unLoadDoc();
-    clients.otherDevice.unLoadDoc();
+    for (const device of allDevices) device.unLoadDoc();
 
     // Cleanup: close connections
-    const allClients = [
-      clients.reference.client,
-      clients.otherTab.client,
-      clients.otherDevice.client,
-    ];
+    const allClients = allDevices.map((device) => device.client);
 
     for (const client of allClients) {
       const socket = client["_socket"];
@@ -270,7 +281,21 @@ const createClientWithConfig = async (config: {
 // Client Setup (Internal)
 // ============================================================================
 
-const setupClients = async (): Promise<ClientsSetup> => {
+const createDevice = async (
+  docId: string,
+  docBinding: ReturnType<typeof createDocBinding>,
+): Promise<ClientUtils> => {
+  const userId = generateUserId(); // Different user = different IDB + BC namespace
+  const client = await createClientWithConfig({
+    userId,
+    deviceId: crypto.randomUUID(),
+    token: createTestToken(userId),
+    docBinding,
+  });
+  return createClientUtils(client, docId, userId);
+};
+
+const setupClients = async (): Promise<Omit<ClientsSetup, "addNewDevice">> => {
   const docId = generateDocId();
   const docBinding = createDocBinding();
 
@@ -293,24 +318,13 @@ const setupClients = async (): Promise<ClientsSetup> => {
   });
 
   // OtherDevice: local enabled with different userId2, RT enabled, BC disabled
-  const otherDeviceUserId = generateUserId();
-  const otherDeviceId = crypto.randomUUID();
-  const otherDeviceClient = await createClientWithConfig({
-    userId: otherDeviceUserId, // Different user = different IDB + BC namespace
-    deviceId: otherDeviceId,
-    token: createTestToken(otherDeviceUserId),
-    docBinding,
-  });
+  const otherDevice = await createDevice(docId, docBinding);
 
   return {
     docId,
     reference: await createClientUtils(referenceClient, docId, referenceUserId),
     otherTab: await createClientUtils(otherTabClient, docId, referenceUserId),
-    otherDevice: await createClientUtils(
-      otherDeviceClient,
-      docId,
-      otherDeviceUserId,
-    ),
+    otherDevice,
   };
 };
 
@@ -349,7 +363,7 @@ const createClientUtils = async (
       return cachedDoc;
     },
     reqSpy,
-    loadDoc: async () => {
+    loadDoc: async ({ createIfMissing } = { createIfMissing: true }) => {
       if (cleanup) {
         throw new Error("Doc already loaded. Call unLoadDoc() first.");
       }
@@ -357,11 +371,11 @@ const createClientUtils = async (
         const observer = client.getDocObserver({
           type: "test",
           id: docId,
-          createIfMissing: true,
+          createIfMissing,
         });
         const handleResult = () => {
           const result = observer.getSnapshot();
-          if (result.status === "success") {
+          if (result.status === "success" && result.data) {
             cachedDoc = result.data.doc;
             resolve();
           }
@@ -494,6 +508,12 @@ const createClientUtils = async (
         })
         .toBe(expected);
     },
+    storedClock: async () => {
+      const stored = await local.provider.transaction("readonly", (ctx) =>
+        ctx.getSerializedDoc({ docId }),
+      );
+      return stored?.clock;
+    },
     disconnect: () => {
       api.disconnect();
     },
@@ -536,6 +556,14 @@ const createClientUtils = async (
 };
 
 export const emptyIDB = { doc: [], ops: [] };
+
+/** One commit per text, so each text is one operation on the server. */
+export const commitEdits = (device: ClientUtils, texts: string[]): void => {
+  for (const text of texts) {
+    device.addChild(text);
+    device.doc?.forceCommit();
+  }
+};
 
 /** Run another client's download after the initial load read has finished. */
 export const afterInitialLocalRead = async (

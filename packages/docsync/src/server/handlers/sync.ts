@@ -36,7 +36,7 @@ export function handleSync<
       req: SyncRequest<S, O>,
       cb: (res: SyncResponse<S, O>) => void,
     ): Promise<void> => {
-      const { type, docId, operations, serializedDoc, clock } = req;
+      const { docId, operations, serializedDoc, clock } = req;
       const startTime = Date.now();
 
       // TODO: we should validate req with Valibot here
@@ -175,28 +175,28 @@ export function handleSync<
         });
 
         if (result.operations.length >= OPERATION_THRESHOLD) {
-          const {
-            docId: resultDocId,
-            operations: serverOps,
-            serializedDoc,
-            clock: resultClock,
-          } = result;
-          const allOperations = [...serverOps, ...operations];
-          const doc =
-            serializedDoc !== null
-              ? docBinding.deserialize(serializedDoc)
-              : docBinding.create(type, resultDocId).doc;
-          allOperations.forEach((operation) => {
-            docBinding.applyOperations(doc, operation);
-          });
-          const newSerializedDoc = docBinding.serialize(doc);
           await provider.transaction("readwrite", async (ctx) => {
-            await ctx.saveSerializedDoc({
-              docId: resultDocId,
-              serializedDoc: newSerializedDoc,
-              clock: resultClock,
+            const current = await ctx.getSerializedDoc({ docId });
+            // Without a snapshot the log is the only copy of these edits.
+            if (current === undefined) return;
+            const batches = await ctx.getOperations({
+              docId,
+              clock: current.clock,
             });
-            await ctx.deleteOperations({ docId: resultDocId, count: 1 });
+            if (batches.length === 0) return;
+
+            const doc = docBinding.deserialize(current.serializedDoc);
+            batches.flat().forEach((operation) => {
+              docBinding.applyOperations(doc, operation);
+            });
+            await ctx.saveSerializedDoc({
+              docId,
+              serializedDoc: docBinding.serialize(doc),
+              // Read here, not taken from the response: a sync that landed in
+              // between is part of `batches` and must be covered by the clock.
+              clock: await ctx.saveOperations({ docId, operations: [] }),
+            });
+            await ctx.deleteOperations({ docId, count: batches.length });
           });
         }
       } catch (error) {

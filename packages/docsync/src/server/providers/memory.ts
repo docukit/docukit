@@ -62,9 +62,11 @@ export function inMemoryServerProvider(): ServerProvider<any, any> {
         saveOperations: async ({ docId, operations }) => {
           if (operations.length === 0) {
             const allOps = operationsMap.get(docId) ?? [];
-            return allOps.length > 0
-              ? Math.max(...allOps.map((op) => op.clock))
-              : 0;
+            // A trimmed log must not rewind the clock of the document.
+            return Math.max(
+              docs.get(docId)?.clock ?? 0,
+              ...allOps.map((op) => op.clock),
+            );
           }
 
           const newClock = nextClock(docId);

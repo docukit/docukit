@@ -1,4 +1,4 @@
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
 
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import { DocSyncServer, inMemoryServerProvider } from "@docukit/docsync/server";
@@ -126,6 +126,8 @@ export async function testWrapper(
     waitForConnect: () => Promise<void>;
     waitForError: () => Promise<Error>;
     sync: (payload: SyncPayloadInput) => Promise<SyncResponse>;
+    /** Sends `count` operations to the server, one sync per operation. */
+    syncOperations: (docId: string, count: number) => Promise<void>;
     socket: TestClient["_socket"];
   }) => Promise<void>,
 ) {
@@ -150,7 +152,26 @@ export async function testWrapper(
       socket.emit("sync", s(payload), resolve);
     });
 
-  await fn({ server, client, waitForConnect, waitForError, socket, sync });
+  const syncOperations = async (docId: string, count: number) => {
+    for (let clock = 0; clock < count; clock++) {
+      const res = await sync({
+        docId,
+        operations: [createTestOperation()],
+        clock,
+      });
+      expect(res).toMatchObject({ data: { clock: clock + 1 } });
+    }
+  };
+
+  await fn({
+    server,
+    client,
+    waitForConnect,
+    waitForError,
+    socket,
+    sync,
+    syncOperations,
+  });
   await server.close();
 }
 
