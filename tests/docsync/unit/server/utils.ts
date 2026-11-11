@@ -100,10 +100,9 @@ export const createTestClientProvider = (): ClientProvider<
     }),
 });
 
-const createServer = (
-  port: number,
-  provider: ReturnType<typeof inMemoryServerProvider>,
-) => {
+type TestServerProvider = ReturnType<typeof inMemoryServerProvider>;
+
+const createServer = (port: number, provider: TestServerProvider) => {
   return new DocSyncServer({
     docBinding: DocNodeBinding([testDocConfig]),
     port,
@@ -116,12 +115,69 @@ const createServer = (
   });
 };
 
+/**
+ * The real in-memory provider, with transactions that can be held open after
+ * they read the log. This forces interleavings a socket cannot produce on
+ * demand, without replacing any storage behaviour.
+ */
+export const createHoldableProvider = () => {
+  const inner = inMemoryServerProvider();
+  const holds = new Map<number, number>();
+  const pendingChecks = new Set<() => void>();
+  let requested = 0;
+
+  const requestedAtLeast = (count: number) =>
+    new Promise<void>((resolve) => {
+      const check = () => {
+        if (requested < count) return;
+        pendingChecks.delete(check);
+        resolve();
+      };
+      pendingChecks.add(check);
+      check();
+    });
+
+  const provider: TestServerProvider = {
+    transaction: (options, callback) => {
+      const number = ++requested;
+      pendingChecks.forEach((check) => {
+        check();
+      });
+      const until = holds.get(number);
+      return inner.transaction(options, (ctx) =>
+        callback({
+          ...ctx,
+          getOperations: async (args) => {
+            const batches = await ctx.getOperations(args);
+            if (until !== undefined) await requestedAtLeast(until);
+            return batches;
+          },
+        }),
+      );
+    },
+  };
+
+  return {
+    provider,
+    /**
+     * Counting from this call, holds the given `transaction` open until `until`
+     * transactions have been requested. Queued ones count, so nothing deadlocks.
+     */
+    hold: (...entries: { transaction: number; until: number }[]) => {
+      for (const { transaction, until } of entries) {
+        holds.set(requested + transaction, requested + until);
+      }
+    },
+  };
+};
+
 export async function testWrapper(
   serverOverrides: {
     url?: string;
     auth?: ClientAuthConfig;
     port?: number;
     localUserId?: string;
+    provider?: TestServerProvider;
   },
   fn: (args: {
     server: DocSyncServer;
@@ -144,7 +200,7 @@ export async function testWrapper(
   }) => Promise<void>,
 ) {
   const port = serverOverrides.port ?? BASE_PORT;
-  const provider = inMemoryServerProvider();
+  const provider = serverOverrides.provider ?? inMemoryServerProvider();
   const server = createServer(port, provider);
   const client = createMockDocSyncClient({
     ...serverOverrides,
@@ -187,7 +243,7 @@ export async function testWrapper(
   };
 
   const storedState = (docId: string) =>
-    provider.transaction("readonly", async (ctx) => ({
+    provider.transaction({ mode: "readonly", docId }, async (ctx) => ({
       snapshot: await ctx.getSerializedDoc({ docId }),
       batches: await ctx.getOperations({ docId, clock: 0 }),
     }));

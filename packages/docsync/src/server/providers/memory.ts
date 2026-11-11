@@ -14,11 +14,13 @@ interface StoredOperation {
 /**
  * In-memory server provider for testing.
  * Stores documents and operations in memory - data is lost when the process ends.
+ * `readwrite` transactions on the same document run one at a time.
  */
 export function inMemoryServerProvider(): ServerProvider<any, any> {
   const docs = new Map<string, StoredDoc>();
   const operationsMap = new Map<string, StoredOperation[]>();
   const clockCounterByDocId = new Map<string, number>();
+  const queueByDocId = new Map<string, Promise<void>>();
 
   function nextClock(docId: string): number {
     const current = clockCounterByDocId.get(docId) ?? 0;
@@ -28,8 +30,8 @@ export function inMemoryServerProvider(): ServerProvider<any, any> {
   }
 
   return {
-    async transaction<T>(
-      _mode: "readonly" | "readwrite",
+    transaction<T>(
+      { mode, docId }: { mode: "readonly" | "readwrite"; docId: string },
       callback: (ctx: ServerProviderContext<any, any>) => Promise<T>,
     ): Promise<T> {
       const ctx: ServerProviderContext<any, any> = {
@@ -84,7 +86,19 @@ export function inMemoryServerProvider(): ServerProvider<any, any> {
         },
       };
 
-      return callback(ctx);
+      if (mode === "readonly") return callback(ctx);
+
+      const previous = queueByDocId.get(docId) ?? Promise.resolve();
+      const result = previous.then(() => callback(ctx));
+      const settled = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      queueByDocId.set(docId, settled);
+      void settled.then(() => {
+        if (queueByDocId.get(docId) === settled) queueByDocId.delete(docId);
+      });
+      return result;
     },
   };
 }

@@ -6,6 +6,7 @@ import { describe, test, expect, expectTypeOf } from "vitest";
 import {
   testWrapper,
   testPort,
+  createHoldableProvider,
   createTestClientProvider,
   createTestOperation,
 } from "./utils.js";
@@ -15,6 +16,11 @@ import { DocSyncClient } from "@docukit/docsync/client";
 import type { ClientAuthConfig } from "@docukit/docsync/client";
 import type { Doc, JsonDoc, Operations } from "@docukit/docnode";
 import { testDocConfig } from "../../int/utils.js";
+
+const validAuth: ClientAuthConfig = {
+  mode: "token",
+  getToken: () => "valid-user1",
+};
 
 describe("authentication", () => {
   test("rejects when credentials do not resolve an identity", async () => {
@@ -666,6 +672,53 @@ describe("sync", () => {
       const { snapshot, batches } = await T.storedState(docId);
       expect(snapshot?.clock).toBe(0);
       expect(batches).toHaveLength(99);
+    });
+  });
+
+  test("keeps a write that arrives during a squash", async () => {
+    const { provider, hold } = createHoldableProvider();
+    await testWrapper({ auth: validAuth, provider }, async (T) => {
+      await T.waitForConnect();
+      const docId = "01kfpgjsabrpdcw0qgh5evhy2n";
+      const serializedDoc = await T.seedDocument(docId, 100);
+      const lateOperation = createTestOperation();
+
+      // 1: the sync that triggers it, 2: the squash, 3: the late write
+      hold({ transaction: 2, until: 3 });
+      await T.sync({ docId, serializedDoc });
+      await T.sync({ docId, operations: [lateOperation], clock: 100 });
+
+      expect(await T.storedState(docId)).toMatchObject({
+        snapshot: { clock: 100 },
+        batches: [[lateOperation]],
+      });
+      expect(await T.sync({ docId, clock: 0 })).toMatchObject({
+        data: { clock: 101, operations: [lateOperation] },
+      });
+    });
+  });
+
+  test("does not delete a newer write when two squashes overlap", async () => {
+    const { provider, hold } = createHoldableProvider();
+    await testWrapper({ auth: validAuth, provider }, async (T) => {
+      await T.waitForConnect();
+      const docId = "01kfpgjsabrpdcw0qgh5evhy2p";
+      const serializedDoc = await T.seedDocument(docId, 100);
+      const lateOperation = createTestOperation();
+
+      // 1-2: two syncs that both trigger a squash, 3-4: the squashes,
+      // 5: a late write. Each hold makes sure the next ones have been requested.
+      hold({ transaction: 1, until: 2 }, { transaction: 3, until: 5 });
+      await Promise.all([
+        T.sync({ docId, serializedDoc }),
+        T.sync({ docId, serializedDoc }),
+      ]);
+      await T.sync({ docId, operations: [lateOperation], clock: 100 });
+
+      expect(await T.storedState(docId)).toMatchObject({
+        snapshot: { clock: 100 },
+        batches: [[lateOperation]],
+      });
     });
   });
 });

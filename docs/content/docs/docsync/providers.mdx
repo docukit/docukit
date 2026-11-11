@@ -19,7 +19,7 @@ For a production server, you implement a `ServerProvider` against the database y
 ```ts
 type ServerProvider<S, O> = {
   transaction<T>(
-    mode: "readonly" | "readwrite",
+    options: { mode: "readonly" | "readwrite"; docId: string },
     callback: (ctx: ServerProviderContext<S, O>) => Promise<T>,
   ): Promise<T>;
 };
@@ -157,18 +157,24 @@ export const db = drizzle(queryClient, { schema });
 
 ```ts
 // postgres-provider.ts
-import { eq, gt, and, inArray } from "drizzle-orm";
+import { eq, gt, and, inArray, sql } from "drizzle-orm";
 import type { JsonDoc, Operations } from "@docukit/docnode";
 import type { ServerProvider } from "@docukit/docsync-react/server";
 import { db } from "./db.ts";
 import * as schema from "./postgres-schema.ts";
 
 export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
-  async transaction(mode, callback) {
+  async transaction({ mode, docId }, callback) {
     const accessMode = mode === "readonly" ? "read only" : "read write";
     return await db.transaction(
-      async (tx) =>
-        callback({
+      async (tx) => {
+        // Writes to one document run one at a time (see Isolation below).
+        if (mode === "readwrite") {
+          await tx.execute(
+            sql`select pg_advisory_xact_lock(hashtext(${docId}))`,
+          );
+        }
+        return callback({
           getSerializedDoc: async ({ docId }) => {
             const doc = await tx.query.documents.findFirst({
               where: eq(schema.documents.docId, docId),
@@ -245,7 +251,8 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
                 set: { doc: JSON.stringify(serializedDoc), clock },
               });
           },
-        }),
+        });
+      },
       { accessMode },
     );
   },
@@ -269,6 +276,12 @@ new DocSyncServer({
 
 The public examples use a separate [SQLite provider](https://github.com/docukit/docukit/blob/main/docs/collab-server/sqlite-provider.ts) with seven-day cleanup because demo documents are intentionally ephemeral.
 
+### Isolation
+
+Each transaction works on one document, the `docId` it receives. `readwrite` transactions on the same document must run one at a time, from their start until they commit. When DocSync squashes, it rewrites the snapshot and the log from what it read, so a write that slips in between can be lost without an error.
+
+An isolation level is not enough on its own, because a write can take a lower clock and commit after a higher one was already read: a client that already received the higher clock never asks for the lower one. The Postgres provider above takes a per-document advisory lock at the start of each `readwrite` transaction and stays at the default `read committed`, so reads after the lock see what the previous writer committed. Writes to different documents do not wait for each other.
+
 ### Method semantics
 
 <dl>
@@ -279,7 +292,7 @@ The public examples use a separate [SQLite provider](https://github.com/docukit/
   <dd>Return all operation batches for `docId` whose clock is strictly greater than the given `clock`, in clock order. Each entry in the returned array is one batch (one `saveOperations` call's worth).</dd>
 
   <dt>`saveOperations({ docId, operations })`</dt>
-  <dd>Append a new batch and return its assigned clock. If `operations` is empty, return the current latest clock for the doc (or `0` if none).</dd>
+  <dd>Append a new batch and return its assigned clock. If `operations` is empty, return `max(snapshotClock, latestOperationClock)`, or `0` if the doc has neither. Squashing trims the log, so the snapshot clock must count or clients would be sent a clock that went backwards.</dd>
 
   <dt>`deleteOperations({ docId, count })`</dt>
   <dd>Delete the oldest `count` operation batches for the doc. Used during squashing.</dd>
