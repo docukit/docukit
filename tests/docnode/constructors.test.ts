@@ -13,8 +13,10 @@ import type {
   DefaultStateMethods,
   JsonDoc,
 } from "@docukit/docnode";
+import { ulid } from "ulid";
 import {
   checkUndoManager,
+  DOCNODE_ID,
   TestNode,
   Text,
   TextExtension,
@@ -414,5 +416,16 @@ describe("createNode", () => {
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
     // @ts-expect-error - private constructor
     new DocNode(doc, "text");
+  });
+
+  test("ids keep their time part when the root was created in the future", () => {
+    // The root comes from another device whose clock is one minute ahead.
+    const rootId = ulid(Date.now() + 60_000).toLowerCase();
+    const doc = new Doc({
+      type: "root",
+      id: rootId,
+      extensions: [TextExtension],
+    });
+    expect(doc.createNode(Text).id).toMatch(DOCNODE_ID("[\\w-]+"));
   });
 });
