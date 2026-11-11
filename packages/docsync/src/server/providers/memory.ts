@@ -14,13 +14,11 @@ interface StoredOperation {
 /**
  * In-memory server provider for testing.
  * Stores documents and operations in memory - data is lost when the process ends.
- * Transactions run one at a time, which meets the isolation {@link ServerProvider} requires.
  */
 export function inMemoryServerProvider(): ServerProvider<any, any> {
   const docs = new Map<string, StoredDoc>();
   const operationsMap = new Map<string, StoredOperation[]>();
   const clockCounterByDocId = new Map<string, number>();
-  let queue = Promise.resolve();
 
   function nextClock(docId: string): number {
     const current = clockCounterByDocId.get(docId) ?? 0;
@@ -30,7 +28,7 @@ export function inMemoryServerProvider(): ServerProvider<any, any> {
   }
 
   return {
-    transaction<T>(
+    async transaction<T>(
       _mode: "readonly" | "readwrite",
       callback: (ctx: ServerProviderContext<any, any>) => Promise<T>,
     ): Promise<T> {
@@ -86,12 +84,7 @@ export function inMemoryServerProvider(): ServerProvider<any, any> {
         },
       };
 
-      const result = queue.then(() => callback(ctx));
-      queue = result.then(
-        () => undefined,
-        () => undefined,
-      );
-      return result;
+      return callback(ctx);
     },
   };
 }

@@ -284,7 +284,7 @@ const createClientWithConfig = async (config: {
 const createDevice = async (
   docId: string,
   docBinding: ReturnType<typeof createDocBinding>,
-) => {
+): Promise<ClientUtils> => {
   const userId = generateUserId(); // Different user = different IDB + BC namespace
   const client = await createClientWithConfig({
     userId,
@@ -558,7 +558,7 @@ const createClientUtils = async (
 export const emptyIDB = { doc: [], ops: [] };
 
 /** One commit per text, so each text is one operation on the server. */
-export const commitEdits = (device: ClientUtils, texts: string[]) => {
+export const commitEdits = (device: ClientUtils, texts: string[]): void => {
   for (const text of texts) {
     device.addChild(text);
     device.doc?.forceCommit();

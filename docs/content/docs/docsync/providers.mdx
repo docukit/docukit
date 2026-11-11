@@ -157,7 +157,7 @@ export const db = drizzle(queryClient, { schema });
 
 ```ts
 // postgres-provider.ts
-import { eq, gt, and, inArray, sql } from "drizzle-orm";
+import { eq, gt, and, inArray } from "drizzle-orm";
 import type { JsonDoc, Operations } from "@docukit/docnode";
 import type { ServerProvider } from "@docukit/docsync-react/server";
 import { db } from "./db.ts";
@@ -167,23 +167,9 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
   async transaction(mode, callback) {
     const accessMode = mode === "readonly" ? "read only" : "read write";
     return await db.transaction(
-      async (tx) => {
-        // A DocSync transaction touches one document, and `transaction` is not
-        // told which one, so the first call takes the lock. Promise.resolve
-        // runs the query once: awaiting a Drizzle query again would re-run it.
-        let lock: Promise<unknown> | undefined;
-        const lockDoc = (docId: string) => {
-          if (mode === "readwrite") {
-            lock ??= Promise.resolve(
-              tx.execute(sql`select pg_advisory_xact_lock(hashtext(${docId}))`),
-            );
-          }
-          return lock;
-        };
-
-        return callback({
+      async (tx) =>
+        callback({
           getSerializedDoc: async ({ docId }) => {
-            await lockDoc(docId);
             const doc = await tx.query.documents.findFirst({
               where: eq(schema.documents.docId, docId),
             });
@@ -196,7 +182,6 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
           },
 
           getOperations: async ({ docId, clock }) => {
-            await lockDoc(docId);
             const rows = await tx
               .select({ operations: schema.operations.operations })
               .from(schema.operations)
@@ -211,7 +196,6 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
           },
 
           saveOperations: async ({ docId, operations }) => {
-            await lockDoc(docId);
             const doc = await tx.query.documents.findFirst({
               where: eq(schema.documents.docId, docId),
             });
@@ -230,7 +214,6 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
           },
 
           deleteOperations: async ({ docId, count }) => {
-            await lockDoc(docId);
             const oldest = tx
               .select({ clock: schema.operations.clock })
               .from(schema.operations)
@@ -248,7 +231,6 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
           },
 
           saveSerializedDoc: async ({ docId, serializedDoc, clock }) => {
-            await lockDoc(docId);
             await tx
               .insert(schema.documents)
               .values({
@@ -263,8 +245,7 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
                 set: { doc: JSON.stringify(serializedDoc), clock },
               });
           },
-        });
-      },
+        }),
       { accessMode },
     );
   },
@@ -288,12 +269,6 @@ new DocSyncServer({
 
 The public examples use a separate [SQLite provider](https://github.com/docukit/docukit/blob/main/docs/collab-server/sqlite-provider.ts) with seven-day cleanup because demo documents are intentionally ephemeral.
 
-### Isolation
-
-`readwrite` transactions on the same document must run one at a time, from their first read until they commit. When DocSync squashes, it rewrites the snapshot and the log from what it read, so a write that slips in between can be lost without an error.
-
-An isolation level is not enough on its own, because a write can take a lower clock and commit after a higher one was already read. The Postgres provider above takes a per-document advisory lock instead, and stays at the default `read committed` so that reads after the lock see what the previous writer committed. Writes to the same document wait for each other and hold a connection while they do.
-
 ### Method semantics
 
 <dl>
@@ -304,7 +279,7 @@ An isolation level is not enough on its own, because a write can take a lower cl
   <dd>Return all operation batches for `docId` whose clock is strictly greater than the given `clock`, in clock order. Each entry in the returned array is one batch (one `saveOperations` call's worth).</dd>
 
   <dt>`saveOperations({ docId, operations })`</dt>
-  <dd>Append a new batch and return its assigned clock. If `operations` is empty, return `max(snapshotClock, latestOperationClock)`, or `0` if the doc has neither. Squashing trims the log, so the snapshot clock must count or clients would be sent a clock that went backwards.</dd>
+  <dd>Append a new batch and return its assigned clock. If `operations` is empty, return the current latest clock for the doc (or `0` if none).</dd>
 
   <dt>`deleteOperations({ docId, count })`</dt>
   <dd>Delete the oldest `count` operation batches for the doc. Used during squashing.</dd>
