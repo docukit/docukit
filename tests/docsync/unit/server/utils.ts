@@ -100,11 +100,14 @@ export const createTestClientProvider = (): ClientProvider<
     }),
 });
 
-const createServer = (port = BASE_PORT) => {
+const createServer = (
+  port: number,
+  provider: ReturnType<typeof inMemoryServerProvider>,
+) => {
   return new DocSyncServer({
     docBinding: DocNodeBinding([testDocConfig]),
     port,
-    provider: inMemoryServerProvider(),
+    provider,
     authenticate: ({ token }) => {
       if (token?.startsWith("valid-")) {
         return { userId: token.replace("valid-", "") };
@@ -128,11 +131,21 @@ export async function testWrapper(
     sync: (payload: SyncPayloadInput) => Promise<SyncResponse>;
     /** Sends `count` operations to the server, one sync per operation. */
     syncOperations: (docId: string, count: number) => Promise<void>;
+    /** Stores a snapshot at clock 0, then `count` operations after it. */
+    seedDocument: (docId: string, count: number) => Promise<JsonDoc>;
+    /** What the server has stored for the document. */
+    storedState: (
+      docId: string,
+    ) => Promise<{
+      snapshot: { serializedDoc: JsonDoc; clock: number } | undefined;
+      batches: Operations[][];
+    }>;
     socket: TestClient["_socket"];
   }) => Promise<void>,
 ) {
   const port = serverOverrides.port ?? BASE_PORT;
-  const server = createServer(port);
+  const provider = inMemoryServerProvider();
+  const server = createServer(port, provider);
   const client = createMockDocSyncClient({
     ...serverOverrides,
     url: serverOverrides.url ?? `ws://localhost:${port}`,
@@ -163,8 +176,26 @@ export async function testWrapper(
     }
   };
 
+  const seedDocument = async (docId: string, count: number) => {
+    const docBinding = DocNodeBinding([testDocConfig]);
+    const serializedDoc = docBinding.serialize(
+      docBinding.create("test", docId).doc,
+    );
+    await sync({ docId, serializedDoc, clock: 0 });
+    await syncOperations(docId, count);
+    return serializedDoc;
+  };
+
+  const storedState = (docId: string) =>
+    provider.transaction("readonly", async (ctx) => ({
+      snapshot: await ctx.getSerializedDoc({ docId }),
+      batches: await ctx.getOperations({ docId, clock: 0 }),
+    }));
+
   await fn({
     server,
+    seedDocument,
+    storedState,
     client,
     waitForConnect,
     waitForError,

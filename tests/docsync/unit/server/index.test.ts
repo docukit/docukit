@@ -585,13 +585,7 @@ describe("sync", () => {
 
       // Use a valid ULID for docId
       const docId = "01kfpgjsabrpdcw0qgh5evhy2g";
-      const docBinding = DocNodeBinding([testDocConfig]);
-      const serializedDoc = docBinding.serialize(
-        docBinding.create("test", docId).doc,
-      );
-      await T.sync({ docId, serializedDoc, clock: 0 });
-
-      await T.syncOperations(docId, 100);
+      const serializedDoc = await T.seedDocument(docId, 100);
 
       // First sync from clock 0: should receive all 100 operations
       const res1 = await T.sync({ docId, serializedDoc });
@@ -606,6 +600,12 @@ describe("sync", () => {
 
       // Wait for squashing to complete (it happens async after the response)
       await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Every folded batch is gone from the log
+      expect(await T.storedState(docId)).toMatchObject({
+        snapshot: { clock: 100 },
+        batches: [],
+      });
 
       // Second sync from clock 100: should receive serializedDoc (squashed)
       // because previous fetch triggered squashing (>= 100 operations)
@@ -647,6 +647,25 @@ describe("sync", () => {
       const res = await T.sync({ docId });
       expect(res).toMatchObject({ data: { clock: 100, serializedDoc: null } });
       if ("data" in res) expect(res.data.operations).toHaveLength(100);
+    });
+  });
+
+  test("does not squash below the threshold", async () => {
+    const auth: ClientAuthConfig = {
+      mode: "token",
+      getToken: () => "valid-user1",
+    };
+    await testWrapper({ auth }, async (T) => {
+      await T.waitForConnect();
+
+      const docId = "01kfpgjsabrpdcw0qgh5evhy2m";
+      const serializedDoc = await T.seedDocument(docId, 99);
+      await T.sync({ docId, serializedDoc });
+
+      // The in-memory squash would finish before this response arrives
+      const { snapshot, batches } = await T.storedState(docId);
+      expect(snapshot?.clock).toBe(0);
+      expect(batches).toHaveLength(99);
     });
   });
 });
