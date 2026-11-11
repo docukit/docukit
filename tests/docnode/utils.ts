@@ -11,6 +11,7 @@ import {
   string,
   type Diff,
   type JsonDoc,
+  type DocConfig,
   mergeOperations,
 } from "@docukit/docnode";
 import { ULID_REGEX } from "valibot";
@@ -547,3 +548,40 @@ const _sessionSort = (a: string, b: string): number => {
   b = b.split(".")[0]!.padStart(12, "z");
   return a > b ? 1 : a < b ? -1 : 0;
 };
+
+/**
+ * Two replicas edit the same document at once. The server applies `first`
+ * before `second`, and each replica applies the other's change on top of its
+ * own. Returns the three documents.
+ */
+export function applyInServerOrder(
+  config: DocConfig,
+  initial: JsonDoc,
+  first: (doc: Doc) => void,
+  second: (doc: Doc) => void,
+) {
+  const load = () => {
+    const doc = Doc.fromJSON(config, initial);
+    doc.forceCommit();
+    return doc;
+  };
+  const edit = (change: (doc: Doc) => void) => {
+    const replica = load();
+    const batches: Operations[] = [];
+    const stop = replica.onChange(({ operations }) => batches.push(operations));
+    change(replica);
+    replica.forceCommit();
+    stop();
+    return { replica, operations: mergeOperations(...batches) };
+  };
+  const [a, b] = [edit(first), edit(second)];
+  const server = load();
+  server.applyOperations(a.operations);
+  server.applyOperations(b.operations);
+  server.forceCommit();
+  a.replica.applyOperations(b.operations);
+  a.replica.forceCommit();
+  b.replica.applyOperations(a.operations);
+  b.replica.forceCommit();
+  return { server, replicas: [a.replica, b.replica] };
+}

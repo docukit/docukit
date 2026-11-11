@@ -270,17 +270,24 @@ export const onApplyOperations = (doc: Doc, operations: Operations) => {
         const startNode = doc.getNodeById(operation[1]);
         const endNode = doc.getNodeById(operation[2] || operation[1]);
         if (!startNode || !endNode) break;
+        // A move is a delete plus an insert. Like an insert, it is dropped
+        // when its new parent was deleted by a concurrent change, so the range
+        // ends up deleted. Otherwise an anchor deleted concurrently falls back
+        // to the next one: previous sibling, next sibling, then the parent.
+        const parentNode = operation[3]
+          ? doc.getNodeById(operation[3])
+          : doc.root;
+        const prevNode = operation[4]
+          ? doc.getNodeById(operation[4])
+          : undefined;
+        const nextNode = operation[5]
+          ? doc.getNodeById(operation[5])
+          : undefined;
         try {
-          if (operation[4])
-            startNode.to(endNode).move(doc.getNodeById(operation[4])!, "after");
-          else if (operation[5])
-            startNode
-              .to(endNode)
-              .move(doc.getNodeById(operation[5])!, "before");
-          else
-            startNode
-              .to(endNode)
-              .move(doc.getNodeById(operation[3] as string)!, "append");
+          if (!parentNode) startNode.to(endNode).delete();
+          else if (prevNode) startNode.to(endNode).move(prevNode, "after");
+          else if (nextNode) startNode.to(endNode).move(nextNode, "before");
+          else startNode.to(endNode).move(parentNode, "append");
         } catch {}
         break;
     }
