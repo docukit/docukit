@@ -292,7 +292,7 @@ An isolation level is not enough on its own, because a write can take a lower cl
   <dd>Return all operation batches for `docId` whose clock is strictly greater than the given `clock`, in clock order. Each entry in the returned array is one batch (one `saveOperations` call's worth).</dd>
 
   <dt>`saveOperations({ docId, operations })`</dt>
-  <dd>Append a new batch and return its assigned clock. If `operations` is empty, return `max(snapshotClock, latestOperationClock)`, or `0` if the doc has neither. Squashing trims the log, so the snapshot clock must count or clients would be sent a clock that went backwards.</dd>
+  <dd>Append a new batch and return its assigned clock, which must be greater than both the snapshot clock and the latest operation clock. If `operations` is empty, return `max(snapshotClock, latestOperationClock)`, or `0` if the doc has neither. Squashing trims the log, so the snapshot clock must count or clients would be sent a clock that went backwards.</dd>
 
   <dt>`deleteOperations({ docId, count })`</dt>
   <dd>Delete the oldest `count` operation batches for the doc. Used during squashing.</dd>

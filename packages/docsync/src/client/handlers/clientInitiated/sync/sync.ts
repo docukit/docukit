@@ -283,17 +283,26 @@ async function runSyncAttempt<
     }
   }
 
-  const req: SyncRequest<S, O> = {
+  const clock = stored?.clock ?? 0;
+  // Syncs send operations, not the whole doc. The doc goes only while the local
+  // copy is still at clock 0, because no operation of it has reached the
+  // server yet, or when the server asks for it because it lost its copy.
+  let req: SyncRequest<S, O> = {
     type: cacheEntry.type,
-    clock: stored?.clock ?? 0,
+    clock,
     docId,
     operations,
-    serializedDoc: stored?.serializedDoc ?? null,
+    serializedDoc: clock === 0 ? (stored?.serializedDoc ?? null) : null,
   };
 
   let response: SyncResponse<S, O>;
   try {
     response = await request(client["_socket"], "sync", req);
+    if (stored && response.data?.needsSerializedDoc) {
+      if (!isLive()) return stale;
+      req = { ...req, serializedDoc: stored.serializedDoc };
+      response = await request(client["_socket"], "sync", req);
+    }
   } catch (error) {
     if (!isLive()) return stale;
     const queryError = new DocSyncError(

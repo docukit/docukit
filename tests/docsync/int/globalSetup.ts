@@ -21,7 +21,26 @@ declare module "vitest" {
 // Extend globalThis to include test server port
 declare global {
   var __TEST_SERVER_PORT__: number | undefined;
+  /** Used by the `forgetServerDoc` browser command in vitest.config.ts. */
+  var __DOCSYNC_FORGET_SERVER_DOC__: ((docId: string) => void) | undefined;
 }
+
+/**
+ * In-memory provider that can lose one document, like a server whose copy
+ * expired or was wiped while clients kept theirs.
+ */
+const createForgetfulProvider = () => {
+  const base = inMemoryServerProvider();
+  const replacements = new Map<string, typeof base>();
+  const provider: typeof base = {
+    transaction: (options, callback) =>
+      (replacements.get(options.docId) ?? base).transaction(options, callback),
+  };
+  const forgetDoc = (docId: string) => {
+    replacements.set(docId, inMemoryServerProvider());
+  };
+  return { provider, forgetDoc };
+};
 
 /**
  * Find an available port starting from the preferred port.
@@ -62,10 +81,12 @@ export async function setup(project: TestProject) {
   // Find an available port
   serverPort = await findAvailablePort(PREFERRED_PORT);
 
+  const { provider, forgetDoc } = createForgetfulProvider();
+  globalThis.__DOCSYNC_FORGET_SERVER_DOC__ = forgetDoc;
   server = new DocSyncServer({
     docBinding: DocNodeBinding([testDocConfig]),
     port: serverPort,
-    provider: inMemoryServerProvider(),
+    provider,
     authenticate: ({ token }) => {
       if (!token) return undefined;
       const userId = parseTestToken(token);
@@ -84,6 +105,7 @@ export async function setup(project: TestProject) {
 }
 
 export async function teardown() {
+  globalThis.__DOCSYNC_FORGET_SERVER_DOC__ = undefined;
   if (server) await server.close();
   console.log("✅ Test server stopped\n");
 }

@@ -1,6 +1,12 @@
 import { defineConfig, type TestProjectConfiguration } from "vitest/config";
+import type { BrowserConfigOptions } from "vitest/node";
 import { playwright } from "@vitest/browser-playwright";
 import react from "@vitejs/plugin-react";
+
+declare global {
+  /** Set by tests/docsync/int/globalSetup.ts. */
+  var __DOCSYNC_FORGET_SERVER_DOC__: ((docId: string) => void) | undefined;
+}
 
 // In development: resolve to source files for faster testing without building
 // In CI: use dist files to test what actually gets published
@@ -26,7 +32,12 @@ const nodeExclude = [
 const project = (
   name: string,
   browser: boolean,
-  options?: { include?: string[]; exclude?: string[]; globalSetup?: string[] },
+  options?: {
+    include?: string[];
+    exclude?: string[];
+    globalSetup?: string[];
+    commands?: BrowserConfigOptions["commands"];
+  },
 ): TestProjectConfiguration => ({
   extends: true, // Extends root config to include resolve.conditions
   plugins: [react()],
@@ -60,6 +71,7 @@ const project = (
         launchOptions: { args: ["--js-flags=--expose-gc"] },
       }),
       instances: [{ browser: "chromium" }],
+      ...(options?.commands ? { commands: options.commands } : {}),
     },
   },
 });
@@ -96,6 +108,15 @@ export default defineConfig({
           "tests/docsync2-react/**",
         ],
         globalSetup: ["./tests/docsync/int/globalSetup.ts"],
+        commands: {
+          // Set by the DocSync globalSetup, which runs in this same process.
+          forgetServerDoc: (_context, docId: string) => {
+            const forgetServerDoc = globalThis.__DOCSYNC_FORGET_SERVER_DOC__;
+            if (!forgetServerDoc)
+              throw new Error("DocSync test server is down");
+            forgetServerDoc(docId);
+          },
+        },
       }),
       project("browser-docsync2", true, {
         include: [
