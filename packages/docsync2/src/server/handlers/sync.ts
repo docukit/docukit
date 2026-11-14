@@ -116,14 +116,9 @@ export function handleSync<
             await ctx.deleteOperationsUntil({ docId, clock });
           }
 
-          // Clients send their doc while they are at clock 0, so a request at
-          // clock 0 without one comes from a client with no local copy. Any
-          // other client only needs the doc when it is behind the snapshot,
-          // because the operations the snapshot folded are gone.
-          const clientHasDoc = serializedDoc !== undefined || clock > 0;
           const responseSerializedDoc =
             serverDoc !== undefined &&
-            (!clientHasDoc || serverDoc.clock > clock)
+            (serializedDoc === undefined || serverDoc.clock > clock)
               ? serverDoc.serializedDoc
               : undefined;
           const validatedStored = validation.stored({
