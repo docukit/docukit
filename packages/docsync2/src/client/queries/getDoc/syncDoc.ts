@@ -130,11 +130,14 @@ export const syncDocWithServer = async <
   );
   const operations = operationsBatches.flat();
   const clock = stored?.clock ?? 0;
+  // Syncs send operations, not the whole doc. The server only lacks the doc
+  // while the local copy is still at clock 0: until then no operation of it
+  // has reached the server, so the stored doc is the one created locally.
   const req = {
     type: args.type,
     docId: args.id,
     operations,
-    serializedDoc: stored?.serializedDoc,
+    serializedDoc: clock === 0 ? stored?.serializedDoc : undefined,
     clock,
   };
   const getAttempt = () =>
