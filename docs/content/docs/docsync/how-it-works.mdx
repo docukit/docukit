@@ -31,7 +31,7 @@ Pieces 1 and 2 are persisted (by default to IndexedDB), so closing the tab or go
 
 ## The sync round-trip
 
-The client sends `localOps` to the server. It sends its snapshot only while its copy is still at clock `0`, because a document created on this client (for example, offline) may not exist on the server yet. After that, syncs carry only operations.
+The client sends `localOps` to the server. It sends its snapshot only while its copy is still at clock `0`, because a document created on this client (for example, offline) may not exist on the server yet. After that, syncs carry only operations. If the server has lost its copy (for example, it expired), it saves nothing and asks for the snapshot, and the client repeats the request with it.
 
 Two things can come back:
 

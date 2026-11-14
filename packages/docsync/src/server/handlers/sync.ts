@@ -99,6 +99,25 @@ export function handleSync<
           async (ctx) => {
             const serverDoc = await ctx.getSerializedDoc({ docId });
 
+            // The client already synced this doc (clock > 0), but the server
+            // has nothing for it, for example because it expired. Ask for the
+            // client's copy instead of saving operations with no doc under them.
+            // A log without a snapshot is still the doc, so it is kept as is.
+            if (
+              serverDoc === undefined &&
+              serializedDoc === null &&
+              clock > 0 &&
+              (await ctx.getOperations({ docId, clock: 0 })).length === 0
+            ) {
+              return {
+                docId,
+                operations: [],
+                serializedDoc: null,
+                clock,
+                needsSerializedDoc: true,
+              };
+            }
+
             if (serverDoc === undefined && serializedDoc !== null) {
               await ctx.saveSerializedDoc({ docId, serializedDoc, clock });
             }
@@ -128,6 +147,7 @@ export function handleSync<
               operations: serverOps.flat(),
               serializedDoc: responseSerializedDoc,
               clock: newClock,
+              needsSerializedDoc: false,
             };
           },
         );
@@ -138,12 +158,14 @@ export function handleSync<
             operations: result.operations,
             serializedDoc: result.serializedDoc,
             clock: result.clock,
+            ...(result.needsSerializedDoc && { needsSerializedDoc: true }),
           },
         });
 
         const docRoom = io.sockets.adapter.rooms.get(`doc:${docId}`);
         const devicesInRoom = new Set<string>();
-        const shouldNotifyClients = operations.length > 0;
+        const shouldNotifyClients =
+          operations.length > 0 && !result.needsSerializedDoc;
 
         if (docRoom) {
           for (const socketId of docRoom) {

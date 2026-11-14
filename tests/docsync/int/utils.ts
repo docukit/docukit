@@ -180,16 +180,27 @@ type ClientUtils = {
   };
 };
 
-type SyncSummary = { sentDoc: boolean; receivedDoc: boolean };
+type SyncSummary = {
+  sentDoc: boolean;
+  receivedDoc: boolean;
+  askedForDoc: boolean;
+};
 
-const hasServerSnapshot = (response: unknown) =>
-  typeof response === "object" &&
-  response !== null &&
-  "data" in response &&
-  typeof response.data === "object" &&
-  response.data !== null &&
-  "serializedDoc" in response.data &&
-  response.data.serializedDoc !== null;
+const summarizeResponse = (response: unknown) => {
+  const data =
+    typeof response === "object" &&
+    response !== null &&
+    "data" in response &&
+    typeof response.data === "object" &&
+    response.data !== null
+      ? response.data
+      : {};
+  return {
+    receivedDoc: "serializedDoc" in data && data.serializedDoc !== null,
+    askedForDoc:
+      "needsSerializedDoc" in data && data.needsSerializedDoc === true,
+  };
+};
 
 type ClientsSetup = {
   docId: string;
@@ -543,7 +554,7 @@ const createClientUtils = async (
         sendToServer(event, payload, (response) => {
           syncs.push({
             sentDoc: payload.serializedDoc !== null,
-            receivedDoc: hasServerSnapshot(response),
+            ...summarizeResponse(response),
           });
           ack?.(response);
         });

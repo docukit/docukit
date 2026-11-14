@@ -1,7 +1,12 @@
 import { describe, expect, test } from "vitest";
+import { forgetServerDoc } from "./serverCommands.js";
 import { commitEdits, testWrapper } from "./utils.js";
 
-const onlyOperations = { sentDoc: false, receivedDoc: false };
+const onlyOperations = {
+  sentDoc: false,
+  receivedDoc: false,
+  askedForDoc: false,
+};
 
 describe("Sync payloads", () => {
   test("once the server has the doc, syncs carry only operations", async () => {
@@ -39,12 +44,33 @@ describe("Sync payloads", () => {
       await reference.assertIDBDoc({ doc: ["offline", "online"], ops: [] });
 
       const [firstSync, ...laterSyncs] = syncs;
-      expect(firstSync).toStrictEqual({ sentDoc: true, receivedDoc: false });
+      expect(firstSync).toStrictEqual({ ...onlyOperations, sentDoc: true });
       expect(laterSyncs).not.toHaveLength(0);
       expect(laterSyncs).toStrictEqual(laterSyncs.map(() => onlyOperations));
       const newDevice = await addNewDevice();
       await newDevice.loadDoc({ createIfMissing: false });
       await newDevice.assertMemoryDoc(["offline", "online"]);
+    });
+  });
+
+  test("a device restores a doc the server no longer has", async () => {
+    await testWrapper(async ({ docId, reference, addNewDevice }) => {
+      await reference.loadDoc();
+      commitEdits(reference, ["before"]);
+      await reference.assertIDBDoc({ doc: ["before"], ops: [] });
+      await forgetServerDoc(docId);
+      const syncs = reference.recordSyncs();
+
+      commitEdits(reference, ["after"]);
+      await reference.assertIDBDoc({ doc: ["before", "after"], ops: [] });
+
+      expect(syncs).toStrictEqual([
+        { ...onlyOperations, askedForDoc: true },
+        { ...onlyOperations, sentDoc: true },
+      ]);
+      const newDevice = await addNewDevice();
+      await newDevice.loadDoc({ createIfMissing: false });
+      await newDevice.assertMemoryDoc(["before", "after"]);
     });
   });
 });

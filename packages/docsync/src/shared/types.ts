@@ -69,7 +69,17 @@ export type SyncRequest<S = unknown, O = unknown> = {
 
 /** Shared response for the sync event (server sends, client receives). */
 export type SyncResponse<S = unknown, O = unknown> = Result<
-  { docId: string; operations: O[]; serializedDoc: S | null; clock: number },
+  {
+    docId: string;
+    operations: O[];
+    serializedDoc: S | null;
+    clock: number;
+    /**
+     * The server has no copy of a doc the client already synced. Nothing was
+     * saved: the client must repeat the request with its `serializedDoc`.
+     */
+    needsSerializedDoc?: true;
+  },
   {
     type: "AuthorizationError" | "DatabaseError" | "ValidationError";
     message: string;

@@ -284,10 +284,10 @@ async function runSyncAttempt<
   }
 
   const clock = stored?.clock ?? 0;
-  // Syncs send operations, not the whole doc. The server can only be missing
-  // the doc while the local copy is still at clock 0: until then no operation
-  // of it has reached the server, so the stored doc is the one created locally.
-  const req: SyncRequest<S, O> = {
+  // Syncs send operations, not the whole doc. The doc goes only while the local
+  // copy is still at clock 0, because no operation of it has reached the
+  // server yet, or when the server asks for it because it lost its copy.
+  let req: SyncRequest<S, O> = {
     type: cacheEntry.type,
     clock,
     docId,
@@ -298,6 +298,11 @@ async function runSyncAttempt<
   let response: SyncResponse<S, O>;
   try {
     response = await request(client["_socket"], "sync", req);
+    if (stored && response.data?.needsSerializedDoc) {
+      if (!isLive()) return stale;
+      req = { ...req, serializedDoc: stored.serializedDoc };
+      response = await request(client["_socket"], "sync", req);
+    }
   } catch (error) {
     if (!isLive()) return stale;
     const queryError = new DocSyncError(
