@@ -103,11 +103,15 @@ export function handleSync<
               await ctx.saveSerializedDoc({ docId, serializedDoc, clock });
             }
 
+            // Clients send their doc while they are at clock 0, so a request at
+            // clock 0 without one comes from a client with no local copy. Any
+            // other client only needs the doc when it is behind the snapshot.
+            const clientHasDoc = serializedDoc !== null || clock > 0;
             let responseSerializedDoc: S | null = null;
             let operationsClock = clock;
             if (
               serverDoc !== undefined &&
-              (serializedDoc === null || serverDoc.clock > clock)
+              (!clientHasDoc || serverDoc.clock > clock)
             ) {
               responseSerializedDoc = serverDoc.serializedDoc;
               operationsClock = serverDoc.clock;

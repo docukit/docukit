@@ -166,6 +166,8 @@ type ClientUtils = {
   reqSpy: Mock<EmitForTests>;
   disconnect: () => void;
   connect: () => void;
+  /** Records what each sync from now on carried in each direction. */
+  recordSyncs: () => SyncSummary[];
   /**
    * Simulates a slow uplink for this client: the next sync request is built
    * normally (the pending batch is already read) but is not put on the wire
@@ -177,6 +179,17 @@ type ClientUtils = {
     restore: () => void;
   };
 };
+
+type SyncSummary = { sentDoc: boolean; receivedDoc: boolean };
+
+const hasServerSnapshot = (response: unknown) =>
+  typeof response === "object" &&
+  response !== null &&
+  "data" in response &&
+  typeof response.data === "object" &&
+  response.data !== null &&
+  "serializedDoc" in response.data &&
+  response.data.serializedDoc !== null;
 
 type ClientsSetup = {
   docId: string;
@@ -519,6 +532,23 @@ const createClientUtils = async (
     },
     connect: () => {
       api.connect();
+    },
+    recordSyncs: () => {
+      const syncs: SyncSummary[] = [];
+      reqSpy.mockImplementation((event, payload, ack) => {
+        if (event !== "sync") {
+          sendToServer(event, payload, ack);
+          return;
+        }
+        sendToServer(event, payload, (response) => {
+          syncs.push({
+            sentDoc: payload.serializedDoc !== null,
+            receivedDoc: hasServerSnapshot(response),
+          });
+          ack?.(response);
+        });
+      });
+      return syncs;
     },
     holdNextSyncRequest: () => {
       let markCaptured!: () => void;

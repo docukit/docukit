@@ -31,7 +31,9 @@ Pieces 1 and 2 are persisted (by default to IndexedDB), so closing the tab or go
 
 ## The sync round-trip
 
-The client sends `localOps` to the server. Two things can come back:
+The client sends `localOps` to the server. It sends its snapshot only while its copy is still at clock `0`, because a document created on this client (for example, offline) may not exist on the server yet. After that, syncs carry only operations.
+
+Two things can come back:
 
 ### a) No concurrent edits
 
@@ -65,7 +67,7 @@ When a sync request arrives with `clock = X`, the server:
 
 1. Looks up operations with `clock > X` (what the client is missing).
 2. Appends the client's incoming operations to the log, assigning them a new `clock`.
-3. Replies with the missing operations (if any), the snapshot (if newer than the client's), and the assigned clock.
+3. Replies with the missing operations (if any), the snapshot (only if the client has no copy or the snapshot is newer than the client's), and the assigned clock.
 
 When the operation log gets long, the server squashes it into the snapshot and trims the log.
 
