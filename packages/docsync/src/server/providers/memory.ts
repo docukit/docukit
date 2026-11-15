@@ -23,7 +23,12 @@ export function inMemoryServerProvider(): ServerProvider<any, any> {
   const queueByDocId = new Map<string, Promise<void>>();
 
   function nextClock(docId: string): number {
-    const current = clockCounterByDocId.get(docId) ?? 0;
+    // A snapshot can arrive with a clock this counter never reached, e.g. a
+    // client restoring a doc the server lost. New batches must go after it.
+    const current = Math.max(
+      clockCounterByDocId.get(docId) ?? 0,
+      docs.get(docId)?.clock ?? 0,
+    );
     const next = current + 1;
     clockCounterByDocId.set(docId, next);
     return next;
