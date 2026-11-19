@@ -26,7 +26,7 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-browsers-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Playwright Browsers
-        run: pnpm exec playwright install --with-deps
+        run: pnpm exec playwright install --with-deps chromium
       - name: Run Playwright tests
         env:
           NEXT_PUBLIC_DOCSYNC_SERVER_URL: ws://localhost:8081
