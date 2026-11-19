@@ -82,7 +82,8 @@ export const nodeIdFactory = (
       `Failed to extract time from root id '${rootId}'. ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  const milisecondsPassed = Date.now() - createdAt;
+  // Absolute: a root clock ahead of this device would leave the time part empty.
+  const milisecondsPassed = Math.abs(Date.now() - createdAt);
   const milisecondsInBase64 = numberToBase64(milisecondsPassed);
   const randomString = randomStringBase64(3);
   const sessionId = milisecondsInBase64 + randomString;

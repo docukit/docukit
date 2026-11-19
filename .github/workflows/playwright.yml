@@ -20,13 +20,36 @@ jobs:
           NEXT_PUBLIC_DOCSYNC_SERVER_URL: ws://localhost:8081
           SKIP_ENV_VALIDATION: "true"
         run: pnpm exec turbo build --filter=@docukit/docs
+      # Playwright's CI guide keys the browser cache on the Playwright version,
+      # not the lockfile, so unrelated dependency bumps keep it warm.
+      # https://playwright.dev/docs/ci#caching-browsers
+      - name: Read Playwright version
+        id: pw-version
+        run: echo "version=$(pnpm exec playwright --version | cut -d ' ' -f 2)" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
+        id: pw-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-chromium-${{ runner.os }}-${{ steps.pw-version.outputs.version }}
       - name: Install Playwright Browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium
+      # The OS libraries come from apt and depend on the runner image, so they
+      # are not cached. The image usually has them already: check first, so a
+      # slow Ubuntu mirror only matters when something is actually missing.
+      - name: Check browser OS deps
+        id: pw-deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: |
+          if pnpm exec playwright install-deps --dry-run chromium; then
+            echo "missing=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "missing=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install browser OS deps
+        if: steps.pw-cache.outputs.cache-hit == 'true' && steps.pw-deps.outputs.missing == 'true'
+        run: pnpm exec playwright install-deps chromium
       - name: Run Playwright tests
         env:
           NEXT_PUBLIC_DOCSYNC_SERVER_URL: ws://localhost:8081
