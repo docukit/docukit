@@ -24,7 +24,7 @@ import {
   defineNode,
 } from "./utils.js";
 import * as ops from "./operations.js";
-import { nodeIdFactory } from "./idGenerator.js";
+import { NodeIds } from "./idGenerator.js";
 import { decodeTime, ulid } from "ulid";
 import { UndoManager } from "./undoManager.js";
 
@@ -564,6 +564,8 @@ export class Doc {
   };
   protected _nodeIdGenerator: (doc: Doc) => string;
   protected _idGen: NodeIdGenerator;
+  /** The ids of this document's session, unless a generator without time makes them. */
+  protected _nodeIds: NodeIds | undefined;
   readonly root: DocNode;
   readonly undoManager: UndoManager;
 
@@ -738,9 +740,10 @@ export class Doc {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     this.root = new DocNode(this, config.type, id);
     this._nodeMap.set(id, this.root);
-    this._nodeIdGenerator = idGen.extractTime
-      ? nodeIdFactory(this, idGen.extractTime)
-      : idGen.generate;
+    this._nodeIds = idGen.extractTime
+      ? new NodeIds(this, idGen.extractTime)
+      : undefined;
+    this._nodeIdGenerator = this._nodeIds?.generate ?? idGen.generate;
 
     this._lifeCycleStage = "init";
     config.extensions.forEach((extension) => {
@@ -759,6 +762,15 @@ export class Doc {
         this._transactionFlags = {};
       }
     });
+  }
+
+  /**
+   * A node another replica inserted. If its id is of this document's session
+   * but past what it made, another replica has the same session, so this one
+   * takes a new one (see `NodeIds`).
+   */
+  private _checkSession(id: string) {
+    if (this._nodeIds?.collides(id)) this._nodeIds.renew();
   }
 
   getNodeById(docNodeId: string): DocNode | undefined {
