@@ -8,6 +8,7 @@ import {
   type UndoHistory,
 } from "@docukit/docnode";
 import {
+  applyInServerOrder,
   assertDoc,
   checkUndoManager,
   createTextDocWithUndo,
@@ -1292,5 +1293,72 @@ describe("batching", () => {
     logOp.push("update2");
     await Promise.resolve();
     expect(logOp).toStrictEqual(["update1", "change", "update2", "change"]);
+  });
+});
+
+describe("a move whose anchors were deleted concurrently", () => {
+  const config = { type: "root", extensions: [TextExtension] };
+  const initial = (...values: string[]) => {
+    const doc = new Doc(config);
+    doc.root.append(...text(doc, ...values));
+    doc.forceCommit();
+    return doc;
+  };
+  const byValue = (target: Doc, value: string) =>
+    target.root
+      .descendants()
+      .find((node) => node.is(Text) && node.state.value.get() === value)!;
+
+  test("lands before its next sibling when the previous one is gone", () => {
+    const { server, replicas } = applyInServerOrder(
+      config,
+      initial("1", "2", "3", "4").toJSON(),
+      (replica) => byValue(replica, "2").delete(),
+      (replica) => byValue(replica, "4").move(byValue(replica, "2"), "after"),
+    );
+    assertDoc(server, ["1", "4", "3"]);
+    for (const replica of replicas) assertDoc(replica, ["1", "4", "3"]);
+  });
+
+  test("lands at the end of the root when both neighbors are gone", () => {
+    const { server } = applyInServerOrder(
+      config,
+      initial("1", "2", "3", "4", "5").toJSON(),
+      (replica) => byValue(replica, "2").to(byValue(replica, "3")).delete(),
+      (replica) => byValue(replica, "1").move(byValue(replica, "2"), "after"),
+    );
+    assertDoc(server, ["4", "5", "1"]);
+  });
+
+  const withChildren = () => {
+    const doc = initial("1", "2");
+    byValue(doc, "1").append(...text(doc, "1.1", "1.2"));
+    doc.forceCommit();
+    return doc.toJSON();
+  };
+
+  test("deletes the range when its new parent is gone", () => {
+    const { server, replicas } = applyInServerOrder(
+      config,
+      withChildren(),
+      (replica) => byValue(replica, "1").delete(),
+      (replica) => byValue(replica, "2").move(byValue(replica, "1.1"), "after"),
+    );
+    assertDoc(server, []);
+    for (const replica of replicas) assertDoc(replica, []);
+  });
+
+  test("checks the parent before the siblings", () => {
+    // The previous sibling left the parent before the parent was deleted.
+    const { server } = applyInServerOrder(
+      config,
+      withChildren(),
+      (replica) => {
+        byValue(replica, "1.1").move(byValue(replica, "2"), "after");
+        byValue(replica, "1").delete();
+      },
+      (replica) => byValue(replica, "2").move(byValue(replica, "1.1"), "after"),
+    );
+    assertDoc(server, ["1.1"]);
   });
 });
