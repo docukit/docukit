@@ -58,20 +58,24 @@ const createMockDocSyncClient = (serverOverrides?: {
   if (serverOverrides?.localUserId !== undefined) {
     storage.set("docsync:localUserId", serverOverrides.localUserId);
   }
-  globalThis.localStorage = {
-    clear: () => storage.clear(),
-    getItem: (key) => storage.get(key) ?? null,
-    key: (index) => Array.from(storage.keys())[index] ?? null,
-    get length() {
-      return storage.size;
-    },
-    removeItem: (key) => {
-      storage.delete(key);
-    },
-    setItem: (key, value) => {
-      storage.set(key, value);
-    },
-  } satisfies Storage;
+  // Node 25+ defines a read-only `localStorage` global: assigning it throws.
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      clear: () => storage.clear(),
+      getItem: (key) => storage.get(key) ?? null,
+      key: (index) => Array.from(storage.keys())[index] ?? null,
+      get length() {
+        return storage.size;
+      },
+      removeItem: (key) => {
+        storage.delete(key);
+      },
+      setItem: (key, value) => {
+        storage.set(key, value);
+      },
+    } satisfies Storage,
+  });
 
   return new DocSyncClient({
     server: {
