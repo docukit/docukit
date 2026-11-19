@@ -15,6 +15,7 @@ import {
   type ChangeEvent,
   type NodeIdGenerator,
   type TransactionFlags,
+  type StateDefinition,
 } from "./types.js";
 import {
   detachRange,
@@ -27,6 +28,13 @@ import * as ops from "./operations.js";
 import { NodeIds } from "./idGenerator.js";
 import { decodeTime, ulid } from "ulid";
 import { UndoManager } from "./undoManager.js";
+
+/** Where a node keeps its document (see `DocNode.doc`). */
+const DOC: unique symbol = Symbol("doc");
+/** Where a node's `state` keeps the node (see `Doc`). */
+const STATE_NODE: unique symbol = Symbol("node");
+/** What `node.state[key]` gives. */
+type StateKeyMethods = NodeState.Methods<UnsafeDefinition>[string];
 
 export class DocNode<T extends NodeDefinition = NodeDefinition> {
   readonly id: string;
@@ -41,17 +49,20 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
   readonly next: DocNode | undefined;
   readonly first: DocNode | undefined;
   readonly last: DocNode | undefined;
-  readonly doc!: Doc;
+  // A symbol key instead of a property defined per node: assigning it costs
+  // nothing, it stays out of `Object.keys` and JSON, and unlike a private
+  // field (`#doc`) it can be read through a Proxy (Vue, MobX, Valtio).
+  readonly [DOC]: Doc;
 
   private constructor(doc: Doc, type: string, id?: string) {
     this.type = type;
     this._state = {};
+    this[DOC] = doc;
     this.id = id ?? doc["_nodeIdGenerator"](doc);
-    Object.defineProperty(this, "doc", {
-      enumerable: false,
-      value: doc,
-      writable: false,
-    });
+  }
+
+  get doc() {
+    return this[DOC];
   }
 
   /**
@@ -620,106 +631,30 @@ export class Doc {
     });
 
     this._resolvedNodeDefs.forEach((resolvedNodeDef) => {
-      resolvedNodeDef.methods = (node: DocNode) => {
-        const stateObj = {} as NodeState.Methods<UnsafeDefinition>;
-
-        for (const key in resolvedNodeDef.state) {
-          //
-          const get: DefaultStateMethods<unknown>["get"] = () => {
-            // @ts-expect-error - protected property
-            const _state = node._state as Record<string, unknown>;
-            return key in _state
-              ? _state[key]
-              : resolvedNodeDef.defaultState?.[key];
-          };
-
-          /**
-           * sets the state established by NodeDefinition. Like with `React.useState`
-           * you may directly specify the value or use an updater function that will
-           * be called with the previous value of the state on that node (which will
-           * be the `defaultValue` if not set).
-           *
-           * @example
-           * ```ts
-           *   // set it directly
-           *   docnode.state.counter.set(1);
-           *   // or use an updater function:
-           *   docnode.state.counter.set((current) => current + 1);
-           * });
-           * ```
-           *
-           * @param valueOrUpdaterFn The value or updater function
-           */
-          const set: DefaultStateMethods<unknown>["set"] = (
-            valueOrUpdaterFn: unknown,
-          ) =>
-            withTransaction(node.doc, () => {
-              // @ts-expect-error - protected property
-              const _state = node._state as Record<string, unknown>;
-              _state[key] ??= resolvedNodeDef.defaultState[key];
-              if (_state[key] === valueOrUpdaterFn) return;
-
-              const value =
-                typeof valueOrUpdaterFn === "function"
-                  ? (valueOrUpdaterFn as (prev: unknown) => unknown)(
-                      _state[key],
-                    )
-                  : valueOrUpdaterFn;
-
-              // [#4GOSK] we update patchState only when setting state for an attached
-              // node or when inserting a node, but not when setting state for a node
-              // that is not attached yet
-              const isAttached = node.doc["_nodeMap"].has(node.id);
-              if (isAttached) ops.onSetState.inverseOps(node, key);
-              _state[key] = value;
-              if (isAttached) ops.onSetState.operations(node, key);
-
-              // TODO: Subdocs. This is not implemented yet
-              // if (valueOrUpdaterFn instanceof Doc) {
-              //   if (node._state[key]) throw new Error("Can't change a Doc reference");
-              //   // @ts-expect-error - read-only property
-              //   valueOrUpdaterFn.parentDoc = node.doc;
-              //   const topLevelDoc = node.doc.getTopLevelDoc();
-              //   topLevelDoc["_subDocs"].set(valueOrUpdaterFn.id, valueOrUpdaterFn);
-              //   node._state[key] = valueOrUpdaterFn;
-              //   return node;
-              // }
-            });
-          const getPrev: DefaultStateMethods<unknown>["getPrev"] = () => {
-            // I am not 100% sure if the condition should be:
-            // if (!this._nodeMap.has(node.id) || this._diff.inserted.has(node.id))
-            // Allowing getPrev on nodes that haven't been updated is an anti-pattern.
-            // It means the user is likely dirty-checking all nodes.
-            // But shouldn't it still not throw an error and leave it up to the user's decision?
-            if (!this._diff.updated.has(node.id))
-              throw new Error(
-                [
-                  "getPrev cannot be used on nodes that are not attached or that",
-                  "have been inserted in the current transaction. Usually, you",
-                  "will want to use getPrev with nodes from diff.updated.",
-                ].join(" "),
-              );
-            const statePatch = node.doc["_inverseOperations"][1];
-            const maybePrevState = statePatch[node.id]?.[key];
-            // @ts-expect-error - protected property
-            const _state = node._state as Record<string, unknown>;
-            return maybePrevState
-              ? [true, ops.parseStateKey(node, key, maybePrevState)]
-              : [false, _state[key]];
-          };
-
-          // eslint-disable-next-line @typescript-eslint/unbound-method
-          const methods = resolvedNodeDef.state[key]?.methods;
-
-          stateObj[key] = methods?.({ get, set, getPrev }) ?? {
-            get,
-            set,
-            getPrev,
-          };
+      // `node.state` binds the methods of a key when that key is read: a
+      // node has several keys, and most reads use one.
+      class State {
+        [key: string]: StateKeyMethods;
+        readonly [STATE_NODE]: DocNode<UnsafeDefinition>;
+        constructor(node: DocNode<UnsafeDefinition>) {
+          this[STATE_NODE] = node;
         }
-
-        return stateObj;
-      };
+      }
+      for (const key in resolvedNodeDef.state) {
+        const methodsOf = stateKeyMethods(
+          key,
+          resolvedNodeDef.state[key]!,
+          resolvedNodeDef.defaultState[key],
+        );
+        Object.defineProperty(State.prototype, key, {
+          enumerable: true,
+          get(this: State) {
+            return methodsOf(this[STATE_NODE]);
+          },
+        });
+      }
+      resolvedNodeDef.methods = (node: DocNode<UnsafeDefinition>) =>
+        new State(node);
     });
 
     const idGen: NodeIdGenerator = config.nodeIdGenerator ?? {
@@ -1187,4 +1122,102 @@ export class Doc {
     }
     return state;
   }
+}
+
+/**
+ * The methods of one state key, chosen once per node definition. Reading
+ * `node.state[key]` only binds them to the node, so `get`, `set` and
+ * `getPrev` can still be called on their own (`this: void`).
+ */
+function stateKeyMethods(
+  key: string,
+  definition: StateDefinition,
+  defaultValue: unknown,
+) {
+  // The logic is written inside each method instead of calling a shared
+  // helper: an extra call per read measured ~50% slower once optimized.
+  const methods = (
+    node: DocNode<UnsafeDefinition>,
+  ): DefaultStateMethods<unknown> => ({
+    get: () => {
+      const state = node["_state"];
+      return key in state ? state[key] : defaultValue;
+    },
+
+    /**
+     * sets the state established by NodeDefinition. Like with `React.useState`
+     * you may directly specify the value or use an updater function that will
+     * be called with the previous value of the state on that node (which will
+     * be the `defaultValue` if not set).
+     *
+     * @example
+     * ```ts
+     *   // set it directly
+     *   docnode.state.counter.set(1);
+     *   // or use an updater function:
+     *   docnode.state.counter.set((current) => current + 1);
+     * });
+     * ```
+     *
+     * @param valueOrUpdaterFn The value or updater function
+     */
+    set: (valueOrUpdaterFn) =>
+      withTransaction(node.doc, () => {
+        const state = node["_state"];
+        state[key] ??= defaultValue;
+        if (state[key] === valueOrUpdaterFn) return;
+
+        const value =
+          typeof valueOrUpdaterFn === "function"
+            ? (valueOrUpdaterFn as (prev: unknown) => unknown)(state[key])
+            : valueOrUpdaterFn;
+
+        // [#4GOSK] we update patchState only when setting state for an attached
+        // node or when inserting a node, but not when setting state for a node
+        // that is not attached yet
+        const isAttached = node.doc["_nodeMap"].has(node.id);
+        if (isAttached) ops.onSetState.inverseOps(node, key);
+        state[key] = value;
+        if (isAttached) ops.onSetState.operations(node, key);
+
+        // TODO: Subdocs. This is not implemented yet
+        // if (valueOrUpdaterFn instanceof Doc) {
+        //   if (node._state[key]) throw new Error("Can't change a Doc reference");
+        //   // @ts-expect-error - read-only property
+        //   valueOrUpdaterFn.parentDoc = node.doc;
+        //   const topLevelDoc = node.doc.getTopLevelDoc();
+        //   topLevelDoc["_subDocs"].set(valueOrUpdaterFn.id, valueOrUpdaterFn);
+        //   node._state[key] = valueOrUpdaterFn;
+        //   return node;
+        // }
+      }),
+
+    getPrev: () => {
+      // I am not 100% sure if the condition should be:
+      // if (!doc._nodeMap.has(node.id) || doc._diff.inserted.has(node.id))
+      // Allowing getPrev on nodes that haven't been updated is an anti-pattern.
+      // It means the user is likely dirty-checking all nodes.
+      // But shouldn't it still not throw an error and leave it up to the user's decision?
+      const doc = node.doc;
+      if (!doc["_diff"].updated.has(node.id))
+        throw new Error(
+          [
+            "getPrev cannot be used on nodes that are not attached or that",
+            "have been inserted in the current transaction. Usually, you",
+            "will want to use getPrev with nodes from diff.updated.",
+          ].join(" "),
+        );
+      const maybePrevState = doc["_inverseOperations"][1][node.id]?.[key];
+      return maybePrevState
+        ? [true, ops.parseStateKey(node, key, maybePrevState)]
+        : [false, node["_state"][key]];
+    },
+  });
+
+  // Called through `definition` (it may use `this`); `?.` only narrows the
+  // type, the branch already checked it.
+  if (definition.methods)
+    return (node: DocNode<UnsafeDefinition>): StateKeyMethods =>
+      definition.methods?.(methods(node));
+  return methods;
 }
