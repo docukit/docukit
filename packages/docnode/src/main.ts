@@ -993,7 +993,7 @@ export class Doc {
    */
   forceCommit(): void;
   forceCommit(callback: () => void, flags: TransactionFlags): void;
-  forceCommit(callback?: () => void, flags?: TransactionFlags): void {
+  forceCommit(callback?: () => void, flags: TransactionFlags = {}): void {
     if (this._isForceCommitCallback) {
       throw new Error(
         "You can't call forceCommit inside a forceCommit callback",
@@ -1001,7 +1001,7 @@ export class Doc {
     }
     this._forceCommit();
     if (!callback) return;
-    this._transactionFlags = flags ?? {};
+    this._transactionFlags = flags;
     this._isForceCommitCallback = true;
     try {
       withTransaction(this, callback);
