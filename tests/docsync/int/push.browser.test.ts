@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   expectLiveDocsToMatchServer,
   prependChild,
@@ -225,5 +225,45 @@ describe("Ordered push", () => {
     } finally {
       await server.stop();
     }
+  });
+
+  test("a tab stores later batches when the tab that sent the one before them died before storing it", async () => {
+    await testWrapper(async (clients) => {
+      const { reference, otherTab, otherDevice } = clients;
+      const devices = [reference, otherTab, otherDevice];
+      syncFast(devices);
+      otherTab.client["_storageGapTimeout"] = 20;
+      for (const device of devices) await device.loadDoc();
+      await expect
+        .poll(() =>
+          devices.every((device) => device.client["_syncQueue"].size === 0),
+        )
+        .toBe(true);
+
+      // The reference tab sends its batch, and dies once it is on the wire:
+      // nothing it writes to storage from then on lands.
+      const held = reference.holdNextSyncRequest();
+      prependChild(reference, "Hello");
+      await held.captured;
+      const { provider } = await reference.client["_localPromise"];
+      const transaction = provider.transaction.bind(provider);
+      const dead = vi
+        .spyOn(provider, "transaction")
+        .mockImplementation((mode, callback) =>
+          mode === "readwrite"
+            ? new Promise(() => undefined)
+            : transaction(mode, callback),
+        );
+      held.release();
+      // The server saved it: another device received it.
+      await otherDevice.assertMemoryDoc(["Hello"]);
+      await otherTab.assertMemoryDoc(["Hello"]);
+
+      prependChild(otherDevice, "World");
+      await otherTab.assertMemoryDoc(["World", "Hello"]);
+      await otherTab.assertIDBDoc({ doc: ["World", "Hello"], ops: [] });
+      dead.mockRestore();
+      held.restore();
+    });
   });
 });

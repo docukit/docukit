@@ -89,6 +89,7 @@ type DocCacheEntry<D, O> = {
 };
 
 const LOCAL_IDB_MAX_DEBOUNCE = 50;
+const STORAGE_GAP_TIMEOUT = 2000;
 
 export class DocSyncClient<
   D extends object = object,
@@ -97,6 +98,11 @@ export class DocSyncClient<
 > {
   protected _docBinding: DocBinding<D, S, O>;
   protected _docsCache = new Map<string, DocCacheEntry<D, O>>();
+  /**
+   * How long a server batch may wait for another tab of this device to store
+   * the one before it, before this tab subscribes again (see `docStream.ts`).
+   */
+  protected _storageGapTimeout = STORAGE_GAP_TIMEOUT;
   /** The server clock each live doc shows under its local edits. */
   protected _liveClocks = new WeakMap<D, number>();
   protected _localPromise: Promise<LocalResolved<S, O>>;

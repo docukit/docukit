@@ -31,6 +31,8 @@ export type DocStream<O> = {
   folds: Fold<O>[];
   /** The last integration queued, see `inStreamOrder`. */
   tail: Promise<void>;
+  /** Set while a batch waits for a gap in storage, see `watchStorageGap`. */
+  gapTimer?: ReturnType<typeof setTimeout>;
 };
 
 /**
@@ -346,6 +348,7 @@ async function integrateBatch<
       if (batch.mode !== "catchUp") restartDocStream(client, docId);
       return;
     }
+    watchStorageGap(client, { docId, stream, storedClock: stored.clock });
     const hasLocalOperations =
       pending.length > 0 ||
       (client["_localOpsBatchState"].get(docId)?.data.length ?? 0) > 0;
@@ -401,6 +404,34 @@ async function integrateBatch<
     }
     return;
   }
+}
+
+/**
+ * A batch waits to be stored when storage still lacks the one before it. That
+ * one belongs to another tab of this device, which got its clock from the
+ * server and stores it right after. If that tab died in between, nothing
+ * else would: once the gap outlives `_storageGapTimeout`, this tab subscribes
+ * again from its stored clock and gets the missing batches from the server.
+ *
+ * The dead tab's batch is still among the pending local batches, so the new
+ * subscription sends it again and the server saves it twice. Telling it apart
+ * needs batch ids.
+ */
+function watchStorageGap<D extends object, S extends object, O extends object>(
+  client: DocSyncClient<D, S, O>,
+  args: { docId: string; stream: DocStream<O>; storedClock: number },
+): void {
+  const { docId, stream, storedClock } = args;
+  const waiting = stream.folds[0];
+  if (!waiting || waiting.clock <= storedClock + 1 || stream.gapTimer) return;
+  stream.gapTimer = setTimeout(() => {
+    delete stream.gapTimer;
+    const cacheEntry = client["_docsCache"].get(docId);
+    // Stored meanwhile, or this stream already ended.
+    if (cacheEntry?.stream !== stream || stream.folds[0] !== waiting) return;
+    if (!isStreaming(client, stream)) return;
+    restartDocStream(client, docId);
+  }, client["_storageGapTimeout"]);
 }
 
 /** A batch pushed by the server: `operations` is absent for a sibling tab's. */
