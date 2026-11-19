@@ -84,7 +84,6 @@ export const onInsertRange = (
       newParent = target.parent!;
       break;
   }
-  const diff = doc["_diff"];
   doc["_operations"][0].push([
     0,
     nodes.map((node) => [node.id, node.type]),
@@ -92,38 +91,45 @@ export const onInsertRange = (
     newPrev?.id ?? 0,
     newNext?.id ?? 0,
   ]);
-  if (newParent && !diff.inserted.has(newParent.id)) {
+  if (!doc["_diff"].inserted.has(newParent.id)) {
     doc["_inverseOperations"][0].push([
       1,
       nodes[0]!.id,
       nodes.length > 1 ? nodes.at(-1)!.id : 0,
     ]);
   }
-  nodes.forEach((topLevelNode) => {
-    copyInsertedToDiff(topLevelNode);
-    topLevelNode.descendants().forEach((node) => {
-      copyInsertedToDiff(node);
-      const parent = node.parent!;
-      const children = getChildren(parent);
-      if (!node.prev) {
-        doc["_operations"][0].push([
-          0,
-          children.map((child) => [child.id, child.type]),
-          parent.id,
-          0,
-          0,
-        ]);
-        if (!diff.inserted.has(parent.id)) {
-          doc["_inverseOperations"][0].push([
-            1,
-            node.id,
-            parent.last !== node ? parent.last!.id : 0,
-          ]);
-        }
-      }
-    });
-  });
+  for (const node of nodes) {
+    copyInsertedToDiff(node);
+    onInsertChildren(doc, node);
+  }
 };
+
+/**
+ * The descendants of an inserted node, in the order a walk of them finds
+ * them: each list of children is inserted when its first child is found.
+ */
+function onInsertChildren(doc: Doc, parent: DocNode) {
+  const first = parent.first;
+  if (!first) return;
+  copyInsertedToDiff(first);
+  const written: [string, string][] = [];
+  for (let child: DocNode | undefined = first; child; child = child.next)
+    written.push([child.id, child.type]);
+  doc["_operations"][0].push([0, written, parent.id, 0, 0]);
+  if (!doc["_diff"].inserted.has(parent.id)) {
+    const last = parent.last!;
+    doc["_inverseOperations"][0].push([
+      1,
+      first.id,
+      last !== first ? last.id : 0,
+    ]);
+  }
+  onInsertChildren(doc, first);
+  for (let child = first.next; child; child = child.next) {
+    copyInsertedToDiff(child);
+    onInsertChildren(doc, child);
+  }
+}
 
 function copyInsertedToDiff(node: DocNode) {
   const doc = node.doc;
@@ -425,13 +431,4 @@ export function mergeOperations(...operationsList: Operations[]): Operations {
   }
 
   return [orderedOperations, statePatch];
-}
-
-// TODO: decide whether this will be added to the API in node.getChildren().toArray()
-function getChildren(node: DocNode) {
-  const children: DocNode[] = [];
-  node.children().forEach((node) => {
-    children.push(node);
-  });
-  return children;
 }

@@ -55,28 +55,27 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
   }
 
   /**
-   * Attaches the node relative to the parent, prev, and next,
-   * but does not necessarily attach it to the doc (this happens
-   * if the parent is not attached to the document)
+   * Links the node between `prev` and `next` under `parent`, and with
+   * `attached` (a parent in the document) puts it and its descendants in the
+   * document's map.
    */
-  private _attachNode(config: {
-    parent: DocNode;
-    prev?: DocNode | undefined;
-    next?: DocNode | undefined;
-  }) {
-    const isParentAttached = config.parent?.doc["_nodeMap"].has(
-      config.parent.id,
-    );
-    if (isParentAttached) {
-      const map = this.doc["_nodeMap"];
-      this.descendants({ includeSelf: true }).forEach((node) => {
-        map.set(node.id, node);
-      });
-    }
-    this._set("parent", config.parent);
-    this._set("prev", config.prev);
-    this._set("next", config.next);
-    return this;
+  private _attachNode(
+    parent: DocNode,
+    prev: DocNode | undefined,
+    next: DocNode | undefined,
+    attached: boolean,
+  ) {
+    if (attached) this._register(this.doc["_nodeMap"]);
+    this._set("parent", parent);
+    this._set("prev", prev);
+    this._set("next", next);
+  }
+
+  /** Puts the node and its descendants in `map`, without an iterator. */
+  private _register(map: Map<string, DocNode>) {
+    map.set(this.id, this);
+    for (let child = this.first; child; child = child.next)
+      child._register(map);
   }
 
   get state(): NodeState.Methods<T> {
@@ -811,35 +810,20 @@ export class Doc {
         target === this.root
       )
         throw new Error("Root node cannot have siblings");
-      nodes.forEach((topLevelNode) => {
-        topLevelNode.descendants({ includeSelf: true }).forEach((node) => {
-          if (this !== node.doc)
-            throw new Error("Node is from a different doc");
-          if (this._nodeMap.has(node.id))
-            // TODO: replace node.id with ${JSON.stringify(this.toJSON())). But for that,
-            // I should probably setState in onApplyOperations, otherwise the state will not appear yet.
-            throw new Error(
-              `Node '${node.id}' cannot be inserted because it already exists in the doc.`,
-            );
-          if (node.type === this.root.type)
-            throw new Error("You cannot insert nodes of type 'root'");
-        });
-      });
-      if (
-        position === "before" ||
-        (position === "append" && this._nodeMap.has(target.id))
-      ) {
-        ops.onInsertRange(this, target, position, nodes);
-      }
+      // One pass per node and its descendants: inserting many nodes at once
+      // (pasting, importing) costs the same per node as inserting one.
+      for (const node of nodes) this._checkInsertable(node);
       switch (position) {
         case "append": {
+          const attached = this._nodeMap.has(target.id);
+          if (attached) ops.onInsertRange(this, target, position, nodes);
           let current = target.last;
-          nodes.forEach((node) => {
-            node["_attachNode"]({ parent: target, prev: current });
+          for (const node of nodes) {
+            node["_attachNode"](target, current, undefined, attached);
             if (current) current["_set"]("next", node);
             else target["_set"]("first", node);
             current = node;
-          });
+          }
           target["_set"]("last", current);
           break;
         }
@@ -849,15 +833,13 @@ export class Doc {
           break;
         }
         case "before": {
+          ops.onInsertRange(this, target, position, nodes);
           let current = target;
           const parent = target.parent!;
+          const attached = this._nodeMap.has(parent.id);
           for (let i = nodes.length - 1; i >= 0; i--) {
             const node = nodes[i]!;
-            node["_attachNode"]({
-              parent: parent,
-              next: current,
-              prev: current.prev,
-            });
+            node["_attachNode"](parent, current.prev, current, attached);
             if (current.prev) current.prev["_set"]("next", node);
             current["_set"]("prev", node);
             current = node;
@@ -872,6 +854,21 @@ export class Doc {
         }
       }
     });
+  }
+
+  /** Throws unless `node` and its descendants can be inserted in this document. */
+  private _checkInsertable(node: DocNode) {
+    if (this !== node.doc) throw new Error("Node is from a different doc");
+    if (this._nodeMap.has(node.id))
+      // TODO: replace node.id with ${JSON.stringify(this.toJSON())). But for that,
+      // I should probably setState in onApplyOperations, otherwise the state will not appear yet.
+      throw new Error(
+        `Node '${node.id}' cannot be inserted because it already exists in the doc.`,
+      );
+    if (node.type === this.root.type)
+      throw new Error("You cannot insert nodes of type 'root'");
+    for (let child = node.first; child; child = child.next)
+      this._checkInsertable(child);
   }
 
   /**
