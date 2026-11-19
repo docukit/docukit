@@ -698,17 +698,16 @@ describe("sync", () => {
     });
   });
 
-  test("does not delete a newer write when two squashes overlap", async () => {
-    const { provider, hold } = createHoldableProvider();
-    await testWrapper({ auth: validAuth, provider }, async (T) => {
+  test("does not delete a newer write when two syncs reach the threshold together", async () => {
+    await testWrapper({ auth: validAuth }, async (T) => {
       await T.waitForConnect();
       const docId = "01kfpgjsabrpdcw0qgh5evhy2p";
       const serializedDoc = await T.seedDocument(docId, 100);
       const lateOperation = createTestOperation();
 
-      // 1-2: two syncs that both trigger a squash, 3-4: the squashes,
-      // 5: a late write. Each hold makes sure the next ones have been requested.
-      hold({ transaction: 1, until: 2 }, { transaction: 3, until: 5 });
+      // Syncs of a document run one at a time, so the second one is answered
+      // after the first one's squash was queued, and both squashes cannot
+      // read the same log.
       await Promise.all([
         T.sync({ docId, serializedDoc }),
         T.sync({ docId, serializedDoc }),

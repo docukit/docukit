@@ -58,28 +58,50 @@ export type Result<D, E = Error> =
 // DocSync Events (Request/Response)
 // ============================================================================
 
-/** Shared request payload for the sync event (client sends, server receives). */
-export type SyncRequest<S = unknown, O = unknown> = {
-  type: string;
+/**
+ * Shared request payload for the sync event (client sends, server receives).
+ *
+ * The first sync of a document on a connection subscribes to it: it carries
+ * the clock of the client's copy and gets back what the client lacks. From
+ * then on the server pushes every batch other clients save, in the order it
+ * saves them, over the same connection, so later syncs carry only operations.
+ */
+export type SyncRequest<S = unknown, O = unknown> =
+  | {
+      type: string;
+      docId: string;
+      operations: O[];
+      serializedDoc: S | null;
+      clock: number;
+    }
+  | {
+      docId: string;
+      operations: O[];
+      type?: never;
+      serializedDoc?: never;
+      clock?: never;
+    };
+
+/** What a subscription gets back: everything the server has after its clock. */
+export type SubscriptionData<S = unknown, O = unknown> = {
   docId: string;
   operations: O[];
   serializedDoc: S | null;
   clock: number;
+  /**
+   * The server has no copy of a doc the client already synced. Nothing was
+   * saved: the client must repeat the request with its `serializedDoc`.
+   */
+  needsSerializedDoc?: true;
 };
 
-/** Shared response for the sync event (server sends, client receives). */
+/**
+ * Shared response for the sync event (server sends, client receives). A
+ * subscribed sync gets only the clock of its batch: everything before it was
+ * already pushed.
+ */
 export type SyncResponse<S = unknown, O = unknown> = Result<
-  {
-    docId: string;
-    operations: O[];
-    serializedDoc: S | null;
-    clock: number;
-    /**
-     * The server has no copy of a doc the client already synced. Nothing was
-     * saved: the client must repeat the request with its `serializedDoc`.
-     */
-    needsSerializedDoc?: true;
-  },
+  SubscriptionData<S, O> | { clock: number },
   {
     type: "AuthorizationError" | "DatabaseError" | "ValidationError";
     message: string;
@@ -144,11 +166,17 @@ export type ClientToServerEvents<S, O> = {
   "unsubscribe-doc": UnsubscribeDocHandler;
 };
 
-export type ServerToClientEvents = {
+export type ServerToClientEvents<O> = {
   // Server sends the verified identity for local persistence.
   identity: (payload: IdentityPayload) => void;
-  // Server notifies clients that a document has been modified
-  dirty: (payload: { docId: string }) => void;
+  /**
+   * A batch the server saved for a document this connection subscribed to,
+   * pushed in the server's order and without its clock: it is the one after
+   * the last batch this connection received or saved. Without `operations`,
+   * the batch came from another tab of the same device, which already has
+   * them in its shared storage.
+   */
+  operations: (docId: string, operations?: O[]) => void;
   // Server notifies clients whether another user is online in the same document
   collaboration: (payload: {
     docId: string;

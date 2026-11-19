@@ -501,8 +501,10 @@ describe("Local-First", () => {
       reference.connect();
       otherTab.connect();
       otherDevice.connect();
+      // Each tab follows the server's order once it syncs, whatever order its
+      // own edits and the other tab's reached it in.
       await reference.assertMemoryDoc(["A", "B", "C"]);
-      await otherTab.assertMemoryDoc(["B", "A", "C"]);
+      await otherTab.assertMemoryDoc(["A", "B", "C"]);
       await otherDevice.assertMemoryDoc(["A", "B", "C"]);
 
       await reference.assertIDBDoc({ doc: ["A", "B", "C"], ops: [] });

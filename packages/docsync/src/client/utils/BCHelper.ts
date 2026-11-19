@@ -1,5 +1,6 @@
 import type { DocSyncClient } from "../index.js";
 import { applyPresencePatch } from "./applyPresencePatch.js";
+import { receiveStoredBatches } from "./docStream.js";
 
 type BroadcastSource = "network" | "local-broadcast";
 
@@ -12,7 +13,8 @@ type BroadcastMessage<O> =
       flags: { skipUndo?: boolean };
       presence: Record<string, unknown>;
     }
-  | { type: "PRESENCE"; docId: string; presence: Record<string, unknown> };
+  | { type: "PRESENCE"; docId: string; presence: Record<string, unknown> }
+  | { type: "STORED"; docId: string; clock: number };
 
 export class BCHelper<
   D extends object,
@@ -37,6 +39,10 @@ export class BCHelper<
         const cacheEntry = client["_docsCache"].get(docId);
         if (cacheEntry)
           applyPresencePatch(client["_clientId"], cacheEntry, presence);
+        return;
+      }
+      if (msg.type === "STORED") {
+        receiveStoredBatches(client, { docId: msg.docId, clock: msg.clock });
         return;
       }
       if (msg.type === "PRESENCE") {

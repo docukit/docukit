@@ -29,15 +29,19 @@ Every edit (a keystroke, a click, anything) follows the same path:
 
 Pieces 1 and 2 are persisted (by default to IndexedDB), so closing the tab or going offline doesn't lose anything. Piece 3 is reconstructed from 1 + 2 on startup.
 
-## The sync round-trip
+## Subscribing and receiving pushes
 
-The client sends `localOps` to the server. It sends its snapshot only while its copy is still at clock `0`, because a document created on this client (for example, offline) may not exist on the server yet. After that, syncs carry only operations. If the server has lost its copy (for example, it expired), it saves nothing and asks for the snapshot, and the client repeats the request with it.
+The first sync of a document on a connection **subscribes** to it. The client sends its `clock` and its `localOps` (and its snapshot only while its copy is still at clock `0`, because a document created on this client, for example offline, may not exist on the server yet); the server replies with what the client is missing since that clock (operations, or the snapshot when the log no longer reaches that far) and the clock assigned to the client's operations.
 
-Two things can come back:
+From then on, the server **pushes** every batch it saves for that document to every subscribed connection, in the order it saves them. A push carries only the document id and the operations: Socket.IO delivers messages of a connection in order, and the server numbers batches one by one, so each push is the batch after the previous one. Other tabs of the sending device get a bare notice instead, because they already have those operations. Later syncs from a subscribed client carry only `localOps`, and the reply is just their clock.
+
+After a reconnect the client subscribes again from its stored clock, so it catches up on whatever it missed. If the server has lost its copy (for example, it expired), it saves nothing and asks for the snapshot, and the client repeats the subscription with it.
+
+## Applying what arrives
 
 ### a) No concurrent edits
 
-The server confirms: "got your ops, nothing new from anyone else." The response carries the `clock` assigned to those ops. The client then:
+When the client has no unconfirmed operations, a pushed batch is applied to `doc` and squashed into `serializedDoc`. When the server confirms the client's own operations, the client:
 
 - Squashes `localOps` into `serializedDoc` (applies them to the snapshot).
 - Clears `localOps`.
@@ -45,10 +49,10 @@ The server confirms: "got your ops, nothing new from anyone else." The response 
 
 ### b) Concurrent edits from other clients
 
-The server confirms, but also returns `serverOps` — operations from other clients that the requesting client hadn't seen yet. The client then:
+A batch from another client can arrive while the client still has `localOps` the server has not confirmed. The server puts that batch first, so the client:
 
 - Starts from `serializedDoc`.
-- Applies `serverOps` first.
+- Applies the server's batch first.
 - Applies `localOps` on top.
 - Replaces `doc` with the result.
 
@@ -63,11 +67,13 @@ The server stores, per document:
 - The latest **snapshot** (clock-tagged).
 - An append-only **log of operation batches** since that snapshot, each tagged with its own clock.
 
-When a sync request arrives with `clock = X`, the server:
+When a subscription arrives with `clock = X`, the server:
 
 1. Looks up operations with `clock > X` (what the client is missing).
-2. Appends the client's incoming operations to the log, assigning them a new `clock`.
+2. Appends the client's incoming operations to the log, assigning them the next `clock`.
 3. Replies with the missing operations (if any), the snapshot (only if the client has no copy or the snapshot is newer than the client's), and the assigned clock.
+
+Every saved batch is then pushed to the other subscribers. The server handles the syncs of a document one at a time, from saving a batch to pushing it, so every connection receives the batches in clock order.
 
 When the operation log gets long, the server squashes it into the snapshot and trims the log.
 

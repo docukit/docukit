@@ -50,6 +50,8 @@ export class DocSyncServer<
   private _presenceByDoc = new Map<string, Presence>();
   // Track which sockets are subscribed to which documents (for cleanup on disconnect)
   private _socketToDocsMap = new Map<string, Set<string>>();
+  /** The last task queued per document; see `_inDocOrder`. */
+  private _docQueues = new Map<string, Promise<void>>();
 
   // Event listeners (observers); distinct from socket request/response handlers
   // ClientConnectEventListener and SyncRequestEventListener use default (unknown) to allow covariance
@@ -66,7 +68,7 @@ export class DocSyncServer<
 
     this._io = new Server<
       ClientToServerEvents<S, O>,
-      ServerToClientEvents,
+      ServerToClientEvents<O>,
       Record<string, never>,
       AuthenticatedSocketData<TContext>
     >(port, {
@@ -191,6 +193,29 @@ export class DocSyncServer<
    */
   async close(): Promise<void> {
     await this._io.close();
+  }
+
+  /**
+   * Runs `task` once every task queued earlier for `docId` has finished.
+   *
+   * Syncs and unsubscribes of a document go through here in the order they
+   * arrive. A batch is saved and pushed to every subscriber before the next
+   * one is saved, so each connection receives the batches of a document in
+   * the order of their clocks, and a subscription takes either a batch in its
+   * response or as a push, never both and never neither.
+   */
+  private _inDocOrder<T>(docId: string, task: () => Promise<T>): Promise<T> {
+    const previous = this._docQueues.get(docId) ?? Promise.resolve();
+    const result = previous.then(task);
+    const settled = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    this._docQueues.set(docId, settled);
+    void settled.then(() => {
+      if (this._docQueues.get(docId) === settled) this._docQueues.delete(docId);
+    });
+    return result;
   }
 
   // ============================================================================
