@@ -4,7 +4,7 @@ import type { ClientProvider, Identity } from "../types.js";
 
 // Bump when stores or indexes change. For migration policies, see
 // https://github.com/docukit/docukit/pull/81
-const SCHEMA = 2;
+const SCHEMA = 3;
 
 interface DocNodeIDB<S extends object, O extends object> extends DBSchema {
   docs: {
@@ -17,7 +17,14 @@ interface DocNodeIDB<S extends object, O extends object> extends DBSchema {
     value: { operations: O[]; docId: string };
     indexes: { docId_idx: string };
   };
+  serverOperations: {
+    key: [string, number]; // [docId, clock]
+    value: { docId: string; clock: number; operations: O[] };
+  };
 }
+
+const serverOperationsUpTo = (docId: string, clock: number) =>
+  IDBKeyRange.bound([docId, -Infinity], [docId, clock]);
 
 /**
  * IndexedDB-backed client provider.
@@ -35,6 +42,7 @@ export function indexedDBProvider<S extends object, O extends object>(
         autoIncrement: true,
       });
       operationsStore.createIndex("docId_idx", "docId");
+      db.createObjectStore("serverOperations", { keyPath: ["docId", "clock"] });
     },
   });
 
@@ -43,7 +51,10 @@ export function indexedDBProvider<S extends object, O extends object>(
       const db = await dbPromise;
 
       // Cast as readwrite to support all context operations in compile time
-      const tx = db.transaction(["docs", "operations"], mode as "readwrite");
+      const tx = db.transaction(
+        ["docs", "operations", "serverOperations"],
+        mode as "readwrite",
+      );
 
       try {
         const result = await callback({
@@ -58,6 +69,31 @@ export function indexedDBProvider<S extends object, O extends object>(
               if (!wanted || wanted.has(cursor.primaryKey))
                 clocks.push({ docId: cursor.primaryKey, clock: cursor.key });
               cursor = await cursor.continue();
+            }
+            // Server batches stored after a snapshot take its doc further.
+            // Their keys are [docId, clock], so the last one of a doc wins.
+            const byDocId = new Map(
+              clocks.map((entry) => [entry.docId, entry]),
+            );
+            let batch = await tx
+              .objectStore("serverOperations")
+              .openKeyCursor();
+            let moved = false;
+            while (batch) {
+              const [docId, clock] = batch.key;
+              const entry = byDocId.get(docId);
+              if (entry && clock > entry.clock) {
+                entry.clock = clock;
+                moved = true;
+              }
+              batch = await batch.continue();
+            }
+            if (moved) {
+              clocks.sort(
+                (a, b) =>
+                  a.clock - b.clock ||
+                  (a.docId < b.docId ? -1 : a.docId > b.docId ? 1 : 0),
+              );
             }
             return clocks;
           },
@@ -98,6 +134,36 @@ export function indexedDBProvider<S extends object, O extends object>(
           async deleteOperations({ ids }) {
             const store = tx.objectStore("operations");
             await Promise.all(ids.map((id) => store.delete(id)));
+          },
+
+          async getServerOperations({ docId }) {
+            const batches = await tx
+              .objectStore("serverOperations")
+              .getAll(serverOperationsUpTo(docId, Infinity));
+            return batches.map(({ clock, operations }) => ({
+              clock,
+              operations,
+            }));
+          },
+
+          async countServerOperations({ docId }) {
+            const store = tx.objectStore("serverOperations");
+            const range = serverOperationsUpTo(docId, Infinity);
+            const [count, last] = await Promise.all([
+              store.count(range),
+              store.openKeyCursor(range, "prev"),
+            ]);
+            return { count, lastClock: last?.key[1] };
+          },
+
+          async saveServerOperations(batch) {
+            await tx.objectStore("serverOperations").put(batch);
+          },
+
+          async deleteServerOperations({ docId, clock }) {
+            await tx
+              .objectStore("serverOperations")
+              .delete(serverOperationsUpTo(docId, clock));
           },
         });
         await tx.done;

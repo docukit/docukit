@@ -209,6 +209,11 @@ describe("DocSyncClient", () => {
           deleteOperations: () => Promise.resolve(undefined),
           saveOperations,
           saveSerializedDoc: () => Promise.resolve(undefined),
+          getServerOperations: () => Promise.resolve([]),
+          countServerOperations: () =>
+            Promise.resolve({ count: 0, lastClock: undefined }),
+          saveServerOperations: () => Promise.resolve(undefined),
+          deleteServerOperations: () => Promise.resolve(undefined),
         }),
     };
 
@@ -1997,7 +2002,7 @@ describe("DocSyncClient", () => {
         ).toBe(false);
       });
 
-      test("should finish provider consolidation when a sync is invalidated after saving its snapshot", async () => {
+      test("should finish provider consolidation when a sync is invalidated after storing its batch", async () => {
         const client = createClient();
         const callback = createCallback();
         const docId = ulid().toLowerCase();
@@ -2030,8 +2035,8 @@ describe("DocSyncClient", () => {
             return transaction(mode, (ctx) =>
               transactionCallback({
                 ...ctx,
-                saveSerializedDoc: async (payload) => {
-                  await ctx.saveSerializedDoc(payload);
+                saveServerOperations: async (payload) => {
+                  await ctx.saveServerOperations(payload);
                   setSocketState(client, { active: true, connected: false });
                   emitMockedSocketEvent(
                     client,

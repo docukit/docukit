@@ -1,8 +1,17 @@
 import { onTestFinished } from "vitest";
 
-export const openPreviousDatabase = (userId: string) =>
+/** Names earlier schemas gave a user's database. */
+export const previousDatabaseNames = {
+  "schema 1": (userId: string) => `docsync-${userId}`,
+  "schema 2": (userId: string) => `docsync:v2:${userId}`,
+};
+
+export const openPreviousDatabase = (
+  userId: string,
+  name: (userId: string) => string,
+) =>
   new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(`docsync-${userId}`, 1);
+    const request = indexedDB.open(name(userId), 1);
     request.onupgradeneeded = () => {
       const db = request.result;
       db.createObjectStore("docs", { keyPath: "docId" });

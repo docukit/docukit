@@ -5,6 +5,11 @@ import type {
 import type { DocSyncClient } from "../../../index.js";
 import type { ClientProvider, OperationsBatch } from "../../../types.js";
 import { getLocalDocVersion } from "../../../utils/localDocVersion.js";
+import {
+  deserializeStoredDoc,
+  readStoredDoc,
+  saveSnapshot,
+} from "../../../utils/storedDoc.js";
 
 export type ReconcileSyncResult<D extends object, O extends object> =
   | { type: "none" }
@@ -66,7 +71,7 @@ export async function prepareSyncReconciliation<
 
   await provider.transaction("readwrite", async (ctx) => {
     if (!isCurrent()) return;
-    const stored = await ctx.getSerializedDoc({ docId });
+    const stored = await readStoredDoc(ctx, docId);
     if (!isCurrent()) return;
     // A newer sync already updated IndexedDB; this response must not rewind it.
     if (stored !== undefined && stored.clock > data.clock) {
@@ -80,9 +85,6 @@ export async function prepareSyncReconciliation<
     ) {
       return;
     }
-
-    const baseSerializedDoc = data.serializedDoc ?? stored?.serializedDoc;
-    if (baseSerializedDoc === undefined) return;
 
     if (
       !hasServerSnapshot &&
@@ -103,12 +105,19 @@ export async function prepareSyncReconciliation<
       .filter((batch) => !acknowledgedIds.has(batch.id))
       .flatMap((batch) => batch.operations);
 
-    const doc = client["_docBinding"].deserialize(baseSerializedDoc);
+    // The subscription folds what is stored into one snapshot: it runs once
+    // per load or reconnect, and its response may hold many batches.
+    let doc: D;
+    if (data.serializedDoc !== null) {
+      doc = client["_docBinding"].deserialize(data.serializedDoc);
+    } else if (stored) {
+      doc = deserializeStoredDoc(client, stored);
+    } else return;
     applyOperations(client, doc, data.operations, { skipUndo: true });
     applyOperations(client, doc, localOperations, { skipUndo: true });
     const serializedDoc = client["_docBinding"].serialize(doc);
 
-    const recheckStored = await ctx.getSerializedDoc({ docId });
+    const recheckStored = await readStoredDoc(ctx, docId);
     if (!isCurrent()) return;
     if (stored !== undefined && recheckStored?.clock !== stored.clock) return;
     if (stored === undefined && recheckStored !== undefined) return;
@@ -117,7 +126,7 @@ export async function prepareSyncReconciliation<
     // this transaction even if the connection changes. Returning between the
     // two writes could commit a snapshot that already contains the operations
     // while leaving those same operations queued to be applied a second time.
-    await ctx.saveSerializedDoc({ serializedDoc, docId, clock: data.clock });
+    await saveSnapshot(ctx, { docId, serializedDoc, clock: data.clock });
     if (acknowledgedIds.size > 0) {
       await ctx.deleteOperations({ docId, ids: [...acknowledgedIds] });
     }

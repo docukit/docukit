@@ -462,30 +462,21 @@ const createClientUtils = async (
             throw new Error("Client has no local provider configured");
           }
 
-          const result = await local.provider.transaction(
-            "readonly",
-            async (ctx) => {
-              const docResult = await ctx.getSerializedDoc({ docId });
-              const operations = await ctx.getOperations({ docId });
-              return { docResult, operations };
-            },
-          );
+          const { stored, pending } = await readStoredCopy(client, docId);
 
           if (!expected) {
-            expect(result.docResult).toBeUndefined();
-            expect(result.operations).toStrictEqual([]);
+            expect(stored).toBeUndefined();
+            expect(pending).toStrictEqual([]);
             return true;
           }
 
-          if (!result.docResult) {
+          if (!stored) {
             throw new Error(
               `Document ${docId} not found in IndexedDB for user ${userId}`,
             );
           }
 
-          const deserializedDoc = client["_docBinding"].deserialize(
-            result.docResult.serializedDoc,
-          );
+          const deserializedDoc = stored.doc;
 
           const actualDocChildren: string[] = [];
           deserializedDoc.root.children().forEach((child) => {
@@ -495,7 +486,7 @@ const createClientUtils = async (
 
           const opsChildren: string[] = [];
 
-          for (const { operations: batch } of result.operations) {
+          for (const batch of pending) {
             if (batch.length === 0) continue;
             for (const item of batch) {
               if (!Array.isArray(item) || item.length < 2) continue;
@@ -554,9 +545,7 @@ const createClientUtils = async (
         .toBe(expected);
     },
     storedClock: async () => {
-      const stored = await local.provider.transaction("readonly", (ctx) =>
-        ctx.getSerializedDoc({ docId }),
-      );
+      const { stored } = await readStoredCopy(client, docId);
       return stored?.clock;
     },
     disconnect: () => {
@@ -618,6 +607,43 @@ const createClientUtils = async (
 };
 
 export const emptyIDB = { doc: [], ops: [] };
+
+/**
+ * What a client stores of a document, as a reload reads it: the snapshot with
+ * the server batches stored after it, and the local batches still pending.
+ */
+export const readStoredCopy = async (
+  client: DocSyncClient<Doc, JsonDoc, Operations>,
+  docId: string,
+) => {
+  const { provider } = await client["_localPromise"];
+  const [snapshot, serverBatches, pending] = await provider.transaction(
+    "readonly",
+    (ctx) =>
+      Promise.all([
+        ctx.getSerializedDoc({ docId }),
+        ctx.getServerOperations({ docId }),
+        ctx.getOperations({ docId }),
+      ]),
+  );
+  const pendingOperations = pending.map((batch) => batch.operations);
+  if (!snapshot) {
+    return { stored: undefined, serverBatches: 0, pending: pendingOperations };
+  }
+  const binding = client["_docBinding"];
+  const doc = binding.deserialize(snapshot.serializedDoc);
+  for (const batch of serverBatches) {
+    for (const operations of batch.operations) {
+      binding.applyOperations(doc, operations);
+    }
+  }
+  const clock = serverBatches.at(-1)?.clock ?? snapshot.clock;
+  return {
+    stored: { doc, clock },
+    serverBatches: serverBatches.length,
+    pending: pendingOperations,
+  };
+};
 
 /** One commit per text, so each text is one operation on the server. */
 export const commitEdits = (device: ClientUtils, texts: string[]): void => {

@@ -1,5 +1,9 @@
 import type { DocSyncClient } from "../index.js";
-import type { ClientProvider, OperationsBatch } from "../types.js";
+import type {
+  ClientProvider,
+  OperationsBatch,
+  ServerOperationsBatch,
+} from "../types.js";
 import { handleSync } from "../handlers/clientInitiated/sync/sync.js";
 import { dispatchLocalDocFound } from "./dispatchDocQueryAction.js";
 import {
@@ -7,6 +11,14 @@ import {
   replaceDocInCache,
   resolvePendingMemoryOperations,
 } from "./liveDoc.js";
+import {
+  type StoredDoc,
+  type StoredClock,
+  appendServerBatches,
+  deserializeStoredDoc,
+  readStoredClock,
+  readStoredDoc,
+} from "./storedDoc.js";
 
 /**
  * How a document's server batches reach this client once it subscribed on the
@@ -138,18 +150,19 @@ async function storeFolds<D extends object, S extends object, O extends object>(
     stream: DocStream<O>;
     provider: ClientProvider<S, O>;
     clock: number;
+    /** Whether the live doc may be rebuilt, given the pending local batches. */
+    readDoc: (pending: OperationsBatch<O>[]) => boolean;
   },
 ) {
   const { docId, stream, provider } = args;
-  const docBinding = client["_docBinding"];
   let storedBefore = Infinity;
   const [state, done] = await provider.transaction("readwrite", async (ctx) => {
-    const stored = await ctx.getSerializedDoc({ docId });
+    const stored = await readStoredClock(ctx, docId);
     const batches = await ctx.getOperations({ docId });
     if (!stored) return [{ stored, pending: batches }, 0] as const;
     storedBefore = stored.clock;
 
-    let doc: D | undefined;
+    const append: ServerOperationsBatch<O>[] = [];
     let clock = stored.clock;
     let done = 0;
     const acknowledged = new Set<number>();
@@ -158,29 +171,30 @@ async function storeFolds<D extends object, S extends object, O extends object>(
       // snapshot) only acknowledges; a later one waits for the gap to fill.
       if (fold.clock > clock + 1 || fold.clock > args.clock) break;
       if (fold.clock === clock + 1 && fold.operations.length > 0) {
-        doc ??= docBinding.deserialize(stored.serializedDoc);
-        for (const operations of fold.operations) {
-          docBinding.applyOperations(doc, operations, { skipUndo: true });
-        }
+        append.push({ clock: fold.clock, operations: fold.operations });
         clock = fold.clock;
       }
       for (const id of fold.ids) acknowledged.add(id);
       done += 1;
     }
-    const serializedDoc = doc
-      ? docBinding.serialize(doc)
-      : stored.serializedDoc;
-    if (doc) await ctx.saveSerializedDoc({ docId, serializedDoc, clock });
+    const next =
+      append.length > 0
+        ? await appendServerBatches(client, ctx, {
+            docId,
+            stored,
+            batches: append,
+          })
+        : stored;
     if (acknowledged.size > 0) {
       await ctx.deleteOperations({ docId, ids: [...acknowledged] });
     }
-    return [
-      {
-        stored: { serializedDoc, clock },
-        pending: batches.filter((batch) => !acknowledged.has(batch.id)),
-      },
-      done,
-    ] as const;
+    const pending = batches.filter((batch) => !acknowledged.has(batch.id));
+    // Read in this same transaction: the live doc must not lag behind what
+    // storage holds for longer than it takes to rebuild it.
+    const doc = args.readDoc(pending)
+      ? await readStoredDoc(ctx, docId)
+      : undefined;
+    return [{ stored: doc ? { ...next, doc } : next, pending }, done] as const;
   });
   stream.folds.splice(0, done);
   if (state.stored && state.stored.clock > storedBefore) {
@@ -249,7 +263,7 @@ function rebuildLiveDoc<D extends object, S extends object, O extends object>(
     docId: string;
     liveDoc: D;
     promisedDoc: Promise<D | undefined>;
-    stored: { serializedDoc: S; clock: number };
+    stored: StoredDoc<S, O>;
     pending: OperationsBatch<O>[];
   },
 ) {
@@ -265,7 +279,7 @@ function rebuildLiveDoc<D extends object, S extends object, O extends object>(
     docId,
     batchBeforeExport,
   );
-  const doc = docBinding.deserialize(stored.serializedDoc);
+  const doc = deserializeStoredDoc(client, stored);
   const local = [...pending.flatMap((batch) => batch.operations), ...memory];
   for (const operations of local) {
     docBinding.applyOperations(doc, operations, { skipUndo: true });
@@ -314,6 +328,9 @@ async function integrateBatch<
     client["_docsCache"].get(docId) === cacheEntry &&
     cacheEntry.stream?.folds === stream.folds;
   const { provider } = await client["_localPromise"];
+  // Rebuilding the live doc needs the stored doc, which is read only when a
+  // rebuild may follow. `always` covers a guess that missed.
+  let always = false;
 
   for (;;) {
     if (!isLoaded()) return;
@@ -328,11 +345,27 @@ async function integrateBatch<
     }
     const finishedWrites = client["_finishedLocalWrites"];
     const promisedDoc = cacheEntry.promisedDoc;
+    const liveDocBefore = await promisedDoc;
+    const liveClockBefore =
+      liveDocBefore && getLiveClock(client, liveDocBefore);
     const { stored, pending } = await storeFolds(client, {
       docId,
       stream,
       provider,
       clock,
+      readDoc: (pending) => {
+        if (always) return true;
+        if (batch.mode === "catchUp") return liveClockBefore !== clock;
+        if (liveClockBefore !== undefined && liveClockBefore >= clock) {
+          return false;
+        }
+        if (liveClockBefore !== clock - 1) return true;
+        return (
+          batch.mode === "pushed" &&
+          (pending.length > 0 ||
+            (client["_localOpsBatchState"].get(docId)?.data.length ?? 0) > 0)
+        );
+      },
     });
     const liveDoc = await promisedDoc;
     if (!isLoaded()) return;
@@ -359,11 +392,15 @@ async function integrateBatch<
     const liveClock = getLiveClock(client, liveDoc);
     if (batch.mode === "catchUp") {
       if (liveClock !== clock && stored.clock >= clock) {
+        if (!stored.doc) {
+          always = true;
+          continue;
+        }
         rebuildLiveDoc(client, {
           docId,
           liveDoc,
           promisedDoc,
-          stored,
+          stored: stored.doc,
           pending,
         });
       }
@@ -391,7 +428,17 @@ async function integrateBatch<
     if (stored.clock >= clock) {
       // The live doc holds local operations the server puts after this
       // batch, or it lags behind storage.
-      rebuildLiveDoc(client, { docId, liveDoc, promisedDoc, stored, pending });
+      if (!stored.doc) {
+        always = true;
+        continue;
+      }
+      rebuildLiveDoc(client, {
+        docId,
+        liveDoc,
+        promisedDoc,
+        stored: stored.doc,
+        pending,
+      });
       return;
     }
     // Storage waits for a batch another tab of this device sent and has yet

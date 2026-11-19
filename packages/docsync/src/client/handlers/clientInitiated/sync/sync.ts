@@ -33,6 +33,11 @@ import {
 import { getLocalDocVersion } from "../../../utils/localDocVersion.js";
 import { request } from "../../../utils/request.js";
 import {
+  deserializeStoredDoc,
+  readStoredDoc,
+  serializeStoredDoc,
+} from "../../../utils/storedDoc.js";
+import {
   cancelPendingSyncRetry,
   clearSyncRetry,
   scheduleSyncRetry,
@@ -119,17 +124,24 @@ async function runSyncAttempt<
   const { provider } = await client["_localPromise"];
   if (!isLive()) return stale;
 
-  // Prepare payload: read operations and clock from provider.
-  const [operationsBatches, stored] = await provider.transaction(
-    "readonly",
-    async (ctx) => {
+  // A subscribed sync sends only operations, so it reads only those. Reading
+  // the stored doc costs as much as the whole document.
+  const isSubscribed = () =>
+    isStreaming(client, client["_docsCache"].get(docId)?.stream);
+  const read = (withDoc: boolean) =>
+    provider.transaction("readonly", async (ctx) => {
       return Promise.all([
         ctx.getOperations({ docId }),
-        ctx.getSerializedDoc({ docId }),
+        withDoc ? readStoredDoc(ctx, docId) : undefined,
       ]);
-    },
-  );
+    });
+  let [operationsBatches, stored] = await read(!isSubscribed());
   if (!isLive()) return stale;
+  // The stream ended while reading: this sync subscribes again.
+  if (!stored && !isSubscribed()) {
+    [operationsBatches, stored] = await read(true);
+    if (!isLive()) return stale;
+  }
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return stale;
   const operations = operationsBatches.flatMap((batch) => batch.operations);
@@ -142,7 +154,7 @@ async function runSyncAttempt<
     const liveDoc = await promisedDoc;
     if (!isLive()) return stale;
     if (!liveDoc && cacheEntry.promisedDoc === promisedDoc) {
-      const doc = client["_docBinding"].deserialize(stored.serializedDoc);
+      const doc = deserializeStoredDoc(client, stored);
       for (const operation of operations) {
         client["_docBinding"].applyOperations(doc, operation, {
           skipUndo: true,
@@ -176,16 +188,23 @@ async function runSyncAttempt<
   let response: SyncResponse<S, O>;
   try {
     response = await request(client["_socket"], "sync", req);
-    if (stored && response.data && "needsSerializedDoc" in response.data) {
+    const copy =
+      response.data && "needsSerializedDoc" in response.data
+        ? (stored ??
+          (await provider.transaction("readonly", (ctx) =>
+            readStoredDoc(ctx, docId),
+          )))
+        : undefined;
+    if (copy) {
       if (!isLive()) return stale;
       // The server lost its copy and saved nothing: subscribe again with ours.
       subscribed = false;
       req = {
         type: cacheEntry.type,
-        clock: stored.clock,
+        clock: copy.clock,
         docId,
         operations,
-        serializedDoc: stored.serializedDoc,
+        serializedDoc: serializeStoredDoc(client, copy),
       };
       response = await request(client["_socket"], "sync", req);
     }
