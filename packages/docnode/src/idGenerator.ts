@@ -58,42 +58,72 @@ function incrementStringInBase64(str: string): string {
   return base64Alphabet[1] + FIRST_CHAR.repeat(n);
 }
 
-/**
- * Function (factory) that returns another function (generator).
- *
- * It doesn't return an ID, but rather a function that generates IDs when called.
- *
- * This is done so that it can generate monotonically increasing IDs,
- * reducing the probability of collisions.
- *
- * @param doc
- * @returns nodeIdGenerator
- */
-export const nodeIdFactory = (
-  doc: Doc,
-  extractTime: (id: string) => number,
-) => {
-  const rootId = doc.root.id;
-  let createdAt: number;
-  try {
-    createdAt = extractTime(rootId);
-  } catch (error) {
-    throw new Error(
-      `Failed to extract time from root id '${rootId}'. ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-  // Absolute: a root clock ahead of this device would leave the time part empty.
-  const milisecondsPassed = Math.abs(Date.now() - createdAt);
-  const milisecondsInBase64 = numberToBase64(milisecondsPassed);
-  const randomString = randomStringBase64(3);
-  const sessionId = milisecondsInBase64 + randomString;
-  let clock = FIRST_CHAR;
+/** The number a `numberToBase64` string stands for, from `from` to its end. */
+function base64ToNumber(text: string, from: number) {
+  let num = 0;
+  for (let i = from; i < text.length; i++)
+    num = num * ALPH_LEN + IDX[text.charCodeAt(i)]!;
+  return num;
+}
 
-  const nodeIdGenerator = () => {
-    const id = `${sessionId}.${clock}`;
-    clock = incrementStringInBase64(clock);
+/**
+ * The node ids of a document's session: `session.clock`, the session being
+ * the milliseconds since the root was created and a few random characters,
+ * and the clock growing from 0, so that ids grow monotonically and seldom
+ * collide.
+ *
+ * Two replicas can still get the same session. Like Yjs with its client id
+ * (`cleanupTransactions`), a replica that receives an id of its session that
+ * it did not make yet takes a new session (`collides`, `renew`): what it
+ * writes next can no longer collide. What collided before stays as it was.
+ */
+export class NodeIds {
+  private readonly _createdAt: number;
+  private _session = "";
+  private _clock = FIRST_CHAR;
+  /** How many ids this session made: `_clock` as a number. */
+  private _made = 0;
+
+  constructor(doc: Doc, extractTime: (id: string) => number) {
+    const rootId = doc.root.id;
+    try {
+      this._createdAt = extractTime(rootId);
+    } catch (error) {
+      throw new Error(
+        `Failed to extract time from root id '${rootId}'. ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    this.renew();
+  }
+
+  /** The next id. */
+  readonly generate = () => {
+    const id = `${this._session}.${this._clock}`;
+    this._clock = incrementStringInBase64(this._clock);
+    this._made++;
     return id;
   };
 
-  return nodeIdGenerator;
-};
+  /** Starts a new session: later ids are of it. */
+  renew() {
+    // Absolute: a root clock ahead of this device would leave the time part empty.
+    const milisecondsPassed = Math.abs(Date.now() - this._createdAt);
+    this._session = numberToBase64(milisecondsPassed) + randomStringBase64(3);
+    this._clock = FIRST_CHAR;
+    this._made = 0;
+  }
+
+  /**
+   * Whether `id` is of this session, with a clock it has not reached: only
+   * another replica with the same session makes it. Ids it made itself (an
+   * undo, a change sent back) are behind.
+   */
+  collides(id: string) {
+    const length = this._session.length;
+    return (
+      id.charCodeAt(length) === 46 &&
+      id.startsWith(this._session) &&
+      base64ToNumber(id, length + 1) >= this._made
+    );
+  }
+}

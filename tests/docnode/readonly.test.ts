@@ -85,7 +85,7 @@ describe("accessors & getters", () => {
       });
       expect(doc.root.id).toBe(`ts-${baseTime}-0`);
       const node = doc.createNode(Text);
-      // Non-root uses nodeIdFactory (compact IDs), not generate
+      // Non-root uses NodeIds (compact IDs), not generate
       expect(node.id).toMatch(DOCNODE_ID());
     });
 

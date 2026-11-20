@@ -243,7 +243,10 @@ export const onApplyOperations = (doc: Doc, operations: Operations) => {
         // this when an excluded change restored the node first.
         const nodes = operation[1]
           .filter(([id]) => !doc.getNodeById(id))
-          .map(([id, type]) => doc["_createNodeFromJson"]([id, type, {}]));
+          .map(([id, type]) => {
+            doc["_checkSession"](id);
+            return doc["_createNodeFromJson"]([id, type, {}]);
+          });
         if (nodes.length === 0) break;
         const prev = operation[3] ? doc.getNodeById(operation[3]) : undefined;
         if (prev) {
