@@ -208,8 +208,12 @@ type ClientsSetup = {
   reference: ClientUtils;
   otherTab: ClientUtils;
   otherDevice: ClientUtils;
-  /** A device that has never opened the document: its own user and IndexedDB. */
-  addNewDevice: () => Promise<ClientUtils>;
+  /**
+   * A device that has never opened the document: its own user and IndexedDB.
+   * `deviceId` gives it the browser of another one (another user signed in
+   * there).
+   */
+  addNewDevice: (options?: { deviceId?: string }) => Promise<ClientUtils>;
 };
 
 // ============================================================================
@@ -228,8 +232,13 @@ export const testWrapper = async (
   const url = getTestServerUrl(options?.port);
   const clients = await setupClients(url);
   const newDevices: ClientUtils[] = [];
-  const addNewDevice = async () => {
-    const device = await createDevice(clients.docId, createDocBinding(), url);
+  const addNewDevice = async (options?: { deviceId?: string }) => {
+    const device = await createDevice(
+      clients.docId,
+      createDocBinding(),
+      url,
+      options?.deviceId,
+    );
     newDevices.push(device);
     return device;
   };
@@ -314,12 +323,13 @@ const createDevice = async (
   docId: string,
   docBinding: ReturnType<typeof createDocBinding>,
   url: string,
+  deviceId: string = crypto.randomUUID(),
 ): Promise<ClientUtils> => {
   const userId = generateUserId(); // Different user = different IDB + BC namespace
   const client = await createClientWithConfig({
     url,
     userId,
-    deviceId: crypto.randomUUID(),
+    deviceId,
     token: createTestToken(userId),
     docBinding,
   });

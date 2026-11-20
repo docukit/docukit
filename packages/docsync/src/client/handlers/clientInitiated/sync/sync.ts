@@ -221,11 +221,15 @@ async function runSyncAttempt<
   // it has not been numbered yet.
   if (subscribed) {
     const stream = cacheEntry.stream;
-    if (!isStreaming(client, stream)) return stale;
+    if (!stream) return stale;
     clearSyncRetry(client, docId);
     client["_events"].emit("sync", { req, data });
+    // Restarted while this request was on the wire (`restartDocStream`): the
+    // server still saved this batch with `data.clock`, so it is stored as
+    // usual, and the rerun the restart asked for subscribes again.
+    const restarted = !isStreaming(client, stream);
     const expected = stream.clock + (operations.length > 0 ? 1 : 0);
-    if (data.clock !== expected) {
+    if (!restarted && data.clock !== expected) {
       restartDocStream(client, docId);
       return {
         type: "failed",

@@ -187,7 +187,7 @@ const isSubscribed = (device: Device, docId: string) =>
  * a connection dropped while it is reconciled leaves the live doc behind
  * storage until the next subscription.
  */
-const waitForOwnSubscription = async (device: Device, docId: string) => {
+export const waitForOwnSubscription = async (device: Device, docId: string) => {
   if (!device.client["_socket"].connected) return;
   await expect.poll(() => isSubscribed(device, docId)).toBe(true);
   await settleStream(device, docId);

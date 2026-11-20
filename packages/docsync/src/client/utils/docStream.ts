@@ -41,11 +41,6 @@ export type DocStream<O> = {
  */
 type Fold<O> = { clock: number; operations: O[]; ids: number[] };
 
-type StoredState<S, O extends object> = {
-  stored: { serializedDoc: S; clock: number } | undefined;
-  pending: OperationsBatch<O>[];
-};
-
 export function startDocStream<
   D extends object,
   S extends object,
@@ -54,7 +49,7 @@ export function startDocStream<
   client: DocSyncClient<D, S, O>,
   docId: string,
   stream: { generation: number; clock: number },
-): DocStream<O> | undefined {
+) {
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return;
   const previous = cacheEntry.stream;
@@ -77,7 +72,7 @@ export function restartDocStream<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, docId: string): void {
+>(client: DocSyncClient<D, S, O>, docId: string) {
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry?.stream) return;
   const { folds, tail } = cacheEntry.stream;
@@ -103,7 +98,7 @@ export function isStreaming<
 export function inStreamOrder<T, O>(
   stream: DocStream<O>,
   task: () => Promise<T>,
-): Promise<T> {
+) {
   const result = stream.tail.then(task);
   stream.tail = result.then(
     () => undefined,
@@ -116,7 +111,7 @@ export function getLiveClock<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, doc: D): number | undefined {
+>(client: DocSyncClient<D, S, O>, doc: D) {
   return client["_liveClocks"].get(doc);
 }
 
@@ -125,7 +120,7 @@ export function setLiveClock<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, doc: D, clock: number): void {
+>(client: DocSyncClient<D, S, O>, doc: D, clock: number) {
   client["_liveClocks"].set(doc, clock);
 }
 
@@ -144,7 +139,7 @@ async function storeFolds<D extends object, S extends object, O extends object>(
     provider: ClientProvider<S, O>;
     clock: number;
   },
-): Promise<StoredState<S, O>> {
+) {
   const { docId, stream, provider } = args;
   const docBinding = client["_docBinding"];
   let storedBefore = Infinity;
@@ -203,29 +198,37 @@ export function announceStoredBatches<
   D extends object,
   S extends object,
   O extends object,
->(
-  client: DocSyncClient<D, S, O>,
-  args: { docId: string; clock: number },
-): void {
+>(client: DocSyncClient<D, S, O>, args: { docId: string; clock: number }) {
   client["_bcHelper"]?.broadcast({ type: "STORED", ...args });
 }
 
 /**
- * Another tab of this device stored server batches up to `clock`. A tab that
- * is not subscribed, because it is offline, receives no pushes: it brings its
- * live doc up to storage, with its pending local operations on top, in the
- * stream's order.
+ * Another tab of this device stored server batches up to `clock`.
+ *
+ * - A subscribed tab receives every batch itself, but a batch it received may
+ *   be waiting for this storage: the one before it came from that sibling
+ *   tab. It stores what it can now and brings its live doc up to it, in the
+ *   stream's order.
+ * - A tab that is not subscribed, because it is offline, receives no pushes:
+ *   it brings its live doc up to storage, with its pending local operations
+ *   on top, in the stream's order.
  */
 export function receiveStoredBatches<
   D extends object,
   S extends object,
   O extends object,
->(
-  client: DocSyncClient<D, S, O>,
-  args: { docId: string; clock: number },
-): void {
+>(client: DocSyncClient<D, S, O>, args: { docId: string; clock: number }) {
   const cacheEntry = client["_docsCache"].get(args.docId);
-  if (!cacheEntry || isStreaming(client, cacheEntry.stream)) return;
+  if (!cacheEntry) return;
+  const subscribed = cacheEntry.stream;
+  if (isStreaming(client, subscribed)) {
+    if (subscribed.folds.length === 0) return;
+    const { clock } = subscribed;
+    void inStreamOrder(subscribed, () =>
+      catchUpLiveDoc(client, { docId: args.docId, stream: subscribed, clock }),
+    );
+    return;
+  }
   const stream = (cacheEntry.stream ??= {
     generation: -1,
     clock: 0,
@@ -249,7 +252,7 @@ function rebuildLiveDoc<D extends object, S extends object, O extends object>(
     stored: { serializedDoc: S; clock: number };
     pending: OperationsBatch<O>[];
   },
-): void {
+) {
   const { docId, liveDoc, promisedDoc, stored, pending } = args;
   const docBinding = client["_docBinding"];
   const batchBeforeExport = client["_localOpsBatchState"].get(docId)?.data;
@@ -303,7 +306,7 @@ async function integrateBatch<
       | { mode: "held" }
       | { mode: "catchUp" };
   },
-): Promise<void> {
+) {
   const { docId, stream, clock, batch } = args;
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return;
@@ -392,16 +395,10 @@ async function integrateBatch<
       return;
     }
     // Storage waits for a batch another tab of this device sent and has yet
-    // to store. That tab's operations are in the live doc already, so this
-    // batch goes on top of them, as the server ordered it.
-    if (liveClock === clock - 1 && batch.mode === "pushed") {
-      for (const operation of batch.operations) {
-        client["_applyOperationsFrom"]("network", liveDoc, operation, {
-          skipUndo: true,
-        });
-      }
-      setLiveClock(client, liveDoc, clock);
-    }
+    // to store. The live doc may hold local operations the server puts after
+    // this batch, which cannot be told apart from that tab's, so it waits:
+    // once the tab stores its batch, `receiveStoredBatches` rebuilds it. If
+    // the tab died, `watchStorageGap` subscribes again.
     return;
   }
 }
@@ -420,7 +417,7 @@ async function integrateBatch<
 function watchStorageGap<D extends object, S extends object, O extends object>(
   client: DocSyncClient<D, S, O>,
   args: { docId: string; stream: DocStream<O>; storedClock: number },
-): void {
+) {
   const { docId, stream, storedClock } = args;
   const waiting = stream.folds[0];
   if (!waiting || waiting.clock <= storedClock + 1 || stream.gapTimer) return;
@@ -442,7 +439,7 @@ export function receivePushedBatch<
 >(
   client: DocSyncClient<D, S, O>,
   args: { docId: string; operations: O[] | undefined },
-): void {
+) {
   const { docId, operations } = args;
   const stream = client["_docsCache"].get(docId)?.stream;
   // Pushed before this client subscribed again: the response brings it.
@@ -482,7 +479,7 @@ export function receiveOwnBatch<
     operations: O[];
     ids: number[];
   },
-): Promise<void> {
+) {
   const { docId, stream, clock, operations, ids } = args;
   stream.clock = clock;
   stream.folds.push({ clock, operations, ids });
@@ -503,6 +500,6 @@ export function catchUpLiveDoc<
 >(
   client: DocSyncClient<D, S, O>,
   args: { docId: string; stream: DocStream<O>; clock: number },
-): Promise<void> {
+) {
   return integrateBatch(client, { ...args, batch: { mode: "catchUp" } });
 }

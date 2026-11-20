@@ -204,7 +204,7 @@ export class DocSyncServer<
    * the order of their clocks, and a subscription takes either a batch in its
    * response or as a push, never both and never neither.
    */
-  private _inDocOrder<T>(docId: string, task: () => Promise<T>): Promise<T> {
+  private _inDocOrder<T>(docId: string, task: () => Promise<T>) {
     const previous = this._docQueues.get(docId) ?? Promise.resolve();
     const result = previous.then(task);
     const settled = result.then(

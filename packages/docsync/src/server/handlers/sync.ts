@@ -33,7 +33,7 @@ export function handleSync<
   const sync = async (
     req: SyncRequest<S, O>,
     cb: (res: SyncResponse<S, O>) => void,
-  ): Promise<number> => {
+  ) => {
     const { docId, operations } = req;
     const startTime = Date.now();
 
@@ -61,6 +61,11 @@ export function handleSync<
       cb({ error: errorEvent });
       return 0;
     }
+
+    // The connection closed while this sync waited (behind other syncs of the
+    // document, or for `_authorize`): nobody would get the answer or the
+    // pushes, and the client sends these operations again when it reconnects.
+    if (socket.disconnected) return 0;
 
     const io = server["_io"];
     const provider = server["_provider"];
@@ -223,11 +228,18 @@ export function handleSync<
         ) {
           continue;
         }
-        // Another tab of the same device already has these operations: they
-        // are in the storage it shares with this one. It only needs to know
-        // that the batch took the next place in the order.
-        if (targetDeviceId === deviceId) targetSocket.emit("operations", docId);
-        else targetSocket.emit("operations", docId, operations);
+        // Another tab of the same device and user already has these
+        // operations: they are in the storage it shares with this one (one
+        // per user). It only needs to know that the batch took the next place
+        // in the order.
+        if (
+          targetDeviceId === deviceId &&
+          targetSocket.data.userId === userId
+        ) {
+          targetSocket.emit("operations", docId);
+        } else {
+          targetSocket.emit("operations", docId, operations);
+        }
       }
 
       server["_emit"](server["_syncRequestEventListeners"], {
@@ -278,7 +290,7 @@ export function handleSync<
    * Squashes the operation log into the snapshot. It saves no batch, so it can
    * run outside the document's order.
    */
-  const squash = async (docId: string): Promise<void> => {
+  const squash = async (docId: string) => {
     const provider = server["_provider"];
     const docBinding = server["_docBinding"];
     await provider.transaction({ mode: "readwrite", docId }, async (ctx) => {
@@ -303,7 +315,7 @@ export function handleSync<
     });
   };
 
-  socket.on("sync", async (req, cb): Promise<void> => {
+  socket.on("sync", async (req, cb) => {
     const returnedOperations = await server["_inDocOrder"](req.docId, () =>
       sync(req, cb),
     );
