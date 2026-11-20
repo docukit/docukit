@@ -426,6 +426,6 @@ describe("createNode", () => {
       id: rootId,
       extensions: [TextExtension],
     });
-    expect(doc.createNode(Text).id).toMatch(DOCNODE_ID("[\\w-]+"));
+    expect(doc.createNode(Text).id).toMatch(DOCNODE_ID());
   });
 });
