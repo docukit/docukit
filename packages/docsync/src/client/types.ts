@@ -194,7 +194,8 @@ export type ClientProviderContext<S extends object, O extends object> = {
    */
   saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
   /**
-   * Read stored document clocks without loading document contents.
+   * Read stored document clocks without loading document contents: the clock
+   * of the last stored server batch, or the snapshot's if there is none.
    * Optional for providers that cannot read clocks separately. Omitting
    * `docIds` lists all stored documents; missing documents are left out.
    */

@@ -13,7 +13,6 @@ import {
 } from "./liveDoc.js";
 import {
   type StoredDoc,
-  type StoredClock,
   appendServerBatches,
   deserializeStoredDoc,
   readStoredClock,
@@ -194,7 +193,7 @@ async function storeFolds<D extends object, S extends object, O extends object>(
     const doc = args.readDoc(pending)
       ? await readStoredDoc(ctx, docId)
       : undefined;
-    return [{ stored: doc ? { ...next, doc } : next, pending }, done] as const;
+    return [{ stored: { ...next, doc }, pending }, done] as const;
   });
   stream.folds.splice(0, done);
   if (state.stored && state.stored.clock > storedBefore) {

@@ -7,6 +7,7 @@ import type { ClientProvider, OperationsBatch } from "../../../types.js";
 import { getLocalDocVersion } from "../../../utils/localDocVersion.js";
 import {
   deserializeStoredDoc,
+  readStoredClock,
   readStoredDoc,
   saveSnapshot,
 } from "../../../utils/storedDoc.js";
@@ -117,7 +118,8 @@ export async function prepareSyncReconciliation<
     applyOperations(client, doc, localOperations, { skipUndo: true });
     const serializedDoc = client["_docBinding"].serialize(doc);
 
-    const recheckStored = await readStoredDoc(ctx, docId);
+    // Only the clock: the stored doc would read every stored batch again.
+    const recheckStored = await readStoredClock(ctx, docId);
     if (!isCurrent()) return;
     if (stored !== undefined && recheckStored?.clock !== stored.clock) return;
     if (stored === undefined && recheckStored !== undefined) return;

@@ -24,7 +24,7 @@ export type StoredDoc<S, O extends object> = {
 export async function readStoredDoc<S extends object, O extends object>(
   ctx: ClientProviderContext<S, O>,
   docId: string,
-): Promise<StoredDoc<S, O> | undefined> {
+) {
   const snapshot = await ctx.getSerializedDoc({ docId });
   if (!snapshot) return undefined;
   const batches = (await ctx.getServerOperations({ docId })).filter(
@@ -43,12 +43,10 @@ export async function readStoredDoc<S extends object, O extends object>(
  * stored on top of it. Every stored batch follows the snapshot: saving a
  * snapshot deletes the batches it covers in the same transaction.
  */
-export type StoredClock = { clock: number; batches: number };
-
 export async function readStoredClock<S extends object, O extends object>(
   ctx: ClientProviderContext<S, O>,
   docId: string,
-): Promise<StoredClock | undefined> {
+) {
   const { count, lastClock } = await ctx.countServerOperations({ docId });
   if (lastClock !== undefined) return { clock: lastClock, batches: count };
   const snapshot = await ctx.getSerializedDoc({ docId });
@@ -60,7 +58,7 @@ export function deserializeStoredDoc<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, stored: StoredDoc<S, O>): D {
+>(client: DocSyncClient<D, S, O>, stored: StoredDoc<S, O>) {
   const docBinding = client["_docBinding"];
   const doc = docBinding.deserialize(stored.serializedDoc);
   for (const batch of stored.batches) {
@@ -76,7 +74,7 @@ export function serializeStoredDoc<
   D extends object,
   S extends object,
   O extends object,
->(client: DocSyncClient<D, S, O>, stored: StoredDoc<S, O>): S {
+>(client: DocSyncClient<D, S, O>, stored: StoredDoc<S, O>) {
   if (stored.batches.length === 0) return stored.serializedDoc;
   return client["_docBinding"].serialize(deserializeStoredDoc(client, stored));
 }
@@ -85,7 +83,7 @@ export function serializeStoredDoc<
 export async function saveSnapshot<S extends object, O extends object>(
   ctx: ClientProviderContext<S, O>,
   args: { docId: string; serializedDoc: S; clock: number },
-): Promise<StoredDoc<S, O>> {
+) {
   const { docId, serializedDoc, clock } = args;
   await ctx.saveSerializedDoc({ docId, serializedDoc, clock });
   await ctx.deleteServerOperations({ docId, clock });
@@ -105,10 +103,11 @@ export async function appendServerBatches<
   ctx: ClientProviderContext<S, O>,
   args: {
     docId: string;
-    stored: StoredClock;
+    /** The clock of the stored copy and how many batches it has on top. */
+    stored: { clock: number; batches: number };
     batches: ServerOperationsBatch<O>[];
   },
-): Promise<StoredClock> {
+) {
   const { docId, stored, batches } = args;
   for (const batch of batches) {
     await ctx.saveServerOperations({ docId, ...batch });

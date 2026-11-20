@@ -357,7 +357,7 @@ type ClientProviderContext<S, O> = {
 };
 ```
 
-The shape mirrors `ServerProviderContext` with two differences: `getOperations` does not take a `clock` (the client always loads everything it has locally), and `saveOperations` returns `void` (the client doesn't assign clocks — those come from the server).
+The first five methods mirror `ServerProviderContext` with two differences: `getOperations` does not take a `clock` (the client always loads everything it has locally), and `saveOperations` returns `void` (the client doesn't assign clocks — those come from the server). The `*ServerOperations` methods and `listClocks` are client-only.
 
 `getOperations`, `saveOperations` and `deleteOperations` hold the local operations not confirmed yet. The `*ServerOperations` methods hold batches the server already ordered, stored after the snapshot so that a sync appends a batch instead of rewriting the whole document:
 
@@ -408,7 +408,9 @@ The built-in provider stores plaintext local docs and operations. Its `listClock
 method reads an index and the keys of the stored server batches, without loading
 document contents. Omit `docIds` to list
 all stored documents, or provide IDs to filter the result. Missing documents are
-left out. This method is optional for custom providers.
+left out. This method is optional for custom providers; one that implements it
+must report, for each document, the clock of its last stored server batch when
+it is past the snapshot's, as the built-in provider does.
 
 If your app needs local encryption, implement or wrap a `ClientProvider` that
 encrypts before writes and decrypts after reads.
