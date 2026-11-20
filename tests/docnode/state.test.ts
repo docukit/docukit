@@ -59,6 +59,19 @@ describe("state", () => {
     expect(node.state.value.get()).toBe("hello");
   });
 
+  test("state methods can be called on their own", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    checkUndoManager(2, doc, () => {
+      const node = doc.createNode(Text);
+      doc.root.append(node);
+      doc.forceCommit();
+      const { get, set, getPrev } = node.state.value;
+      set("hello");
+      expect(get()).toBe("hello");
+      expect(getPrev()).toStrictEqual([true, ""]);
+    });
+  });
+
   test("default value is not JSON serializable", () => {
     const MyNode = defineNode({
       type: "myNode",

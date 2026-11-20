@@ -982,7 +982,18 @@ test("DocNode.doc is readonly and not enumerable", () => {
   const newDoc = new Doc({ type: "root", extensions: [TextExtension] });
   // @ts-expect-error - readonly
   const fn = () => (root.doc = newDoc);
-  expect(fn).toThrowError(
-    "Cannot assign to read only property 'doc' of object '#<DocNode>'",
-  );
+  expect(fn).toThrowError(TypeError);
+  expect(root.doc).toBe(doc);
+});
+
+test("a node can be read through a Proxy (as Vue, MobX or Valtio wrap it)", () => {
+  const doc = new Doc({ type: "root", extensions: [TextExtension] });
+  checkUndoManager(1, doc, () => {
+    const node = doc.createNode(Text);
+    doc.root.append(node);
+    const proxy = new Proxy(node, {});
+    expect(proxy.doc).toBe(doc);
+    proxy.state.value.set("hello");
+    expect(proxy.state.value.get()).toBe("hello");
+  });
 });

@@ -1,7 +1,7 @@
 import {
   Doc,
   type ChangeEvent,
-  type DocNode,
+  DocNode,
   defineNode,
   type Operations,
   defineState,
@@ -16,6 +16,26 @@ import {
 } from "@docukit/docnode";
 import { ULID_REGEX } from "valibot";
 import { expect } from "vitest";
+
+/**
+ * Two replicas' nodes are equal when they have the same id, type, state and
+ * neighbours. Each node also points to its own document, which differs (for
+ * example, in its listeners), so a deep comparison must not follow it.
+ */
+expect.addEqualityTesters([
+  function replicaNodes(a: unknown, b: unknown) {
+    if (!(a instanceof DocNode) || !(b instanceof DocNode) || a.doc === b.doc)
+      return undefined;
+    return (
+      a.id === b.id &&
+      a.type === b.type &&
+      this.equals(a["_state"], b["_state"]) &&
+      (["parent", "prev", "next", "first", "last"] as const).every(
+        (key) => a[key]?.id === b[key]?.id,
+      )
+    );
+  },
+]);
 
 export const DOCNODE_ID = (sessionId = "[\\w-]", clockId = "[\\w-]") =>
   new RegExp(`^${sessionId}[\\w-]{3}\\.${clockId}$`);
