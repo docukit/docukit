@@ -220,9 +220,14 @@ export async function testWrapper(
     new Promise<Error>((resolve) => {
       socket.on("connect_error", resolve);
     });
+  // Every sync here carries a clock, so the server answers as to a subscription.
   const sync = (payload: SyncPayloadInput) =>
-    new Promise<SyncResponse>((resolve) => {
-      socket.emit("sync", s(payload), resolve);
+    new Promise<SyncResponse>((resolve, reject) => {
+      socket.emit("sync", s(payload), (res) => {
+        if (res.error) resolve({ error: res.error });
+        else if ("operations" in res.data) resolve({ data: res.data });
+        else reject(new Error("Expected the response to a subscription"));
+      });
     });
 
   const syncOperations = async (docId: string, count: number) => {

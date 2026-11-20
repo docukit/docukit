@@ -54,6 +54,8 @@ const socketMockState = vi.hoisted(() => ({
    */
   deferSyncDocIds: new Set<string>(),
   deferredSyncAcks: new Map<string, ((response: unknown) => void)[]>(),
+  /** The clock this mocked server last told each document's subscriber. */
+  clocks: new Map<string, number>(),
 }));
 
 // Mock socket.io-client to avoid real connections
@@ -90,11 +92,11 @@ const ioMock = vi.hoisted(() =>
               typeof _payload === "object" &&
               _payload !== null &&
               "docId" in _payload &&
-              "clock" in _payload
+              typeof _payload.docId === "string"
             ) {
               const docId = _payload.docId;
-              const clock = _payload.clock;
-              if (typeof docId !== "string" || typeof clock !== "number") {
+              const clock = "clock" in _payload ? _payload.clock : undefined;
+              if (clock !== undefined && typeof clock !== "number") {
                 callback({ data: undefined, success: true });
                 return;
               }
@@ -115,6 +117,21 @@ const ioMock = vi.hoisted(() =>
                 return;
               }
 
+              // A subscribed sync gets the next clock for its batch.
+              if (clock === undefined) {
+                const hasOperations =
+                  "operations" in _payload &&
+                  Array.isArray(_payload.operations) &&
+                  _payload.operations.length > 0;
+                const next =
+                  (socketMockState.clocks.get(docId) ?? 0) +
+                  (hasOperations ? 1 : 0);
+                socketMockState.clocks.set(docId, next);
+                callback({ data: { clock: next } });
+                return;
+              }
+
+              socketMockState.clocks.set(docId, clock);
               callback({
                 data: { docId, operations: [], serializedDoc: null, clock },
               });
@@ -145,6 +162,7 @@ describe("DocSyncClient", () => {
     socketMockState.syncErrors.clear();
     socketMockState.deferSyncDocIds.clear();
     socketMockState.deferredSyncAcks.clear();
+    socketMockState.clocks.clear();
     await clearCachedLocalIdentity();
   });
 

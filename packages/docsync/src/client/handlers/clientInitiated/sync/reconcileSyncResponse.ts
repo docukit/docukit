@@ -1,5 +1,5 @@
 import type {
-  SyncResponse,
+  SubscriptionData,
   TransactionFlags,
 } from "../../../../shared/types.js";
 import type { DocSyncClient } from "../../../index.js";
@@ -45,7 +45,7 @@ export async function prepareSyncReconciliation<
     docId: string;
     operationsBatches: OperationsBatch<O>[];
     localOperations: O[];
-    data: Extract<SyncResponse<S, O>, { data: unknown }>["data"];
+    data: SubscriptionData<S, O>;
     isCurrent: () => boolean;
   },
 ): Promise<PreparedSyncReconciliation<D, O>> {

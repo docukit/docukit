@@ -51,7 +51,6 @@ A working Postgres provider using [Drizzle ORM](https://orm.drizzle.team) and [p
 // postgres-schema.ts
 import {
   bigint,
-  bigserial,
   pgTable,
   primaryKey,
   text,
@@ -76,7 +75,7 @@ export const operations = pgTable(
   "operations",
   {
     docId: varchar("docId", { length: 26 }).notNull(),
-    clock: bigserial("clock", { mode: "number" }).notNull(),
+    clock: bigint("clock", { mode: "number" }).notNull(),
     operations: text("operations").notNull(),
     // optional: add application-specific fields like createdAt
     createdAt: timestamp("createdAt", { precision: 3, withTimezone: true })
@@ -104,11 +103,11 @@ Two pieces of state per `docId` need to live somewhere:
 - A **latest snapshot** of the document, plus the `clock` it was taken at.
 - An **append-only log of operation batches** since that snapshot, each tagged with its own `clock`.
 
-The `clock` is a monotonically increasing number per doc. The snapshot's clock equals the highest operation clock that has been incorporated into it (set by `saveSerializedDoc`). The log keeps growing until the server squashes it into the snapshot.
+The `clock` counts the batches of a doc: each new batch gets the previous greatest clock plus one. The snapshot's clock equals the highest operation clock that has been incorporated into it (set by `saveSerializedDoc`). The log keeps growing until the server squashes it into the snapshot.
 
-##### Why `bigserial` for the operations clock
+##### Why the clock counts batches one by one
 
-Use `bigserial` (a sequence-backed counter), not `timestamp`. The sequence hands out atomically-unique values, so the composite PK `(docId, clock)` cannot collide under concurrency.
+The server pushes each batch to subscribed clients without its clock, and they number it by counting. So the clock cannot be a timestamp or a sequence shared by all documents (`bigserial`): those skip values. The provider computes `max + 1` per document inside the transaction, which the per-document lock (see [Isolation](#isolation)) keeps free of collisions on the `(docId, clock)` primary key.
 
 ##### Optional fields
 
@@ -205,18 +204,20 @@ export const postgresProvider: ServerProvider<JsonDoc, Operations> = {
             const doc = await tx.query.documents.findFirst({
               where: eq(schema.documents.docId, docId),
             });
-            if (operations.length === 0) {
-              const latest = await tx.query.operations.findFirst({
-                where: eq(schema.operations.docId, docId),
-                orderBy: (ops, { desc }) => [desc(ops.clock)],
-              });
-              return Math.max(latest?.clock ?? 0, doc?.clock ?? 0);
-            }
-            const inserted = await tx
+            const latest = await tx.query.operations.findFirst({
+              where: eq(schema.operations.docId, docId),
+              orderBy: (ops, { desc }) => [desc(ops.clock)],
+            });
+            const greatest = Math.max(latest?.clock ?? 0, doc?.clock ?? 0);
+            if (operations.length === 0) return greatest;
+            await tx
               .insert(schema.operations)
-              .values({ docId, operations: JSON.stringify(operations) })
-              .returning({ clock: schema.operations.clock });
-            return inserted[0]!.clock;
+              .values({
+                docId,
+                clock: greatest + 1,
+                operations: JSON.stringify(operations),
+              });
+            return greatest + 1;
           },
 
           deleteOperations: async ({ docId, count }) => {
@@ -292,7 +293,7 @@ An isolation level is not enough on its own, because a write can take a lower cl
   <dd>Return all operation batches for `docId` whose clock is strictly greater than the given `clock`, in clock order. Each entry in the returned array is one batch (one `saveOperations` call's worth).</dd>
 
   <dt>`saveOperations({ docId, operations })`</dt>
-  <dd>Append a new batch and return its assigned clock, which must be greater than both the snapshot clock and the latest operation clock. If `operations` is empty, return `max(snapshotClock, latestOperationClock)`, or `0` if the doc has neither. Squashing trims the log, so the snapshot clock must count or clients would be sent a clock that went backwards.</dd>
+  <dd>Append a new batch with clock `max(snapshotClock, latestOperationClock) + 1` and return that clock. Exactly one more: clients number pushed batches by counting, so a skipped value would desynchronize them. If `operations` is empty, save nothing and return `max(snapshotClock, latestOperationClock)`, or `0` if the doc has neither. Squashing trims the log, so the snapshot clock must count or clients would be sent a clock that went backwards.</dd>
 
   <dt>`deleteOperations({ docId, count })`</dt>
   <dd>Delete the oldest `count` operation batches for the doc. Used during squashing.</dd>

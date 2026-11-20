@@ -3,11 +3,6 @@ import type { BrowserConfigOptions } from "vitest/node";
 import { playwright } from "@vitest/browser-playwright";
 import react from "@vitejs/plugin-react";
 
-declare global {
-  /** Set by tests/docsync/int/globalSetup.ts. */
-  var __DOCSYNC_FORGET_SERVER_DOC__: ((docId: string) => void) | undefined;
-}
-
 // In development: resolve to source files for faster testing without building
 // In CI: use dist files to test what actually gets published
 // see https://nx.dev/docs/technologies/test-tools/vitest/guides/testing-without-building-dependencies
@@ -17,6 +12,36 @@ const resolveConfig = !process.env.CI ? { conditions: ["vitest"] } : {};
 process.env.NODE_OPTIONS = [process.env.NODE_OPTIONS, "--expose-gc"]
   .filter(Boolean)
   .join(" ");
+
+declare global {
+  /** Set by tests/docsync/int/globalSetup.ts, which runs in this process. */
+  var __DOCSYNC_FORGET_SERVER_DOC__: ((docId: string) => void) | undefined;
+  var __DOCSYNC_OWN_SERVERS__:
+    | {
+        start: () => Promise<number>;
+        restart: (port: number) => Promise<void>;
+        stop: (port: number) => Promise<void>;
+      }
+    | undefined;
+}
+
+const ownServers = () => {
+  const servers = globalThis.__DOCSYNC_OWN_SERVERS__;
+  if (!servers) throw new Error("DocSync test server is down");
+  return servers;
+};
+
+// A server a single test owns, so restarting it disturbs no other test.
+const docSyncServerCommands: BrowserConfigOptions["commands"] = {
+  startDocSyncServer: () => ownServers().start(),
+  restartDocSyncServer: (_context, port: number) => ownServers().restart(port),
+  stopDocSyncServer: (_context, port: number) => ownServers().stop(port),
+  forgetServerDoc: (_context, docId: string) => {
+    const forgetServerDoc = globalThis.__DOCSYNC_FORGET_SERVER_DOC__;
+    if (!forgetServerDoc) throw new Error("DocSync test server is down");
+    forgetServerDoc(docId);
+  },
+};
 
 const browserExclude = ["**/.context/**", "**/node_modules/**", "**/dist/**"];
 
@@ -108,15 +133,7 @@ export default defineConfig({
           "tests/docsync2-react/**",
         ],
         globalSetup: ["./tests/docsync/int/globalSetup.ts"],
-        commands: {
-          // Set by the DocSync globalSetup, which runs in this same process.
-          forgetServerDoc: (_context, docId: string) => {
-            const forgetServerDoc = globalThis.__DOCSYNC_FORGET_SERVER_DOC__;
-            if (!forgetServerDoc)
-              throw new Error("DocSync test server is down");
-            forgetServerDoc(docId);
-          },
-        },
+        commands: docSyncServerCommands,
       }),
       project("browser-docsync2", true, {
         include: [

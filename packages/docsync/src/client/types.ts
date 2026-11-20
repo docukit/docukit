@@ -187,6 +187,6 @@ export type ClientProvider<S extends object, O extends object> = {
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- type-only reference to socket.io-client
 export type ClientSocket<S, O> = import("socket.io-client").Socket<
-  ServerToClientEvents,
+  ServerToClientEvents<O>,
   ClientToServerEvents<S, O>
 >;

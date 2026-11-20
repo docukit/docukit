@@ -20,10 +20,10 @@ import type { Operations } from "@docukit/docnode";
 
 describe("Client 2", () => {
   // ──────────────────────────────────────────────────────────────────────────
-  // sync (triggered by dirty)
+  // sync
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe("sync (triggered by dirty)", () => {
+  describe("sync", () => {
     test("should trigger sync when status is idle", async () => {
       const client = await createClient();
       const requestSpy = spyOnRequest(client);
@@ -393,8 +393,9 @@ describe("Client 2", () => {
         error: importError,
       });
 
+      // Subscribed, with nothing to send: the next sync needs no request.
       await client["_sync"](docId);
-      expect(requestSpy).toHaveBeenCalledTimes(2);
+      expect(requestSpy).toHaveBeenCalledTimes(1);
       expect(syncStatus(client, docId)).toBe("idle");
       expect(client["_docsCache"].get(docId)?.queryResult).toMatchObject({
         status: "success",
@@ -441,6 +442,7 @@ describe("Client 2", () => {
         // Simulates a local edit landing while the replacement doc is being
         // set up: the sync is queued as pushing-with-pending and must survive
         // the throw below.
+        client.onLocalOperations({ docId, operations: [ops({ late: "1" })] });
         void client["_sync"](docId);
         throw importError;
       };
@@ -495,10 +497,17 @@ describe("Client 2", () => {
       const client = await createClient();
       const docId = generateDocId();
       const requestSpy = spyOnRequest(client);
+      // The first sync subscribes at clock 1; the next one saves batch 2.
       requestSpy.mockImplementation(
         () =>
           new Promise((resolve) =>
-            setTimeout(() => resolve({ data: s({ docId }) }), 30),
+            setTimeout(
+              () =>
+                resolve({
+                  data: s({ docId, clock: requestSpy.mock.calls.length }),
+                }),
+              30,
+            ),
           ),
       );
 
