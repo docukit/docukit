@@ -339,13 +339,45 @@ type ClientProviderContext<S, O> = {
     serializedDoc: S;
     clock: number;
   }): Promise<void>;
+  getServerOperations(arg: {
+    docId: string;
+  }): Promise<Array<{ clock: number; operations: O[] }>>;
+  countServerOperations(arg: {
+    docId: string;
+  }): Promise<{ count: number; lastClock: number | undefined }>;
+  saveServerOperations(arg: {
+    docId: string;
+    clock: number;
+    operations: O[];
+  }): Promise<void>;
+  deleteServerOperations(arg: { docId: string; clock: number }): Promise<void>;
   listClocks?(arg?: {
     docIds?: string[];
   }): Promise<Array<{ docId: string; clock: number }>>;
 };
 ```
 
-The shape mirrors `ServerProviderContext` with two differences: `getOperations` does not take a `clock` (the client always loads everything it has locally), and `saveOperations` returns `void` (the client doesn't assign clocks — those come from the server).
+The first five methods mirror `ServerProviderContext` with two differences: `getOperations` does not take a `clock` (the client always loads everything it has locally), and `saveOperations` returns `void` (the client doesn't assign clocks — those come from the server). The `*ServerOperations` methods and `listClocks` are client-only.
+
+`getOperations`, `saveOperations` and `deleteOperations` hold the local operations not confirmed yet. The `*ServerOperations` methods hold batches the server already ordered, stored after the snapshot so that a sync appends a batch instead of rewriting the whole document:
+
+<dl>
+  <dt>`getServerOperations({ docId })`</dt>
+  <dd>All stored server batches of the doc, in clock order. `clock` is the server clock of the last batch a stored entry covers.</dd>
+
+<dt>`countServerOperations({docId})`</dt>
+<dd>
+  How many are stored and the clock of the last one, without reading them. It
+  runs on every batch the client stores, so it should not read the batches or
+  the snapshot.
+</dd>
+
+  <dt>`saveServerOperations({ docId, clock, operations })`</dt>
+  <dd>Store one batch under its clock.</dd>
+
+  <dt>`deleteServerOperations({ docId, clock })`</dt>
+  <dd>Delete every stored batch with a clock up to `clock`, included. DocSync calls it in the same transaction that saves a snapshot at that clock.</dd>
+</dl>
 
 In the client config, `provider` is a **factory** that receives an `Identity` and returns the provider instance:
 
@@ -373,9 +405,12 @@ new DocSyncClient({
 
 Each user gets an isolated IndexedDB database named `docsync:v${schema}:${userId}`.
 The built-in provider stores plaintext local docs and operations. Its `listClocks`
-method reads an index without loading document contents. Omit `docIds` to list
+method reads an index and the keys of the stored server batches, without loading
+document contents. Omit `docIds` to list
 all stored documents, or provide IDs to filter the result. Missing documents are
-left out. This method is optional for custom providers.
+left out. This method is optional for custom providers; one that implements it
+must report, for each document, the clock of its last stored server batch when
+it is past the snapshot's, as the built-in provider does.
 
 If your app needs local encryption, implement or wrap a `ClientProvider` that
 encrypts before writes and decrypts after reads.
@@ -406,6 +441,18 @@ export const myProvider = (
         /* ... */
       },
       deleteOperations: async ({ docId, count }) => {
+        /* ... */
+      },
+      getServerOperations: async ({ docId }) => {
+        /* ... */
+      },
+      countServerOperations: async ({ docId }) => {
+        /* ... */
+      },
+      saveServerOperations: async ({ docId, clock, operations }) => {
+        /* ... */
+      },
+      deleteServerOperations: async ({ docId, clock }) => {
         /* ... */
       },
     });

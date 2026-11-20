@@ -136,6 +136,15 @@ export type ClientConfig<
 export type OperationsBatch<O extends object> = { id: number; operations: O[] };
 
 /**
+ * Operations the server saved, stored on top of the snapshot until they are
+ * folded into it. `clock` is the server clock of the last batch they cover.
+ */
+export type ServerOperationsBatch<O extends object> = {
+  clock: number;
+  operations: O[];
+};
+
+/**
  * Context passed to client transaction callbacks.
  * All operations share the same underlying transaction.
  */
@@ -159,9 +168,34 @@ export type ClientProviderContext<S extends object, O extends object> = {
    */
   deleteOperations(arg: { docId: string; ids: number[] }): Promise<void>;
   saveOperations(arg: { docId: string; operations: O[] }): Promise<void>;
+  /**
+   * Server batches stored after the snapshot, in clock order. DocSync appends
+   * each batch the server sends here instead of rewriting the snapshot, and
+   * folds them into it now and then.
+   */
+  getServerOperations(arg: {
+    docId: string;
+  }): Promise<ServerOperationsBatch<O>[]>;
+  /**
+   * How many server batches are stored and the clock of the last one, without
+   * reading them.
+   */
+  countServerOperations(arg: {
+    docId: string;
+  }): Promise<{ count: number; lastClock: number | undefined }>;
+  saveServerOperations(
+    arg: { docId: string } & ServerOperationsBatch<O>,
+  ): Promise<void>;
+  /** Deletes the server batches up to `clock`, included. */
+  deleteServerOperations(arg: { docId: string; clock: number }): Promise<void>;
+  /**
+   * The snapshot. Its `clock` is the server clock it was folded up to; server
+   * batches stored after it can take the document further.
+   */
   saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
   /**
-   * Read stored document clocks without loading document contents.
+   * Read stored document clocks without loading document contents: the clock
+   * of the last stored server batch, or the snapshot's if there is none.
    * Optional for providers that cannot read clocks separately. Omitting
    * `docIds` lists all stored documents; missing documents are left out.
    */

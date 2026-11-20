@@ -101,6 +101,11 @@ export const createTestClientProvider = (): ClientProvider<
       deleteOperations: () => Promise.resolve(undefined),
       saveOperations: () => Promise.resolve(undefined),
       saveSerializedDoc: () => Promise.resolve(undefined),
+      getServerOperations: () => Promise.resolve([]),
+      countServerOperations: () =>
+        Promise.resolve({ count: 0, lastClock: undefined }),
+      saveServerOperations: () => Promise.resolve(undefined),
+      deleteServerOperations: () => Promise.resolve(undefined),
     }),
 });
 

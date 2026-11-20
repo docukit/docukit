@@ -1,6 +1,6 @@
 import type { Doc, DocNode } from "@docukit/docnode";
 import { expect } from "vitest";
-import { ChildNode, type testWrapper } from "./utils.js";
+import { ChildNode, readStoredCopy, type testWrapper } from "./utils.js";
 
 type Clients = Parameters<Parameters<typeof testWrapper>[0]>[0];
 type Device = Clients["reference"];
@@ -115,14 +115,8 @@ const settleStream = async (device: Device, docId: string) => {
  */
 const expectLiveDocToMatchStorage = async (device: Device, docId: string) => {
   const client = device.client;
-  const { provider } = await client["_localPromise"];
   const tail = await settleStream(device, docId);
-  const [stored, pending] = await provider.transaction("readonly", (ctx) =>
-    Promise.all([
-      ctx.getSerializedDoc({ docId }),
-      ctx.getOperations({ docId }),
-    ]),
-  );
+  const { stored, pending } = await readStoredCopy(client, docId);
   if (
     !stored ||
     streamTail(device, docId) !== tail ||
@@ -132,9 +126,9 @@ const expectLiveDocToMatchStorage = async (device: Device, docId: string) => {
     return;
   }
   const binding = client["_docBinding"];
-  const reloaded = binding.deserialize(stored.serializedDoc);
+  const reloaded = stored.doc;
   for (const batch of pending) {
-    for (const operations of batch.operations) {
+    for (const operations of batch) {
       binding.applyOperations(reloaded, operations);
     }
   }

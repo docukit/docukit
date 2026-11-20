@@ -17,7 +17,7 @@ Three concepts show up everywhere in the rest of the docs:
 
 For each open document, the client keeps three things in memory:
 
-1. **`serializedDoc`** — the last snapshot received from the server, frozen at some `clock`.
+1. **`serializedDoc`** — a snapshot at some `clock`, plus the **server batches** stored after it and not folded into it yet. Together they are the server's state at the clock of the last batch.
 2. **`localOps`** — operations the user has made locally that the server hasn't confirmed yet.
 3. **`doc`** — the "live" document the UI reads from. Conceptually equal to `serializedDoc` with `localOps` applied on top.
 
@@ -28,6 +28,8 @@ Every edit (a keystroke, a click, anything) follows the same path:
 - A sync request is scheduled to push `localOps` to the server.
 
 Pieces 1 and 2 are persisted (by default to IndexedDB), so closing the tab or going offline doesn't lose anything. Piece 3 is reconstructed from 1 + 2 on startup.
+
+Storing a server batch appends it as is, so it costs as much as the batch, not as much as the document. The batches are folded into the snapshot when a subscription has something to reconcile (on load or after a reconnect, when the client sends local edits or receives batches it missed) and once 500 of them pile up during a long session. Loading reads the snapshot and applies the batches stored after it.
 
 ## Subscribing and receiving pushes
 
@@ -41,9 +43,9 @@ After a reconnect the client subscribes again from its stored clock, so it catch
 
 ### a) No concurrent edits
 
-When the client has no unconfirmed operations, a pushed batch is applied to `doc` and squashed into `serializedDoc`. When the server confirms the client's own operations, the client:
+When the client has no unconfirmed operations, a pushed batch is applied to `doc` and appended to the stored server batches. When the server confirms the client's own operations, the client:
 
-- Squashes `localOps` into `serializedDoc` (applies them to the snapshot).
+- Moves `localOps` to the stored server batches, with the clock the server gave them.
 - Clears `localOps`.
 - `doc` doesn't visibly change — the UI was already showing the same state.
 
@@ -51,7 +53,7 @@ When the client has no unconfirmed operations, a pushed batch is applied to `doc
 
 A batch from another client can arrive while the client still has `localOps` the server has not confirmed. The server puts that batch first, so the client:
 
-- Starts from `serializedDoc`.
+- Starts from `serializedDoc` and its stored server batches.
 - Applies the server's batch first.
 - Applies `localOps` on top.
 - Replaces `doc` with the result.
