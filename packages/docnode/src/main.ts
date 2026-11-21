@@ -14,7 +14,7 @@ import {
   type NodeState,
   type DefaultStateMethods,
   type ChangeEvent,
-  type StateDefinition,
+  type InternalStateDefinition,
   type NodeIdGenerator,
   type TransactionFlags,
 } from "./types.js";
@@ -355,6 +355,12 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
               const parsed = ops.parseStateKey(newNode, key, stringified);
               (newNode as DocNode<UnsafeDefinition>)["_state"][key] = parsed;
             }
+            const resolvedDef = doc["_resolvedNodeDefs"].get(node.type);
+            for (const key in resolvedDef?.state) {
+              const definition: InternalStateDefinition | undefined =
+                resolvedDef.state[key];
+              definition?.onCopy?.(node, newNode);
+            }
             return newNode;
           };
 
@@ -536,16 +542,27 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
   }
 
   toJSON(): JsonDocNode<T> {
-    return [this.id, this.type, this._stateToJson()];
+    return [this.id, this.type, this._stateToJson(true)];
   }
 
-  /** Each value as a JSON string. */
-  private _stateToJson(): NodeState.Stringified<T> {
-    const jsonState: Record<string, string> = {};
+  /**
+   * Each value as a JSON string. With `stored`, the document's text value
+   * is kept as JSON (from format 8): it is most of a document's JSON, and a
+   * string would be escaped again inside it.
+   */
+  private _stateToJson(stored = false): NodeState.Stringified<T> {
+    const jsonState: Record<string, string | Json[]> = {};
     const resolvedNodeDef = this.doc["_resolvedNodeDefs"].get(this.type);
     const defaultString = resolvedNodeDef?.defaultStrings;
+    const editKey = stored ? this.doc["_editStateKey"] : undefined;
     for (const key in this._state) {
-      // Serialized once: compared with the default and kept.
+      if (key === editKey && this === this.doc.root) {
+        const json = resolvedNodeDef?.state[key]?.toJSON?.(this._state[key]);
+        // An empty text value is the default one.
+        if (Array.isArray(json)) jsonState[key] = json;
+        continue;
+      }
+      // Serialized once: a text value is most of a document's JSON.
       const stringifiedState = ops.stringifyStateKey(this, key);
       if (stringifiedState === defaultString?.[key]) continue;
       jsonState[key] = stringifiedState;
@@ -571,8 +588,19 @@ export class Doc {
     | "normalize2"
     | "change"
     | "disposed" = "idle";
+  protected _hasEdits = false;
   protected _operations: ops.DraftOperations = [[], {}];
   protected _inverseOperations: ops.DraftOperations = [[], {}];
+  /**
+   * The last batch this transaction applied and what it decoded to: when it
+   * is all the transaction did, it is the transaction's `operations`.
+   */
+  protected _received: ops.Operations | undefined;
+  protected _decoded: ops.DraftOperations | undefined;
+  /** Root state that receives edit operations (see `docState`). */
+  protected _editStateKey: string | undefined;
+  /** Its definition, which applies the edit operations. */
+  protected _editDefinition: InternalStateDefinition | undefined;
   protected _transactionFlags: TransactionFlags;
   private _isForceCommitCallback = false;
   /** Whether a microtask will commit the transaction (see `withTransaction`). */
@@ -587,6 +615,11 @@ export class Doc {
   protected _idGen: NodeIdGenerator;
   /** The ids of this document's session, unless a generator without time makes them. */
   protected _nodeIds: NodeIds | undefined;
+  /**
+   * How many times this document took a new session (see `NodeIds`): what
+   * keeps its own counters, like the text, starts over.
+   */
+  protected _sessionRenewals = 0;
   readonly root: DocNode;
   readonly undoManager: UndoManager;
 
@@ -641,6 +674,20 @@ export class Doc {
 
       this._resolvedNodeDefs.set(nodeDef.type, resolvedNodeDef);
       this._nodeDefs.add(nodeDef);
+      for (const key in nodeDef.state) {
+        const definition: InternalStateDefinition = nodeDef.state[key]!;
+        const docState = definition.docState;
+        const rootDef = this._resolvedNodeDefs.get(config.type);
+        if (!docState || !rootDef || rootDef.state[docState.key]) continue;
+        const shared = docState.definition;
+        this._editStateKey = docState.key;
+        this._editDefinition = shared;
+        rootDef.state[docState.key] = shared;
+        rootDef.defaultState[docState.key] = shared.fromJSON(undefined);
+        rootDef.defaultStrings[docState.key] = JSON.stringify(
+          shared.toJSON?.(rootDef.defaultState[docState.key]),
+        );
+      }
       if (!nodeDef.type) throw new Error(`Node does not have a type property`);
     });
 
@@ -713,12 +760,19 @@ export class Doc {
   }
 
   /**
-   * A node another replica inserted. If its id is of this document's session
-   * but past what it made, another replica has the same session, so this one
-   * takes a new one (see `NodeIds`).
+   * After an id or a letter of this document's session that it did not make
+   * yet: another replica has the same session, so this one takes a new one
+   * (see `NodeIds`).
    */
+  private _renewSession() {
+    if (!this._nodeIds) return;
+    this._nodeIds.renew();
+    this._sessionRenewals++;
+  }
+
+  /** A node another replica inserted (see `_renewSession`). */
   private _checkSession(id: string) {
-    if (this._nodeIds?.collides(id)) this._nodeIds.renew();
+    if (this._nodeIds?.collides(id)) this._renewSession();
   }
 
   getNodeById(docNodeId: string): DocNode | undefined {
@@ -933,7 +987,10 @@ export class Doc {
     withTransaction(
       this,
       () => {
-        ops.onApplyOperations(this, decodeOperations(operations));
+        const draft = decodeOperations(operations);
+        this._received = operations;
+        this._decoded = draft;
+        ops.onApplyOperations(this, draft);
         didApplyOperations = true;
       },
       true,
@@ -984,6 +1041,9 @@ export class Doc {
     if (this._diff.inserted.size > 0) this._insertsNodes = true;
     this._operations = [[], this._insertsNodes ? idRecord() : {}];
     this._inverseOperations = [[], {}];
+    this._received = undefined;
+    this._decoded = undefined;
+    this._hasEdits = false;
     this._transactionFlags = {};
     this._diff = {
       deleted: new Map(),
@@ -1008,6 +1068,9 @@ export class Doc {
     );
     this["_operations"] = [[], {}];
     this["_inverseOperations"] = [[], {}];
+    this["_received"] = undefined;
+    this["_decoded"] = undefined;
+    this["_hasEdits"] = false;
     this["_transactionFlags"] = {};
     this["_diff"] = {
       deleted: new Map(),
@@ -1188,8 +1251,12 @@ export class Doc {
   private _nodeFromTree([id, type, stored]: JsonTree): DocNode {
     const definition = this._storedDefinition(type);
     const state: Record<string, unknown> = {};
-    for (const key in stored)
-      state[key] = this._storedValue(definition, key, parseJson(stored[key]!));
+    for (const key in stored) {
+      const value = stored[key]!;
+      // A text value is JSON, any other a JSON string.
+      const json = typeof value === "string" ? parseJson(value) : value;
+      state[key] = this._storedValue(definition, key, json);
+    }
     return this._storedNode(id, type, state);
   }
 }
@@ -1204,7 +1271,7 @@ const isTree = (json: JsonDoc | JsonTree): json is JsonTree =>
  */
 function stateKeyMethods(
   key: string,
-  definition: StateDefinition,
+  definition: InternalStateDefinition,
   defaultValue: unknown,
 ) {
   // The logic is written inside each method instead of calling a shared
@@ -1287,8 +1354,11 @@ function stateKeyMethods(
     },
   });
 
-  // Called through `definition` (it may use `this`); `?.` only narrows the
-  // type, the branch already checked it.
+  // Called through `definition` (they may use `this`); `?.` only narrows
+  // the type, the branch already checked them.
+  if (definition.methodsWithNode)
+    return (node: DocNode<UnsafeDefinition>): StateKeyMethods =>
+      definition.methodsWithNode?.(methods(node), node);
   if (definition.methods)
     return (node: DocNode<UnsafeDefinition>): StateKeyMethods =>
       definition.methods?.(methods(node));

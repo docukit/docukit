@@ -1,4 +1,9 @@
-import { Doc, type DocConfig, type Operations } from "@docukit/docnode";
+import {
+  Doc,
+  type DocConfig,
+  mergeBatches,
+  type Operations,
+} from "@docukit/docnode";
 import { createDocBinding } from "./index.js";
 import type { TransactionFlags } from "../shared/types.js";
 
@@ -36,6 +41,7 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
     applyOperations: (doc, operations, flags) => {
       doc.applyOperations(operations, flags);
     },
+    mergeOperations: mergeBatches,
     exportHistory: (doc) => doc.undoManager.exportHistory(),
     importHistory: (doc, history) => {
       doc.undoManager.importHistory(history);

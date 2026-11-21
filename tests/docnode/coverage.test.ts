@@ -106,6 +106,29 @@ describe("applyOperations without a state patch", () => {
     doc.forceCommit();
     expect(changes).toBe(0);
   });
+
+  test("edit operations are ignored by a document without an edit state", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    let changes = 0;
+    doc.onChange(() => changes++);
+    doc.applyOperations(["session.-", "text"]);
+    doc.forceCommit();
+    expect(changes).toBe(0);
+  });
+
+  test("edit operations are ignored when the edit state cannot apply them", () => {
+    const counter = {
+      fromJSON: (json: unknown) => (typeof json === "number" ? json : 0),
+      docState: { key: "~counter", definition: { fromJSON: () => 0 } },
+    };
+    const Counter = defineNode({ type: "counter", state: { count: counter } });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [Counter] }] });
+    let changes = 0;
+    doc.onChange(() => changes++);
+    doc.applyOperations(["session.-", "text"]);
+    doc.forceCommit();
+    expect(changes).toBe(0);
+  });
 });
 
 describe("stateDefinitions.ts coverage", () => {
