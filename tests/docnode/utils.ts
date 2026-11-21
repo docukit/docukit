@@ -13,6 +13,7 @@ import {
   type JsonDoc,
   type DocConfig,
   mergeOperations,
+  _INTERNAL_decodeOperations as decode,
 } from "@docukit/docnode";
 import { ULID_REGEX } from "valibot";
 import { expect } from "vitest";
@@ -37,8 +38,19 @@ expect.addEqualityTesters([
   },
 ]);
 
-export const DOCNODE_ID = (sessionId = "[\\w-]", clockId = "[\\w-]") =>
+/**
+ * Ids from the compact generator. The session starts with the time since the
+ * root was created, in base 64, which takes more than one digit when the
+ * machine is slow enough.
+ */
+export const DOCNODE_ID = (sessionId = "[\\w-]+", clockId = "[\\w-]") =>
   new RegExp(`^${sessionId}[\\w-]{3}\\.${clockId}$`);
+
+/** The session of a node id `session.clock`: the head of a batch that names it. */
+export const sessionOf = (id: string) => id.slice(0, id.lastIndexOf("."));
+
+/** A node id `session.clock` as a batch whose head is its session writes it. */
+export const short = (id: string) => id.slice(id.lastIndexOf("."));
 
 export const Text = defineNode({ type: "text", state: { value: string("") } });
 
@@ -166,7 +178,8 @@ export function humanReadableOperations(doc: Doc, changeEvent: ChangeEvent) {
     }
   };
 
-  const processOperations = (operations: Operations) => {
+  const processOperations = (wire: Operations) => {
+    const operations = decode(wire);
     const humanReadableOperations = [];
     for (const operation of operations[0]) {
       switch (operation[0]) {
@@ -300,6 +313,24 @@ export function assertError(doc: Doc, fn: () => void, expectedError: string) {
   unregister();
 }
 
+/**
+ * A change event as data, comparable between two documents: the deleted
+ * nodes as their JSON, not as objects whose in-memory representation (a
+ * state equal to its default, the internals of a text value) may differ.
+ */
+const eventData = (event: ChangeEvent) => ({
+  ...event,
+  // Sorted: like the sets they come from, compared regardless of order.
+  diff: {
+    inserted: [...event.diff.inserted].sort(),
+    updated: [...event.diff.updated].sort(),
+    moved: [...event.diff.moved].sort(),
+    deleted: [...event.diff.deleted.keys()]
+      .sort()
+      .map((id) => [id, event.diff.deleted.get(id)!.toJSON()]),
+  },
+});
+
 export function checkUndoManager(
   txCount: number,
   doc: Doc,
@@ -327,7 +358,10 @@ export function checkUndoManager(
   const undoManager3 = doc3.undoManager;
 
   // This document will replay all operations, but twice each operation
-  const doc4 = Doc.fromJSON({ type: "root", extensions: [{ nodes }] }, jsonDoc);
+  const doc4 = Doc.fromJSON(
+    { type: "root", id: doc.root.id, extensions: [{ nodes }] },
+    jsonDoc,
+  );
 
   const changeEvents: ChangeEvent[] = [];
   const snapshots: unknown[] = [getStateSnapshot(doc, IS_TEST_NODE)];
@@ -357,7 +391,9 @@ export function checkUndoManager(
       changeEvent.operations,
     );
 
-    const { operations, inverseOperations, diff } = changeEvent;
+    const { diff } = changeEvent;
+    const operations = decode(changeEvent.operations);
+    const inverseOperations = decode(changeEvent.inverseOperations);
     const allOperations = [...operations[0], ...inverseOperations[0]];
     allOperations.forEach((op) => {
       switch (op[0]) {
@@ -460,10 +496,10 @@ export function checkUndoManager(
       doc2.applyOperations(mergedOperations);
     },
     (changeEvent) => {
-      expect(changeEvent.operations.length).toBe(2); // A single op array + state patch
-      // The array of operations is equal to the conjunction of all those that were in changeEvents
-      // slice(0, -1) because the last operation is the state patch
-      expect(changeEvent.operations[0]).toStrictEqual(mergedOperations[0]);
+      // The operations are the conjunction of all those that were in changeEvents
+      expect(decode(changeEvent.operations)[0]).toStrictEqual(
+        decode(mergedOperations)[0],
+      );
       // Inverse operations can't be compared. The following isn't always true because if a node
       // is inserted in one update and its child is inserted in the next update, inverseOperations
       // will have only one delete op (the parent's) instead of the two I get when doing separate updates.
@@ -489,7 +525,9 @@ export function checkUndoManager(
         expect(getStateSnapshot(doc3, IS_TEST_NODE)).toStrictEqual(
           snapshots[i + 1],
         );
-        expect(changeEvent).toStrictEqual(changeEvents[i]);
+        expect(eventData(changeEvent)).toStrictEqual(
+          eventData(changeEvents[i]!),
+        );
       },
     );
   }
@@ -506,7 +544,9 @@ export function checkUndoManager(
         expect(getStateSnapshot(doc4, IS_TEST_NODE)).toStrictEqual(
           snapshots[i + 1],
         );
-        expect(changeEvent).toStrictEqual(changeEvents[i]);
+        expect(eventData(changeEvent)).toStrictEqual(
+          eventData(changeEvents[i]!),
+        );
       },
     );
     doc4.applyOperations(changeEvent.operations);
@@ -520,8 +560,7 @@ export function checkUndoManager(
         undoManager3.undo();
         const snapshot = getStateSnapshot(doc3, IS_TEST_NODE);
         expect(snapshot).toStrictEqual(snapshots[sizeDo - i - 1]);
-        const jsonDoc = doc3.toJSON();
-        expect(jsonDoc).toStrictEqual(jsonDocs[sizeDo - i - 1]);
+        expect(doc3.toJSON()).toStrictEqual(jsonDocs[sizeDo - i - 1]);
       },
       (_changeEvent) => {
         // The first undo coincides with the first do
@@ -546,8 +585,7 @@ export function checkUndoManager(
         undoManager3.redo();
         const snapshot = getStateSnapshot(doc3, IS_TEST_NODE);
         expect(snapshot).toStrictEqual(snapshots[i + 1]);
-        const jsonDoc = doc3.toJSON();
-        expect(jsonDoc).toStrictEqual(jsonDocs[i + 1]);
+        expect(doc3.toJSON()).toStrictEqual(jsonDocs[i + 1]);
       },
       (_changeEvent) => {
         // expect(changeEvent).toStrictEqual(changeEvents[i]);

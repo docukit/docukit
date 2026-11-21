@@ -78,7 +78,8 @@ describe("main.ts coverage", () => {
   });
 
   test("empty applyOperations throws during strict mode second normalize pass", () => {
-    const emptyOperations: Operations = [[], {}];
+    // Only a head: a batch with nothing in it.
+    const emptyOperations: Operations = [""];
     const TestExtension: Extension = {
       nodes: [Text],
       register: (doc) => {
@@ -93,6 +94,17 @@ describe("main.ts coverage", () => {
     }).toThrowError(
       "Strict mode has caught an error: normalize listeners are not idempotent. I.e, they should not mutate the document on the second pass.",
     );
+  });
+});
+
+describe("applyOperations without a state patch", () => {
+  test("an empty list of operations does nothing", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    let changes = 0;
+    doc.onChange(() => changes++);
+    doc.applyOperations([""]);
+    doc.forceCommit();
+    expect(changes).toBe(0);
   });
 });
 
@@ -407,7 +419,7 @@ describe("operations.ts coverage", () => {
 
   test("move operation with missing range endpoints is ignored", () => {
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const operations: Operations = [[[2, "missing-start", 0, 0, 0, 0]], {}];
+    const operations: Operations = ["", 2, "missing-start"];
 
     expect(() => doc.applyOperations(operations)).not.toThrow();
   });

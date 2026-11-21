@@ -11,15 +11,71 @@ const FIRST_CHAR = base64Alphabet[0]!;
 const IDX = new Int16Array(128).fill(-1);
 for (let i = 0; i < ALPH_LEN; i++) IDX[base64Alphabet.charCodeAt(i)] = i;
 
-function numberToBase64(num: number): string {
-  if (num === 0) return FIRST_CHAR;
+const DIGITS = [...base64Alphabet];
+/**
+ * Every number of two digits, written once: counters and clocks are written
+ * on every batch, and a string made by joining two digits is a new one.
+ */
+let pairs: string[] | undefined;
+
+export function numberToBase64(num: number): string {
+  // Most clocks and counters have up to three digits.
+  if (num < 64) return DIGITS[num]!;
+  pairs ??= DIGITS.flatMap((high) => DIGITS.map((low) => high + low));
+  if (num < 4096) return pairs[num]!;
+  if (num < 262144) return DIGITS[num >> 12]! + pairs[num & 4095]!;
   let result = "";
   while (num > 0) {
-    result = base64Alphabet[num % 64] + result;
+    result = DIGITS[num % 64]! + result;
     num = Math.floor(num / 64);
   }
   return result;
 }
+
+/**
+ * Where the last dot of `id` is, or -1. A loop: `lastIndexOf` is a call into
+ * the engine, and ids are split on every save and load.
+ */
+export function lastDot(id: string): number {
+  let at = id.length - 1;
+  while (at >= 0 && id.charCodeAt(at) !== 46) at--;
+  return at;
+}
+
+/**
+ * The clock of a node id `session.clock`, its dot at `dot`, if the clock is
+ * written as `numberToBase64` writes it, in up to `digits` digits; else -1.
+ * Every place that splits a node id uses it, so all agree on which ids are
+ * `session.clock`.
+ */
+export function clockAt(id: string, dot: number, digits = 8): number {
+  const length = id.length - dot - 1;
+  // A leading zero digit ("-") would not be written back the same.
+  if (
+    length < 1 ||
+    length > digits ||
+    (length > 1 && id.charCodeAt(dot + 1) === 45)
+  )
+    return -1;
+  let clock = 0;
+  for (let i = dot + 1; i < id.length; i++) {
+    const digit = digitOf(id.charCodeAt(i));
+    if (digit < 0) return -1;
+    clock = clock * 64 + digit;
+  }
+  return clock;
+}
+
+/** The number a `numberToBase64` string stands for, from `from` to its end. */
+export function base64ToNumber(text: string, from = 0): number {
+  let num = 0;
+  for (let i = from; i < text.length; i++)
+    num = num * ALPH_LEN + IDX[text.charCodeAt(i)]!;
+  return num;
+}
+
+/** The value of a base 64 digit's character code, or -1. */
+const digitOf = (code: number): number => IDX[code] ?? -1;
 
 function randomStringBase64(len: number): string {
   const out = new Array(len);
@@ -37,7 +93,7 @@ function randomStringBase64(len: number): string {
   return out.join("");
 }
 
-function incrementStringInBase64(str: string): string {
+export function incrementStringInBase64(str: string): string {
   const n = str.length;
   for (let i = n - 1; i >= 0; i--) {
     const idx = IDX[str.charCodeAt(i)]!;
@@ -56,14 +112,6 @@ function incrementStringInBase64(str: string): string {
   }
   // all digits were max, prepend next and reset the rest
   return base64Alphabet[1] + FIRST_CHAR.repeat(n);
-}
-
-/** The number a `numberToBase64` string stands for, from `from` to its end. */
-function base64ToNumber(text: string, from: number) {
-  let num = 0;
-  for (let i = from; i < text.length; i++)
-    num = num * ALPH_LEN + IDX[text.charCodeAt(i)]!;
-  return num;
 }
 
 /**

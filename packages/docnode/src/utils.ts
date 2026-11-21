@@ -1,5 +1,6 @@
 import type { Doc, DocNode } from "./main.js";
-import type { StateRecord } from "./types.js";
+import type { Json, StateRecord } from "./types.js";
+import type { StatePatch } from "./operations.js";
 
 // lowercase ulid
 export const ULID_REGEX = /^[0-7][0-9a-hjkmnp-tv-z]{25}$/;
@@ -19,6 +20,40 @@ export function detachRange(startNode: DocNode, endNode: DocNode) {
   else oldParent["_set"]("first", endNode.next);
   if (oldNext) oldNext["_set"]("prev", oldPrev);
   else oldParent["_set"]("last", startNode.prev);
+}
+
+/**
+ * An empty state patch. V8 gives every new key of an object a new hidden
+ * class, and node ids are new each time: an object whose keys were deleted
+ * keeps them in a dictionary instead.
+ */
+export function idRecord(): StatePatch {
+  // One deleted key is enough.
+  const patch: StatePatch = { a: {} };
+  delete patch.a;
+  return patch;
+}
+
+/** `JSON.parse` without a reviver, which always gives JSON. */
+const parse: (text: string) => Json = JSON.parse;
+
+/**
+ * `JSON.parse` of a value's JSON text. A number, the value sent most, is
+ * read without it: `Number` reads JSON number text the same way.
+ */
+export function parseJson(text: string): Json {
+  const code = text.charCodeAt(0);
+  return code === 45 || (code >= 48 && code <= 57) ? Number(text) : parse(text);
+}
+
+/**
+ * `JSON.stringify` of a value; a finite number without it, which `String`
+ * writes the same way.
+ */
+export function stringifyJson(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? String(value)
+    : JSON.stringify(value);
 }
 
 /**
@@ -58,10 +93,16 @@ export function withTransaction(
   const isNewTx = doc["_lifeCycleStage"] === "idle";
   if (isNewTx) {
     doc["_lifeCycleStage"] = "update";
-    queueMicrotask(() => {
-      // A forceCommit can put the stage into idle mode and there is no need to commit again.
-      if (doc["_lifeCycleStage"] === "update") doc.forceCommit();
-    });
+    // One commit pending at a time: a transaction committed early (forceCommit)
+    // leaves its microtask to the next one.
+    if (!doc["_commitScheduled"]) {
+      doc["_commitScheduled"] = true;
+      queueMicrotask(() => {
+        doc["_commitScheduled"] = false;
+        // A forceCommit can put the stage into idle mode and there is no need to commit again.
+        if (doc["_lifeCycleStage"] === "update") doc.forceCommit();
+      });
+    }
   }
 
   try {

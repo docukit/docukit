@@ -1,56 +1,53 @@
-import type { JsonDoc, Operations } from "@docukit/docnode";
+import type { Json, JsonDoc, Operations } from "@docukit/docnode";
 import * as v from "valibot";
 
-const stringRecordSchema = v.record(v.string(), v.string());
-const stringOrZeroSchema = v.union([v.string(), v.literal(0)]);
+const jsonSchema: v.GenericSchema<Json> = v.lazy(() =>
+  v.union([
+    v.string(),
+    v.number(),
+    v.boolean(),
+    v.null(),
+    v.array(jsonSchema),
+    v.record(v.string(), jsonSchema),
+  ]),
+);
 
-const nodeReferenceSchema = v.tuple([v.string(), v.string()]);
+/** Each value as a JSON string. */
+const treeStateSchema = v.record(v.string(), v.string());
 
-const insertOperationSchema = v.tuple([
-  v.literal(0),
-  v.array(nodeReferenceSchema),
-  stringOrZeroSchema,
-  stringOrZeroSchema,
-  stringOrZeroSchema,
-]);
-
-const deleteOperationSchema = v.tuple([
-  v.literal(1),
-  v.string(),
-  stringOrZeroSchema,
-]);
-
-const moveOperationSchema = v.tuple([
-  v.literal(2),
-  v.string(),
-  stringOrZeroSchema,
-  stringOrZeroSchema,
-  stringOrZeroSchema,
-  stringOrZeroSchema,
-]);
-
-const orderedOperationSchema = v.union([
-  insertOperationSchema,
-  deleteOperationSchema,
-  moveOperationSchema,
-]);
-
-const operationsSchema = v.tuple([
-  v.array(orderedOperationSchema),
-  v.record(v.string(), stringRecordSchema),
-]);
-
-const serializedDocSchema: v.GenericSchema<unknown, JsonDoc> = v.lazy(() => {
-  const childrenSchema = v.tupleWithRest(
-    [serializedDocSchema],
-    serializedDocSchema,
-  );
+/** `[id, type, state, children?]`: see `JsonDoc` in `@docukit/docnode`. */
+const jsonTreeSchema: v.GenericSchema<unknown, JsonDoc> = v.lazy(() => {
+  const childrenSchema = v.tupleWithRest([jsonTreeSchema], jsonTreeSchema);
 
   return v.union([
-    v.tuple([v.string(), v.string(), stringRecordSchema]),
-    v.tuple([v.string(), v.string(), stringRecordSchema, childrenSchema]),
+    v.tuple([v.string(), v.string(), treeStateSchema]),
+    v.tuple([v.string(), v.string(), treeStateSchema, childrenSchema]),
   ]);
 });
+
+const headSchema = v.union([v.string(), v.array(v.string())]);
+/** A node: a string, a number (its distance from the head's counter), or `0`. */
+const nodeRefSchema = v.union([v.string(), v.pipe(v.number(), v.integer())]);
+const nodesSchema = v.array(v.tuple([nodeRefSchema, v.string()]));
+
+/** Each row of a batch (see `Operations` in `@docukit/docnode`). */
+const rowSchema = v.union([
+  v.tupleWithRest([v.literal(0), nodesSchema], nodeRefSchema),
+  v.tupleWithRest([v.literal(1), nodeRefSchema], nodeRefSchema),
+  v.tupleWithRest([v.literal(2), nodeRefSchema], nodeRefSchema),
+  v.record(v.string(), v.record(v.string(), jsonSchema)),
+]);
+
+/** `[head, ...rows]`, or `[head, ...row]` for a batch of one row. */
+const operationsSchema = v.union([
+  v.tupleWithRest([headSchema], rowSchema),
+  v.tupleWithRest([headSchema, v.literal(0), nodesSchema], nodeRefSchema),
+  v.tupleWithRest([headSchema, v.literal(1), nodeRefSchema], nodeRefSchema),
+  v.tupleWithRest([headSchema, v.literal(2), nodeRefSchema], nodeRefSchema),
+]);
+
+/** What `Doc.fromJSON` reads. */
+const serializedDocSchema = jsonTreeSchema;
 
 export const DocNodeValidators = () => {
   return {

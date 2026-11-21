@@ -8,6 +8,7 @@ import {
   getStoredClock,
   tick,
   ops,
+  syncRequest,
   emptyOps,
   ChildNode,
   s,
@@ -217,7 +218,7 @@ describe("Client 2", () => {
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
         "sync",
-        expect.objectContaining({ docId, operations: [ops({ test: "data" })] }),
+        expect.objectContaining(syncRequest(docId, [ops({ test: "data" })])),
       );
       await expect.poll(() => syncStatus(client, docId)).toBe("idle");
       expect(await getOperationsCount(client, docId)).toBe(0);
@@ -244,7 +245,7 @@ describe("Client 2", () => {
       await expect.poll(() => requestSpy.mock.calls.length).toBeGreaterThan(0);
       expect(requestSpy).toHaveBeenCalledWith(
         "sync",
-        expect.objectContaining({ docId, operations: [ops({ client: "op" })] }),
+        expect.objectContaining(syncRequest(docId, [ops({ client: "op" })])),
       );
       await expect.poll(() => syncStatus(client, docId)).toBe("idle");
       expect(await getOperationsCount(client, docId)).toBe(0);

@@ -33,6 +33,47 @@ describe("base", () => {
       `Node '${node1.id}' cannot be inserted because it already exists in the doc.`,
     );
   });
+
+  test.each(["append", "insertBefore"] as const)(
+    "%s of several subtrees: one insert per list of children, in walk order",
+    (method) => {
+      const doc = new Doc({ type: "root", extensions: [TextExtension] });
+      checkUndoManager(2, doc, () => {
+        doc.root.append(...text(doc, "0"));
+        const [node1, node2] = text(doc, "1", "2");
+        node1!.append(...text(doc, "1.1", "1.2"));
+        node1!.first!.append(...text(doc, "1.1.1"));
+        node1!.last!.append(...text(doc, "1.2.1"));
+        node2!.append(...text(doc, "2.1"));
+        const [target, anchor] =
+          method === "append"
+            ? [doc.root, "0"]
+            : [doc.root.first!, "undefined"];
+        const next = method === "append" ? "undefined" : "0";
+        updateAndListen(
+          doc,
+          () => target[method](node1!, node2!),
+          (changeEvent) => {
+            const { operations } = humanReadableOperations(doc, changeEvent);
+            expect(operations.slice(0, -1)).toStrictEqual([
+              `INSERT: ${anchor} --> 1 - 2 <-- ${next} | PARENT: ROOT`,
+              "INSERT: undefined --> 1.1 - 1.2 <-- undefined | PARENT: 1",
+              "INSERT: undefined --> 1.1.1 <-- undefined | PARENT: 1.1",
+              "INSERT: undefined --> 1.2.1 <-- undefined | PARENT: 1.2",
+              "INSERT: undefined --> 2.1 <-- undefined | PARENT: 2",
+            ]);
+          },
+        );
+        const subtrees = ["1", "__1.1", "____1.1.1", "__1.2", "____1.2.1"];
+        assertDoc(
+          doc,
+          method === "append"
+            ? ["0", ...subtrees, "2", "__2.1"]
+            : [...subtrees, "2", "__2.1", "0"],
+        );
+      });
+    },
+  );
 });
 
 describe("mixed operations", () => {
@@ -487,6 +528,42 @@ describe("append", () => {
       assertDoc(doc, ["1", "__1.1"]);
     });
   });
+  test("unattached.insertBefore(unattached) records nothing until attached", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    checkUndoManager(1, doc, () => {
+      let node1: DocNode<typeof Text>;
+      emptyUpdate(doc, () => {
+        node1 = text(doc, "1").at(0)!;
+        const node1_2 = text(doc, "1.2").at(0)!;
+        node1.append(node1_2);
+        node1_2.insertBefore(...text(doc, "1.1"));
+      });
+      updateAndListen(
+        doc,
+        () => {
+          doc.root.append(node1);
+        },
+        (changeEvent) => {
+          expect(humanReadableOperations(doc, changeEvent)).toStrictEqual({
+            operations: [
+              "INSERT: undefined --> 1 <-- undefined | PARENT: ROOT",
+              "INSERT: undefined --> 1.1 - 1.2 <-- undefined | PARENT: 1",
+              'UPDATE: {"1":{"value":"1"},"1.1":{"value":"1.1"},"1.2":{"value":"1.2"}}',
+            ],
+            inverseOperations: ["DELETE: from 1 to 1"],
+            diff: {
+              deleted: {},
+              inserted: new Set(["1", "1.1", "1.2"]),
+              moved: new Set(),
+              updated: new Set(),
+            },
+          });
+        },
+      );
+      assertDoc(doc, ["1", "__1.1", "__1.2"]);
+    });
+  });
+
   test("attached.append(attached) should throw", () => {
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
     checkUndoManager(1, doc, () => {

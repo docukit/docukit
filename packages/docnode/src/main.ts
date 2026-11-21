@@ -13,19 +13,20 @@ import {
   type NodeState,
   type DefaultStateMethods,
   type ChangeEvent,
+  type StateDefinition,
   type NodeIdGenerator,
   type TransactionFlags,
-  type StateDefinition,
 } from "./types.js";
 import {
   detachRange,
   withTransaction,
-  isObjectEmpty,
   ULID_REGEX,
   defineNode,
+  idRecord,
 } from "./utils.js";
 import * as ops from "./operations.js";
 import { NodeIds } from "./idGenerator.js";
+import { decodeOperations } from "./wire.js";
 import { decodeTime, ulid } from "ulid";
 import { UndoManager } from "./undoManager.js";
 
@@ -528,18 +529,16 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     return [this.id, this.type, this._stateToJson()];
   }
 
+  /** Each value as a JSON string. */
   private _stateToJson(): NodeState.Stringified<T> {
     const jsonState: Record<string, string> = {};
     const resolvedNodeDef = this.doc["_resolvedNodeDefs"].get(this.type);
     const defaultString = resolvedNodeDef?.defaultStrings;
     for (const key in this._state) {
+      // Serialized once: compared with the default and kept.
       const stringifiedState = ops.stringifyStateKey(this, key);
       if (stringifiedState === defaultString?.[key]) continue;
-      const stateDefinition = resolvedNodeDef?.state[key];
-      const json = stateDefinition?.toJSON
-        ? stateDefinition.toJSON(this._state[key])
-        : this._state[key];
-      jsonState[key] = JSON.stringify(json);
+      jsonState[key] = stringifiedState;
     }
     return jsonState as NodeState.Stringified<T>;
   }
@@ -562,10 +561,12 @@ export class Doc {
     | "normalize2"
     | "change"
     | "disposed" = "idle";
-  protected _operations: ops.Operations = [[], {}];
-  protected _inverseOperations: ops.Operations = [[], {}];
+  protected _operations: ops.DraftOperations = [[], {}];
+  protected _inverseOperations: ops.DraftOperations = [[], {}];
   protected _transactionFlags: TransactionFlags;
   private _isForceCommitCallback = false;
+  /** Whether a microtask will commit the transaction (see `withTransaction`). */
+  protected _commitScheduled = false;
   protected _diff: Diff = {
     deleted: new Map(),
     inserted: new Set(),
@@ -768,10 +769,10 @@ export class Doc {
           break;
         }
         case "before": {
-          ops.onInsertRange(this, target, position, nodes);
-          let current = target;
           const parent = target.parent!;
           const attached = this._nodeMap.has(parent.id);
+          if (attached) ops.onInsertRange(this, target, position, nodes);
+          let current = target;
           for (let i = nodes.length - 1; i >= 0; i--) {
             const node = nodes[i]!;
             node["_attachNode"](parent, current.prev, current, attached);
@@ -898,9 +899,7 @@ export class Doc {
   }
 
   applyOperations(operations: ops.Operations, flags?: TransactionFlags) {
-    const hasOperations =
-      operations[0].length > 0 || !isObjectEmpty(operations[1]);
-    if (!hasOperations) {
+    if (operations.length < 2) {
       if (
         this._lifeCycleStage === "change" ||
         this._lifeCycleStage === "disposed"
@@ -921,7 +920,7 @@ export class Doc {
     withTransaction(
       this,
       () => {
-        ops.onApplyOperations(this, operations);
+        ops.onApplyOperations(this, decodeOperations(operations));
         didApplyOperations = true;
       },
       true,
@@ -956,6 +955,9 @@ export class Doc {
     }
   }
 
+  /** Whether a transaction of this document inserted nodes. */
+  private _insertsNodes = false;
+
   private _forceCommit(ignoreEmptyDiff = false) {
     if (this._lifeCycleStage === "change")
       throw new Error("You can't trigger an update inside a change event");
@@ -964,7 +966,10 @@ export class Doc {
     // End update stage before normalization
     this._lifeCycleStage = "idle";
     ops.maybeTriggerListeners(this, ignoreEmptyDiff);
-    this._operations = [[], {}];
+    // A document that inserts nodes gets patches keyed by new ids each time
+    // (see `idRecord`).
+    if (this._diff.inserted.size > 0) this._insertsNodes = true;
+    this._operations = [[], this._insertsNodes ? idRecord() : {}];
     this._inverseOperations = [[], {}];
     this._transactionFlags = {};
     this._diff = {
@@ -980,7 +985,7 @@ export class Doc {
    * Aborts the current transaction and rolls back all changes.
    */
   abort() {
-    const inverseOps: ops.Operations = [...this["_inverseOperations"]];
+    const inverseOps: ops.DraftOperations = [...this["_inverseOperations"]];
     withTransaction(
       this,
       () => {
