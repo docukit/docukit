@@ -31,14 +31,16 @@ Unless you're building your own sync solution or undo manager, you don't need to
 
 \`\`\`ts
 type Operations = [
-// The session that made it and its first counter, plus other sessions it names.
+// The session that made it and its first clock, plus other sessions it names.
 head: string | string[],
-...rows: (TextEdit | { n: InsertNodes } | { d: DeleteNodes } | { m: MoveNodes } | StatePatch)[],
+...rows: (InsertNodes | DeleteNodes | MoveNodes | StatePatch)[],
 ];
 
-// Typing "s" between two letters:
-["Q14_wOXyP.uiW", "s", -87638];
+// Appending three nodes of type "t" with the values "a", "b" and "c":
+["1ZcR.-", [0, [[1, "t", 3]]], { "+1\*3": { v: ["a", "b", "c"] } }];
 \`\`\`
+
+See [the format](#format) below.
 `,
       required: true,
     },
@@ -80,3 +82,59 @@ doc.applyOperations(operations, { skipUndo: true });
 In OT mode, the set of operations must be ordered. For all clients to converge on the same document, they must apply the same operations in the same order. Therefore, a central server is required as the source of truth.
 
 In CRDT mode, the operations will be commutative. This means that operations can be applied in any order or multiple times, and the resulting document will be the same. At the cost of higher metadata, CRDTs are suitable for P2P.
+
+### Format
+
+A batch is `[head, ...rows]`. The rows are applied in order:
+
+```ts
+// Inserts nodes under `parent`, between two siblings. A count is a run of
+// nodes created one after the other.
+[0, [[node, type, count?], ...], parent?, prev?, next?];
+// Deletes the nodes from `start` to `end`, with their descendants.
+[1, start, end?];
+// Moves the nodes from `start` to `end` under `parent`, between two siblings.
+[2, start, end?, parent?, prev?, next?];
+// Sets state, always the last row: `"node*count"` is a run of nodes, with a
+// value per node for each key.
+{ [node]: { [key]: value } };
+```
+
+Trailing zeros are left out, and `0` is the root as a parent, or no sibling. A node of the head's session is written by its distance from the head's clock (`1` is the node at that clock, `-1` the one before), a node of another session as `"index.clock"`, its session's index in the head. A batch of one row leaves out the row's brackets:
+
+```ts
+// Sets the state of a node.
+["1ZcR.-", { "+1": { v: "z" } }];
+// Moves a node after another one.
+["1ZcR.-", 2, 1, 0, 0, 3];
+// Deletes a node.
+["1ZcR.0", 1, 1];
+```
+
+### Upgrading from 0.4
+
+DocNode 0.4 and earlier wrote operations as `[orderedOperations, statePatch]`, which `applyOperations` no longer reads. Documents saved with `toJSON` load as before, but operations you stored in that format (in a queue of pending changes, on a server, or in an exported undo history) must be upgraded first:
+
+```ts
+import { upgradeOperations } from "@docukit/docnode/compat";
+
+doc.applyOperations(upgradeOperations(storedOperations));
+```
+
+A batch already in the new format is returned as it is, so it is safe to call on every stored batch. It has its own entry point, so it adds nothing to `@docukit/docnode` if you don't import it. [DocSync](/docsync) does this for you.
+
+For an exported undo history, upgrade each item before importing it:
+
+```ts
+const upgrade = (items: typeof history.undoStack) =>
+  items.map((item) => ({
+    ...item,
+    operations: upgradeOperations(item.operations),
+  }));
+
+doc.undoManager.importHistory({
+  ...history,
+  undoStack: upgrade(history.undoStack),
+  redoStack: upgrade(history.redoStack),
+});
+```
