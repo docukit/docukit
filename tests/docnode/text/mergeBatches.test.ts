@@ -7,15 +7,17 @@ import {
   type Operations,
   string,
 } from "@docukit/docnode";
+import { labelsEngine } from "@docukit/docnode/crdt";
 import { Paragraph, type ParagraphNode } from "./utils.js";
 
 const Item = defineNode({ type: "item", state: { label: string("") } });
 
 /** A document that keeps every batch it writes, and how it started. */
-function writer() {
+function writer(crdt?: DocConfig["crdt"]) {
   const config: DocConfig = {
     type: "root",
     extensions: [{ nodes: [Paragraph, Item] }],
+    ...(crdt ? { crdt } : {}),
   };
   const doc = new Doc(config);
   doc.forceCommit();
@@ -59,5 +61,15 @@ describe("mergeBatches", () => {
     expect(merged).toHaveLength(5);
     expect(replay(merged)).toStrictEqual(replay(batches));
     expect(replay(merged)).toStrictEqual(doc.toJSON());
+  });
+
+  test("with a CRDT engine, keeps the batches of its tree as they are", () => {
+    const { doc, batches, replay } = writer(labelsEngine());
+    doc.root.append(doc.createNode(Item));
+    doc.forceCommit();
+    doc.root.append(doc.createNode(Item));
+    doc.forceCommit();
+    expect(mergeBatches(batches)).toStrictEqual(batches);
+    expect(replay(batches)).toStrictEqual(doc.toJSON());
   });
 });

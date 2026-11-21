@@ -226,6 +226,34 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
 }
 
 /**
+ * The sessions of the table of a stored `json` (see `JsonDoc`), `id` the
+ * document's: what `readJsonDoc` reads, for a CRDT engine.
+ */
+export const storedSessions = (json: JsonDoc, id: string): string[] =>
+  readSessions(
+    frontDecode(
+      json[3] ?? [],
+      id,
+      new ColumnReader(splitColumns(json[7] ?? "", 1)[COLUMN.SHARED]!),
+    ),
+  );
+
+/**
+ * `json` with what a CRDT engine stores besides the tree (see
+ * `DocConfig.crdt`), and every element before it.
+ */
+export function withCrdt(json: JsonDoc, crdt: Json): JsonDoc {
+  json[3] ??= [];
+  json[4] ??= [];
+  json[5] ??= [];
+  json[6] ??= 0;
+  json[7] ??= "";
+  json[8] ??= [];
+  json[9] = crdt;
+  return json;
+}
+
+/**
  * Builds the nodes of a stored `json` in `doc`, in place of its root. The
  * document's id is the one `Doc.fromJSON` gave it.
  */

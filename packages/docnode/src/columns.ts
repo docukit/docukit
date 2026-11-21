@@ -283,13 +283,18 @@ export function joinColumns(columns: { encode(): string }[]): string {
   return parts.join("");
 }
 
-/** The columns joined by `joinColumns`. */
-export function splitColumns(text: string): string[] {
+/**
+ * The columns joined by `joinColumns`: `count` of them (the missing ones
+ * empty), or all that were written.
+ */
+export function splitColumns(text: string, count = Infinity): string[] {
   const lengths = new FieldReader(text);
   const columns: string[] = [];
   let at = 0;
-  while (at < text.length) {
-    const length = lengths.read(LENGTH_CUT);
+  for (let field = 0; field < count; field++) {
+    // Past the last column written, the rest are empty.
+    if (at >= text.length && count === Infinity) break;
+    const length = at < text.length ? lengths.read(LENGTH_CUT) : 0;
     at = lengths.position;
     columns.push(text.slice(at, at + length));
     at += length;

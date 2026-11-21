@@ -4,11 +4,11 @@ import {
   Doc,
   type DocNode,
   mergeOperations,
-  string,
-  _INTERNAL_decodeOperations as decodeOperations,
   type Operations,
   type TransactionFlags,
   type UndoHistory,
+  string,
+  _INTERNAL_decodeOperations as decodeOperations,
 } from "@docukit/docnode";
 import {
   applyInServerOrder,
@@ -1172,47 +1172,6 @@ describe("applyOperations", () => {
     assertDoc(replica, ["a", "b", "c"]);
   });
 
-  test("nodes of other sessions or with other keys are not read as a run", () => {
-    const Pair = defineNode({
-      type: "pair",
-      state: { x: string(""), y: string("") },
-    });
-    const ids = ["a.0", "b.1", "b.2", "b.3"];
-    const config = { type: "root", extensions: [{ nodes: [Pair] }] };
-    const doc = new Doc({
-      ...config,
-      id: "01kc52hq510g6y44jhq0wqrjb3",
-      nodeIdGenerator: {
-        generate: () => ids.shift() ?? "c",
-        validate: () => true,
-      },
-    });
-    doc.forceCommit();
-    const start = doc.toJSON();
-    const sent: Operations[] = [];
-    doc.onChange((event) => sent.push(event.operations));
-    const pairs = ["1", "2", "3", "4"].map((value, index) => {
-      const pair = doc.createNode(Pair);
-      // The last one has one key too, but not the same one.
-      if (index < 3) pair.state.x.set(value);
-      else pair.state.y.set(value);
-      return pair;
-    });
-    doc.root.append(...pairs);
-    doc.forceCommit();
-    const replica = Doc.fromJSON({ ...config, id: doc.root.id }, start);
-    for (const operations of sent) replica.applyOperations(operations);
-    replica.forceCommit();
-    expect(replica.toJSON()).toStrictEqual(doc.toJSON());
-  });
-
-  test("an empty state patch decodes as no state", () => {
-    expect(decodeOperations(["s", [1, "a"], {}])).toStrictEqual([
-      [[1, "a", 0]],
-      {},
-    ]);
-  });
-
   test("ids whose clock is not in base 64 travel whole", () => {
     const ids = ["a.é0", "a.é1", "a.é2"];
     const config = { type: "root", extensions: [TextExtension] };
@@ -1271,6 +1230,47 @@ describe("applyOperations", () => {
     doc.applyOperations([`${sessionOf(id)}.-`, [9, "x"], [1, short(id)]]);
     doc.forceCommit();
     assertDoc(doc, []);
+  });
+
+  test("nodes of other sessions or with other keys are not read as a run", () => {
+    const Pair = defineNode({
+      type: "pair",
+      state: { x: string(""), y: string("") },
+    });
+    const ids = ["a.0", "b.1", "b.2", "b.3"];
+    const config = { type: "root", extensions: [{ nodes: [Pair] }] };
+    const doc = new Doc({
+      ...config,
+      id: "01kc52hq510g6y44jhq0wqrjb3",
+      nodeIdGenerator: {
+        generate: () => ids.shift() ?? "c",
+        validate: () => true,
+      },
+    });
+    doc.forceCommit();
+    const start = doc.toJSON();
+    const sent: Operations[] = [];
+    doc.onChange((event) => sent.push(event.operations));
+    const pairs = ["1", "2", "3", "4"].map((value, index) => {
+      const pair = doc.createNode(Pair);
+      // The last one has one key too, but not the same one.
+      if (index < 3) pair.state.x.set(value);
+      else pair.state.y.set(value);
+      return pair;
+    });
+    doc.root.append(...pairs);
+    doc.forceCommit();
+    const replica = Doc.fromJSON({ ...config, id: doc.root.id }, start);
+    for (const operations of sent) replica.applyOperations(operations);
+    replica.forceCommit();
+    expect(replica.toJSON()).toStrictEqual(doc.toJSON());
+  });
+
+  test("an empty state patch decodes as no state", () => {
+    expect(decodeOperations(["s", [1, "a"], {}])).toStrictEqual([
+      [[1, "a", 0]],
+      {},
+    ]);
   });
 
   test("a run of state that came broken writes nothing", () => {
