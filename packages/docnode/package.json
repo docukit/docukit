@@ -26,6 +26,11 @@
       "vitest": "./src/exports/index.ts",
       "types": "./dist/src/exports/index.d.ts",
       "default": "./dist/src/exports/index.js"
+    },
+    "./crdt": {
+      "vitest": "./src/exports/crdt.ts",
+      "types": "./dist/src/exports/crdt.d.ts",
+      "default": "./dist/src/exports/crdt.js"
     }
   },
   "dependencies": {
