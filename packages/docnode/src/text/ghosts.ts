@@ -1,10 +1,11 @@
+import type { Json } from "../types.js";
 import { SessionRuns } from "./common.js";
 
 /**
  * Where the deleted letters of Base's text were (see `BaseText`): a ghost is
  * a range of deleted ids of one session and the element right before them,
- * its anchor (a live letter, or the start of a node's text). No text nor
- * origins.
+ * its anchor (a live letter, or the start of a node's text), and what of
+ * their state a letter typed next to them inherits. No text nor origins.
  *
  * - An insert whose neighbours are both deleted goes right after the anchor
  *   of one of them, where they were, instead of being lost.
@@ -12,6 +13,8 @@ import { SessionRuns } from "./common.js";
  *   letter: every replica does it in the server's order, so anchors are
  *   always live and ghosts deleted one after the other become one.
  * - An id that is a ghost was applied: an insert of it again changes nothing.
+ * - A letter typed next to a deleted one inherits from it (see `state`), as
+ *   if it were still there.
  */
 export type Ghost = {
   readonly s: string;
@@ -21,14 +24,23 @@ export type Ghost = {
   /** The anchor: a letter `(as, ac)`, or the start of node `as` (`ac = -1`). */
   as: string;
   ac: number;
+  /**
+   * The keys of their state that a letter can inherit (see `Inherit`), one
+   * object per distinct state: only ghosts with the same one are joined.
+   */
+  readonly state: Readonly<Record<string, Json>> | undefined;
 };
 
 /** Up to how many ghosts of one anchor are looked at one by one (see `add`). */
 const SCAN = 16;
 
-/** Whether `ghost` is anchored at `(as, ac)`: it can join. */
-const sameSpot = (ghost: Ghost, as: string, ac: number) =>
-  ghost.as === as && ghost.ac === ac;
+/** Whether `ghost` is anchored at `(as, ac)` and has `state`: it can join. */
+const sameSpot = (
+  ghost: Ghost,
+  as: string,
+  ac: number,
+  state: Ghost["state"],
+) => ghost.as === as && ghost.ac === ac && ghost.state === state;
 
 /** Ghosts in the order they are stored: by session, then counter. */
 const byId = (a: Ghost, b: Ghost) =>
@@ -80,7 +92,7 @@ export class Ghosts {
   }
 
   /**
-   * Ids `[c, c + len)` of `s` were deleted right after
+   * Ids `[c, c + len)` of `s`, with `state`, were deleted right after
    * `(as, ac)`. The ghosts anchored at them move there too (`anchors`:
    * whether there may be some).
    */
@@ -91,6 +103,7 @@ export class Ghosts {
     as: string,
     ac: number,
     anchors: boolean,
+    state: Ghost["state"],
   ): void {
     const moved = anchors ? this._takeAnchored(s, c, len) : [];
     for (const other of moved) {
@@ -98,22 +111,22 @@ export class Ghosts {
       other.ac = ac;
       this._anchor(other);
     }
-    // A ghost of the ids right before or after, at the same anchor, takes
-    // these ids: deleting letters one by one leaves
+    // A ghost of the ids right before or after, at the same anchor and with
+    // the same state, takes these ids: deleting letters one by one leaves
     // one ghost.
     let prev: Ghost | undefined;
     let next: Ghost | undefined;
     const list = this._anchors.get(as)?.get(ac);
     if (list && list.length <= SCAN) {
       for (const ghost of list)
-        if (ghost.s === s)
+        if (ghost.s === s && ghost.state === state)
           if (ghost.c + ghost.len === c) prev = ghost;
           else if (ghost.c === c + len) next = ghost;
     } else if (list) {
       prev = this.find(s, c - 1);
-      if (prev && !sameSpot(prev, as, ac)) prev = undefined;
+      if (prev && !sameSpot(prev, as, ac, state)) prev = undefined;
       next = this.find(s, c + len);
-      if (next && !sameSpot(next, as, ac)) next = undefined;
+      if (next && !sameSpot(next, as, ac, state)) next = undefined;
     }
     if (next) {
       if (prev) {
@@ -125,7 +138,7 @@ export class Ghosts {
         next.len += len;
       }
     } else if (prev) prev.len += len;
-    else this._put({ s, c, len, as, ac });
+    else this._put({ s, c, len, as, ac, state });
     if (moved.length > 0) this._join(this._anchors.get(as)!.get(ac)!, moved);
   }
 
@@ -136,11 +149,11 @@ export class Ghosts {
       const ghost = this.find(s, at);
       // Letters it never had (see `BaseText._applyRestore`).
       if (!ghost) continue;
-      const { c: from, len: length, as, ac } = ghost;
+      const { c: from, len: length, as, ac, state } = ghost;
       this._remove(ghost);
-      if (from < c) this._put({ s, c: from, len: c - from, as, ac });
+      if (from < c) this._put({ s, c: from, len: c - from, as, ac, state });
       if (from + length > end)
-        this._put({ s, c: end, len: from + length - end, as, ac });
+        this._put({ s, c: end, len: from + length - end, as, ac, state });
       at = from + length - 1;
     }
   }
@@ -219,21 +232,21 @@ export class Ghosts {
     for (let ghost of moved) {
       // Merged into another one: `len` 0.
       if (ghost.len === 0) continue;
-      const { s, as, ac } = ghost;
+      const { s, as, ac, state } = ghost;
       for (let joined = true; joined; ) {
         joined = false;
         let prev: Ghost | undefined;
         let next: Ghost | undefined;
         if (list.length <= SCAN) {
           for (const other of list)
-            if (other.s === s)
+            if (other.s === s && other.state === state)
               if (other.c + other.len === ghost.c) prev = other;
               else if (other.c === ghost.c + ghost.len) next = other;
         } else {
           prev = ghost.c > 0 ? this.find(s, ghost.c - 1) : undefined;
-          if (prev && !sameSpot(prev, as, ac)) prev = undefined;
+          if (prev && !sameSpot(prev, as, ac, state)) prev = undefined;
           next = this.find(s, ghost.c + ghost.len);
-          if (next && !sameSpot(next, as, ac)) next = undefined;
+          if (next && !sameSpot(next, as, ac, state)) next = undefined;
         }
         if (prev) {
           prev.len += ghost.len;
