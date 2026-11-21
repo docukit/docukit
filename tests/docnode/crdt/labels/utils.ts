@@ -2,12 +2,14 @@ import {
   Doc,
   type DocNode,
   type Json,
+  type JsonDoc,
   type Operations,
 } from "@docukit/docnode";
 import { labelsEngine, type LabelsOptions } from "@docukit/docnode/crdt";
 import { expect } from "vitest";
 
 import { Text, TextExtension } from "../../utils.js";
+import { Paragraph, sessionIds, type ParagraphNode } from "../../text/utils.js";
 
 export const ROOT_ID = "01jz0000000000000000000000";
 
@@ -156,3 +158,97 @@ export function storedLabels(doc: Doc) {
 
 export const value = (node: DocNode) =>
   node.is(Text) ? node.state.value.get() : "";
+
+/** A replica of paragraphs of text named `session`, loaded from `json`. */
+function createTextPeer(session: string, json: JsonDoc) {
+  const doc = Doc.fromJSON(
+    {
+      type: "root",
+      id: ROOT_ID,
+      extensions: [{ nodes: [Paragraph] }],
+      nodeIdGenerator: sessionIds(session),
+      crdt: labelsEngine(),
+    },
+    json,
+  );
+  doc.forceCommit();
+  const paragraphs = () => {
+    const found: ParagraphNode[] = [];
+    doc.root.children().forEach((node) => {
+      if (node.is(Paragraph)) found.push(node);
+    });
+    return found;
+  };
+  /** The text of every paragraph, in document order. */
+  const texts = () => paragraphs().map((node) => node.state.t.get());
+  /** The paragraph whose text is `text`. */
+  const find = (text: string) => {
+    const found = paragraphs().find((node) => node.state.t.get() === text);
+    if (!found)
+      throw new Error(`no paragraph "${text}" in ${JSON.stringify(texts())}`);
+    return found;
+  };
+  return { ...attach(doc, session), texts, find };
+}
+
+/** Two replicas of the paragraphs `texts`. */
+export function textPair(texts: string[]) {
+  const doc = new Doc({
+    type: "root",
+    extensions: [{ nodes: [Paragraph] }],
+    crdt: labelsEngine(),
+    nodeIdGenerator: sessionIds("base"),
+  });
+  for (const text of texts) {
+    const node = doc.createNode(Paragraph);
+    doc.root.append(node);
+    node.state.t.insert(0, text);
+  }
+  doc.forceCommit();
+  const json = doc.toJSON();
+  return { a: createTextPeer("A", json), b: createTextPeer("B", json) };
+}
+
+/** What each replica did goes to the other, `a`'s first or last. */
+export function exchange(a: Replica, b: Replica, aFirst = true) {
+  a.doc.forceCommit();
+  b.doc.forceCommit();
+  const fromA = take(a);
+  const fromB = take(b);
+  if (aFirst) deliver(b, fromA);
+  deliver(a, fromB);
+  if (!aFirst) deliver(b, fromA);
+}
+
+/** Each paragraph's text and format, by id. */
+function spansById(doc: Doc) {
+  const spans = new Map<string, string>();
+  doc.root.children().forEach((node) => {
+    if (node.is(Paragraph))
+      spans.set(node.id, JSON.stringify(node.state.t.spans()));
+  });
+  return spans;
+}
+
+/**
+ * Collects, from now on, every paragraph whose text or format a remote change
+ * altered without listing it in `diff.updated` or `diff.inserted`, as
+ * `before->after` spans.
+ */
+export function unreportedTextChanges(replica: Replica) {
+  const missed: string[] = [];
+  let before = spansById(replica.doc);
+  replica.doc.onChange(({ flags, diff }) => {
+    const after = spansById(replica.doc);
+    if (flags.skipUndo) {
+      for (const [id, spans] of after) {
+        const previous = before.get(id);
+        if (previous === undefined || previous === spans) continue;
+        if (!diff.updated.has(id) && !diff.inserted.has(id))
+          missed.push(`${previous}->${spans}`);
+      }
+    }
+    before = after;
+  });
+  return missed;
+}

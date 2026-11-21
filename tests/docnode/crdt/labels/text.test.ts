@@ -1,7 +1,11 @@
 import { describe, expect, test } from "vitest";
 
 import { Doc, type JsonTree, type Operations } from "@docukit/docnode";
-import { labelsEngine, labelsSnapshot } from "@docukit/docnode/crdt";
+import {
+  _INTERNAL_crdtTextStore,
+  labelsEngine,
+  labelsSnapshot,
+} from "@docukit/docnode/crdt";
 
 import { Paragraph } from "../../text/utils.js";
 import { Text } from "../../utils.js";
@@ -148,6 +152,32 @@ describe("letter-by-letter text", () => {
     expect(b.texts()).toStrictEqual([""]);
   });
 
+  test("a replica reloaded with the same session types after its old ids", () => {
+    const a = writer("a");
+    const b = writer("b");
+    const line = b.doc.createNode(Paragraph);
+    b.doc.root.append(line);
+    line.state.t.insert(0, "xy");
+    b.doc.forceCommit();
+    a.receive(b.send());
+    // A write of state counts from the next id of `a`: the letter "z".
+    a.paragraph(line.id).state.t.format(0, 2, "bold", true);
+    a.doc.forceCommit();
+    a.paragraph(line.id).state.t.insert(2, "z");
+    a.doc.forceCommit();
+    b.receive(a.send());
+    // Its generator names the same session again. New letters with the id
+    // of the "z" would be read as it, and lost.
+    a.reload();
+    a.paragraph(line.id).state.t.insert(3, "!!");
+    a.doc.forceCommit();
+    line.state.t.insert(3, "?");
+    b.doc.forceCommit();
+    a.receive(b.send());
+    b.receive(a.send());
+    expect(a.texts()).toStrictEqual(["xyz!!?"]);
+    expect(b.texts()).toStrictEqual(a.texts());
+  });
   test("a replica reloaded with its undo history redoes what it undid", () => {
     const a = writer("a");
     const b = writer("b");
@@ -258,5 +288,16 @@ describe("stored documents", () => {
     const reloaded = Doc.fromJSON({ ...config, id: a.root.id }, a.toJSON());
     reloaded.forceCommit();
     expect(reloaded.toJSON()).toStrictEqual(a.toJSON());
+  });
+});
+
+describe("the text of the CRDT mode", () => {
+  test("is FugueMax's, with tombstones; Base has its own", () => {
+    const config = { type: "root", extensions: [{ nodes: [Paragraph] }] };
+    const crdt = new Doc({ ...config, crdt: labelsEngine() });
+    expect(_INTERNAL_crdtTextStore(crdt)["_debugRuns"]()).toStrictEqual([]);
+    expect(() => _INTERNAL_crdtTextStore(new Doc(config))).toThrowError(
+      "Not a CRDT document",
+    );
   });
 });

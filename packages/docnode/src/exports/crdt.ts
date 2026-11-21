@@ -1,4 +1,5 @@
 export {
+  _INTERNAL_crdtTextStore,
   labelsEngine,
   labelsSnapshot,
   type CrdtOptions as LabelsOptions,

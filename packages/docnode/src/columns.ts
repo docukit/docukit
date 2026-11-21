@@ -37,6 +37,8 @@ export class ColumnWriter {
   private _values: Int32Array | Float64Array;
   private _count = 0;
   private _changes = 0;
+  /** Each value's replacement when it is written. */
+  private _map: Int32Array | undefined;
 
   /**
    * `capacity`: how many values it will likely hold, taken at the first
@@ -72,11 +74,30 @@ export class ColumnWriter {
     this.push(value < 0 ? -2 * value - 1 : 2 * value);
   }
 
+  /** How many times each value below `size` was pushed. */
+  tally(size: number): Int32Array {
+    const counts = new Int32Array(size);
+    for (let index = 0; index < this._count; index++)
+      counts[this._values[index]!]!++;
+    return counts;
+  }
+
+  /** Writes `map[value]` in place of each value (one value per entry). */
+  remap(map: Int32Array): void {
+    this._map = map;
+  }
+
   encode(): string {
     let values = this._values;
     let count = this._count;
+    const written = this._map;
     // A reader past the end reads zeros.
-    if (!this._keepZeros) while (count > 0 && values[count - 1] === 0) count--;
+    if (!this._keepZeros)
+      while (
+        count > 0 &&
+        (written ? written[values[count - 1]!]! : values[count - 1]!) === 0
+      )
+        count--;
     if (count === 0) return "";
     // Runs of one value, as `value, times`, when they take fewer numbers.
     const runs = this._changes * 2 < count;
@@ -87,13 +108,14 @@ export class ColumnWriter {
         const value = values[index]!;
         let end = index + 1;
         while (end < count && values[end] === value) end++;
-        pairs[at++] = value;
+        pairs[at++] = written ? written[value]! : value;
         pairs[at++] = end - index;
         index = end;
       }
       values = pairs;
       count = at;
     }
+    const map = runs ? undefined : written;
     // The cut that takes the fewest digits, on a sample.
     const step = Math.ceil(count / SAMPLE);
     let cutIndex = 0;
@@ -103,7 +125,7 @@ export class ColumnWriter {
       let size = 0;
       for (let index = 0; index < count && size < best; index += step) {
         size++;
-        let value = values[index]!;
+        let value = map ? map[values[index]!]! : values[index]!;
         for (; value >= candidate; size++)
           value = Math.floor((value - candidate) / scale);
       }
@@ -113,7 +135,8 @@ export class ColumnWriter {
     const out = new FieldWriter(Math.ceil(best * step * 1.25) + 10);
     // One digit: whether it holds runs, and the cut.
     out.write(runs ? CUTS.length + cutIndex : cutIndex, BASE);
-    for (let index = 0; index < count; index++) out.write(values[index]!, cut);
+    for (let index = 0; index < count; index++)
+      out.write(map ? map[values[index]!]! : values[index]!, cut);
     return out.encode();
   }
 }
