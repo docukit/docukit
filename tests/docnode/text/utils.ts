@@ -1,6 +1,15 @@
 import { defineNode, defineText, type DocNode } from "@docukit/docnode";
 
-export const Paragraph = defineNode({ type: "p", state: { t: defineText() } });
+/**
+ * Bold and italic go on with the letter typed after; a link only inside. A
+ * paragraph letter (in flat texts) inherits nothing.
+ */
+const INHERIT = { bold: "origin", italic: "origin", link: "both" } as const;
+
+export const Paragraph = defineNode({
+  type: "p",
+  state: { t: defineText({ inherit: INHERIT, opaque: "\x7f" }) },
+});
 export type ParagraphNode = DocNode<typeof Paragraph>;
 
 /** A small deterministic generator, so a failing seed can be replayed. */

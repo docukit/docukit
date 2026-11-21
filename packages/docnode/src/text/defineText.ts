@@ -6,9 +6,13 @@ import type {
 } from "../types.js";
 import { withTransaction } from "../utils.js";
 import {
+  inheritRules,
+  rulesOf,
   isHighSurrogate,
+  type Rules,
   isLowSurrogate,
   storeOf,
+  type InheritRules,
   TEXT_KEY,
   type TextEngine,
   textState,
@@ -24,9 +28,11 @@ const splitsPair = (text: string, index: number) =>
 /** The handle returned by `node.state.<key>` for a `defineText` state. */
 export class TextHandle {
   private readonly _node: DocNode;
+  private readonly _rules: Rules | undefined;
 
-  constructor(node: DocNode) {
+  constructor(node: DocNode, rules: Rules | undefined) {
     this._node = node;
+    this._rules = rules;
   }
 
   private get _doc(): Doc {
@@ -34,7 +40,9 @@ export class TextHandle {
   }
 
   private get _store(): TextEngine {
-    return storeOf(this._doc);
+    const store = storeOf(this._doc);
+    store.setRules(this._node.id, this._rules);
+    return store;
   }
 
   /** The visible text. */
@@ -70,7 +78,10 @@ export class TextHandle {
     return this._store.indexOfLetter(this._node.id, letter);
   }
 
-  /** `insertLetters`: `attrs` is the state of the new letters. */
+  /**
+   * `insertLetters`: `attrs` is the state of the new letters (`{}`: none).
+   * Without it, they have what they inherit (see `defineText`).
+   */
   insert(index: number, text: string, attrs?: Record<string, Json>): void {
     withTransaction(this._doc, () =>
       this._store.insert(this._doc, this._node.id, index, text, attrs),
@@ -254,16 +265,30 @@ const rootDefinition = textState(BaseText);
 
 /**
  * Opt-in collaborative text: a list of letters per node, and a state per
- * letter and key where the last write wins. The server's order places
- * letters (see `BaseText`).
+ * letter and key where the last write wins. In Base the server's order
+ * places letters (see `BaseText`); with a CRDT engine, FugueMax does.
+ * `inherit`: the keys a letter without a value of its own reads from the
+ * letters it was typed between (see `Inherit`), like
+ * `{ bold: "origin", link: "both", "comment:*": "both" }`. `opaque`: the
+ * characters whose letters inherit nothing, like one that ends a paragraph.
  */
-export function defineText(): StateDefinition<number, Json, TextHandle> {
+export function defineText(options?: {
+  inherit?: InheritRules;
+  opaque?: string;
+}): StateDefinition<number, Json, TextHandle> {
+  const inherit = options?.inherit;
+  const rules =
+    inherit && Object.keys(inherit).length > 0
+      ? rulesOf(inherit, options?.opaque)
+      : undefined;
   const definition: InternalStateDefinition<number, Json, TextHandle> = {
     fromJSON: () => 0,
     docState: { key: TEXT_KEY, definition: rootDefinition },
-    methodsWithNode: (_methods, node) => new TextHandle(node),
+    methodsWithNode: (_methods, node) => new TextHandle(node, rules),
     onCopy: (from, to) => {
       const store = storeOf(from.doc);
+      store.setRules(from.id, rules);
+      store.setRules(to.id, rules);
       let cursor = 0;
       for (const span of store.spansOf(from.id)) {
         store.insert(from.doc, to.id, cursor, span.text, span.attrs);
@@ -271,6 +296,7 @@ export function defineText(): StateDefinition<number, Json, TextHandle> {
       }
     },
   };
+  if (rules) inheritRules.set(definition, rules);
   return definition;
 }
 

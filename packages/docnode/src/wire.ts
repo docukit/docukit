@@ -41,8 +41,10 @@ import {
 //     numbers: a string that does not read as a letter (see `LETTER`) starts
 //     the next one. `[text, ids, states?, right?, left?]` inserts letters
 //     again with the ids a delete took (an undo of it, `-1`: the id next to
-//     them), `[-1, ranges]` deletes letters and `[5, key, ranges, value?,
-//     ...]` sets their state (see `text/baseText.ts`). Only an insert of new
+//     them), `[-1, ranges]` deletes letters, `[5, key, ranges, value?, ...]`
+//     sets their state, and `[-6, key, ranges, value, right?]` sets a key
+//     letters inherit, with the letter that was after the ranges (left out:
+//     the id after them); see `text/baseText.ts`. Only an insert of new
 //     letters takes counters.
 //   - A letter of the row's own session is a number: the distance back from
 //     the row's counter (in a delete, of any sign), but for the right origin
@@ -528,9 +530,15 @@ class Encoder {
       row.push(this.ranges(op[4]!, c), ...op.slice(5));
       return;
     }
-    // Its key, then ranges and their value.
-    row.push(numericKey(text(op[4])));
-    this._values(op, 5, c, row);
+    // Base's state has no lamport: its key, then ranges and their value.
+    if (tag === 5) {
+      row.push(numericKey(text(op[4])));
+      this._values(op, 5, c, row);
+      return;
+    }
+    // A key letters inherit: one value, then the letter after its ranges.
+    row.push(numericKey(text(op[4])), this.ranges(op[5]!, c), op[6]!);
+    if (op.length > 7) row.push(this.ref(op[7]!, c));
   }
 
   /** Ranges and their value, alternately, from `op[from]` on. */
@@ -873,6 +881,10 @@ class Decoder {
       case 5:
         op.push(keyOf(row[at + 1]));
         this._values(row, at + 2, c, op);
+        break;
+      case 6:
+        op.push(keyOf(row[at + 1]), this.ranges(row[at + 2]!, c), row[at + 3]!);
+        if (row.length > at + 4) op.push(this.ref(row[at + 4]!, c));
         break;
       default:
         op.push(...row.slice(at + 1));

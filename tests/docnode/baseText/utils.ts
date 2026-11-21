@@ -13,14 +13,25 @@ import {
 } from "@docukit/docnode";
 
 /**
- * Base's text (see `BaseText`): it relies on the server's order. A
- * paragraph letter ends a line of a flat text.
+ * Base's text (see `BaseText`): it relies on the server's order. Bold and
+ * italic go on with the letter typed after; a link only inside. A paragraph
+ * letter (the end of a line) inherits nothing.
  */
 export const P = "\x7f";
+const TEXT = {
+  inherit: { bold: "origin", italic: "origin", link: "both" },
+  opaque: P,
+} as const;
 
 /** A root with a flat text: a line per paragraph letter, as in Lexical. */
-export const Root = defineNode({ type: "root", state: { t: defineText() } });
-export const Paragraph = defineNode({ type: "p", state: { t: defineText() } });
+export const Root = defineNode({
+  type: "root",
+  state: { t: defineText(TEXT) },
+});
+export const Paragraph = defineNode({
+  type: "p",
+  state: { t: defineText(TEXT) },
+});
 export type ParagraphNode = DocNode<typeof Paragraph>;
 
 export const ROOT_ID = "01kc52hq510g6y44jhq0wqrjb3";
