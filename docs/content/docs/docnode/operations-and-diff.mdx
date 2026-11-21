@@ -31,13 +31,13 @@ Unless you're building your own sync solution or undo manager, you don't need to
 
 \`\`\`ts
 type Operations = [
-// The session that made it and its first clock, plus other sessions it names.
+// The session that made it and its first counter, plus other sessions it names.
 head: string | string[],
-...rows: (InsertNodes | DeleteNodes | MoveNodes | StatePatch)[],
+...rows: (TextEdit | InsertNodes | DeleteNodes | MoveNodes | StatePatch)[],
 ];
 
-// Appending three nodes of type "t" with the values "a", "b" and "c":
-["1ZcR.-", [0, [[1, "t", 3]]], [-9, [1, 3], "v", ["a", "b", "c"]]];
+// Typing "s" between two letters:
+["1ZcR.5", "s", -3];
 \`\`\`
 
 See [the format](#format) below.
@@ -88,6 +88,11 @@ In CRDT mode, the operations will be commutative. This means that operations can
 A batch is `[head, ...rows]`. The rows are applied in order:
 
 ```ts
+// Inserts letters next to the ones it names (`defineText`).
+[text, ...letters];
+// Any other text edit (deleting letters, bringing them back...) starts with
+// a negative tag.
+[-tag, ...];
 // Inserts nodes under `parent`, between two siblings. A count is a run of
 // nodes created one after the other.
 [0, [[node, type, count?], ...], parent?, prev?, next?];
@@ -103,9 +108,11 @@ A batch is `[head, ...rows]`. The rows are applied in order:
 [-9, node, key, value, ...];
 ```
 
-Trailing zeros are left out, and `0` is the root as a parent, or no sibling. A node of the head's session is written by its distance from the head's clock (`1` is the node at that clock, `-1` the one before), a node of another session as `"index.clock"`, its session's index in the head. A batch of one row leaves out the row's brackets:
+Trailing zeros are left out, and `0` is the root as a parent, or no sibling. A node of the head's session can be written by its distance from the head's clock (`1` is the node at that clock, `-1` the one before), a node of another session as `"index.clock"`, its session's index in the head. A text edit takes the session of the row before it, and counters right after it. A batch of one row leaves out the row's brackets:
 
 ```ts
+// Appends three nodes of type "t" with the values "a", "b" and "c".
+["1ZcR.-", [0, [[1, "t", 3]]], [-9, [1, 3], "v", ["a", "b", "c"]]];
 // Sets the state of a node.
 ["1ZcR.-", -9, 1, "v", "z"];
 // Moves a node after another one.
@@ -114,6 +121,10 @@ Trailing zeros are left out, and `0` is the root as a parent, or no sibling. A n
 ["1ZcR.3", 0, 1, "t", 0, -1];
 // Deletes a node: the one the head names.
 ["1ZcR.0", 1];
+// Types "Hello" in an empty text.
+["1ZcR.-", "Hello", "^.2"];
+// Deletes two letters.
+["1ZcR.6", -1, [7, 2]];
 ```
 
 ### Upgrading from 0.4
