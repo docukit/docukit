@@ -1,10 +1,11 @@
-// How the text engine finds the character at an index of a node's text. It
-// keeps every list of characters as a linked list of runs; this index gets
-// from an index to a run in O(log n).
+// How a text engine finds the visible character at an index of a node's text.
+// Both engines keep every list of characters as a linked list of runs; this
+// index gets from an index to a run in O(log n).
 
 /** What the index needs of a run of letters (and of a node's root). */
 export type Item<R> = {
   readonly len: number;
+  readonly visible: boolean;
   /** Bookkeeping of the index. */
   leaf: Leaf<R> | undefined;
   vis: number;
@@ -27,8 +28,8 @@ export type Positions<R> = {
   seek(root: R, index: number): Seek<R>;
   /** `run`'s visible length changed. */
   changed(run: R): void;
-  /** `run` was just linked right after `target`. */
-  linked(target: R, run: R): void;
+  /** `run` was just linked right after (or before) `target`. */
+  linked(target: R, run: R, after: boolean): void;
   /** `run` left its list (or was joined into the run before it). */
   removed(run: R): void;
   /** How many visible characters of `root`'s list are before `run`. */
@@ -49,6 +50,7 @@ type Inner<R> = {
 type TreeNode<R> = Leaf<R> | Inner<R>;
 
 const isLeaf = <R>(node: TreeNode<R>): node is Leaf<R> => "items" in node;
+const visOf = <R>(run: Item<R>) => (run.visible ? run.len : 0);
 
 /**
  * The runs of one flow in order, in leaves of about `LEAF` runs that know their
@@ -90,7 +92,7 @@ class FlowIndex<R extends Item<R>> {
 
   private _attach(leaf: Leaf<R>, run: R, at: number): void {
     run.leaf = leaf;
-    run.vis = run.len;
+    run.vis = visOf(run);
     if (at === leaf.items.length) leaf.items.push(run);
     else leaf.items.splice(at, 0, run);
     leaf.vis += run.vis;
@@ -100,9 +102,9 @@ class FlowIndex<R extends Item<R>> {
     for (; node; node = node.parent) node.vis += vis;
   }
 
-  insert(target: R, run: R): void {
+  insert(target: R, run: R, after: boolean): void {
     const leaf = target.leaf!;
-    this._attach(leaf, run, leaf.items.indexOf(target) + 1);
+    this._attach(leaf, run, leaf.items.indexOf(target) + (after ? 1 : 0));
     this._add(leaf.parent, run.vis);
     if (leaf.items.length >= LEAF * 2) this._splitLeaf(leaf);
   }
@@ -115,7 +117,8 @@ class FlowIndex<R extends Item<R>> {
   }
 
   changed(run: R): void {
-    const vis = run.len - run.vis;
+    const vis = visOf(run) - run.vis;
+    if (vis === 0) return;
     run.vis += vis;
     this._add(run.leaf, vis);
   }
@@ -229,8 +232,8 @@ export class TreePositions<R extends Item<R>> implements Positions<R> {
     this._indexes.get(run.flow)?.changed(run);
   }
 
-  linked(target: R, run: R): void {
-    this._indexes.get(target.flow)?.insert(target, run);
+  linked(target: R, run: R, after: boolean): void {
+    this._indexes.get(target.flow)?.insert(target, run, after);
   }
 
   removed(run: R): void {

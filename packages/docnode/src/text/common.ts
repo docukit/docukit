@@ -294,17 +294,20 @@ export function nextId(id: string): string | undefined {
 
 // ----- references to letters ----------------------------------------------
 //
-// A reference to a letter is a number for one of the operation's own session
-// (`counter + 1`), and `session.counter` (base 64) for another one.
+// A reference to an element is a number for one of the operation's own
+// session (`counter + 1`), `session.counter` (base 64) for another one, and
+// `^node` for the start of a node's text.
 
 export function encodeRef(own: string, s: string, c: number): number | string {
   if (s === own) return c + 1;
+  if (c === -1) return `^${s}`;
   return `${s}.${numberToBase64(c)}`;
 }
 
 export function decodeRef(own: string, ref: Json): [string, number] {
   if (typeof ref === "number") return [own, ref - 1];
   const text = stringOf(ref);
+  if (text.charCodeAt(0) === 94) return [text.slice(1), -1];
   const dot = lastDot(text);
   return [text.slice(0, dot), base64ToNumber(text, dot + 1)];
 }

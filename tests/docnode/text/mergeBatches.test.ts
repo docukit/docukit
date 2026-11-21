@@ -63,13 +63,22 @@ describe("mergeBatches", () => {
     expect(replay(merged)).toStrictEqual(doc.toJSON());
   });
 
-  test("with a CRDT engine, keeps the batches of its tree as they are", () => {
+  test("with a CRDT engine, merges its typing and keeps its other batches", () => {
     const { doc, batches, replay } = writer(labelsEngine());
-    doc.root.append(doc.createNode(Item));
+    const paragraph = doc.createNode(Paragraph);
+    doc.root.append(paragraph);
     doc.forceCommit();
-    doc.root.append(doc.createNode(Item));
+    type(paragraph, "ab");
+    const item = doc.createNode(Item);
+    doc.root.append(item);
     doc.forceCommit();
-    expect(mergeBatches(batches)).toStrictEqual(batches);
-    expect(replay(batches)).toStrictEqual(doc.toJSON());
+    type(paragraph, "c");
+
+    const merged = mergeBatches(batches);
+    // The paragraph, "ab", the item, "c": the engine's batches as they were.
+    expect(merged).toHaveLength(4);
+    expect(merged[0]).toStrictEqual(batches[0]);
+    expect(merged[2]).toStrictEqual(batches[3]);
+    expect(replay(merged)).toStrictEqual(replay(batches));
   });
 });
