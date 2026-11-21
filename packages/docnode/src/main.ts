@@ -1135,9 +1135,9 @@ export class Doc {
    */
   static fromJSON(
     config: DocConfig,
-    json: JsonDoc | JsonDocWithoutText | JsonTree,
+    storedDoc: JsonDoc | JsonDocWithoutText | JsonTree,
   ): Doc {
-    const id = isTree(json) ? json[0] : config.id;
+    const id = isTree(storedDoc) ? storedDoc[0] : config.id;
     if (!id)
       throw new Error(
         "A document stored by `toJSON` does not keep its id: pass it as `config.id`.",
@@ -1147,9 +1147,14 @@ export class Doc {
         `Attempted to create a document with id '${config.id}' that does not match the root node id '${id}'.`,
       );
     }
+    // Format 13 reads as today's: extensions only see that one.
+    const json = config.extensions.reduce(
+      (json, extension) => extension.load?.(json, id) ?? json,
+      isTree(storedDoc) ? storedDoc : withText(storedDoc),
+    );
     const doc = new Doc({ ...config, id });
     withTransaction(doc, () => {
-      if (!isTree(json)) return readJsonDoc(doc, withText(json));
+      if (!isTree(json)) return readJsonDoc(doc, json);
       doc._setStoredRoot(doc._nodeFromTree(json));
       doc._attachTree(doc.root, json[3]);
     });

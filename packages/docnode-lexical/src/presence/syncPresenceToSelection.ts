@@ -7,14 +7,14 @@ import {
 import type { Presence, PresenceBinding } from "./types.js";
 
 /**
- * Takes incoming presence from other users, maps their DocNode IDs to local
- * Lexical keys, and creates/updates/removes the cursor DOM for each remote user.
+ * Takes incoming presence from other users, maps their cursor ends to local
+ * Lexical points, and creates/updates/removes the cursor DOM for each remote user.
  */
 export function syncPresenceToSelection(
   binding: PresenceBinding,
   presence: Presence,
 ): void {
-  const { editor, cursors, keyBinding } = binding;
+  const { editor, cursors, points } = binding;
   const nodeMap = editor._editorState._nodeMap;
   const visitedUserIds = new Set<string>();
 
@@ -25,14 +25,20 @@ export function syncPresenceToSelection(
 
     const { name, color, anchor, focus } = userPresence;
 
-    // Convert DocNode IDs to local Lexical keys
-    const anchorLexicalKey = keyBinding.docNodeIdToLexicalKey.get(anchor.key);
-    const focusLexicalKey = keyBinding.docNodeIdToLexicalKey.get(focus.key);
-
-    if (!anchorLexicalKey || !focusLexicalKey) {
-      // Node not yet mapped in this editor, skip this cursor
+    const resolved = editor
+      .getEditorState()
+      .read(() => ({
+        anchor: points.$remote(anchor),
+        focus: points.$remote(focus),
+      }));
+    if (!resolved.anchor || !resolved.focus) {
+      // Not in this editor (yet): no cursor where it was either
+      const cursor = cursors.get(userId);
+      if (cursor) updateCursor(binding, cursor, undefined, nodeMap);
       continue;
     }
+    const anchorLexicalKey = resolved.anchor.key;
+    const focusLexicalKey = resolved.focus.key;
 
     let cursor = cursors.get(userId);
 
@@ -48,16 +54,16 @@ export function syncPresenceToSelection(
         selection = createCursorSelection(
           cursor,
           anchorLexicalKey,
-          anchor.offset,
+          resolved.anchor.offset,
           focusLexicalKey,
-          focus.offset,
+          resolved.focus.offset,
         );
       } else {
         // Update existing selection with converted keys
         selection.anchor.key = anchorLexicalKey;
-        selection.anchor.offset = anchor.offset;
+        selection.anchor.offset = resolved.anchor.offset;
         selection.focus.key = focusLexicalKey;
-        selection.focus.offset = focus.offset;
+        selection.focus.offset = resolved.focus.offset;
       }
     } else {
       selection = undefined;

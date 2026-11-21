@@ -280,6 +280,12 @@ export type Find = {
 export type Extension = {
   nodes?: readonly NodeDefinition[];
   register?: (doc: Doc) => void;
+  /**
+   * Transforms a stored document before `Doc.fromJSON` builds it, in the order
+   * of the extensions: to check it, or to convert it from another layout.
+   * `id` is the document's (see `Doc.toJSON`).
+   */
+  load?: (json: JsonDoc | JsonTree, id: string) => JsonDoc | JsonTree;
 };
 
 export type NodeIdGenerator = {

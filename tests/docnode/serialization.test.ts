@@ -11,6 +11,7 @@ import {
   TestExtension,
   TestNode,
   checkUndoManager,
+  isJsonTree,
 } from "./utils.js";
 import {
   Doc,
@@ -148,6 +149,42 @@ describe("json serialization", () => {
       ],
     ]);
     assertDoc(doc, ["1", "2", "__2.1", "__2.2", "3", "4"]);
+  });
+
+  test("extensions can check or convert a stored document as it loads", () => {
+    const stored: JsonTree = [
+      "01kdjkhm2wkfkcw7xkjdjrd1cc",
+      "root",
+      {},
+      [["1", "old", { value: '"1"' }]],
+    ];
+    // An older node type becomes a text node, then a second extension checks.
+    const doc = Doc.fromJSON(
+      {
+        type: "root",
+        extensions: [
+          TextExtension,
+          {
+            load: (json) =>
+              isJsonTree(json)
+                ? [json[0], json[1], json[2], [["1", "text", { value: '"1"' }]]]
+                : json,
+          },
+          {
+            load: (json) => {
+              if (
+                isJsonTree(json) &&
+                json[3]?.some(([, type]) => type === "old")
+              )
+                throw new Error("unconverted");
+              return json;
+            },
+          },
+        ],
+      },
+      stored,
+    );
+    assertDoc(doc, ["1"]);
   });
 
   test("fromJSON with invalid state should not be imported", () => {

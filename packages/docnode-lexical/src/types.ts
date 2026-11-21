@@ -1,10 +1,9 @@
-/** Key mapping between Lexical keys and DocNode IDs */
-export type KeyBinding = {
-  lexicalKeyToDocNodeId: Map<string, string>;
-  docNodeIdToLexicalKey: Map<string, string>;
-};
-
-/** Selection data (DocNode IDs). Optional name/color when enriched for presence. */
+/**
+ * Selection data. Optional name/color when enriched for presence. `key` is
+ * the id of a letter and the point is right before it (`offset` 0) or, at the
+ * end of the text, right after it (`offset` 1): edits of others around it
+ * leave it in place.
+ */
 export type PresenceSelection = {
   anchor: { key: string; offset: number };
   focus: { key: string; offset: number };

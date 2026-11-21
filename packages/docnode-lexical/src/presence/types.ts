@@ -1,5 +1,6 @@
 import type { LexicalEditor, NodeKey } from "lexical";
-import type { KeyBinding, PresenceSelection } from "../types.js";
+import type { BlockPoint } from "../textBlocks.js";
+import type { PresenceSelection } from "../types.js";
 
 /** Presence data for a remote user (required name/color for rendering). */
 export type LexicalPresence = PresenceSelection & {
@@ -33,9 +34,20 @@ export type Cursor = {
   selection: CursorSelection | undefined;
 };
 
+/** A cursor end as presence carries it (see `PresenceSelection`). */
+type PresencePoint = PresenceSelection["anchor"];
+
+/** How the binding writes cursor ends and reads them back. */
+export type PresencePoints = {
+  /** The local selection, undefined when other editors could not show it. */
+  $local: () => { anchor: PresencePoint; focus: PresencePoint } | undefined;
+  /** A remote cursor end in this editor, undefined while it cannot show it. */
+  $remote: (point: PresencePoint) => BlockPoint | undefined;
+};
+
 export type PresenceBinding = {
   editor: LexicalEditor;
   cursorsContainer: HTMLElement | undefined;
   cursors: Map<string, Cursor>;
-  keyBinding: KeyBinding;
+  points: PresencePoints;
 };

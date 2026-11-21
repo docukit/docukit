@@ -58,6 +58,34 @@ const doc = new Doc(
 );
 ```
 
+### Concurrent edits to the same text
+
+When two users edit the same paragraph at once, their edits merge letter by
+letter, and both survive: if both fix the same typo, each fix is kept. See
+[Text Conflicts](https://www.docukit.dev/blog/text-conflicts).
+
+Documents stored by earlier versions, which kept a DocNode per Lexical
+`TextNode`, throw when they load. To open them, add the compatibility
+extension, which converts them as they load. Give it the nodes of your
+editor: they tell blocks from inline nodes.
+
+```ts
+import { openNodeDocuments } from "@docukit/docnode-lexical/compat";
+
+const doc = Doc.fromJSON(
+  createLexicalDocNodeConfig({
+    id: docId,
+    extensions: [openNodeDocuments({ nodes: [HeadingNode, LinkNode] })],
+  }),
+  storedDoc,
+);
+```
+
+Every replica converts a document the same way, so with DocSync give the
+server the extension too. Operations of the earlier versions do not apply to
+the converted document: convert documents whose operations are all in their
+snapshot, and make clients of the earlier versions reload first.
+
 ### Props
 
 <TypeTable

@@ -1,21 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Doc } from "@docukit/docnode";
+import { SKIP_UNDO_TAG, syncLexicalWithDoc } from "@docukit/docnode-lexical";
 import {
-  LexicalDocNode,
-  _INTERNAL_setupUndoManager as setupUndoManager,
-} from "@docukit/docnode-lexical";
-import { createLexicalDoc } from "./utils.js";
+  $selectAt,
+  $textsWithCaret,
+  $typeAt,
+  createLexicalDoc,
+  loadedTexts,
+} from "./utils.js";
 import {
   $createParagraphNode,
-  $createRangeSelection,
   $createTextNode,
-  $getNodeByKey,
   $getRoot,
-  $isTextNode,
-  $setSelection,
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
-  COLLABORATION_TAG,
   COMMAND_PRIORITY_EDITOR,
   COMMAND_PRIORITY_HIGH,
   COMMAND_PRIORITY_LOW,
@@ -43,13 +41,13 @@ const makeEditor = () =>
     },
   });
 
-// Empty keyBinding — these tests don't exercise selection capture/restore,
-// so the empty maps are fine. (The selection round-trip is exercised by
-// the E2E test in tests/docsync/ui/editor/.)
-const emptyKeyBinding = () => ({
-  lexicalKeyToDocNodeId: new Map<string, string>(),
-  docNodeIdToLexicalKey: new Map<string, string>(),
-});
+/** A local edit, which DocNode's undo manager records. */
+const addParagraph = (editor: LexicalEditor, text: string) =>
+  editor.update(
+    () =>
+      $getRoot().append($createParagraphNode().append($createTextNode(text))),
+    { discrete: true },
+  );
 
 const listenerCount = (doc: Doc): number => doc["_changeListeners"].size;
 
@@ -66,7 +64,7 @@ const forceGc = async (): Promise<void> => {
   }
 };
 
-describe("setupUndoManager doc undo manager", () => {
+describe("Lexical undo and redo through the document's undo manager", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -84,11 +82,10 @@ describe("setupUndoManager doc undo manager", () => {
       REDO_COMMAND,
       COMMAND_PRIORITY_HIGH,
     );
-    expect(listenerCount(doc)).toBe(1);
+    const initialListenerCount = listenerCount(doc);
 
-    const off1 = setupUndoManager(editor, doc, emptyKeyBinding());
-    // +1 from the built-in undo manager, +1 from CAN_UNDO/REDO dispatcher.
-    expect(listenerCount(doc)).toBe(2);
+    const off1 = syncLexicalWithDoc(editor, doc);
+    const boundListenerCount = listenerCount(doc);
     expect(
       commandListenerCount(editor, UNDO_COMMAND, COMMAND_PRIORITY_HIGH),
     ).toBe(initialUndoHandlerCount + 1);
@@ -97,13 +94,12 @@ describe("setupUndoManager doc undo manager", () => {
     ).toBe(initialRedoHandlerCount + 1);
 
     // Record a change so doc.undoManager has something to undo.
-    doc.root.append(doc.createNode(LexicalDocNode));
-    doc.forceCommit();
-    expect(doc.root.first).toBeDefined();
+    addParagraph(editor, "Hello");
+    expect(loadedTexts(doc)).toStrictEqual(["Hello"]);
 
     off1();
-    // The CAN_* dispatcher is gone; doc.undoManager's listener stays.
-    expect(listenerCount(doc)).toBe(1);
+    // The binding's listeners are gone; doc.undoManager's listener stays.
+    expect(listenerCount(doc)).toBe(initialListenerCount);
     expect(
       commandListenerCount(editor, UNDO_COMMAND, COMMAND_PRIORITY_HIGH),
     ).toBe(initialUndoHandlerCount);
@@ -111,14 +107,13 @@ describe("setupUndoManager doc undo manager", () => {
       commandListenerCount(editor, REDO_COMMAND, COMMAND_PRIORITY_HIGH),
     ).toBe(initialRedoHandlerCount);
 
-    const off2 = setupUndoManager(editor, doc, emptyKeyBinding());
-    // Only the CAN_* dispatcher is added.
-    expect(listenerCount(doc)).toBe(2);
+    const off2 = syncLexicalWithDoc(editor, doc);
+    expect(listenerCount(doc)).toBe(boundListenerCount);
 
     // The history survived the remount → UNDO_COMMAND reverts the doc change
     // through doc.undoManager.
     editor.dispatchCommand(UNDO_COMMAND, undefined);
-    expect(doc.root.first).toBeUndefined();
+    expect(loadedTexts(doc)).toStrictEqual([]);
 
     off2();
   });
@@ -146,7 +141,7 @@ describe("setupUndoManager doc undo manager", () => {
       COMMAND_PRIORITY_LOW,
     );
 
-    const off = setupUndoManager(editor, doc, emptyKeyBinding());
+    const off = syncLexicalWithDoc(editor, doc);
     // Initial dispatch: both fire because previous values were undefined.
     expect(dispatches).toStrictEqual([
       { kind: "undo", value: false },
@@ -155,14 +150,12 @@ describe("setupUndoManager doc undo manager", () => {
     dispatches.length = 0;
 
     // First change: canUndo transitions false → true. canRedo stays false.
-    doc.root.append(doc.createNode(LexicalDocNode));
-    doc.forceCommit();
+    addParagraph(editor, "a");
     expect(dispatches).toStrictEqual([{ kind: "undo", value: true }]);
     dispatches.length = 0;
 
     // Second change: canUndo and canRedo both unchanged → no dispatch.
-    doc.root.append(doc.createNode(LexicalDocNode));
-    doc.forceCommit();
+    addParagraph(editor, "b");
     expect(dispatches).toStrictEqual([]);
 
     // Undo: canUndo stays true (still 1 entry), canRedo transitions false → true.
@@ -196,7 +189,7 @@ describe("setupUndoManager doc undo manager", () => {
       COMMAND_PRIORITY_LOW,
     );
 
-    const off = setupUndoManager(editor, doc, emptyKeyBinding());
+    const off = syncLexicalWithDoc(editor, doc);
 
     expect(editor.dispatchCommand(UNDO_COMMAND, undefined)).toBe(true);
     expect(undoFallback).toHaveBeenCalledOnce();
@@ -209,84 +202,56 @@ describe("setupUndoManager doc undo manager", () => {
     offRedoFallback();
   });
 
-  it("keeps the first selection metadata when updates merge into one undo item", () => {
+  it("keeps the first selection when updates merge into one undo item", () => {
+    let now = 0;
+    const dateNow = vi.spyOn(Date, "now").mockImplementation(() => now);
     const doc = createLexicalDoc({ mergeInterval: 500 });
     const editor = makeEditor();
-    const docNode = doc.createNode(LexicalDocNode);
-    doc.forceCommit(
-      () => {
-        doc.root.append(docNode);
-      },
-      { skipUndo: true },
-    );
-
-    let textKey = "";
-    editor.update(
-      () => {
-        const root = $getRoot();
-        const paragraph = $createParagraphNode();
-        const textNode = $createTextNode("abc");
-        textKey = textNode.getKey();
-        paragraph.append(textNode);
-        root.clear();
-        root.append(paragraph);
-
-        const selection = $createRangeSelection();
-        selection.anchor.set(textKey, 0, "text");
-        selection.focus.set(textKey, 0, "text");
-        $setSelection(selection);
-      },
-      { discrete: true, tag: COLLABORATION_TAG },
-    );
-
-    const keyBinding = {
-      lexicalKeyToDocNodeId: new Map([[textKey, docNode.id]]),
-      docNodeIdToLexicalKey: new Map([[docNode.id, textKey]]),
-    };
-    const off = setupUndoManager(editor, doc, keyBinding);
-    let now = 1000;
-    const dateNow = vi.spyOn(Date, "now").mockImplementation(() => now);
-
-    editor.update(
-      () => {
-        const textNode = $getNodeByKey(textKey);
-        if (!$isTextNode(textNode)) throw new Error("Expected text node");
-        textNode.setTextContent("abcd");
-        const selection = $createRangeSelection();
-        selection.anchor.set(textKey, 1, "text");
-        selection.focus.set(textKey, 1, "text");
-        $setSelection(selection);
-      },
-      { discrete: true },
-    );
-    doc.root.append(doc.createNode(LexicalDocNode));
-    doc.forceCommit();
-
-    now = 1400;
-    editor.update(
-      () => {
-        const textNode = $getNodeByKey(textKey);
-        if (!$isTextNode(textNode)) throw new Error("Expected text node");
-        textNode.setTextContent("abcde");
-        const selection = $createRangeSelection();
-        selection.anchor.set(textKey, 2, "text");
-        selection.focus.set(textKey, 2, "text");
-        $setSelection(selection);
-      },
-      { discrete: true },
-    );
-    doc.root.append(doc.createNode(LexicalDocNode));
-    doc.forceCommit();
-
-    const item = doc.undoManager["_undoStack"][0];
-    expect(doc.undoManager["_undoStack"]).toHaveLength(1);
-    expect(item?.meta.get("selection")).toStrictEqual({
-      anchor: { key: docNode.id, offset: 0 },
-      focus: { key: docNode.id, offset: 0 },
+    const off = syncLexicalWithDoc(editor, doc);
+    const edit = (change: () => void) =>
+      editor.update(change, { discrete: true });
+    edit(() => {
+      $getRoot().append($createParagraphNode().append($createTextNode("abc")));
+      $selectAt(0, 1);
     });
+
+    now = 1000;
+    edit(() => $typeAt(0, 1, "X"));
+    // Only the selection changes: it is not an edit.
+    edit(() => $selectAt(0, 3));
+    now = 1400;
+    edit(() => $typeAt(0, 3, "Y"));
+    expect(editor.getEditorState().read($textsWithCaret)).toStrictEqual([
+      "aXbY|c",
+    ]);
+
+    editor.dispatchCommand(UNDO_COMMAND, undefined);
+    // Where the caret was before the first of the merged edits.
+    expect(editor.getEditorState().read($textsWithCaret)).toStrictEqual([
+      "a|bc",
+    ]);
 
     dateNow.mockRestore();
     off();
+  });
+
+  it("leaves out of the history the updates tagged SKIP_UNDO_TAG", () => {
+    const doc = createLexicalDoc();
+    const editor = makeEditor();
+    syncLexicalWithDoc(editor, doc);
+    editor.update(
+      () =>
+        $getRoot().append($createParagraphNode().append($createTextNode("a"))),
+      { discrete: true, tag: SKIP_UNDO_TAG },
+    );
+    expect(loadedTexts(doc)).toStrictEqual(["a"]);
+    expect(doc.undoManager.canUndo()).toBe(false);
+
+    addParagraph(editor, "b");
+    expect(doc.undoManager.canUndo()).toBe(true);
+    doc.undoManager.undo();
+    doc.forceCommit();
+    expect(loadedTexts(doc)).toStrictEqual(["a"]);
   });
 
   it("does not register undo handlers when undo manager is disabled", () => {
@@ -294,7 +259,6 @@ describe("setupUndoManager doc undo manager", () => {
     const editor = makeEditor();
     const canUndoListener = vi.fn(() => false);
     const canRedoListener = vi.fn(() => false);
-    const beforeSetupListenerCount = listenerCount(doc);
     const beforeUndoHighCount = commandListenerCount(
       editor,
       UNDO_COMMAND,
@@ -317,9 +281,8 @@ describe("setupUndoManager doc undo manager", () => {
       COMMAND_PRIORITY_LOW,
     );
 
-    const off = setupUndoManager(editor, doc, emptyKeyBinding());
+    const off = syncLexicalWithDoc(editor, doc);
 
-    expect(listenerCount(doc)).toBe(beforeSetupListenerCount);
     expect(
       commandListenerCount(editor, UNDO_COMMAND, COMMAND_PRIORITY_HIGH),
     ).toBe(beforeUndoHighCount);
@@ -346,7 +309,7 @@ describe("setupUndoManager doc undo manager", () => {
       COMMAND_PRIORITY_EDITOR,
     );
 
-    const off = setupUndoManager(editor, doc, emptyKeyBinding());
+    const off = syncLexicalWithDoc(editor, doc);
 
     // The check is deferred via queueMicrotask so sibling effects can register
     // first. Flush the microtask queue.
@@ -372,7 +335,7 @@ describe("setupUndoManager doc undo manager", () => {
       COMMAND_PRIORITY_EDITOR,
     );
 
-    const off = setupUndoManager(editor, doc, emptyKeyBinding());
+    const off = syncLexicalWithDoc(editor, doc);
 
     // The check is deferred via queueMicrotask so sibling effects can register
     // first. Flush the microtask queue.
@@ -391,7 +354,7 @@ describe("setupUndoManager doc undo manager", () => {
     const editor = makeEditor();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
-    const off = setupUndoManager(editor, doc, emptyKeyBinding());
+    const off = syncLexicalWithDoc(editor, doc);
     await Promise.resolve();
 
     expect(warn).not.toHaveBeenCalled();
@@ -405,7 +368,7 @@ describe("setupUndoManager doc undo manager", () => {
     const editor = makeEditor();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
-    const off = setupUndoManager(editor, doc, emptyKeyBinding());
+    const off = syncLexicalWithDoc(editor, doc);
     await Promise.resolve();
 
     expect(warn).not.toHaveBeenCalled();
@@ -421,7 +384,7 @@ describe("setupUndoManager doc undo manager", () => {
     (() => {
       const doc = createLexicalDoc();
       const editor = makeEditor();
-      const off = setupUndoManager(editor, doc, emptyKeyBinding());
+      const off = syncLexicalWithDoc(editor, doc);
 
       // Snapshot the listener closure registered by doc.undoManager.
       const listeners = Array.from(doc["_changeListeners"]);

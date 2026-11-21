@@ -1,2 +1,3 @@
 pnpm-lock.yaml
 .context
+tests/docnode-lexical/compat/fixtures.json

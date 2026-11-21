@@ -8,10 +8,15 @@ declare global {
   var __DOCSYNC_FORGET_SERVER_DOC__: ((docId: string) => void) | undefined;
 }
 
-// In development: resolve to source files for faster testing without building
-// In CI: use dist files to test what actually gets published
-// see https://nx.dev/docs/technologies/test-tools/vitest/guides/testing-without-building-dependencies
-const resolveConfig = !process.env.CI ? { conditions: ["vitest"] } : {};
+const resolveConfig = {
+  // One React and one @lexical/react (with its contexts) for the tests and
+  // @docukit/docnode-lexical, which resolve different versions of them.
+  dedupe: ["react", "react-dom", "@lexical/react"],
+  // In development: resolve to source files for faster testing without building
+  // In CI: use dist files to test what actually gets published
+  // see https://nx.dev/docs/technologies/test-tools/vitest/guides/testing-without-building-dependencies
+  ...(!process.env.CI && { conditions: ["vitest"] }),
+};
 
 // Expose globalThis.gc() in node test workers.
 process.env.NODE_OPTIONS = [process.env.NODE_OPTIONS, "--expose-gc"]

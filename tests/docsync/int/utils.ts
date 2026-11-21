@@ -16,6 +16,7 @@ import {
   _INTERNAL_decodeOperations as decodeOperations,
 } from "@docukit/docnode";
 import type { LegacyOperations } from "@docukit/docnode/compat";
+import { createLexicalDocNodeConfig } from "@docukit/docnode-lexical";
 import { ulid } from "ulid";
 import { expect, inject, vi, type Mock } from "vitest";
 
@@ -117,11 +118,23 @@ export const testDocConfig = {
   undoManager: { maxUndoSteps: 10, mergeInterval: 0 },
 };
 
+/** The type of the Lexical documents. */
+export const LEXICAL_DOC_TYPE = "lexical";
+
+/** Every document type the clients and the test server know. */
+export const testDocConfigs = [
+  testDocConfig,
+  createLexicalDocNodeConfig({
+    type: LEXICAL_DOC_TYPE,
+    undoManager: testDocConfig.undoManager,
+  }),
+];
+
 // ============================================================================
 // Doc Binding
 // ============================================================================
 
-const createDocBinding = () => DocNodeBinding([testDocConfig]);
+const createDocBinding = () => DocNodeBinding(testDocConfigs);
 
 // ============================================================================
 // Generators
