@@ -1047,9 +1047,9 @@ describe("applyOperations", () => {
     doc.root.append(existing!);
     doc.forceCommit();
     const id = short(existing!.id);
+    // @ts-expect-error - rows that do not match `Operations`
     doc.applyOperations([
       sessionOf(existing!.id),
-      // @ts-expect-error - rows that do not match `Operations`
       [0, 5],
       [1, 5],
       5,
@@ -1160,10 +1160,11 @@ describe("applyOperations", () => {
     const [existing] = text(doc, "existing");
     doc.root.append(existing!);
     doc.forceCommit();
-    // @ts-expect-error - a delete whose node is not an id
-    expect(() => doc.applyOperations(["s", [1, null]])).not.toThrow();
-    // @ts-expect-error - an insert of a node without its type
-    expect(() => doc.applyOperations(["s", [0, [[".1", 5]]]])).not.toThrow();
+    for (const broken of [
+      ["s", [1, null]],
+      ["s", [0, [[".1", 5]]]],
+    ] as const)
+      expect(() => doc.applyOperations(broken)).not.toThrow();
     assertDoc(doc, ["existing"]);
   });
 
@@ -1264,6 +1265,36 @@ describe("applyOperations", () => {
     expect(replica.toJSON()).toStrictEqual(doc.toJSON());
   });
 
+  test("an empty state patch decodes as no state", () => {
+    expect(decodeOperations(["s", [1, "a"], [-9]])).toStrictEqual([
+      [[1, "a", 0]],
+      {},
+    ]);
+  });
+
+  test("ids whose clock is not in base 64 travel whole", () => {
+    const ids = ["a.é0", "a.é1", "a.é2"];
+    const config = { type: "root", extensions: [TextExtension] };
+    const doc = new Doc({
+      ...config,
+      id: "01kc52hq510g6y44jhq0wqrjb3",
+      nodeIdGenerator: {
+        generate: () => ids.shift() ?? "z.0",
+        validate: () => true,
+      },
+    });
+    doc.forceCommit();
+    const start = doc.toJSON();
+    const sent: Operations[] = [];
+    doc.onChange((event) => sent.push(event.operations));
+    doc.root.append(...text(doc, "a", "b", "c"));
+    doc.forceCommit();
+    const replica = Doc.fromJSON({ ...config, id: doc.root.id }, start);
+    for (const operations of sent) replica.applyOperations(operations);
+    replica.forceCommit();
+    expect(replica.toJSON()).toStrictEqual(doc.toJSON());
+  });
+
   test("a batch of many sessions names each of them once", () => {
     const ids = Array.from({ length: 12 }, (_, index) => `s${index}.0`);
     const config = { type: "root", extensions: [TextExtension] };
@@ -1296,40 +1327,9 @@ describe("applyOperations", () => {
     doc.root.append(...nodes);
     doc.forceCommit();
     const id = nodes[0]?.id ?? "";
-    // @ts-expect-error - a row of a kind this version does not know
     doc.applyOperations([`${sessionOf(id)}.-`, [9, "x"], [1, short(id)]]);
     doc.forceCommit();
     assertDoc(doc, []);
-  });
-
-  test("an empty state patch decodes as no state", () => {
-    expect(decodeOperations(["s", [1, "a"], [-9]])).toStrictEqual([
-      [[1, "a", 0]],
-      {},
-    ]);
-  });
-
-  test("ids whose clock is not in base 64 travel whole", () => {
-    const ids = ["a.é0", "a.é1", "a.é2"];
-    const config = { type: "root", extensions: [TextExtension] };
-    const doc = new Doc({
-      ...config,
-      id: "01kc52hq510g6y44jhq0wqrjb3",
-      nodeIdGenerator: {
-        generate: () => ids.shift() ?? "z.0",
-        validate: () => true,
-      },
-    });
-    doc.forceCommit();
-    const start = doc.toJSON();
-    const sent: Operations[] = [];
-    doc.onChange((event) => sent.push(event.operations));
-    doc.root.append(...text(doc, "a", "b", "c"));
-    doc.forceCommit();
-    const replica = Doc.fromJSON({ ...config, id: doc.root.id }, start);
-    for (const operations of sent) replica.applyOperations(operations);
-    replica.forceCommit();
-    expect(replica.toJSON()).toStrictEqual(doc.toJSON());
   });
 
   test("a run of state that came broken writes nothing", () => {

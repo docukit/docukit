@@ -12,8 +12,11 @@ const jsonSchema: v.GenericSchema<Json> = v.lazy(() =>
   ]),
 );
 
-/** Each value as a JSON string. */
-const treeStateSchema = v.record(v.string(), v.string());
+/** Each value as a JSON string, except a text value, stored as JSON. */
+const treeStateSchema = v.record(
+  v.string(),
+  v.union([v.string(), v.array(jsonSchema)]),
+);
 
 /** `[id, type, state, children?]`: see `JsonTree` in `@docukit/docnode`. */
 const jsonTreeSchema: v.GenericSchema<unknown, JsonTree> = v.lazy(() => {
@@ -28,7 +31,9 @@ const jsonTreeSchema: v.GenericSchema<unknown, JsonTree> = v.lazy(() => {
 const headSchema = v.union([v.string(), v.array(v.string())]);
 /** A node: a string, a number (its distance from the head's counter), or `0`. */
 const nodeRefSchema = v.union([v.string(), v.pipe(v.number(), v.integer())]);
+const letterRefSchema = v.union([v.string(), v.number()]);
 const nodesSchema = v.array(v.tuple([nodeRefSchema, v.string()]));
+const editTagSchema = v.pipe(v.number(), v.maxValue(-1));
 
 /** Each row of a batch (see `Operations` in `@docukit/docnode`). */
 const rowSchema = v.union([
@@ -36,7 +41,9 @@ const rowSchema = v.union([
   v.tupleWithRest([v.literal(0), nodeRefSchema, v.string()], nodeRefSchema),
   v.tupleWithRest([v.literal(1)], nodeRefSchema),
   v.tupleWithRest([v.literal(2), nodeRefSchema], nodeRefSchema),
-  v.tupleWithRest([v.literal(-9)], jsonSchema),
+  v.tupleWithRest([v.string()], letterRefSchema),
+  v.tupleWithRest([editTagSchema], jsonSchema),
+  v.string(),
 ]);
 
 /** `[head, ...rows]`, or `[head, ...row]` for a batch of one row. */
@@ -49,7 +56,8 @@ const operationsSchema = v.union([
   ),
   v.tupleWithRest([headSchema, v.literal(1)], nodeRefSchema),
   v.tupleWithRest([headSchema, v.literal(2), nodeRefSchema], nodeRefSchema),
-  v.tupleWithRest([headSchema, v.literal(-9)], jsonSchema),
+  v.tupleWithRest([headSchema, v.string()], letterRefSchema),
+  v.tupleWithRest([headSchema, editTagSchema], jsonSchema),
 ]);
 
 /** Format 13: see `JsonDoc` in `@docukit/docnode`. */
@@ -60,6 +68,7 @@ const jsonDocShape = v.strictTuple([
   v.optional(v.array(v.string())),
   v.optional(v.array(v.string())),
   v.optional(v.array(v.string())),
+  v.optional(v.union([v.array(jsonSchema), v.literal(0)])),
   v.optional(v.string()),
   v.optional(v.array(jsonSchema)),
 ]);

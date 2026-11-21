@@ -20,9 +20,15 @@ export {
 export { defineNode } from "../utils.js";
 export { boolean, number, string, defineState } from "../stateDefinitions.js";
 export {
+  mergeBatches,
   mergeOperations,
   type Operations,
   type OperationsRow,
 } from "../operations.js";
 export { _INTERNAL_decodeOperations } from "../wire.js";
 export type { UndoHistory } from "../undoManager.js";
+export {
+  defineText,
+  TextHandle,
+  _INTERNAL_textStore,
+} from "../text/defineText.js";

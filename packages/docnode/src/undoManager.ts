@@ -4,8 +4,9 @@ import {
   mergeDrafts,
   type DraftOperations,
   type Operations,
+  type OrderedOperation,
 } from "./operations.js";
-import type { UndoManagerConfig } from "./types.js";
+import type { InternalStateDefinition, UndoManagerConfig } from "./types.js";
 import { decodeOperations } from "./wire.js";
 
 /**
@@ -109,7 +110,7 @@ export class UndoManager {
     this._txType = "undo";
     this._lastUpdate = undefined;
     try {
-      this._doc.applyOperations(compactOperations(item.operations));
+      this._doc.applyOperations(this._prepare(item.operations));
     } finally {
       // Nothing may have changed (every operation was skipped), in which case
       // no change event resets the mode. It must not leak into the next edit.
@@ -125,7 +126,7 @@ export class UndoManager {
     this._txType = "redo";
     this._lastUpdate = undefined;
     try {
-      this._doc.applyOperations(compactOperations(item.operations));
+      this._doc.applyOperations(this._prepare(item.operations));
     } finally {
       this._txType = "update";
     }
@@ -181,6 +182,16 @@ export class UndoManager {
     this._txType = "update";
   }
 
+  /** What applying a history item applies (see `prepareUndo`). */
+  private _prepare([ordered, patch]: DraftOperations): Operations {
+    const definition = editDefinition(this._doc);
+    const prepared = ordered.map((operation): OrderedOperation => {
+      if (operation[0] !== 3 || !definition?.prepareUndo) return operation;
+      return definition.prepareUndo(operation, this._doc);
+    });
+    return compactOperations([prepared, patch]);
+  }
+
   /**
    * Fires synchronously when an item is pushed to either stack.
    * Text editor bindings will often store selection state here.
@@ -202,6 +213,13 @@ export class UndoManager {
       this._popHandlers.delete(handler);
     };
   }
+}
+
+/** The definition of the root state that receives edit operations, if any. */
+function editDefinition(doc: Doc): InternalStateDefinition | undefined {
+  const key = doc["_editStateKey"];
+  if (key === undefined) return undefined;
+  return doc["_resolvedNodeDefs"].get(doc.root.type)?.state[key];
 }
 
 function exportStackItem(item: UndoStackItem): UndoHistoryItem {
@@ -237,6 +255,14 @@ function isString(value: unknown): value is string {
 /** A node of a tree row: a string, a number (its distance), or `0`, none. */
 function isNodeReference(value: unknown): boolean {
   return Number.isInteger(value) || typeof value === "string";
+}
+
+/** `[text | [node] | -tag, ...]` (see `wire.ts`). */
+function isTextRow(value: unknown[]): boolean {
+  const head: unknown = value[0];
+  return (
+    typeof head === "string" || (Number.isInteger(head) && Number(head) < 0)
+  );
 }
 
 /**
@@ -276,8 +302,8 @@ function isTreeRow([tag, first, ...rest]: unknown[]): boolean {
  * `[-9, node, key, value, ...]`: a triple per key, `[node, count]` for a run
  * of nodes.
  */
-function isPatchRow([tag, ...entries]: unknown[]): boolean {
-  if (tag !== -9 || entries.length % 3 !== 0) return false;
+function isPatchRow([, ...entries]: unknown[]): boolean {
+  if (entries.length % 3 !== 0) return false;
   for (let at = 0; at < entries.length; at += 3) {
     const node = entries[at];
     const run =
@@ -291,12 +317,18 @@ function isPatchRow([tag, ...entries]: unknown[]): boolean {
   return true;
 }
 
-/** A tree row starts with 0, 1 or 2, the state patch with -9. */
+/**
+ * A tree row starts with 0, 1 or 2, the state patch with -9, a text row with
+ * anything else.
+ */
 function isRow(value: unknown, last: boolean): boolean {
   if (!Array.isArray(value)) return false;
   const row: unknown[] = value;
   // The state patch is the last row.
-  return isTreeRow(row) || (last && isPatchRow(row));
+  if (row[0] === -9) return last && isPatchRow(row);
+  return typeof row[0] === "number" && row[0] >= 0
+    ? isTreeRow(row)
+    : isTextRow(row);
 }
 
 function isOperations(value: unknown): value is Operations {
@@ -309,8 +341,12 @@ function isOperations(value: unknown): value is Operations {
   )
     return false;
   // One row written without its brackets.
-  if (typeof rows[0] === "number") return isRow(rows, true);
-  return rows.every((row, index) => isRow(row, index === rows.length - 1));
+  if (typeof rows[0] === "string" || typeof rows[0] === "number")
+    return isRow(rows, true);
+  return rows.every((row, index) => {
+    if (typeof row === "string") return /^\d*\.[\w-]+$/.test(row);
+    return isRow(row, index === rows.length - 1);
+  });
 }
 
 function isHistoryItem(value: unknown): value is UndoHistoryItem {

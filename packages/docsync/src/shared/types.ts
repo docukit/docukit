@@ -34,6 +34,12 @@ export type DocBinding<
     cb: (ev: { operations: O; flags?: TransactionFlags }) => void,
   ): void;
   applyOperations(doc: D, operations: O, flags?: TransactionFlags): void;
+  /**
+   * Fewer, smaller operations that change a document as `operations` do,
+   * applied in order. DocSync sends the result in place of the operations
+   * this client queued; it never looks inside them.
+   */
+  mergeOperations?(operations: O[]): O[];
   dispose(doc: D): void;
 } & DocBindingHistory<D>;
 

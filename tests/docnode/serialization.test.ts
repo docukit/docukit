@@ -18,6 +18,7 @@ import {
   defineNode,
   string,
   defineState,
+  defineText,
   type JsonTree,
 } from "@docukit/docnode";
 import { test, expect, describe } from "vitest";
@@ -489,7 +490,7 @@ describe("stored format 13", () => {
     doc.forceCommit();
     const json = doc.toJSON();
     // Only what is not a whole number of at least 0 stays in `values`.
-    expect(json[7]).toStrictEqual([-3, 1.5, "12", 2 ** 60]);
+    expect(json[8]).toStrictEqual([-3, 1.5, "12", 2 ** 60]);
     const loaded: unknown[] = [];
     Doc.fromJSON({ ...config, id: doc.root.id }, json)
       .root.children()
@@ -529,7 +530,7 @@ describe("stored format 13", () => {
     }
     doc.forceCommit();
     const roundTrip: unknown = JSON.parse(JSON.stringify(values));
-    expect(doc.toJSON()[7]).toStrictEqual(roundTrip);
+    expect(doc.toJSON()[8]).toStrictEqual(roundTrip);
     const loaded: unknown[] = [];
     Doc.fromJSON({ ...config, id: doc.root.id }, doc.toJSON())
       .root.children()
@@ -568,7 +569,7 @@ describe("stored format 13", () => {
     }
     doc.forceCommit();
     // The first one is the default; the rest only look like it.
-    expect(doc.toJSON()[7]).toStrictEqual(values.slice(1));
+    expect(doc.toJSON()[8]).toStrictEqual(values.slice(1));
   });
 
   // 14: a later version, with text, whose columns this one would misread.
@@ -586,6 +587,33 @@ describe("stored format 13", () => {
       );
     },
   );
+
+  test("a document with text loads only where a node type defines text", () => {
+    const Paragraph = defineNode({ type: "p", state: { t: defineText() } });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [Paragraph] }] });
+    const node = doc.createNode(Paragraph);
+    doc.root.append(node);
+    node.state.t.insert(0, "Hello");
+    doc.forceCommit();
+    expect(() =>
+      Doc.fromJSON(
+        {
+          id: doc.root.id,
+          type: "root",
+          extensions: [{ nodes: [Paragraph, Text] }],
+        },
+        doc.toJSON(),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      Doc.fromJSON(
+        { id: doc.root.id, type: "root", extensions: [TextExtension] },
+        doc.toJSON(),
+      ),
+    ).toThrowError(
+      "The stored document has text, but no node type defines it (see `defineText`).",
+    );
+  });
 
   test("a stored value whose JSON is undefined cannot be stored again", () => {
     // It loads as a value with no JSON, which `set` would have refused.

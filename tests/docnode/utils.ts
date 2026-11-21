@@ -14,6 +14,7 @@ import {
   type JsonTree,
   type DocConfig,
   mergeOperations,
+  _INTERNAL_textStore,
   _INTERNAL_decodeOperations as decode,
 } from "@docukit/docnode";
 import { ULID_REGEX } from "valibot";
@@ -94,6 +95,12 @@ export function createTextDocWithUndo(
 function getStateSnapshot(doc: Doc, isTestNode = true): unknown[] {
   let count = 1;
   const state: unknown[] = [];
+  // A text of the root itself (a flat text, its blocks as lines).
+  const textKey = doc["_editStateKey"];
+  if (!isTestNode && textKey !== undefined && textKey in doc.root["_state"]) {
+    const text = _INTERNAL_textStore(doc).textOf(doc.root.id);
+    if (text.length > 0) state.push(["root", text]);
+  }
   doc.root.descendants().forEach((node, deepLevel) => {
     count++;
     if (node.prev) expect(node.prev.next).toBe(node);
@@ -106,7 +113,13 @@ function getStateSnapshot(doc: Doc, isTestNode = true): unknown[] {
       const item = `${"__".repeat(deepLevel - 1)}${(node as DocNode<typeof Text>).state.value.get()}`;
       state.push(item);
     } else {
-      state.push(node.toJSON()[2]);
+      // A text value lives on the root: each node's visible text, with it.
+      const key = doc["_editStateKey"];
+      const texts =
+        key !== undefined && key in doc.root["_state"]
+          ? [_INTERNAL_textStore(doc).textOf(node.id)]
+          : [];
+      state.push([node.toJSON()[2], ...texts]);
     }
   });
   expect(count).toBe(doc["_nodeMap"].size);
@@ -230,6 +243,9 @@ export function humanReadableOperations(doc: Doc, changeEvent: ChangeEvent) {
           );
           break;
         }
+        case 3:
+          humanReadableOperations.push(`EDIT: ${JSON.stringify(operation[1])}`);
+          break;
         default:
           operation satisfies never;
       }
@@ -348,6 +364,27 @@ const eventData = (event: ChangeEvent) => ({
   },
 });
 
+/**
+ * The document as it reads: its JSON, with a text value (`~t`) as the
+ * visible text of each node. Undo and redo bring a text back as it read, and
+ * also remember what was undone, so its stored form is not the one it had.
+ */
+function readableDoc(doc: Doc): unknown[] {
+  const json = jsonTree(doc);
+  const key = doc["_editStateKey"];
+  if (key === undefined) return json;
+  const { [key]: value, ...rootState } = json[2];
+  const texts: Record<string, unknown> = {};
+  if (value !== undefined) {
+    const store = _INTERNAL_textStore(doc);
+    doc.root.descendants({ includeSelf: true }).forEach((node) => {
+      const text = store.textOf(node.id);
+      if (text.length > 0) texts[node.id] = text;
+    });
+  }
+  return [json[0], json[1], rootState, json[3], texts];
+}
+
 export function checkUndoManager(
   txCount: number,
   doc: Doc,
@@ -389,7 +426,7 @@ export function checkUndoManager(
   const changeEvents: ChangeEvent[] = [];
   const snapshots: unknown[] = [getStateSnapshot(doc, IS_TEST_NODE)];
   const jsonDocs: JsonDoc[] = [jsonDoc];
-  const readableDocs = [jsonTree(doc)];
+  const readableDocs = [readableDoc(doc)];
   let sizeDo = 0;
 
   // 1. DO
@@ -405,7 +442,7 @@ export function checkUndoManager(
     const jsonDoc = doc.toJSON();
     expect(jsonDoc).not.toStrictEqual(jsonDocs.at(-1));
     jsonDocs.push(jsonDoc);
-    readableDocs.push(jsonTree(doc));
+    readableDocs.push(readableDoc(doc));
 
     // TESTS OVER OPERATIONS AND DIFF
     // Operations need to be json serializable
@@ -455,11 +492,18 @@ export function checkUndoManager(
           expect(start).not.toBe(end);
           break;
         }
+        case 3: {
+          // EDIT of an opt-in state kind (defineText): an opaque payload.
+          expect(op.length).toBeGreaterThan(1);
+          break;
+        }
         default:
           throw new Error(`Unknown operation type: ${op[0] as number}`);
       }
     });
 
+    // A text edit (an edit operation) updates nodes without a state patch.
+    const textEdited = operations[0].some((op) => op[0] === 3);
     diff.updated.forEach((id) => {
       expect(DOCNODE_ID().test(id) || ULID_REGEX.test(id)).toBe(true);
       expect(doc.getNodeById(id)).toBeDefined();
@@ -467,6 +511,7 @@ export function checkUndoManager(
       // A node can be in diff.updated and diff.moved at the same time
       // expect(diff.moved.has(id)).toBe(false);
       expect(diff.deleted.has(id)).toBe(false);
+      if (textEdited) return;
       expect(operations[1][id]).toBeDefined();
       expect(inverseOperations[1][id]).toBeDefined();
     });
@@ -501,7 +546,7 @@ export function checkUndoManager(
     });
     doc["_nodeMap"].forEach((node) => {
       if (diff.updated.has(node.id)) {
-        expect(operations[1][node.id]).toBeDefined();
+        if (!textEdited) expect(operations[1][node.id]).toBeDefined();
       } else if (!diff.inserted.has(node.id)) {
         expect(operations[1][node.id]).toBeUndefined();
       }
@@ -585,7 +630,7 @@ export function checkUndoManager(
         undoManager3.undo();
         const snapshot = getStateSnapshot(doc3, IS_TEST_NODE);
         expect(snapshot).toStrictEqual(snapshots[sizeDo - i - 1]);
-        expect(jsonTree(doc3)).toStrictEqual(readableDocs[sizeDo - i - 1]);
+        expect(readableDoc(doc3)).toStrictEqual(readableDocs[sizeDo - i - 1]);
       },
       (_changeEvent) => {
         // The first undo coincides with the first do
@@ -610,7 +655,7 @@ export function checkUndoManager(
         undoManager3.redo();
         const snapshot = getStateSnapshot(doc3, IS_TEST_NODE);
         expect(snapshot).toStrictEqual(snapshots[i + 1]);
-        expect(jsonTree(doc3)).toStrictEqual(readableDocs[i + 1]);
+        expect(readableDoc(doc3)).toStrictEqual(readableDocs[i + 1]);
       },
       (_changeEvent) => {
         // expect(changeEvent).toStrictEqual(changeEvents[i]);

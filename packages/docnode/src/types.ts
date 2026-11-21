@@ -1,5 +1,6 @@
 import { type Doc, type DocNode } from "./main.js";
-import type { Operations } from "./operations.js";
+import type { EditOperation, Operations } from "./operations.js";
+import type { SessionTable } from "./columns.js";
 
 // For convention, we are not goint to uppercase all letters in Json (JSON),
 // except in fromJSON and toJSON functions (for compatibility with the web standard).
@@ -59,6 +60,46 @@ export type StateDefinition<
    */
   toJSON?(value: V): J;
   methods?(methods: DefaultStateMethods<V>): M;
+};
+
+/**
+ * @internal Capabilities of opt-in state kinds (like `defineText`) that
+ * replicate as operations instead of as one absolute value per key.
+ */
+export type InternalStateDefinition<
+  V = unknown,
+  J extends Json = Json,
+  M = unknown,
+> = StateDefinition<V, J, M> & {
+  /** Registers a state on the document root that holds the shared value. */
+  docState?: { key: string; definition: InternalStateDefinition };
+  /**
+   * For the state `docState` registers: its value as the document stores
+   * it, with the document's session table (see `Doc.toJSON`), or `0` when
+   * there is nothing to store.
+   */
+  toStored?(
+    value: V,
+    sessions: SessionTable,
+    columns: { encode(): string }[],
+  ): Json[] | 0;
+  /**
+   * Reads what `toStored` wrote, with its columns (missing ones at the end
+   * are empty) and the document's sessions.
+   */
+  fromStored?(stored: Json[], columns: string[], sessions: string[]): V;
+  /** Applies an edit operation. Returns its inverse, or undefined if nothing changed. */
+  applyEdit?(
+    value: V,
+    doc: Doc,
+    operation: EditOperation,
+  ): EditOperation | undefined;
+  /** The operation an undo or redo of the history applies. */
+  prepareUndo?(undo: EditOperation, doc: Doc): EditOperation;
+  /** Called by `copy` so a state kind can duplicate its own value. */
+  onCopy?(from: DocNode, to: DocNode): void;
+  /** Receives the node, unlike the public `methods` hook. */
+  methodsWithNode?(methods: DefaultStateMethods<V>, node: DocNode): M;
 };
 
 // Note: is important to use the method syntax, because It needs to be bivariant.
@@ -128,7 +169,8 @@ export type JsonDocNode<T extends NodeDefinition = NodeDefinition> = [
  * The type comes second, at the same place as in a `JsonTree`: a binding that
  * picks the config by type reads it there in both.
  * Everything else is numbers in `columns` (see `columns.ts`), and the
- * strings they point to:
+ * strings they point to (the letters of `text` come before: gzip compresses
+ * them better there):
  * - `sessions`: each without the start it shares with the one before (the
  *   first, with the document's id), whose length is the first column.
  * - The tree, in preorder: each node's session (an index in `sessions`,
@@ -140,6 +182,8 @@ export type JsonDocNode<T extends NodeDefinition = NodeDefinition> = [
  *   A whole number that is not negative goes in that column, in base 93;
  *   the other values follow one another in `values`. The root's number of
  *   children goes first.
+ * - The columns of `text`, the letter-by-letter text of the document (see
+ *   `defineText`), which shares `sessions` with the tree.
  */
 export type JsonDoc = [
   format: 13,
@@ -148,19 +192,22 @@ export type JsonDoc = [
   sessions?: string[],
   types?: string[],
   keys?: string[],
+  /** `0` when there is no text but more follows. */
+  text?: Json[] | 0,
   columns?: string,
   values?: Json[],
 ];
 
 /**
  * A document as nested nodes, `[id, type, state, children?]`, each state
- * value as a JSON string. `Doc.fromJSON` reads it: it is how DocNode stored
- * documents before format 13, and it is easy to write by hand.
+ * value as a JSON string (a text value, as JSON). `Doc.fromJSON` reads it:
+ * it is how DocNode stored documents before format 10, and it is easy to
+ * write by hand.
  */
 export type JsonTree = [
   id: string,
   type: string,
-  state: Record<string, string>,
+  state: Record<string, string | Json[]>,
   children?: [JsonTree, ...JsonTree[]],
 ];
 

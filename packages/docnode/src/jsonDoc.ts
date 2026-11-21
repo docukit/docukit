@@ -1,5 +1,10 @@
 import type { Doc, DocNode } from "./main.js";
-import type { Json, JsonDoc, ResolvedNodeDefinition } from "./types.js";
+import type {
+  InternalStateDefinition,
+  Json,
+  JsonDoc,
+  ResolvedNodeDefinition,
+} from "./types.js";
 import {
   ColumnReader,
   ColumnWriter,
@@ -17,8 +22,9 @@ import { jsonCopy, jsonEqual } from "./utils.js";
 export const FORMAT = 13;
 
 /**
- * The columns of a stored document (see `JsonDoc`): how much each session
- * shares with the one before, and the tree.
+ * The columns of a stored document before those of its text (see
+ * `JsonDoc`): how much each session shares with the one before, and the
+ * tree.
  */
 const COLUMN = {
   SHARED: 0,
@@ -30,6 +36,7 @@ const COLUMN = {
   KEY: 6,
   NUMBER: 7,
 };
+const COLUMNS = 8;
 
 /** A value that goes in the column of numbers: a whole one, not negative. */
 const inColumn = (value: Json): value is number =>
@@ -60,6 +67,15 @@ function storedValue(
   return jsonEqual(json, definition.defaultJson[key]!) ? undefined : json;
 }
 
+/** The root state that holds the document's text (see `docState`). */
+function textDefinition(
+  doc: Doc,
+  type: string,
+  key: string,
+): InternalStateDefinition {
+  return doc["_resolvedNodeDefs"].get(type)!.state[key]!;
+}
+
 /**
  * How a node's session is written: 0 when it is that of the node before
  * (session 0 for the first node), 1 when it is the one after the highest so
@@ -80,18 +96,29 @@ const countChildren = (node: DocNode) => {
 export function writeJsonDoc(doc: Doc): JsonDoc {
   const root = doc.root;
   const definitions = doc["_resolvedNodeDefs"];
+  const textKey = doc["_editStateKey"];
   const rootValues: Record<string, unknown> = root["_state"];
   const rootState: Record<string, Json> = {};
   const rootDefinition = definitions.get(root.type)!;
   // In the order of the definition, the same in every replica.
   for (const key in rootDefinition.state) {
-    if (!(key in rootValues)) continue;
+    // The text goes apart.
+    if (key === textKey || !(key in rootValues)) continue;
     const value = storedValue(root, rootDefinition, rootValues, key);
     if (value !== undefined) rootState[key] = value;
   }
   const json: JsonDoc = [FORMAT, root.type, rootState];
   const sessions = new SessionTable();
-  if (!root.first) return json;
+  const textColumns: { encode(): string }[] = [];
+  const text =
+    textKey !== undefined && textKey in rootValues
+      ? textDefinition(doc, root.type, textKey).toStored!(
+          rootValues[textKey],
+          sessions,
+          textColumns,
+        )
+      : 0;
+  if (!root.first && text === 0) return json;
   const size = doc["_nodeMap"].size;
   const sessionColumn = new ColumnWriter(size);
   const clockColumn = new ColumnWriter(size);
@@ -132,7 +159,7 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
   let highest = -1;
   // A session's first clock is mostly 0 (its id alone), written as 0.
   childrenColumn.push(countChildren(root));
-  let node: DocNode | undefined = root.first;
+  let node = root.first;
   while (node) {
     const index = sessions.node(node.id);
     const clock = sessions.clock;
@@ -165,7 +192,7 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
     }
     stateColumn.push(count);
     // The next node in preorder.
-    let next: DocNode | undefined = node.first;
+    let next = node.first;
     for (let up: DocNode = node; !next && up !== root; up = up.parent!)
       next = up.next;
     node = next;
@@ -174,12 +201,14 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
   // the document's id.
   const sharedColumn = new ColumnWriter();
   const table = frontCode(sessions.table, root.id, sharedColumn);
-  // Only `values` can be empty at the end.
+  // The text before the columns: gzip compresses the letters better when
+  // they come first. Only `values` can be empty at the end.
   json.push(
     table,
     [...types.keys()],
     [...keys.keys()],
-    // In the order of `COLUMN`.
+    text,
+    // In the order of `COLUMN`, then the text's.
     joinColumns([
       sharedColumn,
       sessionColumn,
@@ -189,6 +218,7 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
       stateColumn,
       keyColumn,
       numberColumn,
+      ...textColumns,
     ]),
   );
   if (values.length > 0) json.push(values);
@@ -207,6 +237,7 @@ export function readJsonDoc(doc: Doc, json: JsonDoc): void {
     table = [],
     types = [],
     keys = [],
+    text,
     tree = "",
     values = [],
   ] = json;
@@ -224,6 +255,18 @@ export function readJsonDoc(doc: Doc, json: JsonDoc): void {
   const columns = splitColumns(tree);
   const reader = (field: number) => new ColumnReader(columns[field] ?? "");
   const sessions = readSessions(frontDecode(table, id, reader(COLUMN.SHARED)));
+  if (text) {
+    const textKey = doc["_editStateKey"];
+    if (textKey === undefined)
+      throw new Error(
+        "The stored document has text, but no node type defines it (see `defineText`).",
+      );
+    state[textKey] = textDefinition(doc, type, textKey).fromStored!(
+      text,
+      columns.slice(COLUMNS),
+      sessions,
+    );
+  }
   const root = doc["_storedNode"](id, type, state);
   doc["_setStoredRoot"](root);
   const sessionColumn = reader(COLUMN.SESSION);

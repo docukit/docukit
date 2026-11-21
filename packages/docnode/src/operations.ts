@@ -6,6 +6,7 @@ import {
   parseJson,
   stringifyJson,
 } from "./utils.js";
+import { fuseTextInserts } from "./text/merge.js";
 import { decodeOperations, encodeOperations } from "./wire.js";
 
 export function stringifyStateKey(node: DocNode, key: string): string {
@@ -319,6 +320,20 @@ export const onApplyOperations = (doc: Doc, operations: DraftOperations) => {
           else startNode.to(endNode).move(parentNode, "append");
         } catch {}
         break;
+      case 3: {
+        // Edit operation of an opt-in state kind. The value lives on the root.
+        const key = doc["_editStateKey"];
+        const definition = doc["_editDefinition"];
+        if (key === undefined || !definition?.applyEdit) break;
+        const root: DocNode<UnsafeDefinition> = doc.root;
+        const value = root["_state"][key];
+        const inverse = definition.applyEdit(value, doc, operation);
+        if (inverse === undefined) break;
+        doc["_operations"][0].push(operation);
+        doc["_inverseOperations"][0].push(inverse);
+        doc["_hasEdits"] = true;
+        break;
+      }
     }
   }
   // Apply state patch
@@ -359,6 +374,7 @@ const hasChanges = (doc: Doc) => {
     inserted.size ||
     deleted.size ||
     moved.size ||
+    doc["_hasEdits"] ||
     !isObjectEmpty(doc["_operations"][1])
   );
 };
@@ -383,13 +399,34 @@ export const maybeTriggerListeners = (doc: Doc, ignoreEmptyDiff = false) => {
   if (listeners.size === 0) return;
   // Encoded once, for every listener.
   const event = {
-    operations: compactOperations(doc["_operations"]),
+    operations: receivedAsIs(doc) ?? compactOperations(doc["_operations"]),
     inverseOperations: compactOperations(doc["_inverseOperations"]),
     diff: doc["_diff"],
     flags: doc["_transactionFlags"],
   };
   listeners.forEach((listener) => listener(event));
 };
+
+/**
+ * The batch the transaction applied, when its operations are exactly those it
+ * decoded to: a batch received is passed on as it came, without encoding it
+ * again. The event gets its own array: a listener that changes it does not
+ * change the batch passed to `applyOperations`, nor the other way around. No
+ * one changes a row, so they are shared.
+ */
+function receivedAsIs(doc: Doc): Operations | undefined {
+  const received = doc["_received"];
+  const draft = doc["_decoded"];
+  if (!received || !draft) return undefined;
+  const [ordered, patch] = doc["_operations"];
+  const [decoded, decodedPatch] = draft;
+  if (ordered.length !== decoded.length) return undefined;
+  for (let index = 0; index < ordered.length; index++)
+    if (ordered[index] !== decoded[index]) return undefined;
+  if (!isObjectEmpty(patch) || !isObjectEmpty(decodedPatch)) return undefined;
+  const [head, ...rows] = received;
+  return [head, ...rows];
+}
 
 const copyDeletedToDiff = (node: DocNode) => {
   const doc = node.doc;
@@ -429,10 +466,19 @@ type MoveOperation = [
   next: string | 0,
 ];
 
+/**
+ * Edit of a state kind that does not replicate as one absolute value per key.
+ * The payload follows the kind and is opaque to the core, except that
+ * `mergeOperations` fuses adjacent text insertions. Unlike the other kinds, it
+ * must be idempotent and must not depend on the order of arrival.
+ */
+export type EditOperation = [operation: 3, ...payload: Json[]];
+
 export type OrderedOperation =
   | InsertOperation
   | DeleteOperation
-  | MoveOperation;
+  | MoveOperation
+  | EditOperation;
 
 // TODO: not implemented yet
 // type ChangeTypeOperation = [
@@ -455,6 +501,15 @@ export type StatePatch = { [id: string]: Record<string, string> };
  * sibling.
  */
 export type NodeRef = string | number;
+
+/**
+ * A letter in a text row: of the row's own session, a number (the distance
+ * back from the row's counter, or for an insert's right origin its counter +
+ * 1, negative when the insert is its left child), or `"'"`, the last letter
+ * written again; of another session, `"index.counter"`; the start of a
+ * node's text, `"^node"`. `0` is none.
+ */
+export type LetterRef = string | number;
 
 /**
  * `[0, nodes, parent?, prev?, next?]`: inserts `nodes` (`[id, type]` each)
@@ -490,6 +545,22 @@ export type MoveNodesRow = readonly [
 ];
 
 /**
+ * `[text, right?, parent?]`: inserts letters at the row's counter, before
+ * `right`, and after the letter typed before it unless `parent` says
+ * otherwise.
+ */
+export type InsertTextRow = readonly [
+  text: string,
+  ...rightParent: LetterRef[],
+];
+
+/** Any other text edit: `-tag` (`-(tag + 10)` when it undoes an insert), then its payload. */
+export type EditTextRow = readonly [tag: number, ...payload: Json[]];
+
+/** `"index.counter"`: the text rows after it are of that session, from that counter. */
+export type SessionRow = string;
+
+/**
  * `[-9, node, key, value, ...]`: the new value of each changed key of each
  * node, as JSON, always the last row. `[node, count]` in place of a node is
  * `count` nodes one after the other, and its value a column, one per node.
@@ -500,6 +571,9 @@ export type OperationsRow =
   | InsertNodesRow
   | DeleteNodesRow
   | MoveNodesRow
+  | InsertTextRow
+  | EditTextRow
+  | SessionRow
   | StatePatchRow;
 
 /** A row that a batch of only that row writes without its brackets. */
@@ -507,22 +581,25 @@ export type FlatRow =
   | InsertNodesRow
   | DeleteNodesRow
   | MoveNodesRow
+  | EditTextRow
   | StatePatchRow;
 
 /**
- * The sessions of the batch: `"session.clock"`, with the clock of its first
- * node of that session, or `["session.clock", ...others]`.
+ * The sessions of the batch: `"session.counter"`, with the counter of its
+ * first text row, or `["session.counter", ...others]`.
  */
 export type Head = string | readonly string[];
 
 /**
  * A batch of operations as it travels and is stored, read on its own: see
- * `wire.ts`. A batch of one row leaves out its brackets. For example,
- * deleting a node: `["Q14_wOXyP.uiW",1,1]`.
+ * `wire.ts`. A batch of one row (but a text insert) leaves out its brackets.
+ * For example, typing a letter between two others: `["Q14_wOXyP.uiW","s",
+ * -87638]`.
  */
 export type Operations =
   | readonly [head: Head, ...rows: OperationsRow[]]
-  | readonly [head: Head, ...row: FlatRow];
+  | readonly [head: Head, ...row: FlatRow]
+  | readonly [head: Head, content: string, ...rightParent: LetterRef[]];
 
 /** Operations while they are built and applied: the patch is always there. */
 export type DraftOperations = [OrderedOperation[], StatePatch];
@@ -530,7 +607,7 @@ export type DraftOperations = [OrderedOperation[], StatePatch];
 export const compactOperations = (operations: DraftOperations): Operations =>
   encodeOperations(operations[0], operations[1]);
 
-/** Concatenates batches. */
+/** Concatenates batches, fusing text insertions typed one after the other. */
 export function mergeDrafts(...drafts: DraftOperations[]): DraftOperations {
   const orderedOperations: OrderedOperation[] = [];
   const statePatch: StatePatch = {};
@@ -541,12 +618,48 @@ export function mergeDrafts(...drafts: DraftOperations[]): DraftOperations {
       Object.assign(statePatch[nodeId], patch[nodeId]);
     }
   }
-  return [orderedOperations, statePatch];
+  return [fuseTextInserts(orderedOperations), statePatch];
 }
 
-/** Concatenates batches of operations into one. */
+/**
+ * Concatenates batches of operations into one. Text insertions typed one after
+ * the other are fused into a single insertion.
+ */
 export function mergeOperations(...operationsList: Operations[]): Operations {
   return compactOperations(
     mergeDrafts(...operationsList.map(decodeOperations)),
   );
+}
+
+/** Whether a batch only edits text: no node inserted, deleted or moved, and no state. */
+function isTextOnly(batch: Operations): boolean {
+  const [ordered, patch] = decodeOperations(batch);
+  return isObjectEmpty(patch) && ordered.every((op) => op[0] === 3);
+}
+
+/**
+ * Consecutive batches of one writer, with each run of batches that only edit
+ * text merged into one (see `mergeOperations`): typing sends one batch per
+ * letter, and their merge is one insert of all of them. Applying the result
+ * in order changes a document as applying `batches` in order does. Any
+ * other batch is kept as it is.
+ */
+export function mergeBatches(batches: readonly Operations[]): Operations[] {
+  const merged: Operations[] = [];
+  let run: Operations[] = [];
+  const flush = () => {
+    if (run.length > 1) merged.push(mergeOperations(...run));
+    else merged.push(...run);
+    run = [];
+  };
+  for (const batch of batches) {
+    if (isTextOnly(batch)) {
+      run.push(batch);
+      continue;
+    }
+    flush();
+    merged.push(batch);
+  }
+  flush();
+  return merged;
 }
