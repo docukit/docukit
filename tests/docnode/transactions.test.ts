@@ -1,8 +1,11 @@
 import { describe, expect, test } from "vitest";
 import {
+  defineNode,
   Doc,
   type DocNode,
   mergeOperations,
+  string,
+  _INTERNAL_decodeOperations as decodeOperations,
   type Operations,
   type TransactionFlags,
   type UndoHistory,
@@ -11,6 +14,8 @@ import {
   applyInServerOrder,
   assertDoc,
   checkUndoManager,
+  sessionOf,
+  short,
   createTextDocWithUndo,
   emptyUpdate,
   humanReadableOperations,
@@ -429,7 +434,7 @@ describe("undoManager", () => {
     const doc = createTextDocWithUndo();
     const history: UndoHistory = {
       ...doc.undoManager.exportHistory(),
-      undoStack: [{ operations: [[[2, "start", 0, 0, 0, 0]], {}], meta: {} }],
+      undoStack: [{ operations: ["", 2, "start"], meta: {} }],
     };
 
     doc.undoManager.importHistory(history);
@@ -455,41 +460,51 @@ describe("undoManager", () => {
       { ...valid, docType: 1 },
       { ...valid, undoStack: null },
       { ...valid, undoStack: [null] },
-      { ...valid, undoStack: [{ operations: [[], {}], meta: [] }] },
+      { ...valid, undoStack: [{ operations: ["", 1, "a"], meta: [] }] },
       { ...valid, redoStack: null },
       { ...valid, lastUpdate: "now" },
       { ...valid, lastUpdate: Number.NaN },
       withOperations(null),
       withOperations([]),
-      withOperations([[]]),
-      withOperations([[null], {}]),
-      withOperations([[[0]], {}]),
-      withOperations([[[0, {}, 0, 0, 0]], {}]),
-      withOperations([[[0, [null], 0, 0, 0]], {}]),
-      withOperations([[[0, [["id"]], 0, 0, 0]], {}]),
-      withOperations([[[0, [["id", 1]], 0, 0, 0]], {}]),
-      withOperations([[[0, [["id", "type"]], null, 0, 0]], {}]),
-      withOperations([[[0, [["id", "type"]], 0, null, 0]], {}]),
-      withOperations([[[0, [["id", "type"]], 0, 0, null]], {}]),
-      withOperations([[[1]], {}]),
-      withOperations([[[1, 1, 0]], {}]),
-      withOperations([[[1, "start", null]], {}]),
-      withOperations([[[2]], {}]),
-      withOperations([[[2, 1, 0, 0, 0, 0]], {}]),
-      withOperations([[[2, "start", null, 0, 0, 0]], {}]),
-      withOperations([[[2, "start", 0, null, 0, 0]], {}]),
-      withOperations([[[2, "start", 0, 0, null, 0]], {}]),
-      withOperations([[[2, "start", 0, 0, 0, null]], {}]),
-      withOperations([[[3]], {}]),
-      withOperations([[], []]),
-      withOperations([[], { node: [] }]),
-      withOperations([[], { node: { value: 1 } }]),
+      withOperations(["s"]),
+      // The head: a session, or the sessions of the batch.
+      withOperations([1, 1, "a"]),
+      withOperations([[], 1, "a"]),
+      withOperations([[1], 1, "a"]),
+      // Text rows, also one written without its brackets.
+      withOperations(["s", 1]),
+      withOperations(["s", [1]]),
+      withOperations(["s", [null]]),
+      withOperations(["s", [[1]]]),
+      withOperations(["s", [[]]]),
+      // A move to another session and counter.
+      withOperations(["s", ["a"], "x"]),
+      // Tree rows.
+      withOperations(["s", [0]]),
+      withOperations(["s", [0, null]]),
+      withOperations(["s", [0, [null]]]),
+      withOperations(["s", [0, [["id"]]]]),
+      withOperations(["s", [0, [["id", 1]]]]),
+      withOperations(["s", [0, [["id", "type", "count"]]]]),
+      withOperations(["s", [0, [["id", "type"]], null]]),
+      withOperations(["s", [0, [], 0, 0, 0, 0]]),
+      withOperations(["s", [1, null]]),
+      withOperations(["s", [1, "a", "b", "c"]]),
+      withOperations(["s", [2, "a", 1.5]]),
+      withOperations(["s", [2, "a", 0, 0, 0, 0, 0]]),
+      withOperations(["s", [3, "a"]]),
+      withOperations(["s", 1]),
+      // The state patch, which is the last row.
+      withOperations(["s", { a: { value: 1 } }, [1, "a"]]),
+      withOperations(["s", { a: 1 }]),
+      withOperations(["s", [1, "a"], 5]),
     ];
 
     for (const malformed of malformedHistories) {
-      expect(() => doc.undoManager.importHistory(malformed)).toThrowError(
-        "Invalid undo history",
-      );
+      expect(
+        () => doc.undoManager.importHistory(malformed),
+        JSON.stringify(malformed),
+      ).toThrowError("Invalid undo history");
     }
   });
 
@@ -539,30 +554,33 @@ describe("undoManager", () => {
 
   test("mergeOperations combines operations without mutating inputs", () => {
     const first: Operations = [
-      [[1, "a", 0]],
-      { a: { value: "1" }, b: { value: "2" } },
+      "",
+      [1, "a"],
+      { a: { value: 1 }, b: { value: 2 } },
     ];
     const second: Operations = [
-      [[2, "b", 0, 0, 0, 0]],
-      { b: { value: "3" }, c: { value: "4" } },
+      "",
+      [2, "b"],
+      { b: { value: 3 }, c: { value: 4 } },
     ];
 
     const merged = mergeOperations(first, second);
 
     expect(merged).toStrictEqual([
-      [
-        [1, "a", 0],
-        [2, "b", 0, 0, 0, 0],
-      ],
-      { a: { value: "1" }, b: { value: "3" }, c: { value: "4" } },
+      "",
+      [1, "a"],
+      [2, "b"],
+      { a: { value: 1 }, b: { value: 3 }, c: { value: 4 } },
     ]);
     expect(first).toStrictEqual([
-      [[1, "a", 0]],
-      { a: { value: "1" }, b: { value: "2" } },
+      "",
+      [1, "a"],
+      { a: { value: 1 }, b: { value: 2 } },
     ]);
     expect(second).toStrictEqual([
-      [[2, "b", 0, 0, 0, 0]],
-      { b: { value: "3" }, c: { value: "4" } },
+      "",
+      [2, "b"],
+      { b: { value: 3 }, c: { value: 4 } },
     ]);
   });
 
@@ -972,21 +990,17 @@ describe("applyOperations", () => {
       doc.root.append(existing!);
       doc.forceCommit();
       doc.applyOperations([
+        sessionOf(existing!.id),
         [
+          0,
           [
-            0,
-            [
-              [existing!.id, "text"],
-              [created.id, "text"],
-            ],
-            0,
-            0,
-            0,
+            [short(existing!.id), "text"],
+            [short(created.id), "text"],
           ],
         ],
         {
-          [existing!.id]: { value: JSON.stringify("updated") },
-          [created.id]: { value: JSON.stringify("created") },
+          [short(existing!.id)]: { value: "updated" },
+          [short(created.id)]: { value: "created" },
         },
       ]);
       assertDoc(doc, ["updated", "created"]);
@@ -1001,11 +1015,267 @@ describe("applyOperations", () => {
       doc.root.append(existing!);
       doc.forceCommit();
       doc.applyOperations([
-        [[0, [[existing!.id, "text"]], 0, 0, 0]],
-        { [existing!.id]: { value: JSON.stringify("updated") } },
+        sessionOf(existing!.id),
+        [0, [[short(existing!.id), "text"]]],
+        { [short(existing!.id)]: { value: "updated" } },
       ]);
       assertDoc(doc, ["updated"]);
     });
+  });
+
+  test("rows a batch cannot read are skipped", () => {
+    const doc = createTextDocWithUndo();
+    const [existing] = text(doc, "existing");
+    doc.root.append(existing!);
+    doc.forceCommit();
+    const id = short(existing!.id);
+    doc.applyOperations([
+      sessionOf(existing!.id),
+      // @ts-expect-error - rows that do not match `Operations`
+      [0, 5],
+      [1, 5],
+      5,
+      [0, [5]],
+      { [id]: 5 },
+    ]);
+    doc.forceCommit();
+    assertDoc(doc, ["existing"]);
+  });
+
+  test("a node id that starts with ! travels escaped", () => {
+    let count = 0;
+    const config = {
+      type: "root",
+      extensions: [TextExtension],
+      nodeIdGenerator: { generate: () => `!${count++}`, validate: () => true },
+    };
+    const doc = new Doc(config);
+    const replica = Doc.fromJSON(config, doc.toJSON());
+    const batches: Operations[] = [];
+    doc.onChange(({ operations }) => batches.push(operations));
+    doc.root.append(...text(doc, "a"));
+    doc.forceCommit();
+    expect(batches).toStrictEqual([
+      ["", [0, [["!!1", "text"]]], { "!!1": { value: "a" } }],
+    ]);
+    replica.applyOperations(batches[0]!);
+    replica.forceCommit();
+    assertDoc(replica, ["a"]);
+  });
+
+  test("a node of the head's session travels by its distance, other ids whole", () => {
+    const ids = ["root", "+1", "-x", "s.5", "s.-5", "s.6"];
+    let count = 0;
+    const config = {
+      type: "root",
+      extensions: [TextExtension],
+      nodeIdGenerator: { generate: () => ids[count++]!, validate: () => true },
+    };
+    const doc = new Doc(config);
+    const replica = Doc.fromJSON(config, doc.toJSON());
+    const batches: Operations[] = [];
+    doc.onChange(({ operations }) => batches.push(operations));
+    doc.root.append(...text(doc, "a", "b", "c", "d", "e"));
+    doc.forceCommit();
+    // The head's counter is the first node's clock: "s.5" is `1`, "s.6" `2`.
+    // "+1" reads as a distance and is escaped; "-x" does not; "s.-5" is not
+    // a clock in base 64.
+    const nodes = ["!+1", "-x", 1, ".-5", 2];
+    expect(batches).toStrictEqual([
+      [
+        "s.5",
+        [0, nodes.map((node) => [node, "text"])],
+        {
+          "!+1": { value: "a" },
+          "-x": { value: "b" },
+          "+1": { value: "c" },
+          ".-5": { value: "d" },
+          "+2": { value: "e" },
+        },
+      ],
+    ]);
+    replica.applyOperations(batches[0]!);
+    replica.forceCommit();
+    assertDoc(replica, ["a", "b", "c", "d", "e"]);
+  });
+
+  test("a tree row that came broken names no node", () => {
+    const doc = createTextDocWithUndo();
+    const [existing] = text(doc, "existing");
+    doc.root.append(existing!);
+    doc.forceCommit();
+    // @ts-expect-error - a delete without its node
+    expect(() => doc.applyOperations(["s", [1]])).not.toThrow();
+    // @ts-expect-error - an insert of a node without its type
+    expect(() => doc.applyOperations(["s", [0, [[".1", 5]]]])).not.toThrow();
+    assertDoc(doc, ["existing"]);
+  });
+
+  test("nodes inserted side by side travel as a run, state as columns", () => {
+    const doc = createTextDocWithUndo();
+    const start = doc.toJSON();
+    const sent: Operations[] = [];
+    doc.onChange((event) => sent.push(event.operations));
+    doc.root.append(...text(doc, "a", "b", "c", "d"));
+    doc.forceCommit();
+    expect(JSON.stringify(sent[0])).toContain('*4":{"value":["a","b","c","d"]');
+    const replica = Doc.fromJSON(
+      { type: "root", extensions: [TextExtension] },
+      start,
+    );
+    replica.applyOperations(sent[0]!);
+    replica.forceCommit();
+    assertDoc(replica, ["a", "b", "c", "d"]);
+    // The undo history keeps the run as it is.
+    const reloaded = Doc.fromJSON(
+      {
+        type: "root",
+        extensions: [TextExtension],
+        undoManager: { maxUndoSteps: 10, mergeInterval: 0 },
+      },
+      doc.toJSON(),
+    );
+    reloaded.forceCommit();
+    reloaded.undoManager.importHistory(doc.undoManager.exportHistory());
+    reloaded.undoManager.undo();
+    reloaded.forceCommit();
+    assertDoc(reloaded, []);
+  });
+
+  test("ids with a star are not read as a run", () => {
+    let clock = 0;
+    const doc = new Doc({
+      id: "01kc52hq510g6y44jhq0wqrjb3",
+      type: "root",
+      extensions: [TextExtension],
+      nodeIdGenerator: { generate: () => `x*${clock++}`, validate: () => true },
+    });
+    doc.forceCommit();
+    const start = doc.toJSON();
+    const sent: Operations[] = [];
+    doc.onChange((event) => sent.push(event.operations));
+    doc.root.append(...text(doc, "a", "b", "c"));
+    doc.forceCommit();
+    const replica = Doc.fromJSON(
+      { type: "root", extensions: [TextExtension] },
+      start,
+    );
+    replica.applyOperations(sent[0]!);
+    replica.forceCommit();
+    assertDoc(replica, ["a", "b", "c"]);
+  });
+
+  test("nodes of other sessions or with other keys are not read as a run", () => {
+    const Pair = defineNode({
+      type: "pair",
+      state: { x: string(""), y: string("") },
+    });
+    const ids = ["a.0", "b.1", "b.2", "b.3"];
+    const config = { type: "root", extensions: [{ nodes: [Pair] }] };
+    const doc = new Doc({
+      ...config,
+      id: "01kc52hq510g6y44jhq0wqrjb3",
+      nodeIdGenerator: {
+        generate: () => ids.shift() ?? "c",
+        validate: () => true,
+      },
+    });
+    doc.forceCommit();
+    const start = doc.toJSON();
+    const sent: Operations[] = [];
+    doc.onChange((event) => sent.push(event.operations));
+    const pairs = ["1", "2", "3", "4"].map((value, index) => {
+      const pair = doc.createNode(Pair);
+      // The last one has one key too, but not the same one.
+      if (index < 3) pair.state.x.set(value);
+      else pair.state.y.set(value);
+      return pair;
+    });
+    doc.root.append(...pairs);
+    doc.forceCommit();
+    const replica = Doc.fromJSON(config, start);
+    for (const operations of sent) replica.applyOperations(operations);
+    replica.forceCommit();
+    expect(replica.toJSON()).toStrictEqual(doc.toJSON());
+  });
+
+  test("a batch of many sessions names each of them once", () => {
+    const ids = Array.from({ length: 12 }, (_, index) => `s${index}.0`);
+    const config = { type: "root", extensions: [TextExtension] };
+    const doc = new Doc({
+      ...config,
+      id: "01kc52hq510g6y44jhq0wqrjb3",
+      nodeIdGenerator: {
+        generate: () => ids.shift() ?? "z.0",
+        validate: () => true,
+      },
+    });
+    doc.forceCommit();
+    const start = doc.toJSON();
+    const sent: Operations[] = [];
+    doc.onChange((event) => sent.push(event.operations));
+    const values = ids.map(String);
+    doc.root.append(...text(doc, ...values));
+    doc.forceCommit();
+    const [batch = ["", {}]] = sent;
+    expect(batch[0]).toHaveLength(12);
+    const replica = Doc.fromJSON(config, start);
+    replica.applyOperations(batch);
+    replica.forceCommit();
+    assertDoc(replica, values);
+  });
+
+  test("a row of an unknown kind is skipped", () => {
+    const doc = createTextDocWithUndo();
+    const nodes = text(doc, "a");
+    doc.root.append(...nodes);
+    doc.forceCommit();
+    const id = nodes[0]?.id ?? "";
+    // @ts-expect-error - a row of a kind this version does not know
+    doc.applyOperations([`${sessionOf(id)}.-`, [9, "x"], [1, short(id)]]);
+    doc.forceCommit();
+    assertDoc(doc, []);
+  });
+
+  test("an empty state patch decodes as no state", () => {
+    expect(decodeOperations(["s", [1, "a"], {}])).toStrictEqual([
+      [[1, "a", 0]],
+      {},
+    ]);
+  });
+
+  test("ids whose clock is not in base 64 travel whole", () => {
+    const ids = ["a.é0", "a.é1", "a.é2"];
+    const config = { type: "root", extensions: [TextExtension] };
+    const doc = new Doc({
+      ...config,
+      id: "01kc52hq510g6y44jhq0wqrjb3",
+      nodeIdGenerator: {
+        generate: () => ids.shift() ?? "z.0",
+        validate: () => true,
+      },
+    });
+    doc.forceCommit();
+    const start = doc.toJSON();
+    const sent: Operations[] = [];
+    doc.onChange((event) => sent.push(event.operations));
+    doc.root.append(...text(doc, "a", "b", "c"));
+    doc.forceCommit();
+    const replica = Doc.fromJSON(config, start);
+    for (const operations of sent) replica.applyOperations(operations);
+    replica.forceCommit();
+    expect(replica.toJSON()).toStrictEqual(doc.toJSON());
+  });
+
+  test("a run of state that came broken writes nothing", () => {
+    const doc = createTextDocWithUndo();
+    const [existing] = text(doc, "existing");
+    doc.root.append(existing!);
+    doc.forceCommit();
+    expect(() =>
+      doc.applyOperations(["s", { ".1*2": { value: 3 } }]),
+    ).not.toThrow();
+    assertDoc(doc, ["existing"]);
   });
 
   test("an operation that cannot be created still aborts the batch silently", () => {
@@ -1016,8 +1286,9 @@ describe("applyOperations", () => {
     const id = doc.createNode(Text).id;
     expect(() =>
       doc.applyOperations([
-        [[0, [[id, "unregistered"]], 0, 0, 0]],
-        { [existing!.id]: { value: JSON.stringify("updated") } },
+        sessionOf(id),
+        [0, [[short(id), "unregistered"]]],
+        { [short(existing!.id)]: { value: "updated" } },
       ]),
     ).not.toThrow();
     assertDoc(doc, ["existing"]);
@@ -1101,7 +1372,7 @@ describe("change", () => {
       assertMutation("15", () => node.to(node).copy(doc.root, "append"));
       assertMutation("16", () => node.to(node).move(doc.root, "append"));
       assertMutation("17", () => doc.forceCommit());
-      assertMutation("18", () => doc.applyOperations([[], {}]));
+      assertMutation("18", () => doc.applyOperations([""]));
     });
   });
 
