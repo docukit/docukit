@@ -2,8 +2,8 @@ name: Playwright Tests
 on:
   push:
     branches: [main, master]
+  # Every PR, not only those into main: in a stack, each PR targets the branch below it.
   pull_request:
-    branches: [main, master]
     types: [opened, synchronize, reopened, ready_for_review]
 jobs:
   test:
