@@ -1142,13 +1142,16 @@ describe("applyOperations", () => {
     assertDoc(reloaded, []);
   });
 
-  test("ids with a star are not read as a run", () => {
+  test.each(["x*", "a.*"])("ids like %s0 are not read as a run", (prefix) => {
     let clock = 0;
     const doc = new Doc({
       id: "01kc52hq510g6y44jhq0wqrjb3",
       type: "root",
       extensions: [TextExtension],
-      nodeIdGenerator: { generate: () => `x*${clock++}`, validate: () => true },
+      nodeIdGenerator: {
+        generate: () => `${prefix}${clock++}`,
+        validate: () => true,
+      },
     });
     doc.forceCommit();
     const start = doc.toJSON();

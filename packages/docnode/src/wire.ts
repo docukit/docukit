@@ -32,12 +32,13 @@ import {
 //   trailing zeros.
 // - The state patch, if any, is the last row: `{node: {key: value}}`.
 // - A node id `session.clock` is `"index.clock"`; any other id is itself, with a
-//   `!` in front if it starts with one or reads as a distance. A node of the
-//   head's session can be written by its clock's distance `d` from the head's
-//   clock instead, when that is not longer: `d + 1` from 0 on, `d` below (so
-//   `1` is the node at the clock and `-1` the one before). It is a number in
-//   a tree row, and a string with its sign anywhere else (`"+1"`, `"-1"`: a
-//   key `"1"` would move to the front of the state patch). A batch that
+//   `!` in front if it starts with one, reads as a distance or has a `*` (it
+//   would read as a run: see `RUN`). A node of the head's session can be
+//   written by its clock's distance `d` from the head's clock instead, when
+//   that is not longer: `d + 1` from 0 on, `d` below (so `1` is the node at
+//   the clock and `-1` the one before). It is a number in a tree row, and a
+//   string with its sign anywhere else (`"+1"`, `"-1"`: a key `"1"` would
+//   move to the front of the state patch). A batch that
 //   inserts a node after the one its author inserted before writes the same
 //   rows every time: only the head changes.
 // - A batch of one row is written without the row's brackets.
@@ -132,7 +133,7 @@ function distanceTo(id: string, session: string, base: number) {
   return Math.abs(distance) < 10 ** (id.length - dot - 1) ? distance : 0;
 }
 
-/** An id without a dot, as it is written: with a `!` if it could be misread. */
+/** An id as it is written whole: with a `!` if it could be misread. */
 const literal = (id: string) =>
   id.charCodeAt(0) === 33 || isDistance(id) || id.includes("*") ? `!${id}` : id;
 
@@ -218,7 +219,8 @@ class Encoder {
 
   private _absolute(id: string): string {
     const dot = lastDot(id);
-    if (dot === -1) return literal(id);
+    // A star after the dot would read as a run in a patch key.
+    if (dot === -1 || id.includes("*", dot)) return literal(id);
     // Cut and compared, a short session is found faster than with
     // `startsWith`.
     const index = this.index(id.slice(0, dot));
