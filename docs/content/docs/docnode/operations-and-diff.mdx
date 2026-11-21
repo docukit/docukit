@@ -27,16 +27,17 @@ You can expand the rows in the following table to see a description of these obj
       type: "Operations",
       description: `The operations applied to the document in this transaction. Can be applied to this or another document with \`doc.applyOperations(operations)\`.
 
-Unless you're building your own sync solution or undo manager, you don't need to use it. Even if that's the case, its internal structure should be irrelevant since \`applyOperations\` is the only API that understands it. But for the curious, its simplified form is:
+Unless you're building your own sync solution or undo manager, you don't need to use it. Even if that's the case, its internal structure should be irrelevant since \`applyOperations\` is the only API that understands it. It is plain JSON, made to travel: send it with \`JSON.stringify\`. For the curious, its simplified form is:
 
 \`\`\`ts
-type OrderedOperation =
-| InsertOperation
-| DeleteOperation
-| MoveOperation;
+type Operations = [
+// The session that made it and its first counter, plus other sessions it names.
+head: string | string[],
+...rows: (TextEdit | { n: InsertNodes } | { d: DeleteNodes } | { m: MoveNodes } | StatePatch)[],
+];
 
-type Operations = [OrderedOperation[], StatePatch];
-
+// Typing "s" between two letters:
+["Q14_wOXyP.uiW", "s", -87638];
 \`\`\`
 `,
       required: true,

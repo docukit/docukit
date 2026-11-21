@@ -1,4 +1,7 @@
-import { type Doc, type Operations } from "@docukit/docnode";
+import {
+  type Doc,
+  _INTERNAL_decodeOperations as decodeOperations,
+} from "@docukit/docnode";
 import {
   $getNodeByKey,
   $getRoot,
@@ -45,7 +48,12 @@ export function syncDocNodeToLexical(
 
       editor.update(
         () => {
-          $applyDocNodeOperations(doc, operations, keyBinding, selectionState);
+          $applyDocNodeOperations(
+            doc,
+            decodeOperations(operations),
+            keyBinding,
+            selectionState,
+          );
         },
         {
           discrete: true,
@@ -69,7 +77,7 @@ export function syncDocNodeToLexical(
  */
 function $applyDocNodeOperations(
   doc: Doc,
-  operations: Operations,
+  operations: ReturnType<typeof decodeOperations>,
   keyBinding: KeyBinding,
   selectionState: ReturnType<typeof captureSelectionTransformState>,
 ): void {

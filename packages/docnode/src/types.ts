@@ -253,6 +253,7 @@ export type DeepImmutable<T> =
         : T;
 
 export type ChangeEvent = {
+  /** The batch to send to the other replicas. */
   operations: Operations;
   inverseOperations: Operations;
   diff: Diff;

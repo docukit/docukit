@@ -8,7 +8,13 @@ import {
   updateAndListen,
   humanReadableOperations,
 } from "./utils.js";
-import { Doc, defineNode, type Extension } from "@docukit/docnode";
+import {
+  Doc,
+  defineNode,
+  type ChangeEvent,
+  type Extension,
+  type Operations,
+} from "@docukit/docnode";
 
 describe("register lifecycle", () => {
   test("register is called when Doc is created", () => {
@@ -695,15 +701,68 @@ describe("onNormalize edge cases", () => {
 describe("applyOperations", () => {
   test("applyOperations triggers events with manual operations", () => {
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const nodeId = doc["_nodeIdGenerator"](doc);
+    // "session.clock": the session is the batch's head, and the id `.clock`.
+    const [session, clock] = doc["_nodeIdGenerator"](doc).split(".");
+    const id = `.${clock}`;
 
     checkUndoManager(1, doc, () => {
       doc.applyOperations([
-        [[0, [[nodeId, "text"]], 0, 0, 0]],
-        { [nodeId]: { value: '"test"' } },
+        session!,
+        [0, [[id, "text"]]],
+        { [id]: { value: "test" } },
       ]);
     });
     assertDoc(doc, ["test"]);
+  });
+
+  test("a batch that is all a transaction did is its operations, as it came", () => {
+    const sender = new Doc({ type: "root", extensions: [TextExtension] });
+    const receiver = new Doc({ type: "root", extensions: [TextExtension] });
+    const sent: Operations[] = [];
+    sender.onChange(({ operations }) => sent.push(operations));
+    sender.root.append(sender.createNode(Text));
+    sender.forceCommit();
+    const received: Operations[] = [];
+    receiver.onChange(({ operations }) => received.push(operations));
+    receiver.applyOperations(sent[0]!);
+    receiver.forceCommit();
+    expect(received).toStrictEqual(sent);
+  });
+
+  test("the event's operations are a copy of the batch received", () => {
+    const sender = new Doc({ type: "root", extensions: [TextExtension] });
+    const receiver = new Doc({ type: "root", extensions: [TextExtension] });
+    const sent: Operations[] = [];
+    sender.onChange(({ operations }) => sent.push(operations));
+    sender.root.append(sender.createNode(Text));
+    sender.forceCommit();
+    const received: Operations[] = [];
+    receiver.onChange(({ operations }) => received.push(operations));
+    receiver.applyOperations(sent[0]!);
+    receiver.forceCommit();
+    expect(received[0]).toStrictEqual(sent[0]);
+    expect(received[0]).not.toBe(sent[0]);
+  });
+});
+
+describe("the change event", () => {
+  test("is plain data, with both batches already written", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const events: ChangeEvent[] = [];
+    doc.onChange((event) => events.push(event));
+    doc.root.append(doc.createNode(Text));
+    doc.forceCommit();
+    const [event] = events;
+    expect(Object.keys({ ...event })).toStrictEqual([
+      "operations",
+      "inverseOperations",
+      "diff",
+      "flags",
+    ]);
+    expect(JSON.parse(JSON.stringify(event))).toMatchObject({
+      operations: event!.operations,
+      inverseOperations: event!.inverseOperations,
+    });
   });
 });
 

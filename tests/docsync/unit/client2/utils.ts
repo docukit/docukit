@@ -47,12 +47,26 @@ const createDocBinding = () =>
 // Operations Factory
 // ============================================================================
 
-/** Creates test operations - the content doesn't matter for sync tests */
-export const ops = (data?: Record<string, string>): Operations =>
-  [[], data ? { testNode: data } : {}] as Operations;
+/**
+ * Creates test operations - the content doesn't matter for sync tests, but a
+ * batch is valid and changes state, so a binding never merges two of them.
+ */
+export const ops = (data: Record<string, string> = {}): Operations => [
+  "",
+  { testNode: data },
+];
+
+/**
+ * The part of a sync request a test checks. Typed loosely: TypeScript gives up
+ * matching the type of the operations (recursive JSON) deep inside `expect`.
+ */
+export const syncRequest = (
+  docId: string,
+  operations: Operations[],
+): Record<string, unknown> => ({ docId, operations });
 
 /** Empty operations */
-export const emptyOps = (): Operations => [[], {}] as Operations;
+export const emptyOps = (): Operations => ops();
 
 // ============================================================================
 // Client Factory
