@@ -3,6 +3,7 @@ import {
   DocSyncClient,
   indexedDBProvider,
   type ClientConfig,
+  type ClientProvider,
 } from "@docukit/docsync/client";
 import { DocNodeBinding } from "@docukit/docsync/docnode";
 import {
@@ -14,6 +15,7 @@ import {
   type DocNode,
   _INTERNAL_decodeOperations as decodeOperations,
 } from "@docukit/docnode";
+import type { LegacyOperations } from "@docukit/docnode/compat";
 import { ulid } from "ulid";
 import { expect, inject, vi, type Mock } from "vitest";
 
@@ -598,6 +600,23 @@ export const readStoredCopy = async (
   if (!snapshot) return { stored: undefined, pending: pendingOperations };
   const doc = client["_docBinding"].deserialize(snapshot.serializedDoc);
   return { stored: { doc, clock: snapshot.clock }, pending: pendingOperations };
+};
+
+/**
+ * Leaves `operations` pending in a client's IndexedDB, as `@docukit/docnode`
+ * 0.4 wrote them, while the document is closed.
+ */
+export const saveLegacyPendingOperations = async (
+  device: ClientUtils,
+  docId: string,
+  operations: LegacyOperations[],
+) => {
+  const { identity } = await device.client["_localPromise"];
+  const provider: ClientProvider<JsonDoc, LegacyOperations> =
+    indexedDBProvider(identity);
+  await provider.transaction("readwrite", (ctx) =>
+    ctx.saveOperations({ docId, operations }),
+  );
 };
 
 /** One commit per text, so each text is one operation on the server. */

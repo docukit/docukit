@@ -1,4 +1,5 @@
 import { Doc, type DocConfig, type Operations } from "@docukit/docnode";
+import { upgradeOperations } from "@docukit/docnode/compat";
 import { createDocBinding } from "./index.js";
 import type { TransactionFlags } from "../shared/types.js";
 
@@ -34,7 +35,9 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
       cb: (ev: { operations: Operations; flags?: TransactionFlags }) => void,
     ) => doc.onChange(cb),
     applyOperations: (doc, operations, flags) => {
-      doc.applyOperations(operations, flags);
+      // Batches that docnode 0.4 wrote may still be pending in IndexedDB or
+      // stored on the server: they are read in today's format.
+      doc.applyOperations(upgradeOperations(operations), flags);
     },
     exportHistory: (doc) => doc.undoManager.exportHistory(),
     importHistory: (doc, history) => {
