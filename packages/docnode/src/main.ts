@@ -18,6 +18,7 @@ import {
   type InternalStateDefinition,
   type NodeIdGenerator,
   type TransactionFlags,
+  type CrdtEngine,
 } from "./types.js";
 import {
   detachRange,
@@ -70,7 +71,7 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     // @ts-expect-error - a stored node is built with its state already read
     this._state = state;
     this[DOC] = doc;
-    this.id = id ?? doc["_nodeIdGenerator"](doc);
+    this.id = id ?? doc["_createNodeId"]();
   }
 
   get doc() {
@@ -598,6 +599,12 @@ export class Doc {
    */
   protected _received: ops.Operations | undefined;
   protected _decoded: ops.DraftOperations | undefined;
+  /**
+   * The change event a CRDT engine already built for this transaction (for a
+   * remote batch it merged): the document does not encode its own. The
+   * engine sets and clears it.
+   */
+  protected _event: ChangeEvent | undefined;
   /** Root state that receives edit operations (see `docState`). */
   protected _editStateKey: string | undefined;
   /** Its definition, which applies the edit operations. */
@@ -621,6 +628,8 @@ export class Doc {
    * keeps its own counters, like the text, starts over.
    */
   protected _sessionRenewals = 0;
+  /** Only with `DocConfig.crdt`. */
+  protected _crdt: CrdtEngine | undefined;
   readonly root: DocNode;
   readonly undoManager: UndoManager;
 
@@ -740,6 +749,8 @@ export class Doc {
       ? new NodeIds(this, idGen.extractTime)
       : undefined;
     this._nodeIdGenerator = this._nodeIds?.generate ?? idGen.generate;
+    // Before the extensions and the undo manager: the engine sees them come.
+    this._crdt = config.crdt?.(this);
 
     this._lifeCycleStage = "init";
     config.extensions.forEach((extension) => {
@@ -774,6 +785,11 @@ export class Doc {
   /** A node another replica inserted (see `_renewSession`). */
   private _checkSession(id: string) {
     if (this._nodeIds?.collides(id)) this._renewSession();
+  }
+
+  /** The id of a new node: a CRDT engine can choose it (see `DocConfig.crdt`). */
+  private _createNodeId() {
+    return this._nodeIdGenerator(this);
   }
 
   getNodeById(docNodeId: string): DocNode | undefined {
@@ -1158,6 +1174,8 @@ export class Doc {
       doc._setStoredRoot(doc._nodeFromTree(json));
       doc._attachTree(doc.root, json[3]);
     });
+    // In the transaction of the load, which is still open.
+    doc._crdt?.load(json);
     return doc;
   }
 

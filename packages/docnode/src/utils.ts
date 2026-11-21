@@ -23,6 +23,40 @@ export function detachRange(startNode: DocNode, endNode: DocNode) {
 }
 
 /**
+ * Orders two Lamport stamps `(clock, session)`: by clock, then session. The
+ * greater one wins a write, in the labels engine and in letter states.
+ */
+export const compareStamps = (
+  clock: number,
+  session: string,
+  otherClock: number,
+  otherSession: string,
+) =>
+  clock - otherClock ||
+  Number(session > otherSession) - Number(session < otherSession);
+
+/**
+ * Where a new kid goes among FugueMax kids, sorted: the index of the first one
+ * `before` says it sorts before. The end is checked first: elements made in
+ * order go last. Shared by the letters and by the places of the labels engine.
+ */
+export function kidIndex<T>(
+  kids: readonly T[],
+  before: (kid: T) => boolean,
+): number {
+  let high = kids.length;
+  if (high === 0 || !before(kids[high - 1]!)) return high;
+  let low = 0;
+  high--;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (before(kids[mid]!)) high = mid;
+    else low = mid + 1;
+  }
+  return low;
+}
+
+/**
  * An empty state patch. V8 gives every new key of an object a new hidden
  * class, and node ids are new each time: an object whose keys were deleted
  * keeps them in a dictionary instead.

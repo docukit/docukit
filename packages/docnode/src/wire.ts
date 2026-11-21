@@ -213,14 +213,14 @@ function nodesFrom(id: string, count: number): string[] {
 }
 
 /** The clock a distance from `base` stands for (see the format). */
-const clockOf = (distance: number, base: number) =>
+export const clockOf = (distance: number, base: number) =>
   distance > 0 ? base + distance - 1 : base + distance;
 
 /**
  * The distance a node id is written as (see the format), or 0 when it is
  * not one of `session` or its distance from `base` is longer than its clock.
  */
-function distanceTo(id: string, session: string, base: number) {
+export function distanceTo(id: string, session: string, base: number) {
   const dot = session.length;
   // A dot after the session's: the clock is not in base 64.
   if (base < 0 || id.charCodeAt(dot) !== 46 || !id.startsWith(session))
@@ -233,7 +233,7 @@ function distanceTo(id: string, session: string, base: number) {
 }
 
 /** An id as it is written whole: with a `!` if it could be misread. */
-const literal = (id: string) =>
+export const literal = (id: string) =>
   id.charCodeAt(0) === 33 || isDistance(id) ? `!${id}` : id;
 
 /** `id` if it is `session.clock`, with a dot. */

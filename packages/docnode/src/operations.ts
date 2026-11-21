@@ -275,17 +275,20 @@ export const onApplyOperations = (doc: Doc, operations: DraftOperations) => {
           nodes.push(doc["_newStoredNode"](id, type));
         }
         if (nodes.length === 0) break;
+        // A sibling anchor counts while it is still in the parent the author
+        // saw: one a concurrent change took elsewhere would take the nodes
+        // with it, maybe into a node deleted later.
+        const parent = operation[2] ? doc.getNodeById(operation[2]) : doc.root;
         const prev = operation[3] ? doc.getNodeById(operation[3]) : undefined;
-        if (prev) {
+        if (prev && prev.parent === parent) {
           doc["_insertRange"](prev, "after", nodes);
           break;
         }
         const next = operation[4] ? doc.getNodeById(operation[4]) : undefined;
-        if (next) {
+        if (next && next.parent === parent) {
           doc["_insertRange"](next, "before", nodes);
           break;
         }
-        const parent = operation[2] ? doc.getNodeById(operation[2]) : doc.root;
         if (parent) doc["_insertRange"](parent, "append", nodes);
         break;
       case 1:
@@ -315,8 +318,10 @@ export const onApplyOperations = (doc: Doc, operations: DraftOperations) => {
           : undefined;
         try {
           if (!parentNode) startNode.to(endNode).delete();
-          else if (prevNode) startNode.to(endNode).move(prevNode, "after");
-          else if (nextNode) startNode.to(endNode).move(nextNode, "before");
+          else if (prevNode?.parent === parentNode)
+            startNode.to(endNode).move(prevNode, "after");
+          else if (nextNode?.parent === parentNode)
+            startNode.to(endNode).move(nextNode, "before");
           else startNode.to(endNode).move(parentNode, "append");
         } catch {}
         break;
@@ -398,7 +403,7 @@ export const maybeTriggerListeners = (doc: Doc, ignoreEmptyDiff = false) => {
   const listeners = doc["_changeListeners"];
   if (listeners.size === 0) return;
   // Encoded once, for every listener.
-  const event = {
+  const event = doc["_event"] ?? {
     operations: receivedAsIs(doc) ?? compactOperations(doc["_operations"]),
     inverseOperations: compactOperations(doc["_inverseOperations"]),
     diff: doc["_diff"],
@@ -614,6 +619,14 @@ export type Operations =
   | readonly [head: Head, ...row: FlatRow]
   | readonly [head: Head, content: string, ...rightParent: LetterRef[]]
   | readonly [head: Head, ...row: InsertTextAgainRow];
+  // A CRDT engine's row (a tag of 3 or more), then one row without brackets.
+  | readonly [head: Head, engine: EditTextRow, ...row: FlatRow]
+  | readonly [
+      head: Head,
+      engine: EditTextRow,
+      content: string,
+      ...rightParent: LetterRef[],
+    ];
 
 /** Operations while they are built and applied: the patch is always there. */
 export type DraftOperations = [OrderedOperation[], StatePatch];
@@ -645,8 +658,15 @@ export function mergeOperations(...operationsList: Operations[]): Operations {
   );
 }
 
-/** Whether a batch only edits text: no node inserted, deleted or moved, and no state. */
+/**
+ * Whether a batch only edits text: no row of a CRDT engine (right after the
+ * head, an array or a flat row that starts with 3 or more), no node inserted,
+ * deleted or moved, and no state.
+ */
 function isTextOnly(batch: Operations): boolean {
+  const first: unknown = batch[1];
+  const tag: unknown = Array.isArray(first) ? first[0] : first;
+  if (typeof tag === "number" && tag >= 3) return false;
   const [ordered, patch] = decodeOperations(batch);
   return isObjectEmpty(patch) && ordered.every((op) => op[0] === 3);
 }

@@ -184,6 +184,9 @@ export type JsonDocNode<T extends NodeDefinition = NodeDefinition> = [
  *   children goes first.
  * - The columns of `text`, the letter-by-letter text of the document (see
  *   `defineText`), which shares `sessions` with the tree.
+ * - `crdt`, what a CRDT engine stores (see `DocConfig.crdt`), which adds
+ *   its sessions to `sessions`. With one, every element before it is
+ *   written.
  */
 export type JsonDoc = [
   format: 14,
@@ -196,6 +199,8 @@ export type JsonDoc = [
   text?: Json[] | 0,
   columns?: string,
   values?: Json[],
+  /** What a CRDT engine stores besides the tree (see `DocConfig.crdt`). */
+  crdt?: Json,
 ];
 
 /**
@@ -349,7 +354,26 @@ export type DocConfig = {
    * Configures the document's built-in undo manager.
    */
   undoManager?: UndoManagerConfig;
+  /**
+   * Opt-in CRDT mode: replicas converge with no server, whatever the order in
+   * which they receive each other's batches. Created with `crdtEngine()` of
+   * `@docukit/docnode/crdt`. Without it nothing changes, and no engine code
+   * is bundled.
+   */
+  crdt?: CrdtEngineFactory;
 };
+
+/**
+ * @internal What the core calls on a CRDT engine. The engine takes care of
+ * the rest on its own: it is created with the document, before any extension.
+ */
+export type CrdtEngine = {
+  /** Rebuilds what the engine keeps, once `Doc.fromJSON` built the tree. */
+  load(json: JsonDoc | JsonTree): void;
+};
+
+/** @internal Creates the CRDT engine of a document (see `DocConfig.crdt`). */
+export type CrdtEngineFactory = (doc: Doc) => CrdtEngine;
 
 // https://github.com/microsoft/TypeScript/issues/13923#issuecomment-2191862501
 export type DeepImmutable<T> =
