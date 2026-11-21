@@ -38,8 +38,10 @@ import {
 //     none), `[[text, ...state], right?, left?]` letters with a first state,
 //     and `[-tag, ...]` is any other edit (see `text/baseText.ts`): `[-1,
 //     ranges]` deletes letters, `[-4, text, ranges, states?, right?, left?]`
-//     puts back letters a delete took (`-1`: the id next to them) and `[-5,
-//     key, ranges, value?, ...]` sets their state. `[-3, text, ...refs, text,
+//     puts back letters a delete took (`-1`: the id next to them), `[-5, key,
+//     ranges, value?, ...]` sets their state, and `[-6, key, ranges, value,
+//     right?]` sets a key letters inherit, with the letter that was after the
+//     ranges (left out: the id after them). `[-3, text, ...refs, text,
 //     ...refs]` is inserts one after the other, each `[text, right?, left?]`
 //     without its brackets, when their letters have no state and their
 //     references are numbers. Only an insert takes counters.
@@ -535,9 +537,15 @@ class Encoder {
       for (const ref of op.slice(7)) row.push(this._left(ref, c));
       return;
     }
-    // Its key, then ranges and their value.
-    row.push(numericKey(text(op[4])));
-    this._values(op, 5, c, row);
+    // Base's state has no lamport: its key, then ranges and their value.
+    if (tag === 5) {
+      row.push(numericKey(text(op[4])));
+      this._values(op, 5, c, row);
+      return;
+    }
+    // A key letters inherit: one value, then the letter after its ranges.
+    row.push(numericKey(text(op[4])), this.ranges(op[5]!, c), op[6]!);
+    if (op.length > 7) row.push(this.ref(op[7]!, c));
   }
 
   /** Ranges and their value, alternately, from `op[from]` on. */
@@ -842,6 +850,10 @@ class Decoder {
       case 5:
         op.push(keyOf(row[at + 1]));
         this._values(row, at + 2, c, op);
+        break;
+      case 6:
+        op.push(keyOf(row[at + 1]), this.ranges(row[at + 2]!, c), row[at + 3]!);
+        if (row.length > at + 4) op.push(this.ref(row[at + 4]!, c));
         break;
       default:
         op.push(...row.slice(at + 1));

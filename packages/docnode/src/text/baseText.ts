@@ -15,6 +15,7 @@ import {
 } from "../columns.js";
 import {
   contentOf,
+  cutIn,
   decodeRef,
   encodeRange,
   encodeRef,
@@ -25,11 +26,13 @@ import {
   listOf,
   nextId,
   pushRange,
+  rulesOfNode,
   sameValue,
   SessionRuns,
   stateOfContent,
   stringOf,
   TextEngine,
+  type Rules,
   type TextSpan,
 } from "./common.js";
 import { TreePositions, type Item, type Leaf } from "./positions.js";
@@ -51,7 +54,9 @@ import { Ghosts, type Ghost } from "./ghosts.js";
  *   where the left one was deleted: right after the anchor of its ghost.
  *   Only after an insert that was lost (it named a node not here) can it be
  *   lost too.
- * - A letter's state is its own: it has what it was inserted with.
+ * - A letter's state is its own: what it inherits (see `Inherit`) is copied
+ *   into it when it is inserted, from the letters it lands between. Every
+ *   replica inserts it between the same letters.
  * - `setLetterState`: the last one applied wins.
  * - An undo of a delete inserts the letters again, with their ids and the
  *   state they had. Their ids: a later undo (of the insert that made them)
@@ -99,6 +104,7 @@ type OldValues = Map<string, [Json, [string, number, number][]]>;
 const TAG_DELETE = 1;
 const TAG_RESTORE = 4;
 const TAG_STATE = 5;
+const TAG_FORMAT = 6;
 
 /**
  * A long node id without a session: named by a prefix of its hash (see
@@ -146,6 +152,20 @@ export class BaseText extends TextEngine {
 
   bind(doc: Doc): void {
     this._doc = doc;
+  }
+
+  /**
+   * Base reads the rules of a node from its type, when the letters are
+   * inserted (see `_rules`): every replica reads the same.
+   */
+  setRules(): void {
+    // Nothing to keep.
+  }
+
+  /** The rules of a node's type while it is in the document. */
+  private _rules(flow: Flow): Rules | undefined {
+    const rules = rulesOfNode(this._doc, flow.node);
+    return rules === false ? undefined : rules;
   }
 
   // ----- identity --------------------------------------------------------
@@ -446,7 +466,10 @@ export class BaseText extends TextEngine {
     if (inverse) this._record(doc, payload, inverse);
   }
 
-  /** `insertLetters`, at a visible index. `attrs`: the state the letters have. */
+  /**
+   * `insertLetters`, at a visible index. `attrs`: the state the letters
+   * have, else what they inherit (see `Inherit`).
+   */
   insert(
     doc: Doc,
     node: string,
@@ -458,12 +481,13 @@ export class BaseText extends TextEngine {
     const flow = this._flow(node);
     const left = this._leftOf(flow, this._boundary(flow, index));
     const right = this._after(left);
-    const state = this._ownState(attrs);
+    const rules = this._rules(flow);
+    const own = attrs && ownFor(rules, text, left, right, attrs);
     const [s, c] = this._mint(doc, text.length);
-    const payload: EditOperation = [3, s, c, contentOf(text, state)];
+    const payload: EditOperation = [3, s, c, contentOf(text, own)];
     if (left.run.c === -1) payload.push(this._startRef(doc, node));
     else this._neighbours(doc, payload, s, c, left, right);
-    const inverse = this._insert(doc, s, c, text, state, left);
+    const inverse = this._insert(doc, s, c, text, own, rules, left, right);
     this._record(doc, payload, inverse);
   }
 
@@ -507,9 +531,25 @@ export class BaseText extends TextEngine {
     const ranges = this._ranges(flow, from, to);
     if (ranges.length === 0) return;
     const [s, c] = this._mint(doc, 0);
-    const payload: EditOperation = [3, TAG_STATE, s, c, key];
-    payload.push(encodeRanges(s, ranges));
-    if (value !== null) payload.push(value);
+    if (this._rules(flow)?.get(key) !== "origin") {
+      const payload: EditOperation = [3, TAG_STATE, s, c, key];
+      payload.push(encodeRanges(s, ranges));
+      if (value !== null) payload.push(value);
+      this._commit(doc, payload);
+      return;
+    }
+    // A key letters inherit from the one before: the letter after the range
+    // too, so that what others type right after it goes with it.
+    const payload: EditOperation = [3, TAG_FORMAT, s, c, key];
+    payload.push(encodeRanges(s, ranges), value);
+    const end = this._boundary(flow, to);
+    const [ls, lc, len] = ranges.at(-1)!;
+    if (end >= this._positions.length(flow.head)) payload.push(0);
+    else {
+      const after = this._positions.seek(flow.head, end);
+      if (after.run.s !== ls || after.run.c + after.off !== lc + len)
+        payload.push(refTo(s, after));
+    }
     this._commit(doc, payload);
   }
 
@@ -540,6 +580,8 @@ export class BaseText extends TextEngine {
         return this._applyRestore(doc, payload, s, c);
       case TAG_STATE:
         return this._applyState(doc, payload, s, c);
+      case TAG_FORMAT:
+        return this._applyFormat(doc, payload, s, c);
       default:
         return undefined;
     }
@@ -584,6 +626,7 @@ export class BaseText extends TextEngine {
     let left = payload[5];
     let at: Element | undefined;
     let next: Element | undefined;
+    let around: [State | undefined, State | undefined] | undefined;
     if (known > 0) {
       c += known;
       text = text.slice(known);
@@ -616,10 +659,52 @@ export class BaseText extends TextEngine {
         at = this._anchorOf(ls, lc);
         next = at && this._after(at);
       }
+      around = this._ghostStates(at, next, ls, lc, rs, rc);
     }
     if (!at) return undefined;
-    const state = this._ownState(stateOfContent(content));
-    return this._insert(doc, s, c, text, state, at);
+    const flow = at.run.flow;
+    return this._insert(
+      doc,
+      s,
+      c,
+      text,
+      stateOfContent(content),
+      this._rules(flow),
+      at,
+      next,
+      around,
+    );
+  }
+
+  /**
+   * What letters typed between `(ls, lc)` and `(rs, rc)` inherit from them,
+   * when one of them is a ghost: its state, as if it were still there
+   * (see `Ghost.state`). Undefined when both are where the insert lands.
+   */
+  private _ghostStates(
+    at: Element | undefined,
+    next: Element | undefined,
+    ls: string,
+    lc: number,
+    rs: string,
+    rc: number,
+  ): [State | undefined, State | undefined] | undefined {
+    if (!at || this._ghosts.empty) return undefined;
+    const left = at.run.c === -1 ? undefined : at.run.state;
+    const right = next?.run.state;
+    const leftGhost =
+      at.run.s === ls && at.run.c + at.off === lc
+        ? undefined
+        : this._ghosts.find(ls, lc);
+    const rightGhost =
+      rc === -1 || (next?.run.s === rs && next.run.c + next.off === rc)
+        ? undefined
+        : this._ghosts.find(rs, rc);
+    if (!leftGhost && !rightGhost) return undefined;
+    return [
+      leftGhost ? leftGhost.state : left,
+      rightGhost ? rightGhost.state : right,
+    ];
   }
 
   /** The anchor of the ghost of deleted letter `(s, c)`, if it is one. */
@@ -638,37 +723,96 @@ export class BaseText extends TextEngine {
     return { run: prev, off: Math.max(prev.len - 1, 0) };
   }
 
-  /** Inserts letters with `state` right after `left`. */
+  /**
+   * Inserts letters right after `left` (and before `right`, the element
+   * after it), with what they inherit from both copied into their state:
+   * the letters before the first opaque one (see `Rules.opaque`).
+   */
   private _insert(
     doc: Doc,
     s: string,
     c: number,
     text: string,
-    state: State | undefined,
+    own: Record<string, Json> | undefined,
+    rules: Rules | undefined,
     left: Element,
+    right: Element | undefined,
+    around?: [State | undefined, State | undefined],
   ): EditOperation {
     const flow = left.run.flow;
-    const target = left.run;
+    const cut = rules ? cutIn(text, rules.opaque) : 0;
+    let target = left.run;
     if (left.off < target.len - 1) this._split(target, left.off + 1);
-    if (
-      target.c !== -1 &&
-      target.s === s &&
-      target.c + target.len === c &&
-      target.state === state
-    ) {
-      // Typing: the letters go on the run before them.
-      target.text += text;
-      this._positions.changed(target);
-    } else {
-      const run = new Run(s, c, text, state, flow);
+    const place = (from: number, to: number, state: State | undefined) => {
+      if (
+        target.c !== -1 &&
+        target.s === s &&
+        target.c + target.len === c + from &&
+        target.state === state
+      ) {
+        // Typing: the letters go on the run before them.
+        target.text += text.slice(from, to);
+        this._positions.changed(target);
+        return;
+      }
+      const run = new Run(s, c + from, text.slice(from, to), state, flow);
       this._indexRun(run);
       this._linkAfter(target, run);
+      target = run;
+    };
+    // `cut` is 0 without rules: nothing to inherit.
+    if (cut > 0) {
+      const [before, after] = around ?? [
+        left.run.c === -1 ? undefined : left.run.state,
+        right?.run.state,
+      ];
+      place(0, cut, this._stateFor(rules!, before, after, own));
     }
+    if (cut < text.length) place(cut, text.length, this._ownState(own));
     this._report(doc, flow.node);
     return [3, TAG_DELETE, s, c, encodeRange(s, s, c, text.length)];
   }
 
-  /** The state of letters inserted with `own`: without its `null`s. */
+  /**
+   * The state of letters with `own` state typed between letters with `left`
+   * and `right` state: what they inherit (see `Inherit`) and their own
+   * (`null`: a key they do not take).
+   */
+  private _stateFor(
+    rules: Rules,
+    left: State | undefined,
+    right: State | undefined,
+    own: Record<string, Json> | undefined,
+  ): State | undefined {
+    let state: Record<string, Json> | undefined;
+    // While every key of `left` goes on and there is no own state, it is
+    // `left` itself.
+    let same = !own;
+    for (const key in left) {
+      const value = left[key]!;
+      const rule = rules.get(key);
+      if (
+        rule === undefined ||
+        (own && Object.hasOwn(own, key)) ||
+        (rule === "both" &&
+          !(
+            right &&
+            Object.hasOwn(right, key) &&
+            sameValue(value, right[key]!)
+          ))
+      ) {
+        same = false;
+        continue;
+      }
+      (state ??= {})[key] = value;
+    }
+    // `same` means no own state: the loop adds nothing.
+    for (const key in own)
+      if (own[key] !== null) (state ??= {})[key] = own[key]!;
+    return same ? left : this._intern(state);
+  }
+
+  /** The state of letters that inherit nothing: their own, without `null`s. */
   private _ownState(own: Record<string, Json> | undefined): State | undefined {
     let state: Record<string, Json> | undefined;
     if (own)
@@ -704,6 +848,7 @@ export class BaseText extends TextEngine {
     // after the last one stay.
     const left = removed[0]!.prev!;
     const right = removed.at(-1)!.next;
+    const rules = this._rules(left.flow);
     let text = "";
     const ids: [string, number, number][] = [];
     const states: Json[] = [];
@@ -719,6 +864,7 @@ export class BaseText extends TextEngine {
       if (run.state) styled = true;
       // Its ghost: after the letter before it, which stays.
       const before = run.prev!;
+      const kept = this._inheritable(run.state, rules);
       if (before.c === -1)
         this._ghosts.add(
           run.s,
@@ -727,6 +873,7 @@ export class BaseText extends TextEngine {
           before.flow.node,
           -1,
           run.anchors,
+          kept,
         );
       else {
         this._ghosts.add(
@@ -736,6 +883,7 @@ export class BaseText extends TextEngine {
           before.s,
           before.c + before.len - 1,
           run.anchors,
+          kept,
         );
         before.anchors = true;
       }
@@ -779,6 +927,28 @@ export class BaseText extends TextEngine {
       }
     }
     return inverse;
+  }
+
+  /**
+   * What of `state` a letter typed next to it can inherit (see `Inherit`):
+   * the keys with a rule. A ghost keeps it (see `Ghost.state`).
+   */
+  private _inheritable(
+    state: State | undefined,
+    rules: Rules | undefined,
+  ): State | undefined {
+    if (!state || !rules) return undefined;
+    let cache = keptByRules.get(rules);
+    if (!cache) keptByRules.set(rules, (cache = new WeakMap()));
+    let kept = cache.get(state);
+    if (kept === undefined) {
+      let some: Record<string, Json> | undefined;
+      for (const key in state)
+        if (rules.get(key) !== undefined) (some ??= {})[key] = state[key]!;
+      kept = some === undefined ? false : this._intern(some)!;
+      cache.set(state, kept);
+    }
+    return kept === false ? undefined : kept;
   }
 
   /**
@@ -903,6 +1073,60 @@ export class BaseText extends TextEngine {
           this._setBetween(first, last, key, value, old, touched);
       }
     }
+    return this._stateDone(doc, s, c, key, old, touched);
+  }
+
+  /**
+   * `[3, 6, s, c, key, ranges, value, right?]`: `setLetterState` of a key
+   * letters inherit from the letter before them (`"origin"`, see
+   * `Inherit`). Its ranges were together: all that is between the first
+   * and the last letter still here takes the value, as in `_applyState`.
+   * So do the letters typed since right after them and before `right`, the
+   * letter that was after them, if they have the value the last one had
+   * (they would have inherited it), up to an opaque one. `right` left out
+   * is the id after the last range; `0`, the end of the text.
+   */
+  private _applyFormat(
+    doc: Doc,
+    payload: EditOperation,
+    s: string,
+    c: number,
+  ): EditOperation | undefined {
+    const key = stringOf(payload[4]);
+    const value = payload[6] ?? null;
+    const ranges = decodeRanges(s, payload[5]!);
+    const [first, last] = this._ends(ranges);
+    if (!first || !last) return undefined;
+    const was = last.run.state?.[key] ?? null;
+    const ls = last.run.s;
+    const lc = last.run.c + last.off;
+    const old: OldValues = new Map();
+    const touched: Run[] = [];
+    this._setBetween(first, last, key, value, old, touched);
+    const right = payload[7];
+    const [rs, rc, len] = ranges.at(-1)!;
+    const [ss, sc] =
+      right === undefined
+        ? [rs, rc + len]
+        : right === 0
+          ? ["", -1]
+          : decodeRef(s, right);
+    const rules = this._rules(last.run.flow);
+    if (rules && (sc === -1 || this._find(ss, sc)))
+      for (let at = this._after(this._find(ls, lc)!); at; ) {
+        const { run, off } = at;
+        const length = run.len;
+        const stop =
+          run.s === ss && sc >= run.c + off && sc < run.c + length
+            ? sc - run.c
+            : length;
+        const end = off + cutIn(run.text.slice(off, stop), rules.opaque);
+        const following = run.next;
+        if (end > off && sameValue(run.state?.[key] ?? null, was))
+          this._setState(run, off, end, key, value, old, touched);
+        if (end < length) break;
+        at = following && { run: following, off: 0 };
+      }
     return this._stateDone(doc, s, c, key, old, touched);
   }
 
@@ -1052,7 +1276,7 @@ export class BaseText extends TextEngine {
       }
       return index;
     };
-    const ghostWriter = new GhostWriter(sessions, ghosts);
+    const ghostWriter = new GhostWriter(sessions, ghosts, stateIndex);
     const flowFlags = new ColumnWriter(flows.length, false, true);
     const flowRuns = new ColumnWriter(flows.length);
     const shapeColumn = new ColumnWriter(1024);
@@ -1213,6 +1437,7 @@ export class BaseText extends TextEngine {
     const ghosts = new GhostReader(
       columns.slice(COLUMN.GHOST_PLACES),
       sessions,
+      table,
       store._ghosts,
     );
     const shapeBits: number[] = [];
@@ -1328,8 +1553,62 @@ const joins = (
   left.c + left.len === run.c &&
   left.state === run.state;
 
+/**
+ * What of each state a ghost keeps, by rules (see `_inheritable`); `false`:
+ * nothing. A state belongs to one text, so the result is that text's.
+ */
+const keptByRules = new WeakMap<Rules, WeakMap<State, State | false>>();
+
 /** A letter's state as written: an object of JSON values. */
 const isState = (value: Json | undefined): value is State => isRecord(value);
+
+/**
+ * The first state of letters typed between `left` and `right`: what they
+ * must say of their own to have `attrs` (`null`: a key they would inherit
+ * and must not have).
+ */
+function ownFor(
+  rules: Rules | undefined,
+  text: string,
+  left: Element,
+  right: Element | undefined,
+  attrs: Record<string, Json>,
+): Record<string, Json> | undefined {
+  let own: Record<string, Json> | undefined;
+  const cut = rules ? cutIn(text, rules.opaque) : 0;
+  const leftState = left.run.c === -1 ? undefined : left.run.state;
+  const inherited: Record<string, Json> = {};
+  if (rules && cut > 0)
+    for (const key in leftState) {
+      const rule = rules.get(key);
+      const value = leftState[key]!;
+      const other = right?.run.state;
+      if (
+        rule === "origin" ||
+        (rule === "both" &&
+          other !== undefined &&
+          Object.hasOwn(other, key) &&
+          sameValue(value, other[key]!))
+      )
+        inherited[key] = value;
+    }
+  for (const key in attrs) {
+    const value = attrs[key]!;
+    if (value === null) continue;
+    // Letters after an opaque one have their own state only: they say all.
+    if (
+      Object.hasOwn(inherited, key) &&
+      sameValue(inherited[key]!, value) &&
+      cut === text.length
+    )
+      continue;
+    (own ??= {})[key] = value;
+  }
+  for (const key in inherited)
+    if (!Object.hasOwn(attrs, key) || attrs[key] === null)
+      (own ??= {})[key] = null;
+  return own;
+}
 
 function encodeRanges(own: string, ranges: [string, number, number][]): Json {
   if (ranges.length === 1) {
@@ -1405,13 +1684,16 @@ const FORMAT = 20;
  *   the anchor, if of its session, else from the one after the anchor (a
  *   letter of its session: what was typed after it and deleted), else from
  *   where the last ghost of its session ended;
- * - its length, minus one.
+ * - its length, minus one;
+ * - what of their state it keeps (see `Ghost.state`): an index in the
+ *   states, plus one, or `0`.
  */
 class GhostWriter {
   private readonly _places = new ColumnWriter(64, false, true);
   private readonly _sessions = new ColumnWriter();
   private readonly _counters = new ColumnWriter();
   private readonly _lengths = new ColumnWriter();
+  private readonly _states = new ColumnWriter();
   private readonly _ends: number[] = [];
   /** The sorted counters of the anchors of each session (see `Ghosts.anchorsOf`). */
   private readonly _anchors = new Map<string, number[]>();
@@ -1423,10 +1705,17 @@ class GhostWriter {
   constructor(
     private readonly _table: SessionTable,
     private readonly _ghosts: Ghosts,
+    private readonly _stateIndex: (state: State | undefined) => number,
   ) {}
 
   get columns(): ColumnWriter[] {
-    return [this._places, this._sessions, this._counters, this._lengths];
+    return [
+      this._places,
+      this._sessions,
+      this._counters,
+      this._lengths,
+      this._states,
+    ];
   }
 
   /**
@@ -1449,11 +1738,13 @@ class GhostWriter {
     let lastEnd = 0;
     for (let at = 0; at < ghosts.length; ) {
       const ghost = ghosts[at]!;
-      // Ids of one session in a row are written once.
+      // Ids of one session in a row, with one state, are written once.
       let len = ghost.len;
       for (
         let next = ghosts[++at];
-        next?.s === ghost.s && next.c === ghost.c + len;
+        next?.s === ghost.s &&
+        next.c === ghost.c + len &&
+        next.state === ghost.state;
         next = ghosts[++at]
       )
         len += next.len;
@@ -1470,6 +1761,7 @@ class GhostWriter {
             : (this._ends[index] ?? 0);
       this._counters.pushSigned(ghost.c - expected);
       this._lengths.push(len - 1);
+      this._states.push(this._stateIndex(ghost.state));
       last = index;
       lastEnd = this._ends[index] = ghost.c + len;
     }
@@ -1494,6 +1786,7 @@ class GhostReader {
   private readonly _sessions: ColumnReader;
   private readonly _counters: ColumnReader;
   private readonly _lengths: ColumnReader;
+  private readonly _states: ColumnReader;
   private readonly _ends: number[] = [];
   /** The ghosts read so far, by session (see `Ghosts.finish`). */
   readonly loaded = new Map<string, Ghost[]>();
@@ -1505,6 +1798,7 @@ class GhostReader {
   constructor(
     columns: string[],
     private readonly _table: string[],
+    private readonly _stateTable: (State | undefined)[],
     private readonly _ghosts: Ghosts,
   ) {
     const column = (field: number) => new ColumnReader(columns[field] ?? "");
@@ -1512,6 +1806,7 @@ class GhostReader {
     this._sessions = column(1);
     this._counters = column(2);
     this._lengths = column(3);
+    this._states = column(4);
     this._anchor = this._places.done ? Infinity : this._places.next() - 1;
   }
 
@@ -1540,8 +1835,16 @@ class GhostReader {
         const len = this._lengths.next() + 1;
         last = index;
         lastEnd = this._ends[index] = ghostC + len;
+        const state = this._states.next();
         this._ghosts.load(
-          { s: this._table[index]!, c: ghostC, len, as: s, ac },
+          {
+            s: this._table[index]!,
+            c: ghostC,
+            len,
+            as: s,
+            ac,
+            state: state === 0 ? undefined : this._stateTable[state - 1],
+          },
           this.loaded,
         );
         if (this._places.done) {

@@ -19,6 +19,67 @@ export type TextSpan = { text: string; attrs: Record<string, Json> };
 
 export const TEXT_KEY = "~t";
 
+/**
+ * How a letter without a value of its own for a key gets it:
+ *
+ * - `"origin"`: the value of the letter it was typed after.
+ * - `"both"`: that value, only if the letter after it has the same. Typing
+ *   at the edge of a link stays out of it, typing inside it stays in.
+ *
+ * A key without a rule is only what was written on the letter.
+ */
+export type Inherit = "origin" | "both";
+/** By key; a key ending in `*` names every key that starts with the rest. */
+export type InheritRules = Readonly<Record<string, Inherit>>;
+export type Rules = {
+  get(key: string): Inherit | undefined;
+  /** Letters of these characters inherit nothing (see `defineText`). */
+  readonly opaque: string;
+};
+
+/** The rules of `inherit` (see `InheritRules`), and the opaque letters. */
+export function rulesOf(inherit: InheritRules, opaque = ""): Rules {
+  const exact = new Map<string, Inherit>();
+  const prefixes: [string, Inherit][] = [];
+  for (const [key, rule] of Object.entries(inherit))
+    if (key.endsWith("*")) prefixes.push([key.slice(0, -1), rule]);
+    else exact.set(key, rule);
+  return {
+    get: (key) =>
+      exact.get(key) ??
+      (prefixes.length === 0
+        ? undefined
+        : prefixes.find(([prefix]) => key.startsWith(prefix))?.[1]),
+    opaque,
+  };
+}
+
+/** Where the first opaque letter of `text` is, or its length. */
+export function cutIn(text: string, opaque: string): number {
+  if (opaque === "") return text.length;
+  for (let index = 0; index < text.length; index++)
+    if (opaque.includes(text[index]!)) return index;
+  return text.length;
+}
+
+/** The rules of each `defineText` definition that has them. */
+export const inheritRules = new WeakMap<object, Rules>();
+
+/** The rules of a node's type, `false` while it is not in the document. */
+export function rulesOfNode(
+  doc: Doc | undefined,
+  node: string,
+): Rules | undefined | false {
+  const found = doc?.getNodeById(node);
+  if (!found) return false;
+  const definition = doc!["_resolvedNodeDefs"].get(found.type);
+  for (const key in definition?.state) {
+    const rules = inheritRules.get(definition.state[key]!);
+    if (rules) return rules;
+  }
+  return undefined;
+}
+
 export function isHighSurrogate(code: number): boolean {
   return code >= 0xd800 && code <= 0xdbff;
 }
@@ -53,7 +114,8 @@ export const isRecord = (
 /**
  * The first state an insert's content gives its letters: the content after
  * the text (see `contentOf`). A string names keys of one character set to
- * 1.
+ * 1. A `null` value is kept: the letters have no value for the key,
+ * inherited or not.
  */
 export function stateOfContent(
   content: Json | undefined,
@@ -80,7 +142,7 @@ export function stateOfContent(
 /**
  * An insert's content: its text, or `[text, flags?, attrs?]` with the first
  * state of its letters, where `flags` are the keys of one character set to
- * 1 (a format, like bold) and `attrs` the rest.
+ * 1 (a format, like bold) and `attrs` the rest (`null`: none, not inherited).
  */
 export function contentOf(
   text: string,
@@ -269,8 +331,10 @@ export const encodeRange = (
 
 /** What `defineText` asks of the text engine of a document. */
 export abstract class TextEngine {
-  /** The document whose text it holds. */
+  /** The document whose nodes say the inherit rules of their text. */
   abstract bind(doc: Doc): void;
+  /** The inherit rules of a node, known before it is in the document. */
+  abstract setRules(node: string, rules: Rules | undefined): void;
   abstract textOf(node: string): string;
   abstract spansOf(node: string): TextSpan[];
   abstract lengthOf(node: string): number;

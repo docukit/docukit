@@ -1,18 +1,224 @@
-import { Doc } from "@docukit/docnode";
+import { _INTERNAL_decodeOperations as decode, Doc } from "@docukit/docnode";
 import { describe, expect, test } from "vitest";
 import { checkUndoManager } from "../utils.js";
 
 import {
+  config,
   defaultConfig,
   flat,
   Network,
+  P,
+  Paragraph,
+  race,
   receive,
   reload,
   rootText,
+  ROOT_ID,
   runsOf,
   sent,
   styled,
+  type Text,
 } from "./utils.js";
+
+const bold = (text: Text) => text.format(0, 5, "bold", true);
+
+describe("what a letter inherits is copied into it when it is inserted", () => {
+  test("a letter typed after a bold one is bold and sends no state", () => {
+    const { doc, text } = flat("Hello world");
+    bold(text);
+    doc.forceCommit();
+    const [typed] = sent(doc, () => text.insert(5, "!"));
+    // The letter typed before "o" is the id before " ": the sign says so.
+    expect(typed).toStrictEqual(["a.A", "!", -6]);
+    expect(styled(text.spans())).toStrictEqual([
+      'Hello!:{"bold":true}',
+      " world",
+    ]);
+    // It is the letter's own: the letter it was typed after can change.
+    text.format(4, 5, "bold", null);
+    doc.forceCommit();
+    expect(styled(rootText(reload(doc)).spans())).toStrictEqual([
+      'Hell:{"bold":true}',
+      "o",
+      '!:{"bold":true}',
+      " world",
+    ]);
+  });
+
+  test("a bold covers what others typed right after it, in either order", () => {
+    const edits = { a: bold, b: (text: Text) => text.insert(5, "!") };
+    for (const order of [
+      ["a", "b"],
+      ["b", "a"],
+    ])
+      expect(styled(race("Hello world", edits, order))).toStrictEqual([
+        'Hello!:{"bold":true}',
+        " world",
+      ]);
+  });
+
+  test("so does an unbold: a letter typed after the one it unbolds stays plain", () => {
+    const edits = {
+      a: (text: Text) => {
+        text.format(0, 2, "bold", true);
+        text.format(0, 1, "bold", null);
+      },
+      b: (text: Text) => text.insert(1, "B"),
+    };
+    for (const order of [
+      ["a", "b"],
+      ["b", "a"],
+    ])
+      expect(styled(race("AC", edits, order))).toStrictEqual([
+        "AB",
+        'C:{"bold":true}',
+      ]);
+  });
+
+  test("up to the letter that was after it, and not past a paragraph letter", () => {
+    const edits = {
+      a: bold,
+      b: (text: Text) => {
+        text.insert(6, "!");
+        text.insert(5, `?${P}`);
+      },
+    };
+    for (const order of [
+      ["a", "b"],
+      ["b", "a"],
+    ])
+      expect(styled(race("Hello world", edits, order))).toStrictEqual([
+        'Hello?:{"bold":true}',
+        `${P} !world`,
+      ]);
+  });
+
+  test("to the end of the text when it was its end", () => {
+    const edits = {
+      a: (text: Text) => text.format(6, 11, "italic", true),
+      b: (text: Text) => text.insert(11, "s"),
+    };
+    for (const order of [
+      ["a", "b"],
+      ["b", "a"],
+    ])
+      expect(styled(race("Hello world", edits, order))).toStrictEqual([
+        "Hello ",
+        'worlds:{"italic":true}',
+      ]);
+  });
+
+  test("not on a letter typed there with a value of its own", () => {
+    const network = new Network("Hello world", ["a", "b"]);
+    network.edit("a", bold);
+    network.exchange();
+    network.edit("a", (text) => text.format(0, 5, "bold", null));
+    network.edit("b", (text) => text.insert(5, "!", { bold: "x" }));
+    network.exchange();
+    expect(styled(network.converged())).toStrictEqual([
+      "Hello",
+      '!:{"bold":"x"}',
+      " world",
+    ]);
+  });
+
+  test("a letter typed next to deleted ones inherits from them, as if they were there", () => {
+    const network = new Network("Hello world", ["a", "b"]);
+    network.edit("a", bold);
+    network.exchange();
+    network.edit("a", (text) => text.delete(0, 5));
+    network.edit("b", (text) => {
+      text.insert(5, "!");
+      text.insert(3, "?");
+    });
+    network.exchange();
+    expect(styled(network.converged())).toStrictEqual([
+      '?!:{"bold":true}',
+      " world",
+    ]);
+  });
+
+  test("a link from deleted letters on both sides", () => {
+    const network = new Network("see here now", ["a", "b"]);
+    network.edit("a", (text) => text.format(4, 8, "link", "u"));
+    network.exchange();
+    network.edit("a", (text) => text.delete(4, 4));
+    network.edit("b", (text) => text.insert(6, "-"));
+    network.exchange();
+    expect(styled(network.converged())).toStrictEqual([
+      "see ",
+      '-:{"link":"u"}',
+      " now",
+    ]);
+  });
+
+  test("a link only from inside: both letters around must have it", () => {
+    const { doc, text } = flat("see here now");
+    text.format(4, 8, "link", "u");
+    doc.forceCommit();
+    text.insert(6, "-");
+    text.insert(9, "!");
+    doc.forceCommit();
+    expect(styled(text.spans())).toStrictEqual([
+      "see ",
+      'he-re:{"link":"u"}',
+      "! now",
+    ]);
+  });
+
+  test("a paragraph letter inherits nothing, nor what is typed after it in one insert", () => {
+    const { doc, text } = flat("ab");
+    text.format(0, 2, "bold", true);
+    doc.forceCommit();
+    text.insert(2, `c${P}d`);
+    doc.forceCommit();
+    expect(styled(text.spans())).toStrictEqual(['abc:{"bold":true}', `${P}d`]);
+    // With a state given, the letters after it say all of it.
+    const [batch] = sent(doc, () => text.insert(1, `x${P}y`, { bold: true }));
+    expect(decode(batch!)[0]).toStrictEqual([
+      [3, "a", 5, [`x${P}y`, { bold: true }], -2],
+    ]);
+  });
+
+  test("a state given leaves out what the letter inherits, and says what it does not take", () => {
+    const { doc, text } = flat("ab");
+    text.format(0, 2, "bold", true);
+    doc.forceCommit();
+    const [same] = sent(doc, () => text.insert(2, "c", { bold: true }));
+    const [plain] = sent(doc, () => text.insert(3, "d", {}));
+    const [more] = sent(doc, () =>
+      text.insert(2, "e", { bold: true, italic: true }),
+    );
+    expect(decode(same!)[0]).toStrictEqual([[3, "a", 2, "c"]]);
+    expect(decode(plain!)[0]).toStrictEqual([
+      [3, "a", 3, ["d", { bold: null }]],
+    ]);
+    expect(decode(more!)[0]).toStrictEqual([
+      [3, "a", 4, ["e", { italic: true }], -3],
+    ]);
+    expect(styled(text.spans())).toStrictEqual([
+      'ab:{"bold":true}',
+      'e:{"bold":true,"italic":true}',
+      'c:{"bold":true}',
+      "d",
+    ]);
+  });
+
+  test("a node not in the document inherits nothing", () => {
+    const doc = new Doc({ ...config(), id: ROOT_ID });
+    doc.forceCommit();
+    const node = doc.createNode(Paragraph);
+    node.state.t.insert(0, "ab", { bold: true });
+    node.state.t.insert(2, "c");
+    doc.root.append(node);
+    node.state.t.insert(2, "d");
+    doc.forceCommit();
+    expect(styled(node.state.t.spans())).toStrictEqual([
+      'abd:{"bold":true}',
+      "c",
+    ]);
+  });
+});
 
 describe("setLetterState: the last one applied wins", () => {
   test("bold, italic and their undos", () => {
