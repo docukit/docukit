@@ -146,6 +146,10 @@ export function jsonTree(doc: Doc): JsonTree {
   return tree(doc.root);
 }
 
+/** Whether a stored document is nested nodes (see `JsonTree`). */
+export const isJsonTree = (json: JsonDoc | JsonTree): json is JsonTree =>
+  typeof json[0] === "string";
+
 type JsonWithoutId = [
   type: string,
   state: JsonTree[2],

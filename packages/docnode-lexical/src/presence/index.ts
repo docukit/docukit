@@ -12,15 +12,18 @@ import {
   type LexicalEditor,
 } from "lexical";
 import type {
-  KeyBinding,
   PresenceSelection,
   syncLexicalWithDocPresenceOptions,
 } from "../types.js";
 import { destroyCursor } from "./cursorRendering.js";
 import { resolvePresenceUser } from "./resolvePresenceUser.js";
-import { syncSelectionToPresence } from "./syncSelectionToPresence.js";
 import { syncPresenceToSelection } from "./syncPresenceToSelection.js";
-import type { Presence, PresenceBinding, PresenceHandle } from "./types.js";
+import type {
+  Presence,
+  PresenceBinding,
+  PresenceHandle,
+  PresencePoints,
+} from "./types.js";
 
 const bindingByEditor = new WeakMap<
   LexicalEditor,
@@ -43,20 +46,16 @@ export function updatePresence(
 }
 
 /**
- * Sets up presence synchronization between a Lexical editor and a presence system.
- * Returns undefined if no setPresence callback is provided in presenceOptions.
- *
- * @param editor - The Lexical editor instance
- * @param keyBinding - The key mapping from syncLexicalWithDoc for converting between Lexical keys and DocNode IDs
- * @param presenceOptions - Optional presence options. When setPresence is provided, local selection is synced.
- *   When user is provided, outgoing presence is enriched with name and color.
- * @returns Cleanup function to unbind, or undefined if no setPresence is provided
+ * Sets up presence synchronization between a Lexical editor and a presence
+ * system: `points` writes the local selection and reads remote cursor ends.
+ * Returns a cleanup function, or undefined if no `setPresence` is provided.
+ * When `user` is provided, outgoing presence is enriched with name and color.
  */
-export function syncPresence(
+export function bindPresence(
   editor: LexicalEditor,
-  keyBinding: KeyBinding,
-  presenceOptions?: syncLexicalWithDocPresenceOptions,
-): (() => void) | undefined {
+  points: PresencePoints,
+  presenceOptions: syncLexicalWithDocPresenceOptions | undefined,
+) {
   const { setPresence: rawSetPresence, user } = presenceOptions ?? {};
   if (!rawSetPresence) return undefined;
   const presenceUser = resolvePresenceUser(user);
@@ -94,7 +93,7 @@ export function syncPresence(
     editor,
     cursorsContainer,
     cursors: new Map(),
-    keyBinding,
+    points,
   };
 
   const editorHasFocus = (): boolean => {
@@ -121,18 +120,14 @@ export function syncPresence(
       // Note: We have to re-render selections even if the Lexical
       // selection hasn't changed. For example, when pressing enter
       // at the beginning of a non-empty paragraph.
-      editorState.read(() => {
-        syncSelectionToPresence(keyBinding, setPresence);
-      });
+      editorState.read(() => setPresence(points.$local()));
     },
   );
 
   const unregisterFocusListener = editor.registerCommand(
     FOCUS_COMMAND,
     () => {
-      editor.getEditorState().read(() => {
-        syncSelectionToPresence(keyBinding, setPresence);
-      });
+      editor.getEditorState().read(() => setPresence(points.$local()));
       return false;
     },
     COMMAND_PRIORITY_EDITOR,

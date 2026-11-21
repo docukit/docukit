@@ -105,6 +105,12 @@ export function updateCursor(
       return;
     }
     selectionRects = createRectsFromDOMRange(editor, range);
+    // Right before a block that is not text (an image): at its left edge.
+    const next = range.startContainer.childNodes[range.startOffset];
+    if (selectionRects.length === 0 && next instanceof Element) {
+      const { left, top, height } = next.getBoundingClientRect();
+      selectionRects = [new DOMRect(left, top, 0, height)];
+    }
   }
 
   const selectionsLength = selections.length;

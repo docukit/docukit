@@ -5,7 +5,7 @@
  * Uses @docukit/docsync/server (inMemoryServerProvider) to avoid loading PostgresProvider which requires DB env vars.
  */
 import { DocNodeBinding } from "@docukit/docsync/docnode";
-import { testDocConfig } from "./utils.js";
+import { testDocConfigs } from "./utils.js";
 import { DocSyncServer, inMemoryServerProvider } from "@docukit/docsync/server";
 import type { TestProject } from "vitest/node";
 import { createServer } from "node:net";
@@ -84,7 +84,7 @@ export async function setup(project: TestProject) {
   const { provider, forgetDoc } = createForgetfulProvider();
   globalThis.__DOCSYNC_FORGET_SERVER_DOC__ = forgetDoc;
   server = new DocSyncServer({
-    docBinding: DocNodeBinding([testDocConfig]),
+    docBinding: DocNodeBinding(testDocConfigs),
     port: serverPort,
     provider,
     authenticate: ({ token }) => {
