@@ -823,3 +823,40 @@ describe("dispose", () => {
     }).toThrowError("You can't trigger an update inside a disposed stage");
   });
 });
+
+describe("onNormalize and Doc.fromJSON", () => {
+  /** The root is never left empty. */
+  const config = {
+    type: "root",
+    extensions: [
+      {
+        nodes: [Text],
+        register: (doc: Doc) => {
+          doc.onNormalize(() => {
+            if (!doc.root.first) doc.root.append(doc.createNode(Text));
+          });
+        },
+      },
+    ],
+  };
+  const withChildren = (count: number) => {
+    const doc = new Doc(config);
+    doc.root.first!.delete();
+    for (let index = 0; index < count; index++)
+      doc.root.append(doc.createNode(Text));
+    doc.forceCommit();
+    return doc;
+  };
+
+  test("Doc.fromJSON drops the nodes normalize made for the replaced root", () => {
+    const stored = withChildren(1);
+    const doc = Doc.fromJSON(
+      { ...config, id: stored.root.id },
+      stored.toJSON(),
+    );
+    doc.forceCommit();
+    let count = 0;
+    doc.root.descendants({ includeSelf: true }).forEach(() => count++);
+    expect(doc["_nodeMap"].size).toBe(count);
+  });
+});

@@ -31,7 +31,7 @@ export const seedCacheFromProvider = async <
         return created;
       }
 
-      const doc = docBinding.deserialize(stored.serializedDoc);
+      const doc = docBinding.deserialize(stored.serializedDoc, args.id);
       const operationsBatches = await ctx.getOperations({ docId: args.id });
       for (const operations of operationsBatches) {
         for (const operation of operations) {

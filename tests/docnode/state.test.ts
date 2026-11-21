@@ -93,7 +93,7 @@ describe("state", () => {
       assertJson(doc, ["root", {}, [["myNode", { value: '"20"' }]]]);
       const json = doc.toJSON({ unsafe: true });
       const doc2 = Doc.fromJSON(
-        { type: "root", extensions: [{ nodes: [MyNode] }] },
+        { id: doc.root.id, type: "root", extensions: [{ nodes: [MyNode] }] },
         json,
       );
       const node2 = doc2.root.first as DocNode<typeof MyNode>;
@@ -104,7 +104,7 @@ describe("state", () => {
       assertJson(doc, ["root", {}, [["myNode", {}]]]);
       const json2 = doc.toJSON({ unsafe: true });
       const doc3 = Doc.fromJSON(
-        { type: "root", extensions: [{ nodes: [MyNode] }] },
+        { id: doc.root.id, type: "root", extensions: [{ nodes: [MyNode] }] },
         json2,
       );
       const node3 = doc3.root.first as DocNode<typeof MyNode>;
@@ -613,7 +613,11 @@ describe("setState", () => {
       assertJson(doc, ["root", {}, [["myNode2", { value: '"undefined"' }]]]);
       const json = doc.toJSON({ unsafe: true });
       const doc2 = Doc.fromJSON(
-        { type: "root", extensions: [{ nodes: [MyNode, MyNode2] }] },
+        {
+          id: doc.root.id,
+          type: "root",
+          extensions: [{ nodes: [MyNode, MyNode2] }],
+        },
         json,
       );
       const node3 = doc2.root.first as DocNode<typeof MyNode2>;

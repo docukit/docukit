@@ -598,7 +598,7 @@ export const readStoredCopy = async (
   );
   const pendingOperations = pending.map((batch) => batch.operations);
   if (!snapshot) return { stored: undefined, pending: pendingOperations };
-  const doc = client["_docBinding"].deserialize(snapshot.serializedDoc);
+  const doc = client["_docBinding"].deserialize(snapshot.serializedDoc, docId);
   return { stored: { doc, clock: snapshot.clock }, pending: pendingOperations };
 };
 

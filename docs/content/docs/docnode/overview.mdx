@@ -101,10 +101,13 @@ doc.dispose(); // Release and lock the document to be garbage-collected
                 SERIALIZATION
  ===============================================*/
 
-const jsonDoc = doc.toJSON(); // Get the JSON representation of the doc
+const jsonDoc = doc.toJSON(); // Get the JSON representation of the doc, without its id
 
-// Create a new doc from the given JSON:
-const doc2 = Doc.fromJSON({ extensions: [{ nodes: [MyNodeDef] }] }, jsonDoc);
+// Create a new doc from the given JSON. The id is stored next to it:
+const doc2 = Doc.fromJSON(
+  { id: doc.root.id, extensions: [{ nodes: [MyNodeDef] }] },
+  jsonDoc,
+);
 
 const jsonDocNode = docnode.toJSON(); // Get the JSON of the node. Useful for debugging
 

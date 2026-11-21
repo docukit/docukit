@@ -6,7 +6,8 @@ export type DocBinding<
   O extends object = object,
 > = {
   create(type: string, id: string): { doc: D; docId: string };
-  deserialize(serializedDoc: S): D;
+  /** `docId` is the id DocSync stored `serializedDoc` with. */
+  deserialize(serializedDoc: S, docId: string): D;
   serialize(doc: D): S;
   onChange(
     doc: D,

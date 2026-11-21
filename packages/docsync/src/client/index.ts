@@ -542,7 +542,7 @@ export class DocSyncClient<
       const localOperations = await ctx.getOperations({ docId });
 
       if (stored) {
-        const doc = this._docBinding.deserialize(stored.serializedDoc);
+        const doc = this._docBinding.deserialize(stored.serializedDoc, docId);
         localOperations.forEach(({ operations: operationsBatch }) => {
           operationsBatch.forEach((operations) => {
             this._docBinding.applyOperations(doc, operations, {

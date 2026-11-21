@@ -271,7 +271,7 @@ export const onApplyOperations = (doc: Doc, operations: DraftOperations) => {
         for (const [id, type] of operation[1]) {
           if (doc.getNodeById(id)) continue;
           doc["_checkSession"](id);
-          nodes.push(doc["_createNodeFromJson"]([id, type, {}]));
+          nodes.push(doc["_newStoredNode"](id, type));
         }
         if (nodes.length === 0) break;
         const prev = operation[3] ? doc.getNodeById(operation[3]) : undefined;

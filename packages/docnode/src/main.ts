@@ -3,6 +3,7 @@ import {
   type IntersectionOf,
   type JsonDoc,
   type JsonDocNode,
+  type JsonTree,
   type NodeDefinition,
   type ResolvedNodeDefinition,
   type Json,
@@ -23,10 +24,13 @@ import {
   ULID_REGEX,
   defineNode,
   idRecord,
+  jsonCopy,
+  parseJson,
 } from "./utils.js";
 import * as ops from "./operations.js";
 import { NodeIds } from "./idGenerator.js";
 import { decodeOperations } from "./wire.js";
+import { readJsonDoc, writeJsonDoc } from "./jsonDoc.js";
 import { decodeTime, ulid } from "ulid";
 import { UndoManager } from "./undoManager.js";
 
@@ -55,9 +59,15 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
   // field (`#doc`) it can be read through a Proxy (Vue, MobX, Valtio).
   readonly [DOC]: Doc;
 
-  private constructor(doc: Doc, type: string, id?: string) {
+  private constructor(
+    doc: Doc,
+    type: string,
+    id?: string,
+    state: Record<string, unknown> = {},
+  ) {
     this.type = type;
-    this._state = {};
+    // @ts-expect-error - a stored node is built with its state already read
+    this._state = state;
     this[DOC] = doc;
     this.id = id ?? doc["_nodeIdGenerator"](doc);
   }
@@ -596,6 +606,7 @@ export class Doc {
         state: {},
         defaultState: {},
         defaultStrings: {},
+        defaultJson: {},
         methods: undefined as unknown as ResolvedNodeDefinition["methods"],
       };
 
@@ -617,12 +628,14 @@ export class Doc {
             ? state.toJSON(defaultState)
             : defaultState;
           const stringified = JSON.stringify(defaultJson);
-          if (stringified === undefined) {
+          const copy = jsonCopy(defaultJson);
+          if (copy === undefined) {
             throw new Error(
               `JSON serialization of the default value for state '${key}' of node type '${nodeDef.type}' is 'undefined', which is not allowed.`,
             );
           }
           resolvedNodeDef.defaultStrings[key] = stringified;
+          resolvedNodeDef.defaultJson[key] = copy;
         }
       }
 
@@ -1020,6 +1033,11 @@ export class Doc {
     this._lifeCycleStage = "disposed";
   }
 
+  /**
+   * The document as it is stored (see `JsonDoc`). Its id is not part of it:
+   * store it next to the document, and pass it to `Doc.fromJSON` as
+   * `config.id`.
+   */
   toJSON(options?: { unsafe?: boolean }): JsonDoc {
     if (
       !options?.unsafe &&
@@ -1036,19 +1054,7 @@ export class Doc {
         ].join(" "),
       );
     }
-    const nodeToJsonDoc = (node: DocNode): JsonDoc => {
-      const jsonDoc: JsonDoc = node.toJSON();
-      if (node.first) {
-        const children: JsonDoc[] = [];
-        node.children().forEach((childNode) => {
-          children.push(nodeToJsonDoc(childNode));
-        });
-        jsonDoc[3] = children as [JsonDoc, ...JsonDoc[]];
-      }
-      return jsonDoc;
-    };
-    const jsonDoc = nodeToJsonDoc(this.root);
-    return jsonDoc;
+    return writeJsonDoc(this);
   }
 
   // NOTE: Maybe someday, if I find it necessary, I can make a non-static method.
@@ -1060,74 +1066,136 @@ export class Doc {
    * Creates a new doc from the given JSON.
    *
    * The initial JSON import starts a transaction, allowing updates made
-   * immediately afterward to be batched with it.
+   * immediately afterward to be batched with it. A document stored by
+   * `toJSON` takes its id from `config.id`, which is then required.
    */
-  static fromJSON(config: DocConfig, jsonDoc: JsonDoc): Doc {
-    const id = jsonDoc[0];
+  static fromJSON(config: DocConfig, json: JsonDoc | JsonTree): Doc {
+    const id = isTree(json) ? json[0] : config.id;
+    if (!id)
+      throw new Error(
+        "A document stored by `toJSON` does not keep its id: pass it as `config.id`.",
+      );
     if (config.id && config.id !== id) {
       throw new Error(
         `Attempted to create a document with id '${config.id}' that does not match the root node id '${id}'.`,
       );
     }
     const doc = new Doc({ ...config, id });
-    const jsonDocToDocNode = (node: DocNode, childrenJsonDoc: JsonDoc[]) => {
-      const childrenNodes = childrenJsonDoc?.map((child) => {
-        const childNode = doc._createNodeFromJson(child);
-        return childNode;
-      });
-      if (childrenNodes) node.append(...childrenNodes);
-      childrenJsonDoc?.forEach((childNode, index) => {
-        const children = childNode[3];
-        if (children) {
-          jsonDocToDocNode(childrenNodes[index]!, children);
-        }
-      });
-    };
     withTransaction(doc, () => {
-      const root = doc._createNodeFromJson(jsonDoc);
-      doc._nodeMap.delete(doc.root.id);
-      // @ts-expect-error - read-only property
-      doc.root = root;
-      doc._nodeMap.set(doc.root.id, doc.root);
-      if (jsonDoc[3]) jsonDocToDocNode(root, jsonDoc[3]);
+      if (!isTree(json)) return readJsonDoc(doc, json);
+      doc._setStoredRoot(doc._nodeFromTree(json));
+      doc._attachTree(doc.root, json[3]);
     });
     return doc;
   }
 
-  private _createNodeFromJson(jsonNode: JsonDoc): DocNode {
-    const [id, type] = jsonNode;
+  /** Puts a stored root in place of the one the constructor created. */
+  private _setStoredRoot(root: DocNode): void {
+    // Nodes a normalize listener created for the replaced root are gone.
+    this._nodeMap.clear();
+    // @ts-expect-error - read-only property
+    this.root = root;
+    this._nodeMap.set(root.id, root);
+  }
+
+  /** The definition of a stored node's type, which must be registered. */
+  private _storedDefinition(type: string): ResolvedNodeDefinition {
+    const definition = this._resolvedNodeDefs.get(type);
+    if (!definition)
+      throw new Error(
+        `Attempted to create a node of type '${type}' that was not registered.`,
+      );
+    return definition;
+  }
+
+  /** A stored state value, from its JSON. */
+  private _storedValue(
+    definition: ResolvedNodeDefinition,
+    key: string,
+    json: Json,
+  ): unknown {
+    const state = definition.state[key];
+    if (!state)
+      throw new Error(
+        `Attempted to create a node of type '${definition.type}' with a state that is not registered: ${key}`,
+      );
+    return state.fromJSON(json);
+  }
+
+  /** A node of a stored document, with its state already read. */
+  private _storedNode(
+    id: string,
+    type: string,
+    state: Record<string, unknown>,
+  ): DocNode {
     if (!this._idGen.extractTime && !this._idGen.validate(id)) {
       throw new Error(`Invalid node id: ${id}.`);
     }
     // @ts-expect-error - private constructor
-    const node = new DocNode(this, type, id) as DocNode;
-    const state = this["_createStateFromJson"](jsonNode);
-    // @ts-expect-error - read-only property
-    node["_state"] = state;
-    return node;
+    return new DocNode(this, type, id, state) as DocNode;
   }
 
-  private _createStateFromJson(jsonNode: JsonDoc): Record<string, Json> {
-    const [, type, stringifiedState] = jsonNode;
-    const resolvedNodeDef = this._resolvedNodeDefs.get(type);
-    if (!resolvedNodeDef)
+  /**
+   * Links a stored node after `prev`, the last child of `parent` so far. It
+   * is the document as it was, not a change: nothing is recorded for the
+   * transaction.
+   */
+  private _linkStored(
+    parent: DocNode,
+    prev: DocNode | undefined,
+    node: DocNode,
+  ): void {
+    if (node.type === this.root.type)
+      throw new Error("You cannot insert nodes of type 'root'");
+    // One lookup: a map that does not grow already had the id. The document
+    // being loaded is then thrown away.
+    const size = this._nodeMap.size;
+    this._nodeMap.set(node.id, node);
+    if (this._nodeMap.size === size)
       throw new Error(
-        `Attempted to create a node of type '${type}' that was not registered.`,
+        `Node '${node.id}' cannot be inserted because it already exists in the doc.`,
       );
-    const state: Record<string, Json> = {};
-    for (const key in stringifiedState) {
-      const stateString = stringifiedState[key]!;
-      const stateJson = JSON.parse(stateString) as Json;
-      const stateDefinition = resolvedNodeDef.state[key];
-      if (!stateDefinition)
-        throw new Error(
-          `Attempted to create a node of type '${type}' with a state that is not registered: ${key}`,
-        );
-      state[key] = stateDefinition.fromJSON(stateJson) as Json;
+    // Each link set by name: `_set` writes a property named at run time.
+    // @ts-expect-error - read-only property
+    node.parent = parent;
+    // @ts-expect-error - read-only property
+    node.prev = prev;
+    // @ts-expect-error - read-only property
+    if (prev) prev.next = node;
+    // @ts-expect-error - read-only property
+    else parent.first = node;
+  }
+
+  /** The children of a `JsonTree` node, linked under `parent`. */
+  private _attachTree(parent: DocNode, children: JsonTree[] | undefined) {
+    if (!children) return;
+    let prev: DocNode | undefined;
+    for (const json of children) {
+      const node = this._nodeFromTree(json);
+      this._linkStored(parent, prev, node);
+      prev = node;
+      this._attachTree(node, json[3]);
     }
-    return state;
+    parent["_set"]("last", prev);
+  }
+
+  /** A node another replica inserted, before its state arrives. */
+  private _newStoredNode(id: string, type: string): DocNode {
+    this._storedDefinition(type);
+    return this._storedNode(id, type, {});
+  }
+
+  private _nodeFromTree([id, type, stored]: JsonTree): DocNode {
+    const definition = this._storedDefinition(type);
+    const state: Record<string, unknown> = {};
+    for (const key in stored)
+      state[key] = this._storedValue(definition, key, parseJson(stored[key]!));
+    return this._storedNode(id, type, state);
   }
 }
+
+const isTree = (json: JsonDoc | JsonTree): json is JsonTree =>
+  typeof json[0] === "string";
 
 /**
  * The methods of one state key, chosen once per node definition. Reading

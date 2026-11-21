@@ -1,4 +1,4 @@
-import type { Json, JsonDoc, Operations } from "@docukit/docnode";
+import type { Json, JsonDoc, JsonTree, Operations } from "@docukit/docnode";
 import * as v from "valibot";
 
 const jsonSchema: v.GenericSchema<Json> = v.lazy(() =>
@@ -15,8 +15,8 @@ const jsonSchema: v.GenericSchema<Json> = v.lazy(() =>
 /** Each value as a JSON string. */
 const treeStateSchema = v.record(v.string(), v.string());
 
-/** `[id, type, state, children?]`: see `JsonDoc` in `@docukit/docnode`. */
-const jsonTreeSchema: v.GenericSchema<unknown, JsonDoc> = v.lazy(() => {
+/** `[id, type, state, children?]`: see `JsonTree` in `@docukit/docnode`. */
+const jsonTreeSchema: v.GenericSchema<unknown, JsonTree> = v.lazy(() => {
   const childrenSchema = v.tupleWithRest([jsonTreeSchema], jsonTreeSchema);
 
   return v.union([
@@ -52,12 +52,26 @@ const operationsSchema = v.union([
   v.tupleWithRest([headSchema, v.literal(-9)], jsonSchema),
 ]);
 
+/** Format 13: see `JsonDoc` in `@docukit/docnode`. */
+const jsonDocShape = v.strictTuple([
+  v.literal(13),
+  v.string(),
+  v.record(v.string(), jsonSchema),
+  v.optional(v.array(v.string())),
+  v.optional(v.array(v.string())),
+  v.optional(v.array(v.string())),
+  v.optional(v.string()),
+  v.optional(v.array(jsonSchema)),
+]);
+// Its elements at the end are left out, not undefined.
+const jsonDocSchema = v.custom<JsonDoc>((input) => v.is(jsonDocShape, input));
+
 /** What `Doc.fromJSON` reads. */
-const serializedDocSchema = jsonTreeSchema;
+const serializedDocSchema = v.union([jsonDocSchema, jsonTreeSchema]);
 
 export const DocNodeValidators = () => {
   return {
-    serializedDoc(input: unknown): JsonDoc {
+    serializedDoc(input: unknown): JsonDoc | JsonTree {
       return v.parse(serializedDocSchema, input);
     },
     operations(input: unknown): Operations {

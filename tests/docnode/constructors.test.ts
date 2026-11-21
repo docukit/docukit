@@ -11,7 +11,7 @@ import type {
   StateDefinition,
   NodeDefinition,
   DefaultStateMethods,
-  JsonDoc,
+  JsonTree,
 } from "@docukit/docnode";
 import { ulid } from "ulid";
 import {
@@ -49,23 +49,23 @@ describe("types", () => {
     >();
   });
 
-  test("JsonDoc", () => {
+  test("JsonTree", () => {
     // this one only works with "exactOptionalPropertyTypes": true
     // but most people don't use it because it's not included in 'strict'
     // for historical reasons
     expectTypeOf<
       ["1", "text", { value: "1" }, undefined]
-    >().not.toMatchTypeOf<JsonDoc>();
+    >().not.toMatchTypeOf<JsonTree>();
 
-    expectTypeOf<["1", "text", { value: "1" }]>().toMatchTypeOf<JsonDoc>();
+    expectTypeOf<["1", "text", { value: "1" }]>().toMatchTypeOf<JsonTree>();
 
     expectTypeOf<
       ["1", "text", { value: "1" }, []]
-    >().not.toMatchTypeOf<JsonDoc>();
+    >().not.toMatchTypeOf<JsonTree>();
 
     expectTypeOf<
       ["1", "text", { value: "1" }, [["2", "text", { value: "2" }]]]
-    >().toMatchTypeOf<JsonDoc>();
+    >().toMatchTypeOf<JsonTree>();
   });
 
   describe("stateDefinition type", () => {
@@ -151,7 +151,11 @@ describe("types", () => {
         expect(node.state.counter.get().counter).toBe(2);
         const json = doc.toJSON({ unsafe: true });
         const doc2 = Doc.fromJSON(
-          { type: "root", extensions: [{ nodes: [CounterNode] }] },
+          {
+            id: doc.root.id,
+            type: "root",
+            extensions: [{ nodes: [CounterNode] }],
+          },
           json,
         );
         const node2 = doc2.root.first as DocNode<typeof CounterNode>;

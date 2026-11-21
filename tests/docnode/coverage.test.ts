@@ -299,6 +299,7 @@ describe("undoManager.ts coverage", () => {
 
     const doc = Doc.fromJSON(
       {
+        id: source.root.id,
         type: "root",
         extensions: [TextExtension],
         undoManager: { maxUndoSteps: 10 },
@@ -327,6 +328,7 @@ describe("undoManager.ts coverage", () => {
 
     const doc = Doc.fromJSON(
       {
+        id: source.root.id,
         type: "root",
         extensions: [TextExtension],
         undoManager: { maxUndoSteps: 10 },
@@ -359,6 +361,7 @@ describe("undoManager.ts coverage", () => {
 
     const doc = Doc.fromJSON(
       {
+        id: source.root.id,
         type: "root",
         extensions: [TextExtension],
         undoManager: { maxUndoSteps: 10 },
