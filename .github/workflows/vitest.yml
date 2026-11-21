@@ -1,8 +1,8 @@
 name: Vitest Tests
 
 on:
+  # Every PR, not only those into main: in a stack, each PR targets the branch below it.
   pull_request:
-    branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
