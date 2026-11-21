@@ -34,18 +34,21 @@ import {
 // - A text row has no session nor counter: it takes the session of the row
 //   before and the counter right after it. A string `"index.counter"` alone
 //   moves on to another one.
-//   - `[text, right?, left?]` inserts letters after the letter `left` (`-1`:
-//     none), `[[text, ...state], right?, left?]` letters with a first state.
+//   - `[text, right?, parent?]` inserts letters, `[[text, ...state],
+//     right?, parent?]` letters with a first state, and `[-tag, ...]` is any
+//     other edit: `-1` deletes letters (`[-1, ranges, lamport?,
+//     text?]`, bringing them back with their `text`), `-2` sets their state.
 //     Inserts one after the other share a row, `[text, ...refs, text,
 //     ...refs]`, when their letters have no state and their references are
 //     numbers: a string that does not read as a letter (see `LETTER`) starts
-//     the next one. `[text, ids, states?, right?, left?]` inserts letters
-//     again with the ids a delete took (an undo of it, `-1`: the id next to
-//     them), `[-1, ranges]` deletes letters, `[5, key, ranges, value?, ...]`
-//     sets their state, and `[5, inherited, ranges, value, right?]` sets a
-//     key letters inherit, with the letter that was after the ranges (left
-//     out: the id after them), the key `n` (a number) as `-(n + 1)` and any
-//     other as `[key]`; see `text/baseText.ts`. Only an insert of new
+//     the next one. Base's text (see `text/baseText.ts`) names an insert's
+//     left letter where the CRDT mode names its parent (`-1`: none), and has
+//     three more: `[text, ids, states?, right?, left?]` inserts letters again
+//     with the ids a delete took (an undo of it, `-1`: the id next to them),
+//     `[5, key, ranges, value?, ...]` sets their state, and `[5, inherited,
+//     ranges, value, right?]` sets a key letters inherit, with the letter
+//     that was after the ranges (left out: the id after them), the key `n` (a
+//     number) as `-(n + 1)` and any other as `[key]`. Only an insert of new
 //     letters takes counters.
 //   - A letter of the row's own session is a number: the distance back from
 //     the row's counter (in a delete, of any sign), but for the right origin
@@ -534,13 +537,13 @@ class Encoder {
     this._lastNamed = named;
   }
 
-  /** An insert's right origin and left letter, after its content. */
+  /** An insert's right origin and parent, after its content. */
   private _insertRefs(op: EditOperation, c: number, row: Json[]): void {
     if (op.length > 4) row.push(this.ref(op[4]!, c, ABSOLUTE_RIGHT));
     if (op.length > 5) row.push(this._left(op[5]!, c));
   }
 
-  /** An insert's left letter: `-1` (none) as it is. */
+  /** An insert's parent, or Base's left letter: `-1` (none) as it is. */
   private _left(ref: Json, c: number): LetterRef {
     return ref === -1 ? -1 : this.ref(ref, c);
   }
@@ -559,8 +562,15 @@ class Encoder {
       return;
     }
     // A key letters inherit: one value, then the letter after its ranges.
-    row.push(inheritedKey(text(op[4])), this.ranges(op[5]!, c), op[6]!);
-    if (op.length > 7) row.push(this.ref(op[7]!, c));
+    if (tag === INHERITED) {
+      row.push(inheritedKey(text(op[4])), this.ranges(op[5]!, c), op[6]!);
+      if (op.length > 7) row.push(this.ref(op[7]!, c));
+      return;
+    }
+    // `lamport, key`, then ranges and their value, alternately. A key that
+    // reads as a number is written as one.
+    row.push(op[4]!, numericKey(text(op[5])));
+    this._values(op, 6, c, row);
   }
 
   /** Ranges and their value, alternately, from `op[from]` on. */
@@ -900,6 +910,10 @@ class Decoder {
     switch (tag) {
       case 1:
         op.push(this.ranges(row[at + 1]!, c), ...row.slice(at + 2));
+        break;
+      case 2:
+        op.push(row[at + 1]!, keyOf(row[at + 2]));
+        this._values(row, at + 3, c, op);
         break;
       case 5:
         op.push(keyOf(row[at + 1]));

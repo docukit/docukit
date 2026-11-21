@@ -689,7 +689,8 @@ export class Doc {
         const docState = definition.docState;
         const rootDef = this._resolvedNodeDefs.get(config.type);
         if (!docState || !rootDef || rootDef.state[docState.key]) continue;
-        const shared = docState.definition;
+        // A CRDT engine brings its own text: the server orders Base's.
+        const shared = config.crdt?.text ?? docState.definition;
         this._editStateKey = docState.key;
         this._editDefinition = shared;
         rootDef.state[docState.key] = shared;

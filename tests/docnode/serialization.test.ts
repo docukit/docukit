@@ -415,6 +415,19 @@ describe("json serialization", () => {
 });
 
 describe("stored format 14", () => {
+  /** A document whose nodes get the ids of `ids`, in order. */
+  const withIds = (ids: string[]) => {
+    const queue = ["01kdjkhm2wkfkcw7xkjdjrd1cc", ...ids];
+    const doc = new Doc({
+      type: "root",
+      extensions: [TextExtension],
+      nodeIdGenerator: { generate: () => queue.shift()!, validate: () => true },
+    });
+    for (const _ of ids) doc.root.append(doc.createNode(Text));
+    doc.forceCommit();
+    return doc;
+  };
+
   test("nodes of sessions seen before load back with their ids", () => {
     const ids = ["a.0", "b.0", "a.1", "c.0", "b.1"];
     const config = { type: "root", extensions: [TextExtension] };
@@ -431,19 +444,6 @@ describe("stored format 14", () => {
     const copy = Doc.fromJSON({ ...config, id: doc.root.id }, doc.toJSON());
     expect(jsonTree(copy)).toStrictEqual(jsonTree(doc));
   });
-
-  /** A document whose nodes get the ids of `ids`, in order. */
-  const withIds = (ids: string[]) => {
-    const queue = ["01kdjkhm2wkfkcw7xkjdjrd1cc", ...ids];
-    const doc = new Doc({
-      type: "root",
-      extensions: [TextExtension],
-      nodeIdGenerator: { generate: () => queue.shift()!, validate: () => true },
-    });
-    for (const _ of ids) doc.root.append(doc.createNode(Text));
-    doc.forceCommit();
-    return doc;
-  };
 
   test("keeps ids of any form as they are", () => {
     // `session.clock` as the default generator writes it, and ids that are

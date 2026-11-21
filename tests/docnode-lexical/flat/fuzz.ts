@@ -1,4 +1,5 @@
 import { Doc, type JsonDoc, type Operations } from "@docukit/docnode";
+import { labelsEngine } from "@docukit/docnode/crdt";
 import {
   createLexicalDocNodeConfig,
   syncLexicalWithDoc,
@@ -63,6 +64,8 @@ const config = (session: string) => {
   return createLexicalDocNodeConfig({
     type: "root",
     undoManager: { maxUndoSteps: 100, mergeInterval: 0 },
+    // `FUZZ_ENGINE=labels`: with the labels CRDT engine instead of Base.
+    ...(process.env.FUZZ_ENGINE === "labels" ? { crdt: labelsEngine() } : {}),
     nodeIdGenerator: {
       generate: () => `${session}.${clock++}`,
       validate: () => true,
@@ -91,6 +94,13 @@ export function loadedView(json: JsonDoc): string {
   syncLexicalWithDoc(editor, doc);
   return viewOf(editor);
 }
+
+/**
+ * Base relies on the server's order (see `BaseText`): a peer whose own edits
+ * are still on their way takes the server's document instead, as DocSync
+ * does. The CRDT engine applies the server's batches on top of them.
+ */
+const REPLACES = process.env.FUZZ_ENGINE !== "labels";
 
 function createPeer(json: JsonDoc, session: string) {
   const editor = createFuzzEditor();
@@ -318,9 +328,7 @@ export type FuzzStats = {
 
 /**
  * Peers that sync through a server, as DocSync does: each applies its own
- * edits at once and everyone else's in the server's order. Base relies on
- * that order (see `BaseText`): a peer whose own edits are still on their way
- * takes the server's document instead, as DocSync does.
+ * edits at once and everyone else's in the server's order (see `REPLACES`).
  */
 export function createCluster(count: number, texts: string[]) {
   const seed = Doc.fromJSON(config("seed"), [
@@ -361,6 +369,7 @@ export function createCluster(count: number, texts: string[]) {
   const receive = (peer: Peer) => {
     const fresh = log.slice(peer.received);
     if (
+      REPLACES &&
       fresh.some((entry) => entry.from !== peer) &&
       (peer.outbox.length > 0 || fresh.some((entry) => entry.from === peer))
     ) {

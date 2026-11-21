@@ -85,6 +85,9 @@ class Run implements Item<Run> {
   get len(): number {
     return this.text.length;
   }
+
+  /** Every letter of the list is (see `Item`): deleted ones are gone. */
+  readonly visible = true;
 }
 
 /** The list of one node: its root (a run without letters), then its letters. */
@@ -308,7 +311,7 @@ export class BaseText extends TextEngine {
   }
 
   private _linkAfter(target: Run, run: Run): void {
-    this._positions.linked(target, run);
+    this._positions.linked(target, run, true);
     const next = target.next;
     target.next = run;
     run.prev = target;

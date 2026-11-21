@@ -1,0 +1,88 @@
+import { Doc } from "@docukit/docnode";
+import { describe, expect, test } from "vitest";
+
+import {
+  checkTextUndo,
+  config,
+  orderedCluster,
+  Paragraph,
+  paragraphs,
+  reload,
+  runsOf,
+} from "./utils.js";
+
+/**
+ * Runs cut apart that can be one again are joined at the end of each
+ * transaction, as Yjs does: the list stays short, and it is stored as is.
+ */
+describe("runs are joined again", () => {
+  test("an undo of a delete brings the same letters back", () => {
+    const doc = new Doc(config(true));
+    const node = doc.createNode(Paragraph);
+    checkTextUndo(doc, [
+      () => {
+        doc.root.append(node);
+        node.state.t.insert(0, "Hello world");
+      },
+      () => node.state.t.delete(3, 5),
+    ]);
+    expect(runsOf(doc)).toStrictEqual([["Hel", "-----", "rld"]]);
+    doc.undoManager.undo();
+    // They keep the stamp that brought them back: a run of their own.
+    expect(runsOf(doc)).toStrictEqual([["Hel", "lo wo", "rld"]]);
+    // What is stored is what is in memory, and loads back the same.
+    const reloaded = reload(doc);
+    expect(runsOf(reloaded)).toStrictEqual(runsOf(doc));
+    expect(reloaded.root.toJSON()).toStrictEqual(doc.root.toJSON());
+  });
+
+  test("a peer joins them too, and both store the same", () => {
+    const cluster = orderedCluster(["Hello world", "Bye"], 2, true);
+    const id = cluster.ids[0]!;
+    cluster.edit(0, () => cluster.node(0, id).state.t.delete(3, 5));
+    cluster.deliverAll();
+    cluster.edit(0, (doc) => doc.undoManager.undo());
+    cluster.deliverAll();
+    cluster.assertConverged();
+    const runs = [["Hel", "lo wo", "rld"], ["Bye"]];
+    expect(cluster.docs.map(runsOf)).toStrictEqual([runs, runs]);
+  });
+
+  test("a run cut every 4096 letters is stored as one, and loads cut the same", () => {
+    const { doc, nodes } = paragraphs(["x".repeat(9000)]);
+    const text = nodes[0]!.state.t;
+    text.format(0, 5000, "color", "red");
+    text.delete(8000, 1000);
+    doc.forceCommit();
+    // Cut at 4096 and 8192, and where the format and the delete end.
+    const cut = ["x".repeat(4096), "x".repeat(904), "x".repeat(3000)];
+    const deleted = ["-".repeat(192), "-".repeat(808)];
+    expect(runsOf(doc)).toStrictEqual([[...cut, ...deleted]]);
+    const reloaded = reload(doc);
+    expect(runsOf(reloaded)).toStrictEqual(runsOf(doc));
+    expect(reloaded.root.toJSON()).toStrictEqual(doc.root.toJSON());
+    // One run: its length once, no cut in the stored text.
+    const shorter = paragraphs(["x".repeat(4000)]).doc;
+    const stored = (each: Doc) => JSON.stringify(each.root.toJSON()).length;
+    expect(stored(paragraphs(["x".repeat(5000)]).doc) - stored(shorter)).toBe(
+      1000,
+    );
+  });
+
+  test("letters deleted one by one, then the rest, end in one run", () => {
+    // 600 runs: the index of a session's runs needs a second chunk, which
+    // joining them empties.
+    const { doc, nodes } = paragraphs(["ab".repeat(300)]);
+    const text = nodes[0]!.state.t;
+    for (let index = 0; index < 300; index++) {
+      text.delete(index, 1);
+      doc.forceCommit();
+    }
+    expect(text.get()).toBe("b".repeat(300));
+    expect(runsOf(doc)[0]).toHaveLength(600);
+    text.delete(0, 300);
+    doc.forceCommit();
+    expect(runsOf(doc)).toStrictEqual([["-".repeat(600)]]);
+    expect(runsOf(reload(doc))).toStrictEqual(runsOf(doc));
+  });
+});

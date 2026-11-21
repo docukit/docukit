@@ -38,6 +38,8 @@ import {
 import { FORMAT, storedSessions, withCrdt } from "../jsonDoc.js";
 import { IdRanges } from "../idRanges.js";
 import { applyLocal } from "./local.js";
+import { storeOf, textState } from "../text/common.js";
+import { TextStore } from "../text/store.js";
 import { childIds, FugueSiblings, type Place } from "./fugue.js";
 import {
   engineRow,
@@ -2322,15 +2324,23 @@ const isJsonDoc = (json: unknown): json is JsonDoc =>
   typeof json[1] === "string" &&
   typeof json[2] === "object";
 
+/** Text that converges without a server: FugueMax, with tombstones. */
+const fugueText = textState(TextStore);
+
+/** @internal - Test helper: the FugueMax text of a CRDT document. */
+export function _INTERNAL_crdtTextStore(doc: Doc): TextStore {
+  const store = storeOf(doc);
+  if (!(store instanceof TextStore)) throw new Error("Not a CRDT document");
+  return store;
+}
+
 /**
  * The labels engine for `DocConfig.crdt`: each node carries a label (its
  * parent, its position among its siblings and a stamp per field), and the
  * newest stamp wins. A change that arrives late costs the same as one on time.
  */
-export const labelsEngine =
-  (options?: CrdtOptions): CrdtEngineFactory =>
-  (doc: Doc) =>
-    new Engine(doc, options);
+export const labelsEngine = (options?: CrdtOptions): CrdtEngineFactory =>
+  Object.assign((doc: Doc) => new Engine(doc, options), { text: fugueText });
 
 /**
  * A whole stored document as a batch: a replica that lost what it sent (a

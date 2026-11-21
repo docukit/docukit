@@ -373,7 +373,14 @@ export type CrdtEngine = {
 };
 
 /** @internal Creates the CRDT engine of a document (see `DocConfig.crdt`). */
-export type CrdtEngineFactory = (doc: Doc) => CrdtEngine;
+export type CrdtEngineFactory = {
+  (doc: Doc): CrdtEngine;
+  /**
+   * The text of its documents (see `defineText`), in place of Base's, which
+   * relies on the server's order.
+   */
+  readonly text?: InternalStateDefinition;
+};
 
 // https://github.com/microsoft/TypeScript/issues/13923#issuecomment-2191862501
 export type DeepImmutable<T> =
