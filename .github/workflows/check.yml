@@ -4,9 +4,12 @@ name: Check
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
   lint-format-types:
+    # Draft PRs skip CI; marking one ready for review runs it.
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
 

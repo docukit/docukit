@@ -3,11 +3,14 @@ name: Vitest Tests
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
 jobs:
   test:
+    # Draft PRs skip CI; marking one ready for review runs it.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     timeout-minutes: 10
     runs-on: ubuntu-24.04
 
