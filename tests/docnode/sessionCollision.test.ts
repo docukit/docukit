@@ -2,6 +2,7 @@ import { Doc, type DocConfig, type Operations } from "@docukit/docnode";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { Text, TextExtension } from "./utils.js";
+import { defaultConfig as baseConfig, rootText } from "./baseText/utils.js";
 
 const ROOT_ID = "01kc52hq510g6y44jhq0wqrjb3";
 const config = { type: "root", extensions: [TextExtension] };
@@ -64,6 +65,11 @@ function replica(doc: Doc) {
 
 type Replica = ReturnType<typeof replica>;
 
+const apply = (doc: Doc, operations: Operations) => {
+  doc.applyOperations(operations, { skipUndo: true });
+  doc.forceCommit();
+};
+
 /**
  * What a server that orders changes gives (DocSync with Base): `first`'s
  * changes go first. `first` applies `second`'s on top; `second` undoes its
@@ -84,6 +90,17 @@ const values = (doc: Doc) => {
     if (node.is(Text)) out.push(node.state.value.get());
   });
   return out;
+};
+
+/** Ids `same.<clock>` from a generator of the document's own: no time part. */
+const sameIdsOf = () => {
+  let clock = 0;
+  return {
+    nodeIdGenerator: {
+      generate: () => `same.${clock++}`,
+      validate: () => true,
+    },
+  };
 };
 
 describe("two replicas with the same session", () => {
@@ -120,6 +137,52 @@ describe("two replicas with the same session", () => {
       "a later",
     ]);
     expect(b.doc.toJSON()).toStrictEqual(a.doc.toJSON());
+  });
+
+  test("Base's text: letters it did not write yet make it take a new session", () => {
+    const base = new Doc({ ...baseConfig(), id: ROOT_ID });
+    base.forceCommit();
+    const json = base.toJSON();
+    const [a, b] = sameSession(() => [
+      Doc.fromJSON({ ...baseConfig(), id: base.root.id }, json),
+      Doc.fromJSON({ ...baseConfig(), id: base.root.id }, json),
+    ]);
+    const type = (doc: Doc, text: string) => {
+      const sent: Operations[] = [];
+      const off = doc.onChange((event) => sent.push(event.operations));
+      rootText(doc).insert(rootText(doc).length, text);
+      doc.forceCommit();
+      off();
+      return sent;
+    };
+    type(a, "ab");
+    const fromB = type(b, "xyz");
+    const session = nextSession(b);
+    // In the server's order, a's letters went first: b's that collided
+    // with them are skipped.
+    for (const operations of fromB) apply(a, operations);
+    expect(nextSession(a)).not.toBe(session);
+    expect(rootText(a).get()).toBe("abz");
+  });
+
+  test("Base's text: with its own id generator, a document keeps its session", () => {
+    const base = new Doc({ ...baseConfig(), id: ROOT_ID });
+    base.forceCommit();
+    const json = base.toJSON();
+    const same = () => ({ ...baseConfig(), id: ROOT_ID, ...sameIdsOf() });
+    const a = Doc.fromJSON(same(), json);
+    const b = Doc.fromJSON(same(), json);
+    const type = (doc: Doc, text: string) => {
+      const sent: Operations[] = [];
+      const off = doc.onChange((event) => sent.push(event.operations));
+      rootText(doc).insert(rootText(doc).length, text);
+      doc.forceCommit();
+      off();
+      return sent;
+    };
+    type(a, "ab");
+    for (const operations of type(b, "xyz")) apply(a, operations);
+    expect(nextSession(a)).toBe("same");
   });
 
   test("with its own id generator, a document keeps its session: it has no other to take", () => {

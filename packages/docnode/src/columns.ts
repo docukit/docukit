@@ -1,7 +1,7 @@
-import { clockAt, lastDot } from "./idGenerator.js";
+import { clockAt, lastDot, numberToBase64 } from "./idGenerator.js";
 
 /**
- * Numbers of a stored document (its tree), as JSON strings.
+ * Numbers of a stored document (its tree and its text), as JSON strings.
  *
  * A number is written in base 93, with the characters JSON does not escape
  * (from " " to "~", without `"` and `\`), and a cut T: a digit below T ends
@@ -43,10 +43,13 @@ export class ColumnWriter {
    * push, so that a column with many values does not grow again and again.
    * `wide`: it holds any whole number up to `Number.MAX_SAFE_INTEGER`, not
    * only those of 32 bits.
+   * `keepZeros`: its zeros at the end are written, for a column read until
+   * it is done (see `ColumnReader.done`).
    */
   constructor(
     private readonly _capacity = 64,
     private readonly _wide = false,
+    private readonly _keepZeros = false,
   ) {
     this._values = _wide ? NO_WIDE_VALUES : NO_VALUES;
   }
@@ -73,7 +76,7 @@ export class ColumnWriter {
     let values = this._values;
     let count = this._count;
     // A reader past the end reads zeros.
-    while (count > 0 && values[count - 1] === 0) count--;
+    if (!this._keepZeros) while (count > 0 && values[count - 1] === 0) count--;
     if (count === 0) return "";
     // Runs of one value, as `value, times`, when they take fewer numbers.
     const runs = this._changes * 2 < count;
@@ -163,6 +166,11 @@ export class FieldWriter {
     this._at = writeNumber(this._bytes, this._at, value, cut);
   }
 
+  /** A value that may be negative: 0, -1, 1, -2… as 0, 1, 2, 3… */
+  writeSigned(value: number, cut: number): void {
+    this.write(value < 0 ? -2 * value - 1 : 2 * value, cut);
+  }
+
   encode(): string {
     return ASCII.decode(this._bytes.subarray(0, this._at));
   }
@@ -209,6 +217,10 @@ export class FieldReader {
       weight *= scale;
     }
   }
+
+  readSigned(cut: number): number {
+    return signed(this.read(cut));
+  }
 }
 
 /**
@@ -244,6 +256,10 @@ export class ColumnReader {
 
   nextSigned(): number {
     return signed(this.next());
+  }
+
+  get done(): boolean {
+    return this._left === 0 && this._numbers.done;
   }
 }
 
@@ -385,3 +401,7 @@ export function readSessions(table: readonly string[]): string[] {
   }
   return sessions;
 }
+
+/** The id that `SessionTable.node` split. */
+export const joinId = (session: string, clock: number): string =>
+  clock === 0 ? session : `${session}.${numberToBase64(clock - 1)}`;

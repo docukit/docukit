@@ -261,7 +261,8 @@ async function runSyncAttempt<
   if (!isLive()) return stale;
   const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return stale;
-  const operations = operationsBatches.flatMap((batch) => batch.operations);
+  const queued = operationsBatches.flatMap((batch) => batch.operations);
+  const operations = client["_docBinding"].mergeOperations?.(queued) ?? queued;
 
   // Another tab or worker can save the doc after the initial local load.
   // Advertising that stored clock to the server is only safe once the missing

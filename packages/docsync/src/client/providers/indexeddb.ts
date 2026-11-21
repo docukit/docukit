@@ -73,7 +73,6 @@ export function indexedDBProvider<S extends object, O extends object>(
           },
 
           async getOperations({ docId }) {
-            // TODO: maybe I should add a docbinding.mergeOperations call here?
             const store = tx.objectStore("operations");
             const index = store.index("docId_idx");
             // A cursor reads each batch together with the key the store gave
