@@ -216,7 +216,7 @@ export function handleSync<
               });
               if (batches.length === 0) return;
 
-              const doc = docBinding.deserialize(current.serializedDoc);
+              const doc = docBinding.deserialize(current.serializedDoc, docId);
               batches.flat().forEach((operation) => {
                 docBinding.applyOperations(doc, operation);
               });

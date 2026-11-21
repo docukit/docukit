@@ -25,11 +25,11 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
       return { doc, docId: doc.root.id };
     },
     serialize: (doc) => doc.toJSON({ unsafe: true }),
-    deserialize: (serializedDoc) => {
+    deserialize: (serializedDoc, docId) => {
       const type = serializedDoc[1];
       const docConfig = docConfigsMap.get(type);
       if (!docConfig) throw new Error(`Unknown type: ${type}`);
-      const doc = Doc.fromJSON(docConfig, serializedDoc);
+      const doc = Doc.fromJSON({ ...docConfig, id: docId }, serializedDoc);
       doc.forceCommit();
       return doc;
     },

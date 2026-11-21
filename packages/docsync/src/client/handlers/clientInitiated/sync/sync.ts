@@ -271,7 +271,10 @@ async function runSyncAttempt<
     const liveDoc = await promisedDoc;
     if (!isLive()) return stale;
     if (!liveDoc && cacheEntry.promisedDoc === promisedDoc) {
-      const doc = client["_docBinding"].deserialize(stored.serializedDoc);
+      const doc = client["_docBinding"].deserialize(
+        stored.serializedDoc,
+        docId,
+      );
       for (const operation of operations) {
         client["_docBinding"].applyOperations(doc, operation, {
           skipUndo: true,

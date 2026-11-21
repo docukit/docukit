@@ -107,6 +107,8 @@ export type UnsafeDefinition = NodeDefinition<string, StateRecord>;
 export type ResolvedNodeDefinition = UnsafeDefinition & {
   defaultState: NodeState.State<UnsafeDefinition>;
   defaultStrings: NodeState.Stringified<UnsafeDefinition>;
+  /** Each default as JSON, which a stored document compares values with. */
+  defaultJson: Record<string, Json>;
   methods: (node: DocNode) => NodeState.Methods<UnsafeDefinition>;
 };
 
@@ -116,11 +118,50 @@ export type JsonDocNode<T extends NodeDefinition = NodeDefinition> = [
   state: NodeState.Stringified<T>,
 ];
 
+/**
+ * A stored document, as `Doc.toJSON` writes it (format 13). Elements at the
+ * end that are empty are left out.
+ *
+ * The root is plain: its type and its state (each value as JSON). The
+ * document's id is not stored: whoever stores the document keeps it next to
+ * it, and `Doc.fromJSON` takes it from `config.id`.
+ * The type comes second, at the same place as in a `JsonTree`: a binding that
+ * picks the config by type reads it there in both.
+ * Everything else is numbers in `columns` (see `columns.ts`), and the
+ * strings they point to:
+ * - `sessions`: each without the start it shares with the one before (the
+ *   first, with the document's id), whose length is the first column.
+ * - The tree, in preorder: each node's session (an index in `sessions`,
+ *   written as 0 for that of the node before, 1 for the one after the
+ *   highest so far, else the index plus 2), its clock as the difference
+ *   from the last one of its session plus one, its type (an index in
+ *   `types`), its number of children and the keys of its state (twice
+ *   their index in `keys`, plus one for a value in the column of numbers).
+ *   A whole number that is not negative goes in that column, in base 93;
+ *   the other values follow one another in `values`. The root's number of
+ *   children goes first.
+ */
 export type JsonDoc = [
+  format: 13,
+  type: string,
+  state: { [key: string]: Json },
+  sessions?: string[],
+  types?: string[],
+  keys?: string[],
+  columns?: string,
+  values?: Json[],
+];
+
+/**
+ * A document as nested nodes, `[id, type, state, children?]`, each state
+ * value as a JSON string. `Doc.fromJSON` reads it: it is how DocNode stored
+ * documents before format 13, and it is easy to write by hand.
+ */
+export type JsonTree = [
   id: string,
   type: string,
   state: Record<string, string>,
-  children?: [JsonDoc, ...JsonDoc[]],
+  children?: [JsonTree, ...JsonTree[]],
 ];
 
 /**

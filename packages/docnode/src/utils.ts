@@ -57,6 +57,89 @@ export function stringifyJson(value: unknown): string {
 }
 
 /**
+ * What `JSON.parse(JSON.stringify(value))` gives, without the text in
+ * between, or `undefined` where `JSON.stringify` writes nothing. `key` is
+ * what a `toJSON` method receives. A stored document is made of these, and
+ * on a big document the text was most of the time of a save.
+ *
+ * A value that `JSON.stringify` cannot write (a cycle, a BigInt) never gets
+ * here: its operation, which writes it, throws first.
+ */
+export function jsonCopy(value: unknown, key = ""): Json | undefined {
+  if (typeof value === "object" && value !== null) {
+    const toJSON: unknown = Reflect.get(value, "toJSON");
+    if (typeof toJSON === "function") {
+      const json: unknown = Reflect.apply(toJSON, value, [key]);
+      value = json;
+    }
+  }
+  switch (typeof value) {
+    case "string":
+    case "boolean":
+      return value;
+    case "number":
+      // `-0` is written `0`; `NaN` and the infinities, `null`.
+      return Number.isFinite(value) ? value + 0 : null;
+    case "object":
+      break;
+    default:
+      return undefined;
+  }
+  if (value === null) return null;
+  if (
+    value instanceof Number ||
+    value instanceof String ||
+    value instanceof Boolean
+  )
+    return jsonCopy(value.valueOf(), key);
+  if (Array.isArray(value)) {
+    const items: readonly unknown[] = value;
+    const out: Json[] = [];
+    for (let index = 0; index < items.length; index++)
+      out.push(jsonCopy(items[index], String(index)) ?? null);
+    return out;
+  }
+  const out: { [key: string]: Json } = {};
+  for (const name of Object.keys(value)) {
+    const item = jsonCopy(Reflect.get(value, name), name);
+    if (item === undefined) continue;
+    // An own key, as `JSON.parse` makes it, not the prototype.
+    if (name === "__proto__")
+      Object.defineProperty(out, name, {
+        value: item,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    else out[name] = item;
+  }
+  return out;
+}
+
+const isJsonList = (json: Json): json is readonly Json[] => Array.isArray(json);
+
+/** Whether two JSON values are written the same by `JSON.stringify`. */
+export function jsonEqual(a: Json, b: Json): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || !a || !b) return false;
+  if (isJsonList(a))
+    return (
+      isJsonList(b) &&
+      a.length === b.length &&
+      a.every((item, index) => jsonEqual(item, b[index]!))
+    );
+  if (isJsonList(b)) return false;
+  const keys = Object.keys(a);
+  const others = Object.keys(b);
+  return (
+    keys.length === others.length &&
+    keys.every(
+      (name, index) => name === others[index] && jsonEqual(a[name]!, b[name]!),
+    )
+  );
+}
+
+/**
  * Only way to check if an object is empty in O(1)
  * see https://stackoverflow.com/a/59787784/10476393
  */
