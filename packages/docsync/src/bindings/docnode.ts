@@ -44,7 +44,9 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
       // stored on the server: they are read in today's format.
       doc.applyOperations(upgradeOperations(operations), flags);
     },
-    mergeOperations: mergeBatches,
+    // What a client queued may include batches that docnode 0.4 wrote.
+    mergeOperations: (operations) =>
+      mergeBatches(operations.map(upgradeOperations)),
     exportHistory: (doc) => doc.undoManager.exportHistory(),
     importHistory: (doc, history) => {
       doc.undoManager.importHistory(history);
