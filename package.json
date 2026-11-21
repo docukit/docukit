@@ -44,6 +44,7 @@
   },
   "devDependencies": {
     "@clack/prompts": "^1.2.0",
+    "@lexical/react": "0.45.0",
     "@playwright/test": "1.60.0",
     "@types/node": "^22.10.7",
     "@vitejs/plugin-react": "^5.1.2",
