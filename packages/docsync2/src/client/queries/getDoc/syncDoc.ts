@@ -65,7 +65,7 @@ const applyOperationsToStoredDoc = async <
     const serializedDoc = args.serverSerializedDoc ?? stored?.serializedDoc;
     if (serializedDoc === undefined) return;
 
-    const doc = docBinding.deserialize(serializedDoc);
+    const doc = docBinding.deserialize(serializedDoc, args.id);
     for (const operation of [...args.serverOperations, ...args.operations]) {
       docBinding.applyOperations(doc, operation, { skipUndo: true });
     }

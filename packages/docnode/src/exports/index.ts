@@ -2,6 +2,7 @@ export { Doc, DocNode } from "../main.js";
 export {
   type Json,
   type JsonDoc,
+  type JsonTree,
   type DocConfig,
   type StateDefinition,
   type NodeDefinition,

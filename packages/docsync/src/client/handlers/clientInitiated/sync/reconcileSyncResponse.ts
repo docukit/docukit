@@ -103,7 +103,7 @@ export async function prepareSyncReconciliation<
       .filter((batch) => !acknowledgedIds.has(batch.id))
       .flatMap((batch) => batch.operations);
 
-    const doc = client["_docBinding"].deserialize(baseSerializedDoc);
+    const doc = client["_docBinding"].deserialize(baseSerializedDoc, docId);
     applyOperations(client, doc, data.operations, { skipUndo: true });
     applyOperations(client, doc, localOperations, { skipUndo: true });
     const serializedDoc = client["_docBinding"].serialize(doc);

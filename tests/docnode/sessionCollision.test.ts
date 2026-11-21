@@ -92,10 +92,12 @@ describe("two replicas with the same session", () => {
     base.forceCommit();
     const json = base.toJSON();
     const [a, b] = sameSession(() => [
-      replica(Doc.fromJSON(config, json)),
-      replica(Doc.fromJSON(config, json)),
+      replica(Doc.fromJSON({ ...config, id: base.root.id }, json)),
+      replica(Doc.fromJSON({ ...config, id: base.root.id }, json)),
     ]);
-    const session = sameSession(() => nextSession(Doc.fromJSON(config, json)));
+    const session = sameSession(() =>
+      nextSession(Doc.fromJSON({ ...config, id: base.root.id }, json)),
+    );
     a.write("from a");
     b.write("from b", "b again");
     serverOrder(a, b);
@@ -134,8 +136,8 @@ describe("two replicas with the same session", () => {
     const base = new Doc({ ...sameIds(), id: ROOT_ID });
     base.forceCommit();
     const json = base.toJSON();
-    const a = replica(Doc.fromJSON(sameIds(), json));
-    const b = replica(Doc.fromJSON(sameIds(), json));
+    const a = replica(Doc.fromJSON({ ...sameIds(), id: base.root.id }, json));
+    const b = replica(Doc.fromJSON({ ...sameIds(), id: base.root.id }, json));
     a.write("from a");
     b.write("from b", "b again");
     for (const { operations } of b.sent) a.apply(operations);

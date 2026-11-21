@@ -358,6 +358,7 @@ describe("undoManager", () => {
 
     const replacement = Doc.fromJSON(
       {
+        id: source.root.id,
         type: "root",
         extensions: [TextExtension],
         undoManager: { maxUndoSteps: 10, mergeInterval: 0 },
@@ -397,6 +398,7 @@ describe("undoManager", () => {
 
       const replacement = Doc.fromJSON(
         {
+          id: source.root.id,
           type: "root",
           extensions: [TextExtension],
           undoManager: { maxUndoSteps: 10, mergeInterval: 500 },
@@ -1050,7 +1052,7 @@ describe("applyOperations", () => {
       nodeIdGenerator: { generate: () => `!${count++}`, validate: () => true },
     };
     const doc = new Doc(config);
-    const replica = Doc.fromJSON(config, doc.toJSON());
+    const replica = Doc.fromJSON({ ...config, id: doc.root.id }, doc.toJSON());
     const batches: Operations[] = [];
     doc.onChange(({ operations }) => batches.push(operations));
     doc.root.append(...text(doc, "a"));
@@ -1072,7 +1074,7 @@ describe("applyOperations", () => {
       nodeIdGenerator: { generate: () => ids[count++]!, validate: () => true },
     };
     const doc = new Doc(config);
-    const replica = Doc.fromJSON(config, doc.toJSON());
+    const replica = Doc.fromJSON({ ...config, id: doc.root.id }, doc.toJSON());
     const batches: Operations[] = [];
     doc.onChange(({ operations }) => batches.push(operations));
     doc.root.append(...text(doc, "a", "b", "c", "d", "e"));
@@ -1120,7 +1122,7 @@ describe("applyOperations", () => {
     doc.forceCommit();
     expect(JSON.stringify(sent[0])).toContain('*4":{"value":["a","b","c","d"]');
     const replica = Doc.fromJSON(
-      { type: "root", extensions: [TextExtension] },
+      { id: doc.root.id, type: "root", extensions: [TextExtension] },
       start,
     );
     replica.applyOperations(sent[0]!);
@@ -1129,6 +1131,7 @@ describe("applyOperations", () => {
     // The undo history keeps the run as it is.
     const reloaded = Doc.fromJSON(
       {
+        id: doc.root.id,
         type: "root",
         extensions: [TextExtension],
         undoManager: { maxUndoSteps: 10, mergeInterval: 0 },
@@ -1160,7 +1163,7 @@ describe("applyOperations", () => {
     doc.root.append(...text(doc, "a", "b", "c"));
     doc.forceCommit();
     const replica = Doc.fromJSON(
-      { type: "root", extensions: [TextExtension] },
+      { id: doc.root.id, type: "root", extensions: [TextExtension] },
       start,
     );
     replica.applyOperations(sent[0]!);
@@ -1196,7 +1199,7 @@ describe("applyOperations", () => {
     });
     doc.root.append(...pairs);
     doc.forceCommit();
-    const replica = Doc.fromJSON(config, start);
+    const replica = Doc.fromJSON({ ...config, id: doc.root.id }, start);
     for (const operations of sent) replica.applyOperations(operations);
     replica.forceCommit();
     expect(replica.toJSON()).toStrictEqual(doc.toJSON());
@@ -1222,7 +1225,7 @@ describe("applyOperations", () => {
     doc.forceCommit();
     const [batch = ["", {}]] = sent;
     expect(batch[0]).toHaveLength(12);
-    const replica = Doc.fromJSON(config, start);
+    const replica = Doc.fromJSON({ ...config, id: doc.root.id }, start);
     replica.applyOperations(batch);
     replica.forceCommit();
     assertDoc(replica, values);
@@ -1264,7 +1267,7 @@ describe("applyOperations", () => {
     doc.onChange((event) => sent.push(event.operations));
     doc.root.append(...text(doc, "a", "b", "c"));
     doc.forceCommit();
-    const replica = Doc.fromJSON(config, start);
+    const replica = Doc.fromJSON({ ...config, id: doc.root.id }, start);
     for (const operations of sent) replica.applyOperations(operations);
     replica.forceCommit();
     expect(replica.toJSON()).toStrictEqual(doc.toJSON());
@@ -1586,7 +1589,7 @@ describe("a move whose anchors were deleted concurrently", () => {
   test("lands before its next sibling when the previous one is gone", () => {
     const { server, replicas } = applyInServerOrder(
       config,
-      initial("1", "2", "3", "4").toJSON(),
+      initial("1", "2", "3", "4"),
       (replica) => byValue(replica, "2").delete(),
       (replica) => byValue(replica, "4").move(byValue(replica, "2"), "after"),
     );
@@ -1597,7 +1600,7 @@ describe("a move whose anchors were deleted concurrently", () => {
   test("lands at the end of the root when both neighbors are gone", () => {
     const { server } = applyInServerOrder(
       config,
-      initial("1", "2", "3", "4", "5").toJSON(),
+      initial("1", "2", "3", "4", "5"),
       (replica) => byValue(replica, "2").to(byValue(replica, "3")).delete(),
       (replica) => byValue(replica, "1").move(byValue(replica, "2"), "after"),
     );
@@ -1608,7 +1611,7 @@ describe("a move whose anchors were deleted concurrently", () => {
     const doc = initial("1", "2");
     byValue(doc, "1").append(...text(doc, "1.1", "1.2"));
     doc.forceCommit();
-    return doc.toJSON();
+    return doc;
   };
 
   test("deletes the range when its new parent is gone", () => {

@@ -11,6 +11,7 @@ import {
   string,
   type Diff,
   type JsonDoc,
+  type JsonTree,
   type DocConfig,
   mergeOperations,
   _INTERNAL_decodeOperations as decode,
@@ -116,13 +117,29 @@ export function assertDoc(doc: Doc, expectedState: string[]) {
   expect(getStateSnapshot(doc, true)).toStrictEqual(expectedState);
 }
 
+/**
+ * The document as nested nodes, `[id, type, state, children?]` (see
+ * `JsonTree`): easier to read in a test than its stored columns. The root
+ * state has the text value, if any, as JSON.
+ */
+export function jsonTree(doc: Doc): JsonTree {
+  const tree = (node: DocNode): JsonTree => {
+    const [id, type, state] = node.toJSON();
+    const children: JsonTree[] = [];
+    node.children().forEach((child) => children.push(tree(child)));
+    const [first, ...rest] = children;
+    return first ? [id, type, state, [first, ...rest]] : [id, type, state];
+  };
+  return tree(doc.root);
+}
+
 type JsonWithoutId = [
   type: string,
-  state: Record<string, string>,
+  state: JsonTree[2],
   children?: [JsonWithoutId, ...JsonWithoutId[]],
 ];
 
-export function prettifyJson(doc: JsonDoc): JsonWithoutId {
+export function prettifyJson(doc: JsonTree): JsonWithoutId {
   const children = doc[3]?.map(prettifyJson) as
     | [JsonWithoutId, ...JsonWithoutId[]]
     | undefined;
@@ -130,7 +147,7 @@ export function prettifyJson(doc: JsonDoc): JsonWithoutId {
 }
 
 export function assertJson(doc: Doc, expected: JsonWithoutId) {
-  const json = prettifyJson(doc.toJSON({ unsafe: true }));
+  const json = prettifyJson(jsonTree(doc));
   expect(json).toStrictEqual(expected);
 }
 
@@ -341,7 +358,12 @@ export function checkUndoManager(
   const nodes = Array.from(doc["_nodeDefs"]);
   // This document will replay all doc operations in a single update
   const doc2 = Doc.fromJSON(
-    { type: "root", extensions: [{ nodes }], undoManager: { maxUndoSteps: 1 } },
+    {
+      type: "root",
+      id: doc.root.id,
+      extensions: [{ nodes }],
+      undoManager: { maxUndoSteps: 1 },
+    },
     jsonDoc,
   );
   const undoManager2 = doc2.undoManager;
@@ -350,6 +372,7 @@ export function checkUndoManager(
   const doc3 = Doc.fromJSON(
     {
       type: "root",
+      id: doc.root.id,
       extensions: [{ nodes }],
       undoManager: { maxUndoSteps: 10000000, mergeInterval: 0 },
     },
@@ -366,6 +389,7 @@ export function checkUndoManager(
   const changeEvents: ChangeEvent[] = [];
   const snapshots: unknown[] = [getStateSnapshot(doc, IS_TEST_NODE)];
   const jsonDocs: JsonDoc[] = [jsonDoc];
+  const readableDocs = [jsonTree(doc)];
   let sizeDo = 0;
 
   // 1. DO
@@ -381,6 +405,7 @@ export function checkUndoManager(
     const jsonDoc = doc.toJSON();
     expect(jsonDoc).not.toStrictEqual(jsonDocs.at(-1));
     jsonDocs.push(jsonDoc);
+    readableDocs.push(jsonTree(doc));
 
     // TESTS OVER OPERATIONS AND DIFF
     // Operations need to be json serializable
@@ -560,7 +585,7 @@ export function checkUndoManager(
         undoManager3.undo();
         const snapshot = getStateSnapshot(doc3, IS_TEST_NODE);
         expect(snapshot).toStrictEqual(snapshots[sizeDo - i - 1]);
-        expect(doc3.toJSON()).toStrictEqual(jsonDocs[sizeDo - i - 1]);
+        expect(jsonTree(doc3)).toStrictEqual(readableDocs[sizeDo - i - 1]);
       },
       (_changeEvent) => {
         // The first undo coincides with the first do
@@ -585,7 +610,7 @@ export function checkUndoManager(
         undoManager3.redo();
         const snapshot = getStateSnapshot(doc3, IS_TEST_NODE);
         expect(snapshot).toStrictEqual(snapshots[i + 1]);
-        expect(doc3.toJSON()).toStrictEqual(jsonDocs[i + 1]);
+        expect(jsonTree(doc3)).toStrictEqual(readableDocs[i + 1]);
       },
       (_changeEvent) => {
         // expect(changeEvent).toStrictEqual(changeEvents[i]);
@@ -614,12 +639,13 @@ const _sessionSort = (a: string, b: string): number => {
  */
 export function applyInServerOrder(
   config: DocConfig,
-  initial: JsonDoc,
+  initial: Doc,
   first: (doc: Doc) => void,
   second: (doc: Doc) => void,
 ) {
+  const json = initial.toJSON();
   const load = () => {
-    const doc = Doc.fromJSON(config, initial);
+    const doc = Doc.fromJSON({ ...config, id: initial.root.id }, json);
     doc.forceCommit();
     return doc;
   };

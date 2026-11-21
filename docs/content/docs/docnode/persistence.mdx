@@ -116,7 +116,8 @@ app.post("/save", async (req, res) => {
   };
 
   const stored = await getJsonDoc(docId);
-  const doc = Doc.fromJSON(docConfig, stored);
+  // The JSON does not keep the doc's id: it is stored next to it.
+  const doc = Doc.fromJSON({ ...docConfig, id: docId }, stored);
   for (const ops of operations) doc.applyOperations(ops);
   doc.forceCommit();
   const saved = doc.toJSON();

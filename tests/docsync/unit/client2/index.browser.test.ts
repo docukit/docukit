@@ -330,7 +330,7 @@ describe("Client 2", () => {
       const storedDoc = await provider.transaction("readonly", async (ctx) => {
         const stored = await ctx.getSerializedDoc({ docId });
         if (!stored) return null;
-        return docBinding.deserialize(stored.serializedDoc);
+        return docBinding.deserialize(stored.serializedDoc, docId);
       });
 
       if (!storedDoc) throw new Error("Stored doc not found");
