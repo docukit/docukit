@@ -201,9 +201,10 @@ export function syncFlat(
       if (same) return;
     }
     const selection = $captureLines();
-    const old = root.getChildren().slice(from, oldEnd);
+    const old = lines;
+    const oldNodes = root.getChildren().slice(from, oldEnd);
     const after = root.getChildAtIndex(oldEnd);
-    for (const node of old) node.remove();
+    for (const node of oldNodes) node.remove();
     if (after) for (const node of built) after.insertBefore(node);
     else root.append(...built);
     lines = next;
@@ -211,12 +212,9 @@ export function syncFlat(
     counts.splice(from, oldEnd - from, ...units.map((unit) => unit.length));
     changedKeys();
     if (!selection) return;
-    const move = (point: LinePoint) =>
-      mapPoint(point, firstLine, oldLastLine, region.length);
-    $selectLines({
-      anchor: move(selection.anchor),
-      focus: move(selection.focus),
-    });
+    $selectLines(
+      mapSelection(selection, old, next, firstLine, oldLastLine, region.length),
+    );
   };
 
   /** The selection as lines and offsets of the cache, if in a text block. */
@@ -544,23 +542,129 @@ function $isPlainBlock(node: LexicalNode): boolean {
   return true;
 }
 
-/** A point of the old lines in the new ones, around a replaced region. */
-function mapPoint(
-  point: LinePoint,
+/**
+ * The selection of the `old` lines in the `next` ones, which replaced the
+ * lines `[first, oldLast)` with `newCount` lines. A point in them moves with
+ * the text around it, as if the region's text changed by one replacement
+ * (see `mapOffset`): a remote edit next to the selection or inside it moves
+ * it with the letters.
+ */
+function mapSelection(
+  { anchor, focus }: LineSelection,
+  old: Line[],
+  next: Line[],
   first: number,
   oldLast: number,
   newCount: number,
-): LinePoint {
-  if (point.line < first) return point;
-  if (point.line >= oldLast)
-    return {
-      line: point.line - (oldLast - first) + newCount,
-      offset: point.offset,
-    };
-  return {
-    line: Math.min(point.line, first + Math.max(newCount - 1, 0)),
-    offset: point.offset,
+) {
+  const replacement = replacementOf(
+    regionText(old, first, oldLast),
+    regionText(next, first, first + newCount),
+  );
+  // Where a point is in the region's text: before or after it, it is before
+  // or after the replacement too.
+  const at = (point: LinePoint) =>
+    point.line < first
+      ? -1
+      : point.line >= oldLast
+        ? Infinity
+        : offsetIn(old, first, point);
+  const start = Math.min(at(anchor), at(focus));
+  const end = Math.max(at(anchor), at(focus));
+  const move = (point: LinePoint, role: "anchor" | "focus") => {
+    if (point.line < first) return point;
+    if (point.line >= oldLast)
+      return {
+        line: point.line - oldLast + first + newCount,
+        offset: point.offset,
+      };
+    const offset = mapOffset(at(point), role, start, end, replacement);
+    return pointIn(next, first, offset);
   };
+  return { anchor: move(anchor, "anchor"), focus: move(focus, "focus") };
+}
+
+/** The text of the lines `[from, to)`, their paragraph letters included. */
+function regionText(lines: Line[], from: number, to: number) {
+  let text = "";
+  for (let line = from; line < to; line++)
+    for (const span of lineSpans(lines[line]!)) text += span.text;
+  return text;
+}
+
+/** Where a point is in the text of the lines from `first` on. */
+function offsetIn(lines: Line[], first: number, point: LinePoint) {
+  let offset = point.offset;
+  for (let line = first; line < point.line; line++)
+    offset += lines[line]!.length;
+  return offset;
+}
+
+/**
+ * The point at `offset` of the text of the lines from `first` on; past the
+ * end, the end of the last line, before its paragraph letter.
+ */
+function pointIn(lines: Line[], first: number, offset: number) {
+  let start = 0;
+  for (let line = first; line < lines.length; line++) {
+    const { length, open } = lines[line]!;
+    if (offset < start + length || line === lines.length - 1)
+      return {
+        line,
+        offset: Math.min(offset - start, open ? length : length - 1),
+      };
+    start += length;
+  }
+  return { line: first, offset: 0 };
+}
+
+/**
+ * The one replacement that turns `before` into `after`, what they do not
+ * share: the text from `start` to `oldEnd` became the text from `start` to
+ * `newEnd`.
+ */
+function replacementOf(before: string, after: string) {
+  const max = Math.min(before.length, after.length);
+  let start = 0;
+  while (start < max && before[start] === after[start]) start++;
+  let oldEnd = before.length;
+  let newEnd = after.length;
+  while (
+    oldEnd > start &&
+    newEnd > start &&
+    before[oldEnd - 1] === after[newEnd - 1]
+  ) {
+    oldEnd--;
+    newEnd--;
+  }
+  return { start, oldEnd, newEnd };
+}
+
+/**
+ * Where an end of the selection `[start, end]` goes after `replacement`.
+ * Before it, it stays; after it, it moves with the text. At its start, it
+ * stays before the new text; at its end, after it. Inside it, the end stays
+ * on the side of the selection that is left: the new text joins the
+ * selection when the replacement took its first or last part. A replacement
+ * that takes the whole selection and more leaves a cursor at its start.
+ */
+function mapOffset(
+  offset: number,
+  role: "anchor" | "focus",
+  start: number,
+  end: number,
+  replacement: ReturnType<typeof replacementOf>,
+) {
+  if (replacement.start < start && replacement.oldEnd > end)
+    return replacement.start;
+  if (offset < replacement.start) return offset;
+  if (offset > replacement.oldEnd)
+    return offset + replacement.newEnd - replacement.oldEnd;
+  if (offset === replacement.start) return replacement.start;
+  if (offset === replacement.oldEnd) return replacement.newEnd;
+  if (role === "anchor")
+    return replacement.start < start ? replacement.newEnd : replacement.start;
+  return replacement.oldEnd > end ? replacement.start : replacement.newEnd;
 }
 
 /**
