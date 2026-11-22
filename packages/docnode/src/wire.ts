@@ -42,9 +42,10 @@ import {
 //     the next one. `[text, ids, states?, right?, left?]` inserts letters
 //     again with the ids a delete took (an undo of it, `-1`: the id next to
 //     them), `[-1, ranges]` deletes letters, `[5, key, ranges, value?, ...]`
-//     sets their state, and `[-6, key, ranges, value, right?]` sets a key
-//     letters inherit, with the letter that was after the ranges (left out:
-//     the id after them); see `text/baseText.ts`. Only an insert of new
+//     sets their state, and `[5, inherited, ranges, value, right?]` sets a
+//     key letters inherit, with the letter that was after the ranges (left
+//     out: the id after them), the key `n` (a number) as `-(n + 1)` and any
+//     other as `[key]`; see `text/baseText.ts`. Only an insert of new
 //     letters takes counters.
 //   - A letter of the row's own session is a number: the distance back from
 //     the row's counter (in a delete, of any sign), but for the right origin
@@ -97,8 +98,29 @@ const AGAIN = 4;
  */
 const STATE = 5;
 
+/** The tag of an edit that sets a key letters inherit, a form of `STATE`. */
+const INHERITED = 6;
+
 /** The number a text edit's row starts with (see `STATE`). */
-const rowTag = (tag: number) => (tag === STATE ? STATE : -tag);
+const rowTag = (tag: number) =>
+  tag === STATE || tag === INHERITED ? STATE : -tag;
+
+/**
+ * A key letters inherit as a `STATE` row writes it, where a key is a string
+ * or a number of 0 or more: a number `n` is `-(n + 1)`, any other `[key]`.
+ */
+function inheritedKey(key: string): Json {
+  const written = numericKey(key);
+  return typeof written === "number" ? -written - 1 : [written];
+}
+
+/** Whether the key of a `STATE` row is one letters inherit (see `inheritedKey`). */
+const isInherited = (key: Json | undefined) =>
+  isList(key) || (typeof key === "number" && key < 0);
+
+/** The key that `inheritedKey` wrote as `written`. */
+const keyInherited = (written: Json | undefined) =>
+  typeof written === "number" ? String(-written - 1) : keyOf(list(written)[0]);
 
 /** Whether an insert row can take the next insert: its references are numbers. */
 const isJoinable = (row: readonly Json[]): row is Json[] => {
@@ -537,7 +559,7 @@ class Encoder {
       return;
     }
     // A key letters inherit: one value, then the letter after its ranges.
-    row.push(numericKey(text(op[4])), this.ranges(op[5]!, c), op[6]!);
+    row.push(inheritedKey(text(op[4])), this.ranges(op[5]!, c), op[6]!);
     if (op.length > 7) row.push(this.ref(op[7]!, c));
   }
 
@@ -872,7 +894,8 @@ class Decoder {
       const left = row[at + 2]!;
       return [3, session, c, head, right, left === -1 ? -1 : this.ref(left, c)];
     }
-    const tag = head === STATE ? STATE : -head;
+    const tag =
+      head !== STATE ? -head : isInherited(row[at + 1]) ? INHERITED : STATE;
     const op: EditOperation = [3, tag, session, c];
     switch (tag) {
       case 1:
@@ -882,8 +905,12 @@ class Decoder {
         op.push(keyOf(row[at + 1]));
         this._values(row, at + 2, c, op);
         break;
-      case 6:
-        op.push(keyOf(row[at + 1]), this.ranges(row[at + 2]!, c), row[at + 3]!);
+      case INHERITED:
+        op.push(
+          keyInherited(row[at + 1]),
+          this.ranges(row[at + 2]!, c),
+          row[at + 3]!,
+        );
         if (row.length > at + 4) op.push(this.ref(row[at + 4]!, c));
         break;
       default:
