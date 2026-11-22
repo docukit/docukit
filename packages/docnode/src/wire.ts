@@ -41,9 +41,9 @@ import {
 //     numbers: a string that does not read as a letter (see `LETTER`) starts
 //     the next one. `[text, ids, states?, right?, left?]` inserts letters
 //     again with the ids a delete took (an undo of it, `-1`: the id next to
-//     them), and `[-tag, ...]` is any other edit (see `text/baseText.ts`):
-//     `[-1, ranges]` deletes letters and `[-5, key, ranges, value?, ...]` sets
-//     their state. Only an insert of new letters takes counters.
+//     them), `[-1, ranges]` deletes letters and `[5, key, ranges, value?,
+//     ...]` sets their state (see `text/baseText.ts`). Only an insert of new
+//     letters takes counters.
 //   - A letter of the row's own session is a number: the distance back from
 //     the row's counter (in a delete, of any sign), but for the right origin
 //     of an insert, its counter + 1, negative when the insert is its left
@@ -56,8 +56,8 @@ import {
 //   trailing zeros. One node is inserted as `[0, node, type, parent, prev,
 //   next]`, without the list, and `[1]` deletes the node at the head's clock
 //   (`[1, 1]`), the one a batch that only deletes it names in its head. A
-//   row that starts with a number of 0 or more is one of these; a text edit
-//   starts with a negative one, an insert with a string or with `[node]`.
+//   row that starts with 0, 1 or 2 is one of these; another text edit starts
+//   with 5 or a negative number, an insert with a string or with `[node]`.
 // - The state patch, if any, is the last row: `[-9, node, key, value, ...]`,
 //   a triple per key a node changed. `[node, count], key, column` sets `key`
 //   of `count` nodes one after the other (see `Run`), a value each.
@@ -88,6 +88,15 @@ const BACKWARDS = "<";
 
 /** The tag of an edit that inserts letters again with their ids. */
 const AGAIN = 4;
+
+/**
+ * The tag of an edit that sets the state of letters, which its row starts
+ * with: the tag of any other edit starts its row as a negative number.
+ */
+const STATE = 5;
+
+/** The number a text edit's row starts with (see `STATE`). */
+const rowTag = (tag: number) => (tag === STATE ? STATE : -tag);
 
 /** Whether an insert row can take the next insert: its references are numbers. */
 const isJoinable = (row: readonly Json[]): row is Json[] => {
@@ -425,7 +434,7 @@ class Encoder {
     const tag = Number(op[1]);
     if (tag === AGAIN) rows.push(this._again(op, c));
     else {
-      const row: [number, ...Json[]] = [-tag];
+      const row: [number, ...Json[]] = [rowTag(tag)];
       this._payload(op, tag, c, row);
       rows.push(row);
     }
@@ -451,7 +460,7 @@ class Encoder {
     const content = op[3]!;
     if (!insert) {
       const tag = Number(op[1]);
-      const written = -tag;
+      const written = rowTag(tag);
       if (tag === AGAIN) batch = [named, ...this._again(op, c)];
       else if (tag === 1 && op.length === 5)
         batch = [named, written, this.ranges(op[4]!, c)];
@@ -855,7 +864,7 @@ class Decoder {
       const left = row[at + 2]!;
       return [3, session, c, head, right, left === -1 ? -1 : this.ref(left, c)];
     }
-    const tag = -head;
+    const tag = head === STATE ? STATE : -head;
     const op: EditOperation = [3, tag, session, c];
     switch (tag) {
       case 1:

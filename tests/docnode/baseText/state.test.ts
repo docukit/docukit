@@ -40,7 +40,7 @@ describe("setLetterState: the last one applied wins", () => {
   test("bold of 50 letters is one range and one value", () => {
     const { doc, text } = flat("x".repeat(100));
     const [batch] = sent(doc, () => text.format(10, 60, "0", 1));
-    expect(batch).toStrictEqual(["a.0Z", -5, 0, [90, 50], 1]);
+    expect(batch).toStrictEqual(["a.0Z", 5, 0, [90, 50], 1]);
   });
 
   test("a range is all that is between its first and last letter: what a peer typed in it too", () => {

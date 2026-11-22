@@ -257,12 +257,13 @@ function isNodeReference(value: unknown): boolean {
   return Number.isInteger(value) || typeof value === "string";
 }
 
-/** `[text | [node] | -tag, ...]` (see `wire.ts`). */
+/** `[text | [node] | 5 | -tag, ...]` (see `wire.ts`). */
 function isTextRow(value: unknown[]): boolean {
   const head: unknown = value[0];
   return (
     typeof head === "string" ||
     (Array.isArray(head) && head.length === 1 && isString(head[0])) ||
+    head === 5 ||
     (Number.isInteger(head) && Number(head) < 0)
   );
 }
@@ -328,7 +329,7 @@ function isRow(value: unknown, last: boolean): boolean {
   const row: unknown[] = value;
   // The state patch is the last row.
   if (row[0] === -9) return last && isPatchRow(row);
-  return typeof row[0] === "number" && row[0] >= 0
+  return typeof row[0] === "number" && row[0] >= 0 && row[0] !== 5
     ? isTreeRow(row)
     : isTextRow(row);
 }
