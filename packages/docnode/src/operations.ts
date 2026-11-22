@@ -618,8 +618,8 @@ export type Operations =
   | readonly [head: Head, ...rows: OperationsRow[]]
   | readonly [head: Head, ...row: FlatRow]
   | readonly [head: Head, content: string, ...rightParent: LetterRef[]]
-  | readonly [head: Head, ...row: InsertTextAgainRow];
-  // A CRDT engine's row (a tag of 3 or more), then one row without brackets.
+  | readonly [head: Head, ...row: InsertTextAgainRow]
+  // A CRDT engine's row (a tag of 3 or 4), then one row without brackets.
   | readonly [head: Head, engine: EditTextRow, ...row: FlatRow]
   | readonly [
       head: Head,
@@ -660,13 +660,12 @@ export function mergeOperations(...operationsList: Operations[]): Operations {
 
 /**
  * Whether a batch only edits text: no row of a CRDT engine (right after the
- * head, an array or a flat row that starts with 3 or more), no node inserted,
- * deleted or moved, and no state.
+ * head, an array that starts with 3 or 4), no node inserted, deleted or
+ * moved, and no state.
  */
 function isTextOnly(batch: Operations): boolean {
   const first: unknown = batch[1];
-  const tag: unknown = Array.isArray(first) ? first[0] : first;
-  if (typeof tag === "number" && tag >= 3) return false;
+  if (Array.isArray(first) && (first[0] === 3 || first[0] === 4)) return false;
   const [ordered, patch] = decodeOperations(batch);
   return isObjectEmpty(patch) && ordered.every((op) => op[0] === 3);
 }

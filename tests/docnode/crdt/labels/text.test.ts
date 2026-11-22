@@ -118,6 +118,27 @@ describe("letter-by-letter text", () => {
     expect(b.texts()).toStrictEqual(["hi"]);
   });
 
+  test("letters with a first state next to a moved node travel with the labels", () => {
+    const a = writer("a");
+    const b = writer("b");
+    const first = a.doc.createNode(Paragraph);
+    const second = a.doc.createNode(Paragraph);
+    a.doc.root.append(first, second);
+    a.doc.forceCommit();
+    b.receive(a.send());
+    second.move(first, "before");
+    first.state.t.insert(0, "x", { bold: true });
+    a.doc.forceCommit();
+    // The labels, then the insert of letters with their state, in its brackets.
+    const [batch] = a.send();
+    expect(Array.isArray(batch![2]) && Array.isArray(batch![2][0])).toBe(true);
+    b.receive([batch!]);
+    expect(b.texts()).toStrictEqual(["", "x"]);
+    expect(b.paragraph(first.id).state.t.spans()).toStrictEqual(
+      first.state.t.spans(),
+    );
+  });
+
   test("a delete next to a new node travels with the labels", () => {
     const a = writer("a");
     const b = writer("b");

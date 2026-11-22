@@ -1,5 +1,6 @@
 import type {
   EditTextRow,
+  InsertTextAgainRow,
   FlatRow,
   Head,
   LetterRef,
@@ -12,9 +13,9 @@ import { clockOf, distanceTo, literal } from "../wire.js";
 
 /**
  * What the CRDT engines add to a batch of `wire.ts`. An engine's own row goes
- * right after the head, as an array that starts with its tag: the rows of
- * `wire.ts` start with 0, 1 or 2, a negative number, a string or an array,
- * so a tag of 3 or more is never one of them.
+ * right after the head, as an array that starts with its tag, 3 or 4: the
+ * rows of `wire.ts` start with 0, 1, 2 or 5, a negative number, a string or
+ * an array.
  *
  * Node ids in an engine's row are written as the batch writes them: a node
  * `session.clock` is `"index.clock"`, its session by its index in the head,
@@ -31,17 +32,22 @@ type EngineThenFlat =
   | readonly [EditTextRow, ...FlatRow]
   | readonly [EditTextRow, ...FlatText];
 
-type Rest = OperationsRow[] | FlatRow | FlatText | EngineThenFlat;
+type Rest =
+  | OperationsRow[]
+  | FlatRow
+  | FlatText
+  | InsertTextAgainRow
+  | EngineThenFlat;
 
 /** A batch of one row leaves out its brackets: its head and then the row. */
-const isFlat = (rest: Rest): rest is FlatRow | FlatText =>
+const isFlat = (rest: Rest): rest is FlatRow | FlatText | InsertTextAgainRow =>
   typeof rest[0] === "string" || typeof rest[0] === "number";
 
 const isList = (value: Json | undefined): value is readonly Json[] =>
   Array.isArray(value);
 
 const isEngine = (row: Json | undefined) =>
-  isList(row) && typeof row[0] === "number" && row[0] >= 3;
+  isList(row) && (row[0] === 3 || row[0] === 4);
 
 /** One engine row, then a row without its brackets (see `joinRows`). */
 const isEngineThenFlat = (rest: Rest): rest is EngineThenFlat =>
@@ -88,7 +94,7 @@ function joinRows(
  */
 export function textRows(batch: Operations): OperationsRow[] {
   return rowsOf(batch).filter(
-    (row) => !(isList(row) && typeof row[0] === "number" && row[0] >= 0),
+    (row) => !(isList(row) && (row[0] === 0 || row[0] === 1 || row[0] === 2)),
   );
 }
 
