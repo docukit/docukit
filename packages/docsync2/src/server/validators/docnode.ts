@@ -35,7 +35,7 @@ const rowSchema = v.union([
   v.tupleWithRest([v.literal(0), nodesSchema], nodeRefSchema),
   v.tupleWithRest([v.literal(1), nodeRefSchema], nodeRefSchema),
   v.tupleWithRest([v.literal(2), nodeRefSchema], nodeRefSchema),
-  v.record(v.string(), v.record(v.string(), jsonSchema)),
+  v.tupleWithRest([v.literal(-9)], jsonSchema),
 ]);
 
 /** `[head, ...rows]`, or `[head, ...row]` for a batch of one row. */
@@ -44,6 +44,7 @@ const operationsSchema = v.union([
   v.tupleWithRest([headSchema, v.literal(0), nodesSchema], nodeRefSchema),
   v.tupleWithRest([headSchema, v.literal(1), nodeRefSchema], nodeRefSchema),
   v.tupleWithRest([headSchema, v.literal(2), nodeRefSchema], nodeRefSchema),
+  v.tupleWithRest([headSchema, v.literal(-9)], jsonSchema),
 ]);
 
 /** What `Doc.fromJSON` reads. */

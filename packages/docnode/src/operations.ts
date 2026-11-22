@@ -451,8 +451,8 @@ export type StatePatch = { [id: string]: Record<string, string> };
  * session by its index in the head, `""` for the first), else its id, with a
  * `!` in front if it starts with one or is an integer. A node of the head's
  * own session can instead be written by its clock's distance from the head's
- * counter (see `wire.ts`): a number in a tree row, its digits in a string
- * anywhere else. `0` is none: the root as a parent, or no sibling.
+ * counter (see `wire.ts`), a number. `0` is none: the root as a parent, or no
+ * sibling.
  */
 export type NodeRef = string | number;
 
@@ -487,10 +487,12 @@ export type MoveNodesRow = readonly [
   ...endParentPrevNext: NodeRef[],
 ];
 
-/** The new value of each changed key of each node, as JSON: always the last row. */
-export type StatePatchRow = {
-  readonly [node: string]: { readonly [key: string]: Json };
-};
+/**
+ * `[-9, node, key, value, ...]`: the new value of each changed key of each
+ * node, as JSON, always the last row. `[node, count]` in place of a node is
+ * `count` nodes one after the other, and its value a column, one per node.
+ */
+export type StatePatchRow = readonly [op: -9, ...entries: Json[]];
 
 export type OperationsRow =
   | InsertNodesRow
@@ -499,7 +501,11 @@ export type OperationsRow =
   | StatePatchRow;
 
 /** A row that a batch of only that row writes without its brackets. */
-export type FlatRow = InsertNodesRow | DeleteNodesRow | MoveNodesRow;
+export type FlatRow =
+  | InsertNodesRow
+  | DeleteNodesRow
+  | MoveNodesRow
+  | StatePatchRow;
 
 /**
  * The sessions of the batch: `"session.clock"`, with the clock of its first

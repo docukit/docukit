@@ -130,6 +130,22 @@ describe("upgradeOperations", () => {
     assertDoc(doc, ["b", "__b2", "__a", "C", "d"]);
   });
 
+  test("writes the state patch as a row of node, key and value", () => {
+    expect(
+      upgradeOperations([
+        [],
+        { [n("1")]: { value: '"A"' }, [n("5")]: { value: '"B2"' } },
+      ]),
+    ).toStrictEqual(["Kp3_a0Zx.1", -9, 1, "value", "A", 5, "value", "B2"]);
+    // Nodes one after the other with the same keys: a column per key.
+    expect(upgradeOperations(insertTree)).toStrictEqual([
+      "Kp3_a0Zx.1",
+      [0, [[1, "text", 3]]],
+      [0, [[4, "text", 2]], 2],
+      [-9, [1, 5], "value", ["a", "b", "c", "b1", "b2"]],
+    ]);
+  });
+
   test("reads every JSON value of the state patch", () => {
     const doc = new Doc({ type: "root", extensions: [TestExtension] });
     apply(doc, [

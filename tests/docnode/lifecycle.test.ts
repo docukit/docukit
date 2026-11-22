@@ -709,7 +709,7 @@ describe("applyOperations", () => {
       doc.applyOperations([
         session!,
         [0, [[id, "text"]]],
-        { [id]: { value: "test" } },
+        [-9, id, "value", "test"],
       ]);
     });
     assertDoc(doc, ["test"]);

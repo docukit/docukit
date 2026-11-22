@@ -264,11 +264,31 @@ function isTreeRow([tag, first, ...rest]: unknown[]): boolean {
   );
 }
 
-/** A tree row starts with 0, 1 or 2, a text row with anything else. */
-function isRow(value: unknown): boolean {
+/**
+ * `[-9, node, key, value, ...]`: a triple per key, `[node, count]` for a run
+ * of nodes.
+ */
+function isPatchRow([tag, ...entries]: unknown[]): boolean {
+  if (tag !== -9 || entries.length % 3 !== 0) return false;
+  for (let at = 0; at < entries.length; at += 3) {
+    const node = entries[at];
+    const run =
+      Array.isArray(node) &&
+      node.length === 2 &&
+      isNodeReference(node[0]) &&
+      Number.isInteger(node[1]);
+    if (!(run || isNodeReference(node)) || !isString(entries[at + 1]))
+      return false;
+  }
+  return true;
+}
+
+/** A tree row starts with 0, 1 or 2, the state patch with -9. */
+function isRow(value: unknown, last: boolean): boolean {
   if (!Array.isArray(value)) return false;
   const row: unknown[] = value;
-  return isTreeRow(row);
+  // The state patch is the last row.
+  return isTreeRow(row) || (last && isPatchRow(row));
 }
 
 function isOperations(value: unknown): value is Operations {
@@ -281,15 +301,8 @@ function isOperations(value: unknown): value is Operations {
   )
     return false;
   // One row written without its brackets.
-  if (typeof rows[0] === "number") return isRow(rows);
-  return rows.every((row, index) => {
-    if (!isRecord(row)) return isRow(row);
-    // The state patch is the last row.
-    return (
-      index === rows.length - 1 &&
-      Object.values(row).every((state) => isRecord(state))
-    );
-  });
+  if (typeof rows[0] === "number") return isRow(rows, true);
+  return rows.every((row, index) => isRow(row, index === rows.length - 1));
 }
 
 function isHistoryItem(value: unknown): value is UndoHistoryItem {

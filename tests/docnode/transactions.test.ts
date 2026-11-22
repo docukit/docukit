@@ -494,9 +494,16 @@ describe("undoManager", () => {
       withOperations(["s", [2, "a", 0, 0, 0, 0, 0]]),
       withOperations(["s", [3, "a"]]),
       withOperations(["s", 1]),
-      // The state patch, which is the last row.
-      withOperations(["s", { a: { value: 1 } }, [1, "a"]]),
-      withOperations(["s", { a: 1 }]),
+      // The state patch, which is the last row: node, key and value.
+      withOperations(["s", [-9, "a", "value", 1], [1, "a"]]),
+      withOperations(["s", { a: { value: 1 } }]),
+      withOperations(["s", [-9, "a", "value"]]),
+      withOperations(["s", -9, "a", "value"]),
+      withOperations(["s", [-9, null, "value", 1]]),
+      withOperations(["s", [-9, "a", 1, 1]]),
+      withOperations(["s", [-9, ["a"], "value", [1]]]),
+      withOperations(["s", [-9, ["a", 1.5], "value", [1]]]),
+      withOperations(["s", [-9, [null, 2], "value", [1, 2]]]),
       withOperations(["s", [1, "a"], 5]),
     ];
 
@@ -556,12 +563,12 @@ describe("undoManager", () => {
     const first: Operations = [
       "",
       [1, "a"],
-      { a: { value: 1 }, b: { value: 2 } },
+      [-9, "a", "value", 1, "b", "value", 2],
     ];
     const second: Operations = [
       "",
       [2, "b"],
-      { b: { value: 3 }, c: { value: 4 } },
+      [-9, "b", "value", 3, "c", "value", 4],
     ];
 
     const merged = mergeOperations(first, second);
@@ -570,17 +577,17 @@ describe("undoManager", () => {
       "",
       [1, "a"],
       [2, "b"],
-      { a: { value: 1 }, b: { value: 3 }, c: { value: 4 } },
+      [-9, "a", "value", 1, "b", "value", 3, "c", "value", 4],
     ]);
     expect(first).toStrictEqual([
       "",
       [1, "a"],
-      { a: { value: 1 }, b: { value: 2 } },
+      [-9, "a", "value", 1, "b", "value", 2],
     ]);
     expect(second).toStrictEqual([
       "",
       [2, "b"],
-      { b: { value: 3 }, c: { value: 4 } },
+      [-9, "b", "value", 3, "c", "value", 4],
     ]);
   });
 
@@ -998,10 +1005,15 @@ describe("applyOperations", () => {
             [short(created.id), "text"],
           ],
         ],
-        {
-          [short(existing!.id)]: { value: "updated" },
-          [short(created.id)]: { value: "created" },
-        },
+        [
+          -9,
+          short(existing!.id),
+          "value",
+          "updated",
+          short(created.id),
+          "value",
+          "created",
+        ],
       ]);
       assertDoc(doc, ["updated", "created"]);
       expect(doc.getNodeById(existing!.id)).toBe(existing);
@@ -1017,7 +1029,7 @@ describe("applyOperations", () => {
       doc.applyOperations([
         sessionOf(existing!.id),
         [0, [[short(existing!.id), "text"]]],
-        { [short(existing!.id)]: { value: "updated" } },
+        [-9, short(existing!.id), "value", "updated"],
       ]);
       assertDoc(doc, ["updated"]);
     });
@@ -1056,7 +1068,7 @@ describe("applyOperations", () => {
     doc.root.append(...text(doc, "a"));
     doc.forceCommit();
     expect(batches).toStrictEqual([
-      ["", [0, [["!!1", "text"]]], { "!!1": { value: "a" } }],
+      ["", [0, [["!!1", "text"]]], [-9, "!!1", "value", "a"]],
     ]);
     replica.applyOperations(batches[0]!);
     replica.forceCommit();
@@ -1085,18 +1097,23 @@ describe("applyOperations", () => {
       [
         "s.5",
         [0, nodes.map((node) => [node, "text"])],
-        {
-          "!+1": { value: "a" },
-          "-x": { value: "b" },
-          "+1": { value: "c" },
-          ".-5": { value: "d" },
-          "+2": { value: "e" },
-        },
+        [-9, ...nodes.flatMap((node, i) => [node, "value", "abcde"[i]!])],
       ],
     ]);
     replica.applyOperations(batches[0]!);
     replica.forceCommit();
     assertDoc(replica, ["a", "b", "c", "d", "e"]);
+  });
+
+  test("a node written as a string with its sign reads as its distance", () => {
+    const doc = createTextDocWithUndo();
+    const [node] = text(doc, "a");
+    doc.root.append(node!);
+    doc.forceCommit();
+    // The head's clock is the node's: `"+1"` is the node, as `1` would be.
+    doc.applyOperations([node!.id, 1, "+1"]);
+    doc.forceCommit();
+    assertDoc(doc, []);
   });
 
   test("a tree row that came broken names no node", () => {
@@ -1118,7 +1135,12 @@ describe("applyOperations", () => {
     doc.onChange((event) => sent.push(event.operations));
     doc.root.append(...text(doc, "a", "b", "c", "d"));
     doc.forceCommit();
-    expect(JSON.stringify(sent[0])).toContain('*4":{"value":["a","b","c","d"]');
+    expect(sent[0]![2]).toStrictEqual([
+      -9,
+      [1, 4],
+      "value",
+      ["a", "b", "c", "d"],
+    ]);
     const replica = Doc.fromJSON(
       { type: "root", extensions: [TextExtension] },
       start,
@@ -1220,7 +1242,7 @@ describe("applyOperations", () => {
     const values = ids.map(String);
     doc.root.append(...text(doc, ...values));
     doc.forceCommit();
-    const [batch = ["", {}]] = sent;
+    const batch = sent[0]!;
     expect(batch[0]).toHaveLength(12);
     const replica = Doc.fromJSON(config, start);
     replica.applyOperations(batch);
@@ -1241,7 +1263,7 @@ describe("applyOperations", () => {
   });
 
   test("an empty state patch decodes as no state", () => {
-    expect(decodeOperations(["s", [1, "a"], {}])).toStrictEqual([
+    expect(decodeOperations(["s", [1, "a"], [-9]])).toStrictEqual([
       [[1, "a", 0]],
       {},
     ]);
@@ -1276,7 +1298,7 @@ describe("applyOperations", () => {
     doc.root.append(existing!);
     doc.forceCommit();
     expect(() =>
-      doc.applyOperations(["s", { ".1*2": { value: 3 } }]),
+      doc.applyOperations(["s", -9, [".1", 2], "value", 3]),
     ).not.toThrow();
     assertDoc(doc, ["existing"]);
   });
@@ -1291,7 +1313,7 @@ describe("applyOperations", () => {
       doc.applyOperations([
         sessionOf(id),
         [0, [[short(id), "unregistered"]]],
-        { [short(existing!.id)]: { value: "updated" } },
+        [-9, short(existing!.id), "value", "updated"],
       ]),
     ).not.toThrow();
     assertDoc(doc, ["existing"]);

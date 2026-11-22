@@ -30,18 +30,19 @@ import {
 // - `[0, nodes, parent, prev, next]`, `[1, start, end]` and `[2, start, end,
 //   parent, prev, next]` insert, delete and move nodes, without their
 //   trailing zeros.
-// - The state patch, if any, is the last row: `{node: {key: value}}`.
+// - The state patch, if any, is the last row: `[-9, node, key, value, ...]`,
+//   a triple per key a node changed. `[node, count], key, column` sets `key`
+//   of `count` nodes one after the other (see `Run`), a value each.
 // - A node id `session.clock` is `"index.clock"`; any other id is itself, with a
-//   `!` in front if it starts with one, reads as a distance or has a `*` (it
-//   would read as a run: see `RUN`). A node of the head's session can be
-//   written by its clock's distance `d` from the head's clock instead, when
-//   that is not longer: `d + 1` from 0 on, `d` below (so `1` is the node at
-//   the clock and `-1` the one before). It is a number in a tree row, and a
-//   string with its sign anywhere else (`"+1"`, `"-1"`: a key `"1"` would
-//   move to the front of the state patch). A batch that
-//   inserts a node after the one its author inserted before writes the same
-//   rows every time: only the head changes.
-// - A batch of one row is written without the row's brackets.
+//   `!` in front if it starts with one or reads as a distance. A node of the
+//   head's session can be written by its clock's distance `d` from the head's
+//   clock instead, when that is not longer: `d + 1` from 0 on, `d` below (so
+//   `1` is the node at the clock and `-1` the one before). It is written as a
+//   number, and a string with its sign (`"+1"`, `"-1"`) reads as one too. A
+//   batch that inserts a node after the one its author inserted before writes
+//   the same rows every time: only the head changes.
+// - A batch of one row is written without the row's brackets, and so is a
+//   batch of only a state patch.
 
 const isList = (value: Json | undefined): value is readonly Json[] =>
   Array.isArray(value);
@@ -51,21 +52,15 @@ const list = (value: Json | undefined): readonly Json[] =>
 
 const num = (value: Json | undefined) => Number(value);
 
-const isRecord = (
-  value: Json | undefined,
-): value is { readonly [Key in string]?: Json } =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 /** A string of the batch, or "" where it holds something else. */
 const text = (value: Json | undefined): string =>
   typeof value === "string" ? value : "";
 
 /** Whether `written` is a signed integer: a node by its distance (see the format). */
-/** Whether `written` is a signed integer: a node by its distance (see the format). */
 const isDistance = (written: string) => /^[+-]\d+$/.test(written);
 
-/** `"ref*n"`: a patch key for `n` nodes from `ref` on (see the format). */
-const RUN = /^(.+)\*(\d+)$/;
+/** The tag of the state patch row (see the format). */
+const PATCH = -9;
 
 /**
  * Reads ids one by one and tells whether each is the node right after the
@@ -135,7 +130,7 @@ function distanceTo(id: string, session: string, base: number) {
 
 /** An id as it is written whole: with a `!` if it could be misread. */
 const literal = (id: string) =>
-  id.charCodeAt(0) === 33 || isDistance(id) || id.includes("*") ? `!${id}` : id;
+  id.charCodeAt(0) === 33 || isDistance(id) ? `!${id}` : id;
 
 /** `id` if it is `session.clock`, with a dot. */
 const withSession = (id: string | 0) =>
@@ -206,21 +201,9 @@ class Encoder {
     return index;
   }
 
-  /**
-   * A node id `session.clock` as `index.clock`: the clock is already in base
-   * 64, so it is copied. A node of the first session can be its distance
-   * from the head's clock instead (see the format), in a string.
-   */
-  node(id: string): string {
-    const distance = distanceTo(id, this.first, this.base);
-    if (distance === 0) return this._absolute(id);
-    return distance < 0 ? `${distance}` : `+${distance}`;
-  }
-
   private _absolute(id: string): string {
     const dot = lastDot(id);
-    // A star after the dot would read as a run in a patch key.
-    if (dot === -1 || id.includes("*", dot)) return literal(id);
+    if (dot === -1) return literal(id);
     // Cut and compared, a short session is found faster than with
     // `startsWith`.
     const index = this.index(id.slice(0, dot));
@@ -303,29 +286,7 @@ export function encodeOperations(
     ids.push(id);
     states.push(patch[id]!);
   }
-  const values: Record<string, StatePatchRow[string]> = {};
-  for (let at = 0; at < ids.length; ) {
-    const written = states[at]!;
-    const length = runLength(ids, states, at);
-    if (length < 3) {
-      const state: Record<string, Json> = {};
-      for (const key in written) state[key] = parseJson(written[key]!);
-      values[encoder.node(ids[at]!)] = state;
-      at++;
-      continue;
-    }
-    // Nodes one after the other with the same keys: a column per key.
-    const columns: Record<string, Json[]> = {};
-    for (const key in written) {
-      const column: Json[] = [];
-      for (let i = at; i < at + length; i++)
-        column.push(parseJson(states[i]![key]!));
-      columns[key] = column;
-    }
-    values[`${encoder.node(ids[at]!)}*${length}`] = columns;
-    at += length;
-  }
-  if (ids.length > 0) rows.push(values);
+  if (ids.length > 0) rows.push(patchRow(ids, states));
   const { first, others } = encoder;
   const named =
     base !== -1 || first.includes(".")
@@ -336,6 +297,38 @@ export function encodeOperations(
   if (rows.length === 2 && isFlat(row)) return [head, ...row];
   rows[0] = head;
   return rows;
+}
+
+/**
+ * The state patch row: `[PATCH, node, key, value, ...]`, and for nodes one
+ * after the other with the same keys (see `runLength`), `[node, count], key,
+ * column` per key (see the format).
+ */
+function patchRow(
+  ids: readonly string[],
+  states: readonly Record<string, string>[],
+): StatePatchRow {
+  const row: [typeof PATCH, ...Json[]] = [PATCH];
+  for (let at = 0; at < ids.length; ) {
+    const written = states[at]!;
+    const length = runLength(ids, states, at);
+    const node = encoder.nodeRef(ids[at]!);
+    if (length < 3) {
+      for (const key in written) row.push(node, key, parseJson(written[key]!));
+      at++;
+      continue;
+    }
+    // A column per key, a value per node from the first one on.
+    const nodes = [node, length];
+    for (const key in written) {
+      const column: Json[] = [];
+      for (let i = at; i < at + length; i++)
+        column.push(parseJson(states[i]![key]!));
+      row.push(nodes, key, column);
+    }
+    at += length;
+  }
+  return row;
 }
 
 /**
@@ -460,46 +453,48 @@ const decoder = new Decoder();
  */
 const NO_PATCH: StatePatch = Object.freeze({});
 
+/** The state patch of a `patchRow` whose triples start at `row[from]`. */
+function readPatch(row: readonly Json[], from: number): StatePatch {
+  let patch: StatePatch | undefined;
+  for (let at = from; at < row.length; at += 3) {
+    const written = row[at];
+    const key = text(row[at + 1]);
+    const value = row[at + 2];
+    if (!isList(written)) {
+      const id = decoder.nodeId(written);
+      // Keyed by nodes of a session, new ids each time, it is a dictionary;
+      // by an id like the root's, a plain object (see `idRecord`).
+      patch ??= lastDot(id) === -1 ? {} : idRecord();
+      (patch[id] ??= {})[key] = stringifyJson(value);
+      continue;
+    }
+    // A run: a column of values, one per node from the first one on.
+    const ids = nodesFrom(decoder.nodeId(written[0]), num(written[1]));
+    const column = list(value);
+    patch ??= idRecord();
+    for (let i = 0; i < ids.length; i++)
+      (patch[ids[i]!] ??= {})[key] = stringifyJson(column[i]);
+  }
+  return patch ?? {};
+}
+
 /** The ordered operations and state patch that `Operations` stands for. */
 export function decodeOperations(operations: Operations): DraftOperations {
   decoder.reset(operations[0]);
   const ordered: OrderedOperation[] = [];
-  if (typeof operations[1] === "number") {
+  const only = operations[1];
+  if (only === PATCH) return [ordered, readPatch(operations, 2)];
+  if (typeof only === "number") {
     decoder.row(operations, 1, ordered);
     return [ordered, NO_PATCH];
   }
   let patch = NO_PATCH;
   for (let index = 1; index < operations.length; index++) {
     const row = operations[index];
-    if (isList(row)) {
-      decoder.row(row, 0, ordered);
-    } else if (isRecord(row)) {
-      // The patch is the batch's last row. Keyed by nodes of a session, new
-      // ids each time, it is a dictionary; by an id like the root's, a plain
-      // object (see `idRecord`).
-      let fresh: StatePatch | undefined;
-      for (const id in row) {
-        fresh ??= lastDot(id) === -1 && !isDistance(id) ? {} : idRecord();
-        const written = row[id];
-        const values = isRecord(written) ? written : {};
-        const run = id.charCodeAt(0) === 33 ? null : RUN.exec(id);
-        if (run) {
-          // A column per key, a value per node from the first one on.
-          const ids = nodesFrom(decoder.node(run[1]!), Number(run[2]));
-          for (let i = 0; i < ids.length; i++) {
-            const state: Record<string, string> = {};
-            for (const key in values)
-              state[key] = stringifyJson(list(values[key])[i]);
-            fresh[ids[i]!] = state;
-          }
-          continue;
-        }
-        const state: Record<string, string> = {};
-        for (const key in values) state[key] = stringifyJson(values[key]);
-        fresh[decoder.node(id)] = state;
-      }
-      patch = fresh ?? {};
-    }
+    if (!isList(row)) continue;
+    // The patch is the batch's last row.
+    if (row[0] === PATCH) patch = readPatch(row, 1);
+    else decoder.row(row, 0, ordered);
   }
   return [ordered, patch];
 }
