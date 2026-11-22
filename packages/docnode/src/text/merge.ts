@@ -1,4 +1,18 @@
 import type { EditOperation, OrderedOperation } from "../operations.js";
+import type { Json } from "../types.js";
+
+const listOf = (value: Json | undefined): readonly Json[] | undefined =>
+  Array.isArray(value) ? value : undefined;
+
+/** The letters of an insert's content: `text` or `[text, ...state]`. */
+const lettersOf = (content: Json | undefined) =>
+  listOf(content)?.[0] ?? content;
+
+/** The first state an insert's content gives its letters, as a string. */
+const stateOf = (content: Json | undefined) => {
+  const list = listOf(content);
+  return list ? JSON.stringify(list.slice(1)) : "";
+};
 
 /** A right origin without the sign that also makes an insert its left child. */
 const unsigned = (right: unknown) =>
@@ -10,14 +24,18 @@ function fuse(
 ): EditOperation | undefined {
   if (previous?.[0] !== 3 || next[0] !== 3) return undefined;
   const [, session, counter, content, right] = previous;
-  const [, nextSession, nextCounter, text, nextRight] = next;
+  const [, nextSession, nextCounter, nextContent, nextRight] = next;
+  // Letters with the same first state fuse too: `[text, ...state]`.
+  const text = lettersOf(content);
+  const nextText = lettersOf(nextContent);
   if (
     typeof session !== "string" ||
-    typeof content !== "string" ||
     typeof text !== "string" ||
+    typeof nextText !== "string" ||
+    stateOf(content) !== stateOf(nextContent) ||
     typeof counter !== "number" ||
     nextSession !== session ||
-    nextCounter !== counter + content.length ||
+    nextCounter !== counter + text.length ||
     next.length > 5 ||
     // A negative right origin also makes `next` a left child of it.
     (typeof nextRight === "number" && nextRight < 0) ||
@@ -27,7 +45,8 @@ function fuse(
   )
     return undefined;
   const fused: EditOperation = [...previous];
-  fused[3] = content + text;
+  const list = listOf(content);
+  fused[3] = list ? [text + nextText, ...list.slice(1)] : text + nextText;
   return fused;
 }
 

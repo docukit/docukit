@@ -3,6 +3,7 @@ import type {
   EditOperation,
   FlatRow,
   Head,
+  InsertTextRow,
   LetterRef,
   NodeRef,
   Operations,
@@ -34,13 +35,15 @@ import {
 //   before and the counter right after it. A string `"index.counter"` alone
 //   moves on to another one.
 //   - `[text, right?, left?]` inserts letters after the letter `left` (`-1`:
-//     none). Inserts one after the other share a row, `[text, ...refs, text,
-//     ...refs]`, when their references are numbers: a string that does not
-//     read as a letter (see `LETTER`) starts the next one. `[text,
-//     ids, 0?, right?, left?]` inserts letters again with the ids a delete
-//     took (an undo of it, `-1`: the id next to them), and `[-tag, ...]` is
-//     any other edit (see `text/baseText.ts`): `[-1, ranges]` deletes
-//     letters. Only an insert of new letters takes counters.
+//     none), `[[text, ...state], right?, left?]` letters with a first state.
+//     Inserts one after the other share a row, `[text, ...refs, text,
+//     ...refs]`, when their letters have no state and their references are
+//     numbers: a string that does not read as a letter (see `LETTER`) starts
+//     the next one. `[text, ids, states?, right?, left?]` inserts letters
+//     again with the ids a delete took (an undo of it, `-1`: the id next to
+//     them), and `[-tag, ...]` is any other edit (see `text/baseText.ts`):
+//     `[-1, ranges]` deletes letters and `[-5, key, ranges, value?, ...]` sets
+//     their state. Only an insert of new letters takes counters.
 //   - A letter of the row's own session is a number: the distance back from
 //     the row's counter (in a delete, of any sign), but for the right origin
 //     of an insert, its counter + 1, negative when the insert is its left
@@ -54,7 +57,7 @@ import {
 //   next]`, without the list, and `[1]` deletes the node at the head's clock
 //   (`[1, 1]`), the one a batch that only deletes it names in its head. A
 //   row that starts with a number of 0 or more is one of these; a text edit
-//   starts with a negative one, an insert with a string.
+//   starts with a negative one, an insert with a string or with `[node]`.
 // - The state patch, if any, is the last row: `[-9, node, key, value, ...]`,
 //   a triple per key a node changed. `[node, count], key, column` sets `key`
 //   of `count` nodes one after the other (see `Run`), a value each.
@@ -67,7 +70,8 @@ import {
 //   (`"+1"`, `"-1"`) reads as one too. A batch that inserts a node after the
 //   one its author inserted before writes the same rows every time: only the
 //   head changes.
-// - A batch of one row is written without the row's brackets.
+// - A batch of one row is written without the row's brackets, unless the
+//   row starts with an array (an insert with a first state).
 
 /**
  * An insert's right origin of its own session is written as a counter, not as
@@ -87,6 +91,7 @@ const AGAIN = 4;
 
 /** Whether an insert row can take the next insert: its references are numbers. */
 const isJoinable = (row: readonly Json[]): row is Json[] => {
+  if (typeof row[0] !== "string") return false;
   for (let at = 1; at < row.length; at++)
     if (typeof row[at] !== "number") return false;
   return true;
@@ -107,6 +112,17 @@ const list = (value: Json | undefined): readonly Json[] =>
 
 const num = (value: Json | undefined) => Number(value);
 
+/** A state key as written: a number when it reads as one (`"0"` is `0`). */
+const numericKey = (key: string): Json =>
+  /^(?:0|[1-9]\d{0,8})$/.test(key) ? Number(key) : key;
+
+/** A state key as read: a number is its digits. */
+const keyOf = (key: Json | undefined): string =>
+  typeof key === "number" ? String(key) : text(key);
+
+/** The letters of an insert's content: `text` or `[text, attrs]`. */
+const letters = (content: Json | undefined): string =>
+  text(isList(content) ? content[0] : content);
 /** A string of the batch, or "" where it holds something else. */
 const text = (value: Json | undefined): string =>
   typeof value === "string" ? value : "";
@@ -200,10 +216,11 @@ function trimmed<Row extends unknown[]>(row: Row): Row {
   return row;
 }
 
-/** Whether a batch of only `row` leaves out its brackets: a row in a list. */
+/** Whether a batch of only `row` leaves out its brackets: not `[[text, ...state]]`. */
 const isFlat = (
   row: OperationsRow | undefined,
-): row is FlatRow | readonly [string, ...LetterRef[]] => Array.isArray(row);
+): row is FlatRow | readonly [string, ...LetterRef[]] =>
+  Array.isArray(row) && typeof row[0] !== "object";
 
 /** Up to this many other sessions, a batch finds their index without a map. */
 const FEW_SESSIONS = 8;
@@ -384,17 +401,19 @@ class Encoder {
     }
     this._session = index;
     if (insert) {
-      const content = text(op[3]);
-      const row: [string, ...LetterRef[]] = [content];
+      const content = op[3]!;
+      const row: [string | readonly Json[], ...LetterRef[]] = [
+        isList(content) ? content : text(content),
+      ];
       this._insertRefs(op, c, row);
-      this._next = c + content.length;
+      this._next = c + letters(content).length;
       if (!isJoinable(row)) {
         rows.push(row);
         return;
       }
       // Inserts one after the other go in one row, without a pair of
       // brackets each, unless the letters read as a reference.
-      if (last === undefined || LETTER.test(content)) {
+      if (last === undefined || LETTER.test(text(row[0]))) {
         rows.push(row);
         this._joinable = row;
       } else {
@@ -427,23 +446,31 @@ class Encoder {
     let batch:
       | [Head, string, ...LetterRef[]]
       | [Head, number, ...Json[]]
+      | [Head, InsertTextRow]
       | [Head, string, Json[], ...Json[]];
-    const content = text(op[3]);
+    const content = op[3]!;
     if (!insert) {
       const tag = Number(op[1]);
       const written = -tag;
-      // A delete, or letters inserted again.
-      batch =
-        tag === AGAIN
-          ? [named, ...this._again(op, c)]
-          : [named, written, this.ranges(op[4]!, c)];
-    } else if (op.length === 4) batch = [named, content];
+      if (tag === AGAIN) batch = [named, ...this._again(op, c)];
+      else if (tag === 1 && op.length === 5)
+        batch = [named, written, this.ranges(op[4]!, c)];
+      else {
+        batch = [named, written];
+        this._payload(op, tag, c, batch);
+      }
+    } else if (isList(content)) {
+      // An insert with attributes keeps its brackets (see `isFlat`).
+      const row: [readonly Json[], ...LetterRef[]] = [content];
+      this._insertRefs(op, c, row);
+      batch = [named, row];
+    } else if (op.length === 4) batch = [named, text(content)];
     else if (op.length === 5)
-      batch = [named, content, this.ref(op[4]!, c, ABSOLUTE_RIGHT)];
+      batch = [named, text(content), this.ref(op[4]!, c, ABSOLUTE_RIGHT)];
     else
       batch = [
         named,
-        content,
+        text(content),
         this.ref(op[4]!, c, ABSOLUTE_RIGHT),
         this._left(op[5]!, c),
       ];
@@ -488,12 +515,26 @@ class Encoder {
   /** The payload of any other text edit (`op[4]` on), after its tag. */
   private _payload(op: EditOperation, tag: number, c: number, row: Json[]) {
     // Ranges, then the lamport and the letters brought back, if any.
-    row.push(this.ranges(op[4]!, c), ...op.slice(5));
+    if (tag === 1) {
+      row.push(this.ranges(op[4]!, c), ...op.slice(5));
+      return;
+    }
+    // Its key, then ranges and their value.
+    row.push(numericKey(text(op[4])));
+    this._values(op, 5, c, row);
+  }
+
+  /** Ranges and their value, alternately, from `op[from]` on. */
+  private _values(op: EditOperation, from: number, c: number, row: Json[]) {
+    for (let at = from; at < op.length; at += 2) {
+      row.push(this.ranges(op[at]!, c));
+      if (at + 1 < op.length) row.push(op[at + 1]!);
+    }
   }
 
   /**
    * Letters inserted again with their ids: the letters, their ids (always a
-   * list, which an insert's right origin never is) and the `0`, then the
+   * list, which an insert's right origin never is) and their state, then the
    * letters around them.
    */
   private _again(op: EditOperation, c: number): [string, Json[], ...Json[]] {
@@ -807,7 +848,7 @@ class Decoder {
     if (typeof head !== "number") {
       // Letters inserted again: their ids are a list (see `_again`).
       if (isList(row[at + 1])) return this._again(row, at, session, c);
-      this.next = c + text(head).length;
+      this.next = c + letters(head).length;
       if (length === 1) return [3, session, c, head];
       const right = this.right(row[at + 1]!, c);
       if (length === 2) return [3, session, c, head, right];
@@ -816,8 +857,17 @@ class Decoder {
     }
     const tag = -head;
     const op: EditOperation = [3, tag, session, c];
-    if (tag === 1) op.push(this.ranges(row[at + 1]!, c), ...row.slice(at + 2));
-    else op.push(...row.slice(at + 1));
+    switch (tag) {
+      case 1:
+        op.push(this.ranges(row[at + 1]!, c), ...row.slice(at + 2));
+        break;
+      case 5:
+        op.push(keyOf(row[at + 1]));
+        this._values(row, at + 2, c, op);
+        break;
+      default:
+        op.push(...row.slice(at + 1));
+    }
     return op;
   }
 
@@ -834,6 +884,14 @@ class Decoder {
     for (const ref of row.slice(at + 3))
       op.push(ref === -1 ? -1 : this.ref(ref, c));
     return op;
+  }
+
+  /** Ranges and their value, alternately, from `row[from]` on. */
+  private _values(row: readonly Json[], from: number, c: number, op: Json[]) {
+    for (let index = from; index < row.length; index += 2) {
+      op.push(this.ranges(row[index]!, c));
+      if (index + 1 < row.length) op.push(row[index + 1]!);
+    }
   }
 
   /** The tree or text row that starts at `row[at]`, added to `ordered`. */

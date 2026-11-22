@@ -13,6 +13,7 @@ import {
   runsOf,
   sent,
   stored,
+  styled,
 } from "./utils.js";
 
 /** A document with a paragraph node per text, and a root text. */
@@ -28,19 +29,21 @@ function nodes(texts: string[], root = "") {
   return { doc, text, nodes: made };
 }
 
-/** Every text of `doc`. */
+/** Every text of `doc`, with its state. */
 const everything = (doc: Doc) => {
-  const out = [rootText(doc).get()];
+  const out = [styled(rootText(doc).spans())];
   doc.root.children().forEach((node) => {
-    if (node.is(Paragraph)) out.push(node.state.t.get());
+    if (node.is(Paragraph)) out.push(styled(node.state.t.spans()));
   });
   return out;
 };
 
 describe("the stored text", () => {
-  test("loads back the same, with its sessions and runs", () => {
+  test("loads back the same, with its state, sessions and runs", () => {
     const network = new Network(`Hello world${"x".repeat(40)}`, ["a", "b"]);
     network.edit("a", (text) => {
+      text.format(0, 5, "bold", true);
+      text.format(2, 9, "link", { url: "u" });
       // Typed backwards: each letter before the one typed before it.
       for (let index = 0; index < 5; index++) text.insert(6, `${index}`);
     });
@@ -54,7 +57,9 @@ describe("the stored text", () => {
   });
 
   test("of paragraph nodes, one after the other or not", () => {
-    const { doc } = nodes(["one", "", "three"], "root");
+    const { doc, nodes: made } = nodes(["one", "", "three"], "root");
+    made[2]!.state.t.format(0, 2, "italic", true);
+    doc.forceCommit();
     const other = doc.createNode(Paragraph);
     // A node whose id does not follow: of another generator.
     const late = Doc.fromJSON(
@@ -78,20 +83,11 @@ describe("the stored text", () => {
 
   test("is the same however its runs were cut", () => {
     const { doc, text } = flat("abcdef");
-    text.delete(1, 3);
+    text.format(1, 4, "bold", true);
     doc.forceCommit();
-    // Back with their ids: one run again.
-    doc.undoManager.undo();
+    text.format(1, 4, "bold", null);
     doc.forceCommit();
     expect(stored(doc)).toBe(stored(flat("abcdef").doc));
-  });
-
-  test("with letters with state, what a later version stores, does not load", () => {
-    const json = flat("ab").doc.toJSON();
-    json[6] = ["ab", [{ bold: true }]];
-    expect(() => Doc.fromJSON({ ...config(), id: ROOT_ID }, json)).toThrowError(
-      "The stored text has letters with state, which this version does not read.",
-    );
   });
 
   test("an empty text is not stored", () => {

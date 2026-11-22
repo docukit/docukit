@@ -12,6 +12,7 @@ import {
   TEXT_KEY,
   type TextEngine,
   textState,
+  type TextSpan,
 } from "./common.js";
 import { BaseText } from "./baseText.js";
 
@@ -41,6 +42,11 @@ export class TextHandle {
     return this._store.textOf(this._node.id);
   }
 
+  /** The visible text split into runs of identical attributes. */
+  spans(): TextSpan[] {
+    return this._store.spansOf(this._node.id);
+  }
+
   /** The visible length. */
   get length(): number {
     return this._store.lengthOf(this._node.id);
@@ -64,10 +70,10 @@ export class TextHandle {
     return this._store.indexOfLetter(this._node.id, letter);
   }
 
-  /** `insertLetters`. */
-  insert(index: number, text: string): void {
+  /** `insertLetters`: `attrs` is the state of the new letters. */
+  insert(index: number, text: string, attrs?: Record<string, Json>): void {
     withTransaction(this._doc, () =>
-      this._store.insert(this._doc, this._node.id, index, text),
+      this._store.insert(this._doc, this._node.id, index, text, attrs),
     );
   }
 
@@ -78,17 +84,34 @@ export class TextHandle {
     );
   }
 
+  /** `setLetterState` of a range: `value: null` removes the key. */
+  format(from: number, to: number, key: string, value: Json): void {
+    withTransaction(this._doc, () =>
+      this._store.format(this._doc, this._node.id, from, to, key, value),
+    );
+  }
+
   /**
-   * Replaces the value with `text`, keeping the common prefix and suffix:
-   * the smallest edit it can find. With repeated text, several places give
-   * the same result (typing "a" in "aa"), but only one keeps concurrent edits
-   * with the characters they were made on. `caret`, where the edit ended in
-   * `text` (the cursor after typing, pasting or deleting), picks that place.
+   * Replaces the value with `text`, without state, keeping the common prefix
+   * and suffix (see `applySpans`).
    */
   set(text: string, caret?: number): void {
+    this.applySpans([{ text, attrs: {} }], caret);
+  }
+
+  /**
+   * Brings the value to `target` with the smallest edit it can find. With
+   * repeated text, several places give the same result (typing "a" in "aa"),
+   * but only one keeps concurrent edits with the characters they were made
+   * on. `caret`, where the edit ended in `target` (the cursor after typing,
+   * pasting or deleting), picks that place.
+   */
+  applySpans(target: TextSpan[], caret?: number): void {
     withTransaction(this._doc, () => {
+      const next = target.map((span) => span.text).join("");
       const current = this.get();
-      if (current !== text) this._replaceDiff(current, text, caret);
+      if (current !== next) this._replaceDiff(current, next, caret, target);
+      this._applyFormatDiff(target);
     });
   }
 
@@ -96,6 +119,7 @@ export class TextHandle {
     current: string,
     next: string,
     caret: number | undefined,
+    target: TextSpan[],
   ): void {
     const max = Math.min(current.length, next.length);
     let prefix = 0;
@@ -135,17 +159,103 @@ export class TextHandle {
     const inserted = next.slice(prefix, next.length - suffix);
     // Inserting first keeps the new text after the character at `prefix - 1`,
     // even when the deleted range starts right there.
-    this.insert(prefix, inserted);
+    // New letters take their state from the target as they are inserted.
+    let at = prefix;
+    for (const piece of slicesOf(target, prefix, prefix + inserted.length)) {
+      this.insert(at, piece.text, piece.attrs ?? {});
+      at += piece.text.length;
+    }
     if (removed > 0) this.delete(prefix + inserted.length, removed);
   }
+
+  private _applyFormatDiff(target: TextSpan[]): void {
+    const current = this.spans();
+    const stops = new Set<number>([0]);
+    const collect = (spans: TextSpan[]) => {
+      let cursor = 0;
+      for (const span of spans) {
+        cursor += span.text.length;
+        stops.add(cursor);
+      }
+    };
+    collect(current);
+    collect(target);
+    const positions = [...stops].sort((a, b) => a - b);
+    const attrsAt = (spans: TextSpan[], index: number) => {
+      let cursor = 0;
+      for (const span of spans) {
+        cursor += span.text.length;
+        if (index < cursor) return span.attrs;
+      }
+      return {};
+    };
+    type Pending = { from: number; to: number; value: Json };
+    const pending = new Map<string, Pending>();
+    const flush = (key: string) => {
+      const range = pending.get(key);
+      if (!range) return;
+      pending.delete(key);
+      this.format(range.from, range.to, key, range.value);
+    };
+    for (let i = 0; i < positions.length - 1; i++) {
+      const from = positions[i]!;
+      const to = positions[i + 1]!;
+      const was = attrsAt(current, from);
+      const wants = attrsAt(target, from);
+      const keys = new Set([...Object.keys(was), ...Object.keys(wants)]);
+      for (const key of keys) {
+        const before = was[key] ?? null;
+        const after = wants[key] ?? null;
+        if (JSON.stringify(before) === JSON.stringify(after)) {
+          flush(key);
+          continue;
+        }
+        const open = pending.get(key);
+        if (
+          open?.to === from &&
+          JSON.stringify(open.value) === JSON.stringify(after)
+        ) {
+          open.to = to;
+        } else {
+          flush(key);
+          pending.set(key, { from, to, value: after });
+        }
+      }
+      for (const key of [...pending.keys()]) {
+        if (!keys.has(key)) flush(key);
+      }
+    }
+    for (const key of [...pending.keys()]) flush(key);
+  }
+}
+
+/** The pieces of `spans` between two indexes of their text. */
+function slicesOf(spans: TextSpan[], from: number, to: number) {
+  const out: { text: string; attrs: Record<string, Json> | undefined }[] = [];
+  let cursor = 0;
+  for (const span of spans) {
+    const end = cursor + span.text.length;
+    const start = Math.max(cursor, from);
+    const stop = Math.min(end, to);
+    if (stop > start) {
+      const empty = Object.keys(span.attrs).length === 0;
+      out.push({
+        text: span.text.slice(start - cursor, stop - cursor),
+        attrs: empty ? undefined : span.attrs,
+      });
+    }
+    cursor = end;
+  }
+  return out;
 }
 
 /** Base's text: a list per node in the server's order (see `BaseText`). */
 const rootDefinition = textState(BaseText);
 
 /**
- * Opt-in collaborative text: a list of letters per node. The server's order
- * places letters (see `BaseText`).
+ * Opt-in collaborative text: a list of letters per node, and a state per
+ * letter and key where the last write wins. The server's order places
+ * letters (see `BaseText`).
  */
 export function defineText(): StateDefinition<number, Json, TextHandle> {
   const definition: InternalStateDefinition<number, Json, TextHandle> = {
@@ -154,7 +264,11 @@ export function defineText(): StateDefinition<number, Json, TextHandle> {
     methodsWithNode: (_methods, node) => new TextHandle(node),
     onCopy: (from, to) => {
       const store = storeOf(from.doc);
-      store.insert(from.doc, to.id, 0, store.textOf(from.id));
+      let cursor = 0;
+      for (const span of store.spansOf(from.id)) {
+        store.insert(from.doc, to.id, cursor, span.text, span.attrs);
+        cursor += span.text.length;
+      }
     },
   };
   return definition;

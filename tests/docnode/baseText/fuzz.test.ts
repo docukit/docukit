@@ -1,3 +1,4 @@
+import type { Json } from "@docukit/docnode";
 import { expect, test } from "vitest";
 
 import { randomizer, type Randomizer } from "../text/utils.js";
@@ -5,14 +6,30 @@ import { Network, P, reload, rootText, stored, type Text } from "./utils.js";
 
 const SEEDS = Number(process.env.BASE_TEXT_FUZZ_SEEDS ?? 100);
 const WORDS = ["a", "bc", "def", "hello ", " ", "😀", "xy", `p${P}q`];
-/** One random edit of the root text: typing, Enter, Backspace, moves. */
+const STATES: (Record<string, Json> | undefined)[] = [
+  undefined,
+  undefined,
+  {},
+  { bold: true },
+  { link: "u" },
+  { italic: 1, bold: null },
+];
+
+/** One random edit of the root text: typing, Enter, Backspace, formats, moves. */
 function edit(text: Text, rng: Randomizer) {
   const length = text.length;
   const at = rng.int(length + 1);
   const roll = rng.next();
-  if (roll < 0.45) text.insert(at, rng.pick(WORDS));
-  else if (roll < 0.65) text.delete(at, 1 + rng.int(5));
-  else if (roll < 0.8) text.insert(at, P);
+  if (roll < 0.4) text.insert(at, rng.pick(WORDS), rng.pick(STATES));
+  else if (roll < 0.55) text.delete(at, 1 + rng.int(5));
+  else if (roll < 0.7)
+    text.format(
+      at,
+      at + 1 + rng.int(6),
+      rng.pick(["bold", "italic", "link"]),
+      rng.next() < 0.75 ? rng.pick([true, "x", 3]) : null,
+    );
+  else if (roll < 0.8) text.insert(at, P, rng.next() < 0.3 ? { h: 1 } : {});
   else if (roll < 0.9) {
     // Backspace at the start of a line: its paragraph letter goes.
     const end = text.get().indexOf(P, at);
@@ -23,8 +40,24 @@ function edit(text: Text, rng: Randomizer) {
     const start = plain.lastIndexOf(P, at - 1) + 1;
     const end = plain.indexOf(P, start);
     if (end === -1) return;
+    const pieces: { text: string; attrs: Record<string, Json> }[] = [];
+    let cursor = 0;
+    for (const span of text.spans()) {
+      const from = Math.max(start, cursor);
+      const to = Math.min(end + 1, cursor + span.text.length);
+      if (to > from)
+        pieces.push({
+          text: span.text.slice(from - cursor, to - cursor),
+          attrs: span.attrs,
+        });
+      cursor += span.text.length;
+    }
     text.delete(start, end + 1 - start);
-    text.insert(rng.int(text.length + 1), plain.slice(start, end + 1));
+    let target = rng.int(text.length + 1);
+    for (const piece of pieces) {
+      text.insert(target, piece.text, piece.attrs);
+      target += piece.text.length;
+    }
   }
 }
 
@@ -61,8 +94,8 @@ test(
     for (let seed = first; seed < first + SEEDS; seed++) {
       const network = history(seed);
       expect(() => network.converged(), `seed ${seed}`).not.toThrow();
-      const text = network.converged();
-      expect(rootText(reload(network.server)).get()).toBe(text);
+      const spans = network.converged();
+      expect(rootText(reload(network.server)).spans()).toStrictEqual(spans);
       expect(stored(reload(network.server))).toBe(stored(network.server));
     }
   },

@@ -261,7 +261,9 @@ function isNodeReference(value: unknown): boolean {
 function isTextRow(value: unknown[]): boolean {
   const head: unknown = value[0];
   return (
-    typeof head === "string" || (Number.isInteger(head) && Number(head) < 0)
+    typeof head === "string" ||
+    (Array.isArray(head) && head.length === 1 && isString(head[0])) ||
+    (Number.isInteger(head) && Number(head) < 0)
   );
 }
 

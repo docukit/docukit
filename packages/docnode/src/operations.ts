@@ -545,13 +545,14 @@ export type MoveNodesRow = readonly [
 ];
 
 /**
- * `[text, right?, parent?]`: inserts letters at the row's counter, before
- * `right`, and after the letter typed before it unless `parent` says
- * otherwise. Inserts one after the other share a row: `[text, ...refs,
- * text, ...refs]`.
+ * `[content, right?, parent?]`: inserts letters (`text`, or `[text,
+ * ...state]` with their first state) at the row's counter, before `right`,
+ * and after the letter typed before it unless `parent` says otherwise.
+ * Inserts one after the other share a row: `[text, ...refs, text, ...refs]`.
  */
 export type InsertTextRow = readonly [
-  text: string,
+  /** The letters, or `[letters, attrs]` with their first state. */
+  content: string | readonly Json[],
   ...rightParent: LetterRef[],
 ];
 

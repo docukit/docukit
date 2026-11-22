@@ -14,17 +14,23 @@ import {
   splitColumns,
 } from "../columns.js";
 import {
+  contentOf,
   decodeRef,
   encodeRange,
   encodeRef,
   isHighSurrogate,
   isLowSurrogate,
+  isRecord,
+  lettersOf,
   listOf,
   nextId,
   pushRange,
+  sameValue,
   SessionRuns,
+  stateOfContent,
   stringOf,
   TextEngine,
+  type TextSpan,
 } from "./common.js";
 import { TreePositions, type Item, type Leaf } from "./positions.js";
 import { Ghosts, type Ghost } from "./ghosts.js";
@@ -36,7 +42,8 @@ import { Ghosts, type Ghost } from "./ghosts.js";
  * the CRDT mode).
  *
  * - Each node has a list of live letters. A letter has a permanent id
- *   `(session, counter)`; consecutive ids of one session are one run.
+ *   `(session, counter)`; consecutive ids of one session with one state are
+ *   one run.
  * - Deleting removes letters for good: no tombstones. What is left of them
  *   is a ghost (see `Ghosts`): their ids and the letter before them.
  * - An insert names the letters on both sides. The left one exists: right
@@ -44,10 +51,15 @@ import { Ghosts, type Ghost } from "./ghosts.js";
  *   where the left one was deleted: right after the anchor of its ghost.
  *   Only after an insert that was lost (it named a node not here) can it be
  *   lost too.
- * - An undo of a delete inserts the letters again, with their ids. Their
- *   ids: a later undo (of the insert that made them) names them, and two
- *   undos of one delete bring them back once.
+ * - A letter's state is its own: it has what it was inserted with.
+ * - `setLetterState`: the last one applied wins.
+ * - An undo of a delete inserts the letters again, with their ids and the
+ *   state they had. Their ids: a later undo (of the insert that made them)
+ *   names them, and two undos of one delete bring them back once.
  */
+
+/** A letter's state: never changed in place, runs share it (see `_intern`). */
+type State = Readonly<Record<string, Json>>;
 
 class Run implements Item<Run> {
   prev: Run | undefined;
@@ -61,6 +73,7 @@ class Run implements Item<Run> {
     readonly s: string,
     public c: number,
     public text: string,
+    public state: State | undefined,
     readonly flow: Flow,
   ) {}
 
@@ -73,15 +86,19 @@ class Run implements Item<Run> {
 class Flow {
   readonly head: Run;
   constructor(readonly node: string) {
-    this.head = new Run(node, -1, "", this);
+    this.head = new Run(node, -1, "", undefined, this);
   }
 }
 
 /** A letter, possibly in the middle of a run; a node's root is its start. */
 type Element = { run: Run; off: number };
 
+/** The values a `setLetterState` replaced, by their JSON: the ranges of each. */
+type OldValues = Map<string, [Json, [string, number, number][]]>;
+
 const TAG_DELETE = 1;
 const TAG_RESTORE = 4;
+const TAG_STATE = 5;
 
 /**
  * A long node id without a session: named by a prefix of its hash (see
@@ -115,6 +132,8 @@ export class BaseText extends TextEngine {
   private _flows = new Map<string, Flow>();
   /** The hash of each node id hashed so far (see `_startRef`). */
   private _hashes = new Map<string, string>();
+  /** Each distinct state, by its JSON (see `_intern`). */
+  private _states = new Map<string, State>();
   /**
    * The operations of the transaction being written, and the first counter
    * it minted: letters of this session from it on came in the same batch.
@@ -248,6 +267,19 @@ export class BaseText extends TextEngine {
       if (flow.head.next && hashable(id) && !nodes.has(id)) visit(id);
   }
 
+  /** One object per distinct state, with sorted keys; none for `{}`. */
+  private _intern(values: State | undefined): State | undefined {
+    if (!values) return undefined;
+    const keys = Object.keys(values).sort();
+    if (keys.length === 0) return undefined;
+    const sorted: Record<string, Json> = {};
+    for (const key of keys) sorted[key] = values[key]!;
+    const json = JSON.stringify(sorted);
+    let state = this._states.get(json);
+    if (!state) this._states.set(json, (state = sorted));
+    return state;
+  }
+
   // ----- the list ----------------------------------------------------------
 
   private _after({ run, off }: Element): Element | undefined {
@@ -280,6 +312,7 @@ export class BaseText extends TextEngine {
       run.s,
       run.c + offset,
       run.text.slice(offset),
+      run.state,
       run.flow,
     );
     tail.anchors = run.anchors;
@@ -315,6 +348,22 @@ export class BaseText extends TextEngine {
     if (!flow) return text;
     for (let run = flow.head.next; run; run = run.next) text += run.text;
     return text;
+  }
+
+  spansOf(node: string): TextSpan[] {
+    const out: TextSpan[] = [];
+    const flow = this._flows.get(node);
+    if (!flow) return out;
+    let state: State | undefined;
+    for (let run = flow.head.next; run; run = run.next) {
+      if (out.length > 0 && run.state === state)
+        out[out.length - 1]!.text += run.text;
+      else {
+        state = run.state;
+        out.push({ text: run.text, attrs: { ...state } });
+      }
+    }
+    return out;
   }
 
   lengthOf(node: string): number {
@@ -392,17 +441,29 @@ export class BaseText extends TextEngine {
     doc["_hasEdits"] = true;
   }
 
-  /** `insertLetters`, at a visible index. */
-  insert(doc: Doc, node: string, index: number, text: string): void {
+  private _commit(doc: Doc, payload: EditOperation): void {
+    const inverse = this.apply(doc, payload);
+    if (inverse) this._record(doc, payload, inverse);
+  }
+
+  /** `insertLetters`, at a visible index. `attrs`: the state the letters have. */
+  insert(
+    doc: Doc,
+    node: string,
+    index: number,
+    text: string,
+    attrs?: Record<string, Json>,
+  ): void {
     if (text.length === 0) return;
     const flow = this._flow(node);
     const left = this._leftOf(flow, this._boundary(flow, index));
     const right = this._after(left);
+    const state = this._ownState(attrs);
     const [s, c] = this._mint(doc, text.length);
-    const payload: EditOperation = [3, s, c, text];
+    const payload: EditOperation = [3, s, c, contentOf(text, state)];
     if (left.run.c === -1) payload.push(this._startRef(doc, node));
     else this._neighbours(doc, payload, s, c, left, right);
-    const inverse = this._insert(doc, s, c, text, left);
+    const inverse = this._insert(doc, s, c, text, state, left);
     this._record(doc, payload, inverse);
   }
 
@@ -433,20 +494,31 @@ export class BaseText extends TextEngine {
     else payload.push(rightRef, encodeRef(s, ls, lc));
   }
 
+  /** `setLetterState` of a visible range. `value: null` removes the key. */
+  format(
+    doc: Doc,
+    node: string,
+    from: number,
+    to: number,
+    key: string,
+    value: Json,
+  ): void {
+    const flow = this._flow(node);
+    const ranges = this._ranges(flow, from, to);
+    if (ranges.length === 0) return;
+    const [s, c] = this._mint(doc, 0);
+    const payload: EditOperation = [3, TAG_STATE, s, c, key];
+    payload.push(encodeRanges(s, ranges));
+    if (value !== null) payload.push(value);
+    this._commit(doc, payload);
+  }
+
   /** Deletes a visible range: its letters leave the list. */
   delete(doc: Doc, node: string, index: number, length: number): void {
     const ranges = this._ranges(this._flow(node), index, index + length);
     if (ranges.length === 0) return;
     const [s, c] = this._mint(doc, 0);
-    const payload: EditOperation = [
-      3,
-      TAG_DELETE,
-      s,
-      c,
-      encodeRanges(s, ranges),
-    ];
-    // Its letters are here: it deletes them.
-    this._record(doc, payload, this.apply(doc, payload)!);
+    this._commit(doc, [3, TAG_DELETE, s, c, encodeRanges(s, ranges)]);
   }
 
   /** What an undo of the history applies: the operation as it is. */
@@ -466,6 +538,8 @@ export class BaseText extends TextEngine {
         return this._applyDelete(doc, s, c, decodeRanges(s, payload[4]!));
       case TAG_RESTORE:
         return this._applyRestore(doc, payload, s, c);
+      case TAG_STATE:
+        return this._applyState(doc, payload, s, c);
       default:
         return undefined;
     }
@@ -482,7 +556,8 @@ export class BaseText extends TextEngine {
     s: string,
   ): EditOperation | undefined {
     let c = Number(payload[2]);
-    let text = stringOf(payload[3]);
+    const content = payload[3];
+    let text = lettersOf(content);
     this._checkSession(doc, s, c + text.length);
     // Applied already (a batch delivered twice, maybe fused with the next
     // ones): the known prefix is skipped, the rest follows its last letter.
@@ -543,7 +618,8 @@ export class BaseText extends TextEngine {
       }
     }
     if (!at) return undefined;
-    return this._insert(doc, s, c, text, at);
+    const state = this._ownState(stateOfContent(content));
+    return this._insert(doc, s, c, text, state, at);
   }
 
   /** The anchor of the ghost of deleted letter `(s, c)`, if it is one. */
@@ -562,28 +638,43 @@ export class BaseText extends TextEngine {
     return { run: prev, off: Math.max(prev.len - 1, 0) };
   }
 
-  /** Inserts letters right after `left`. */
+  /** Inserts letters with `state` right after `left`. */
   private _insert(
     doc: Doc,
     s: string,
     c: number,
     text: string,
+    state: State | undefined,
     left: Element,
   ): EditOperation {
     const flow = left.run.flow;
     const target = left.run;
     if (left.off < target.len - 1) this._split(target, left.off + 1);
-    if (target.c !== -1 && target.s === s && target.c + target.len === c) {
+    if (
+      target.c !== -1 &&
+      target.s === s &&
+      target.c + target.len === c &&
+      target.state === state
+    ) {
       // Typing: the letters go on the run before them.
       target.text += text;
       this._positions.changed(target);
     } else {
-      const run = new Run(s, c, text, flow);
+      const run = new Run(s, c, text, state, flow);
       this._indexRun(run);
       this._linkAfter(target, run);
     }
     this._report(doc, flow.node);
     return [3, TAG_DELETE, s, c, encodeRange(s, s, c, text.length)];
+  }
+
+  /** The state of letters inserted with `own`: without its `null`s. */
+  private _ownState(own: Record<string, Json> | undefined): State | undefined {
+    let state: Record<string, Json> | undefined;
+    if (own)
+      for (const key in own)
+        if (own[key] !== null) (state ??= {})[key] = own[key]!;
+    return this._intern(state);
   }
 
   /** `[3, 1, s, c, ranges]`: the letters leave their list. */
@@ -615,9 +706,17 @@ export class BaseText extends TextEngine {
     const right = removed.at(-1)!.next;
     let text = "";
     const ids: [string, number, number][] = [];
+    const states: Json[] = [];
+    let styled = false;
+    let last: State | undefined;
     for (const run of removed) {
       text += run.text;
       pushRange(ids, run.s, run.c, run.len);
+      if (states.length > 0 && run.state === last)
+        states[states.length - 2] = Number(states.at(-2)) + run.len;
+      else states.push(run.len, run.state ?? 0);
+      last = run.state;
+      if (run.state) styled = true;
       // Its ghost: after the letter before it, which stays.
       const before = run.prev!;
       if (before.c === -1)
@@ -650,8 +749,7 @@ export class BaseText extends TextEngine {
       c,
       text,
       encodeRanges(s, ids),
-      // The place of the letters' state, which they have none of.
-      0,
+      styled ? states : 0,
     ];
     // The letters around them, unless they are the ids right before the
     // first one and after the last one (`-1`), as when part of what was
@@ -672,19 +770,22 @@ export class BaseText extends TextEngine {
           ? -1
           : refTo(s, { run: left, off: left.len - 1 }),
     );
-    // What says nothing at the end is left out: `-1`s, then the `0`.
+    // What says nothing at the end is left out: `-1`s, then no state.
     if (inverse[8] === -1) {
       inverse.pop();
-      if (inverse[7] === -1) inverse.splice(6);
+      if (inverse[7] === -1) {
+        inverse.pop();
+        if (!styled) inverse.pop();
+      }
     }
     return inverse;
   }
 
   /**
-   * `[3, 4, s, c, text, ids, 0?, right?, left?]`: letters a delete took,
-   * back with their `ids` (ranges, in order), before `right` or else after
-   * `left`: what was typed where they were since goes before them. The `0`
-   * is the place of the letters' state, which they have none of.
+   * `[3, 4, s, c, text, ids, states?, right?, left?]`: letters a delete
+   * took, back with their `ids` (ranges, in order) and their state
+   * (`states`: `length, state` each; `0` for none), before `right` or else
+   * after `left`: what was typed where they were since goes before them.
    * `right` and `left` left out (or `-1`) are the ids right after the last
    * letter and before the first; a `0` right is none. Those still here stay
    * where they are, and the others follow them.
@@ -720,17 +821,27 @@ export class BaseText extends TextEngine {
     // Both deleted: where the left one was.
     at ??= this._anchorOf(as, ac);
     if (!at) return undefined;
+    const states = listOf(payload[6]) ?? [text.length, 0];
     const back: [string, number, number][] = [];
     let from = 0;
+    let piece = 0;
+    let pieceLeft = 0;
+    let state: State | undefined;
     for (const [rs, rc, length] of ranges) {
       this._checkSession(doc, rs, rc + length);
-      for (let k = 0; k < length; k++, from++) {
+      for (let k = 0; k < length; k++, from++, pieceLeft--) {
+        if (pieceLeft === 0) {
+          pieceLeft = Number(states[piece]);
+          const written = states[piece + 1];
+          state = isState(written) ? this._intern(written) : undefined;
+          piece += 2;
+        }
         const found = this._find(rs, rc + k);
         if (found) {
           at = found;
           continue;
         }
-        at = this._place(at, rs, rc + k, text[from]!);
+        at = this._place(at, rs, rc + k, text[from]!, state);
         pushRange(back, rs, rc + k, 1);
       }
     }
@@ -746,18 +857,148 @@ export class BaseText extends TextEngine {
    * Puts letter `(s, c)` right after `at`, on the run of `at` when it goes
    * on it. Returns where it is.
    */
-  private _place(at: Element, s: string, c: number, letter: string): Element {
+  private _place(
+    at: Element,
+    s: string,
+    c: number,
+    letter: string,
+    state: State | undefined,
+  ): Element {
     const target = at.run;
     if (at.off < target.len - 1) this._split(target, at.off + 1);
-    if (target.c !== -1 && joins(target, { s, c })) {
+    if (target.c !== -1 && joins(target, { s, c, state })) {
       target.text += letter;
       this._positions.changed(target);
       return { run: target, off: target.len - 1 };
     }
-    const run = new Run(s, c, letter, target.flow);
+    const run = new Run(s, c, letter, state, target.flow);
     this._indexRun(run);
     this._linkAfter(target, run);
     return { run, off: 0 };
+  }
+
+  /**
+   * `[3, 5, s, c, key, ranges, value?, ...]`: a value for each list of
+   * ranges, the last one `null` if left out. The last one applied wins.
+   *
+   * A range is all that is between its first and its last letter still
+   * here: its letters were together when it was written, so what others
+   * typed inside it since is in it too, like the text a peer types in a
+   * word that gets bold or a link.
+   */
+  private _applyState(
+    doc: Doc,
+    payload: EditOperation,
+    s: string,
+    c: number,
+  ): EditOperation | undefined {
+    const key = stringOf(payload[4]);
+    const old: OldValues = new Map();
+    const touched: Run[] = [];
+    for (let at = 5; at < payload.length; at += 2) {
+      const value = at + 1 < payload.length ? payload[at + 1]! : null;
+      for (const range of decodeRanges(s, payload[at]!)) {
+        const [first, last] = this._ends([range]);
+        if (first && last)
+          this._setBetween(first, last, key, value, old, touched);
+      }
+    }
+    return this._stateDone(doc, s, c, key, old, touched);
+  }
+
+  /** The first and the last letter of `ranges` still here. */
+  private _ends(
+    ranges: [string, number, number][],
+  ): [Element | undefined, Element | undefined] {
+    let first: Element | undefined;
+    let last: Element | undefined;
+    for (const [rs, rc, len] of ranges) {
+      for (let k = 0; k < len && !first; k++) first = this._find(rs, rc + k);
+      if (first) break;
+    }
+    for (let at = ranges.length - 1; at >= 0 && !last; at--) {
+      const [rs, rc, len] = ranges[at]!;
+      for (let k = len - 1; k >= 0 && !last; k--) last = this._find(rs, rc + k);
+    }
+    return [first, last];
+  }
+
+  /** `key` is `value` from `first` to `last`, and on what is between them. */
+  private _setBetween(
+    first: Element,
+    last: Element,
+    key: string,
+    value: Json,
+    old: OldValues,
+    touched: Run[],
+  ): void {
+    for (
+      let run: Run | undefined = first.run, from = first.off;
+      run;
+      from = 0
+    ) {
+      const end: boolean = run === last.run;
+      const to = end ? last.off + 1 : run.len;
+      const after: Run | undefined = run.next;
+      this._setState(run, from, to, key, value, old, touched);
+      run = end ? undefined : after;
+    }
+  }
+
+  /**
+   * `key` is `value` on letters `[from, to)` of `run`, cut from it if
+   * needed; what they had goes to `old`.
+   */
+  private _setState(
+    run: Run,
+    from: number,
+    to: number,
+    key: string,
+    value: Json,
+    old: OldValues,
+    touched: Run[],
+  ): void {
+    const was = run.state?.[key] ?? null;
+    if (sameValue(was, value)) return;
+    const piece = from > 0 ? this._split(run, from) : run;
+    if (to - from < piece.len) this._split(piece, to - from);
+    const index = JSON.stringify(was);
+    let entry = old.get(index);
+    if (!entry) old.set(index, (entry = [was, []]));
+    pushRange(entry[1], piece.s, piece.c, piece.len);
+    const next: Record<string, Json> = {};
+    const state = piece.state;
+    if (state)
+      for (const other in state) if (other !== key) next[other] = state[other]!;
+    if (value !== null) next[key] = value;
+    piece.state = this._intern(next);
+    touched.push(piece);
+  }
+
+  /** Reports the runs `touched` and joins them: the inverse, from `old`. */
+  private _stateDone(
+    doc: Doc,
+    s: string,
+    c: number,
+    key: string,
+    old: OldValues,
+    touched: Run[],
+  ): EditOperation | undefined {
+    if (touched.length === 0) return undefined;
+    for (const run of touched) {
+      this._report(doc, run.flow.node);
+      // Unless it was joined into the run before it already.
+      if (run.prev!.next === run) this._join(run);
+    }
+    const inverse: EditOperation = [3, TAG_STATE, s, c, key];
+    // Removals last: a trailing `null` is left out.
+    const entries = [...old.values()].sort(
+      ([a], [b]) => Number(a === null) - Number(b === null),
+    );
+    for (const [value, ranges] of entries)
+      inverse.push(encodeRanges(s, ranges), value);
+    if (inverse.at(-1) === null) inverse.pop();
+    return inverse;
   }
 
   // ----- change reporting --------------------------------------------------
@@ -770,7 +1011,7 @@ export class BaseText extends TextEngine {
 
   // ----- serialization -----------------------------------------------------
 
-  /** `[20, sessions, text, columns]` (see `toStored`). */
+  /** `[20, sessions, text, columns, states?]` (see `toStored`). */
   toJSON(): Json {
     const sessions = new SessionTable();
     const columns: { encode(): string }[] = [];
@@ -780,14 +1021,16 @@ export class BaseText extends TextEngine {
   }
 
   /**
-   * `[text]`, or `0` when there is no text, and its columns in `out`:
+   * `[text, states?]`, or `0` when there is no text, and its columns in
+   * `out`:
    *
    * - `text`: the letters of every list, in order.
    * - Per list: whether its node is not the one after the previous list's
    *   (then its id), and its number of runs.
    * - Per run (runs that only differ by being apart are one): its shape
    *   (length and flags), and only the fields the run before does not imply:
-   *   its session, its counter.
+   *   its session, its counter. Per list with state, the runs of each state,
+   *   as `count, state` (an index in `states`, plus one).
    * - The ghosts (see `Ghosts`), by their anchor, in the order of the lists
    *   (a list's start, then each letter, is one place): see `GhostWriter`.
    */
@@ -797,12 +1040,25 @@ export class BaseText extends TextEngine {
       (flow) => flow.head.next !== undefined || ghosts.hasStart(flow.node),
     );
     if (flows.length === 0) return 0;
+    const states: Json[] = [];
+    const stateIndexes = new Map<State, number>();
+    /** A state's index in `states`, plus one; `0` for none. */
+    const stateIndex = (state: State | undefined): number => {
+      if (!state) return 0;
+      let index = stateIndexes.get(state);
+      if (index === undefined) {
+        states.push(state);
+        stateIndexes.set(state, (index = states.length));
+      }
+      return index;
+    };
     const ghostWriter = new GhostWriter(sessions, ghosts);
     const flowFlags = new ColumnWriter(flows.length, false, true);
     const flowRuns = new ColumnWriter(flows.length);
     const shapeColumn = new ColumnWriter(1024);
     const nodeSessions = new ColumnWriter(flows.length);
     const nodeClocks = new ColumnWriter(flows.length);
+    const stateRuns = new ColumnWriter();
     const fields = new FieldWriter();
     const shapeBits: number[] = [];
     const bitsIndex = new Int32Array(BITS.ALL).fill(-1);
@@ -821,8 +1077,14 @@ export class BaseText extends TextEngine {
       if (!ghosts.empty) {
         ghostWriter.place(flow.node, -1, -1, 1);
       }
+      let hasState = false;
+      for (let run = flow.head.next; run; run = run.next)
+        if (run.state) hasState = true;
+      if (hasState) flags |= FLOW.STATES;
       flowFlags.push(flags);
       let runs = 0;
+      let lastState = -1;
+      let stateCount = 0;
       let prevS = -1;
       let prevC = 0;
       let prevEnd = 0;
@@ -878,7 +1140,23 @@ export class BaseText extends TextEngine {
           shapeBits.push(bits);
         }
         shapeColumn.push(shape * (LONG + 1) + Math.min(length, LONG));
+        if (hasState) {
+          const index = stateIndex(run.state);
+          if (index === lastState) stateCount++;
+          else {
+            if (stateCount > 0) {
+              stateRuns.push(stateCount);
+              stateRuns.push(lastState);
+            }
+            lastState = index;
+            stateCount = 1;
+          }
+        }
         run = last.next;
+      }
+      if (stateCount > 0) {
+        stateRuns.push(stateCount);
+        stateRuns.push(lastState);
       }
       flowRuns.push(runs);
     }
@@ -892,11 +1170,12 @@ export class BaseText extends TextEngine {
       fields,
       nodeSessions,
       nodeClocks,
-      // The place of the letters' state, which they have none of.
-      new ColumnWriter(),
+      stateRuns,
       ...ghostWriter.columns,
     );
-    return [texts.join("")];
+    const stored: Json[] = [texts.join("")];
+    if (states.length > 0) stored.push(states);
+    return stored;
   }
 
   static fromJSON(json: unknown): BaseText {
@@ -916,13 +1195,12 @@ export class BaseText extends TextEngine {
     columns: string[],
     sessions: string[],
   ): BaseText {
-    // Letters with state: what a later version stores.
-    if (stored.length > 1)
-      throw new Error(
-        "The stored text has letters with state, which this version does not read.",
-      );
     const store = new BaseText();
-    const letters = stringOf(stored[0]);
+    const [text, states] = stored;
+    const letters = stringOf(text);
+    const table = (listOf(states) ?? [])
+      .filter(isState)
+      .map((state) => store._intern(state));
     const column = (field: number) => new ColumnReader(columns[field] ?? "");
     const flowFlags = column(COLUMN.FLOW_FLAGS);
     const flowRuns = column(COLUMN.FLOW_RUNS);
@@ -931,6 +1209,7 @@ export class BaseText extends TextEngine {
     const fields = new FieldReader(columns[COLUMN.FIELDS]!);
     const nodeSessions = column(COLUMN.NODE_SESSION);
     const nodeClocks = column(COLUMN.NODE_CLOCK);
+    const stateRuns = column(COLUMN.STATE_RUNS);
     const ghosts = new GhostReader(
       columns.slice(COLUMN.GHOST_PLACES),
       sessions,
@@ -952,6 +1231,8 @@ export class BaseText extends TextEngine {
       const flow = store._flow(key);
       ghosts.read(key, -1, -1, 1);
       let prev = flow.head;
+      let stateLeft = 0;
+      let state: State | undefined;
       let prevS = -1;
       let prevC = 0;
       let prevEnd = 0;
@@ -984,12 +1265,20 @@ export class BaseText extends TextEngine {
         prevS = session;
         prevC = c;
         prevEnd = c + length;
+        if (flags & FLOW.STATES) {
+          if (stateLeft === 0) {
+            stateLeft = stateRuns.next();
+            state = table[stateRuns.next() - 1];
+          }
+          stateLeft--;
+        }
         const s = sessions[session]!;
         const anchors = ghosts.read(s, session, c, length);
         const run = new Run(
           s,
           c,
           letters.slice(position, position + length),
+          state,
           flow,
         );
         run.anchors = anchors;
@@ -1030,8 +1319,17 @@ const isStart = (ref: Json | undefined): ref is string =>
   (ref.charCodeAt(0) === 94 || ref.charCodeAt(0) === 35);
 
 /** Whether `run`, right after `left`, only differs from it by being apart. */
-const joins = (left: Run, run: { s: string; c: number }) =>
-  left.c !== -1 && left.s === run.s && left.c + left.len === run.c;
+const joins = (
+  left: Run,
+  run: { s: string; c: number; state: State | undefined },
+) =>
+  left.c !== -1 &&
+  left.s === run.s &&
+  left.c + left.len === run.c &&
+  left.state === run.state;
+
+/** A letter's state as written: an object of JSON values. */
+const isState = (value: Json | undefined): value is State => isRecord(value);
 
 function encodeRanges(own: string, ranges: [string, number, number][]): Json {
   if (ranges.length === 1) {
@@ -1058,6 +1356,8 @@ const isList = (value: unknown): value is Json[] => Array.isArray(value);
 const FLOW = {
   /** Its node id is not the one right after the previous list's. */
   KEY: 1,
+  /** Its runs have state (see `COLUMN.STATE_RUNS`). */
+  STATES: 2,
 };
 /** Flags of a stored run. */
 const BITS = {
@@ -1084,9 +1384,8 @@ const COLUMN = {
   FIELDS: 4,
   NODE_SESSION: 5,
   NODE_CLOCK: 6,
-  /** The place of the letters' state, which they have none of: empty. */
+  /** Per list with state: `count, state` for each stretch of runs. */
   STATE_RUNS: 7,
-
   /** The ghosts' columns (see `GhostWriter`). */
   GHOST_PLACES: 8,
 };

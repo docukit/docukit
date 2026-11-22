@@ -5,9 +5,11 @@ import {
   defineText,
   Doc,
   type DocNode,
+  type Json,
   type JsonDoc,
   type NodeIdGenerator,
   type Operations,
+  type TextSpan,
 } from "@docukit/docnode";
 
 /**
@@ -92,6 +94,12 @@ export const stored = (doc: Doc) => JSON.stringify(doc.toJSON());
 
 /** The runs of each list of `doc`, in order (see `BaseText._debugRuns`). */
 export const runsOf = (doc: Doc) => _INTERNAL_textStore(doc)["_debugRuns"]();
+
+/** Spans of `text`, as `"letters:attrs"` strings, easier to read. */
+export const styled = (spans: TextSpan[]) =>
+  spans.map(({ text, attrs }) =>
+    Object.keys(attrs).length === 0 ? text : `${text}:${JSON.stringify(attrs)}`,
+  );
 
 type Replica = {
   readonly session: string;
@@ -236,15 +244,16 @@ export class Network {
   }
 
   /** The text of every replica, which must be the server's. */
-  converged(): string {
-    const text = rootText(this.server).get();
+  converged(): TextSpan[] {
+    const spans = rootText(this.server).spans();
     for (const replica of this._replicas.values())
       if (
-        rootText(replica.doc).get() !== text ||
+        JSON.stringify(rootText(replica.doc).spans()) !==
+          JSON.stringify(spans) ||
         stored(replica.doc) !== stored(this.server)
       )
         throw new Error(`${replica.session} diverged from the server`);
-    return text;
+    return spans;
   }
 }
 
@@ -253,7 +262,7 @@ export function race(
   text: string,
   edits: Record<string, (text: Text) => void>,
   order: string[],
-): string {
+): TextSpan[] {
   const network = new Network(text, Object.keys(edits));
   for (const [session, edit] of Object.entries(edits))
     network.edit(session, edit);
@@ -261,3 +270,6 @@ export function race(
   for (const session of order) network.sync(session);
   return network.converged();
 }
+
+/** `attrs` as the attrs of a span, `{}` when none. */
+export const attrs = (values: Record<string, Json> = {}) => values;

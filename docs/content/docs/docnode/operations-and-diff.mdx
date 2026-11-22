@@ -90,7 +90,7 @@ A batch is `[head, ...rows]`. The rows are applied in order:
 ```ts
 // Inserts letters next to the ones it names (`defineText`).
 [text, ...letters];
-// Any other text edit (deleting letters, bringing them back...) starts with
+// Any other text edit (deleting letters, setting their state...) starts with
 // a negative tag.
 [-tag, ...];
 // Inserts nodes under `parent`, between two siblings. A count is a run of

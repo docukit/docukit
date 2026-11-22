@@ -15,6 +15,8 @@ import {
  * tombstones), and how `defineText` reaches the one of a document.
  */
 
+export type TextSpan = { text: string; attrs: Record<string, Json> };
+
 export const TEXT_KEY = "~t";
 
 export function isHighSurrogate(code: number): boolean {
@@ -25,6 +27,12 @@ export function isLowSurrogate(code: number): boolean {
   return code >= 0xdc00 && code <= 0xdfff;
 }
 
+export const sameValue = (a: Json, b: Json) =>
+  a === b ||
+  (typeof a === "object" &&
+    typeof b === "object" &&
+    JSON.stringify(a) === JSON.stringify(b));
+
 /** A JSON list as a readonly list of JSON, else undefined. */
 export const listOf = (value: Json | undefined): readonly Json[] | undefined =>
   Array.isArray(value) ? value : undefined;
@@ -32,6 +40,64 @@ export const listOf = (value: Json | undefined): readonly Json[] | undefined =>
 /** A string of an operation, or "" where it holds something else. */
 export const stringOf = (value: Json | undefined): string =>
   typeof value === "string" ? value : "";
+
+/** The letters of an insert's content (`text` or `[text, ...state]`), or "". */
+export const lettersOf = (content: Json | undefined): string =>
+  stringOf(listOf(content)?.[0] ?? content);
+
+export const isRecord = (
+  value: Json | undefined,
+): value is { readonly [key: string]: Json | undefined } =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * The first state an insert's content gives its letters: the content after
+ * the text (see `contentOf`). A string names keys of one character set to
+ * 1.
+ */
+export function stateOfContent(
+  content: Json | undefined,
+): Record<string, Json> | undefined {
+  const parts = listOf(content);
+  if (!parts) return undefined;
+  const state: Record<string, Json> = {};
+  let any = false;
+  for (const part of parts.slice(1)) {
+    if (typeof part === "string")
+      for (const key of part) {
+        state[key] = 1;
+        any = true;
+      }
+    else if (isRecord(part))
+      for (const key in part) {
+        state[key] = part[key]!;
+        any = true;
+      }
+  }
+  return any ? state : undefined;
+}
+
+/**
+ * An insert's content: its text, or `[text, flags?, attrs?]` with the first
+ * state of its letters, where `flags` are the keys of one character set to
+ * 1 (a format, like bold) and `attrs` the rest.
+ */
+export function contentOf(
+  text: string,
+  attrs: Readonly<Record<string, Json>> | undefined,
+): Json {
+  if (!attrs) return text;
+  let flags = "";
+  let rest: Record<string, Json> | undefined;
+  for (const key in attrs) {
+    const value = attrs[key]!;
+    if (key.length === 1 && value === 1) flags += key;
+    else (rest ??= {})[key] = value;
+  }
+  // `attrs` has a key at least: the engines send none without one.
+  if (!rest) return [text, flags];
+  return flags === "" ? [text, rest] : [text, flags, rest];
+}
 
 /**
  * The runs of one session sorted by counter. They live in chunks, so a split in
@@ -206,6 +272,7 @@ export abstract class TextEngine {
   /** The document whose text it holds. */
   abstract bind(doc: Doc): void;
   abstract textOf(node: string): string;
+  abstract spansOf(node: string): TextSpan[];
   abstract lengthOf(node: string): number;
   /** The id of the visible letter at `index` of a node's text. */
   abstract letterAt(node: string, index: number): string | undefined;
@@ -214,9 +281,22 @@ export abstract class TextEngine {
    * deleted or not. Undefined when the text has no such letter.
    */
   abstract indexOfLetter(node: string, letter: string): number | undefined;
-  abstract insert(doc: Doc, node: string, index: number, text: string): void;
+  abstract insert(
+    doc: Doc,
+    node: string,
+    index: number,
+    text: string,
+    attrs?: Record<string, Json>,
+  ): void;
   abstract delete(doc: Doc, node: string, index: number, length: number): void;
-
+  abstract format(
+    doc: Doc,
+    node: string,
+    from: number,
+    to: number,
+    key: string,
+    value: Json,
+  ): void;
   /** Applies an edit operation: its inverse, or undefined if nothing changed. */
   abstract apply(doc: Doc, payload: EditOperation): EditOperation | undefined;
   /** What an undo or redo of the history applies. */

@@ -95,20 +95,26 @@ describe("where a remote insert goes", () => {
   const typeAfterB = { b: (text: Text) => text.insert(2, "x") };
 
   test("right after its left letter", () => {
-    const text = race("abc", typeAfterB, ["b"]);
-    expect(text).toBe("abxc");
+    const spans = race("abc", typeAfterB, ["b"]);
+    expect(spans).toStrictEqual([{ text: "abxc", attrs: {} }]);
   });
 
   test("right before its right letter when the left one is gone", () => {
     const edits = { ...typeAfterB, a: (text: Text) => text.delete(1, 1) };
-    expect(race("abc", edits, ["a", "b"])).toBe("axc");
+    expect(race("abc", edits, ["a", "b"])).toStrictEqual([
+      { text: "axc", attrs: {} },
+    ]);
   });
 
   test("where they were when both are gone: after the letter before them", () => {
     const edits = { ...typeAfterB, a: (text: Text) => text.delete(1, 2) };
-    expect(race("abcd", edits, ["a", "b"])).toBe("axd");
+    expect(race("abcd", edits, ["a", "b"])).toStrictEqual([
+      { text: "axd", attrs: {} },
+    ]);
     // In the other order, the delete only takes the letters it saw.
-    expect(race("abcd", edits, ["b", "a"])).toBe("axd");
+    expect(race("abcd", edits, ["b", "a"])).toStrictEqual([
+      { text: "axd", attrs: {} },
+    ]);
   });
 
   test("letters of a batch go after the first one, where the others were", () => {
@@ -119,7 +125,7 @@ describe("where a remote insert goes", () => {
       text.insert(3, "y");
     });
     network.exchange();
-    expect(network.converged()).toBe("axyd");
+    expect(network.converged()).toStrictEqual([{ text: "axyd", attrs: {} }]);
   });
 
   test("where the letters were, also when the one before them is deleted since", () => {
@@ -133,7 +139,7 @@ describe("where a remote insert goes", () => {
     network.send("b");
     network.sync("a");
     network.sync("b");
-    expect(network.converged()).toBe("axe");
+    expect(network.converged()).toStrictEqual([{ text: "axe", attrs: {} }]);
   });
 
   test("where the letters were, after a reload", () => {
@@ -144,7 +150,7 @@ describe("where a remote insert goes", () => {
     network.reload("c");
     network.edit("b", (text) => text.insert(2, "x"));
     network.exchange();
-    expect(network.converged()).toBe("axd");
+    expect(network.converged()).toStrictEqual([{ text: "axd", attrs: {} }]);
   });
 
   test("at the start of a text that was emptied meanwhile", () => {
@@ -152,7 +158,9 @@ describe("where a remote insert goes", () => {
       a: (text: Text) => text.delete(0, 2),
       b: (text: Text) => text.insert(0, "x"),
     };
-    expect(race("ab", edits, ["a", "b"])).toBe("x");
+    expect(race("ab", edits, ["a", "b"])).toStrictEqual([
+      { text: "x", attrs: {} },
+    ]);
   });
 });
 
@@ -301,7 +309,12 @@ describe("letters of the root's text", () => {
     expect(text.get()).toBe("a😀xb");
     text.delete(3, 1);
     doc.forceCommit();
-    expect(text.get()).toBe("a😀b");
+    text.format(0, 2, "bold", true);
+    doc.forceCommit();
+    expect(text.spans()).toStrictEqual([
+      { text: "a😀", attrs: { bold: true } },
+      { text: "b", attrs: {} },
+    ]);
   });
 
   test("an empty text has no length, and an unknown edit changes nothing", () => {

@@ -1,7 +1,16 @@
 import { Doc } from "@docukit/docnode";
 import { describe, expect, test } from "vitest";
 
-import { config, flat, Paragraph, receive, ROOT_ID, runsOf } from "./utils.js";
+import {
+  config,
+  flat,
+  Paragraph,
+  receive,
+  reload,
+  ROOT_ID,
+  rootText,
+  sent,
+} from "./utils.js";
 
 /** A document with a paragraph per text, committed and ready to edit. */
 function paragraphs(texts: string[]) {
@@ -20,7 +29,7 @@ function paragraphs(texts: string[]) {
 const assertWellFormed = (text: string) =>
   expect(text.isWellFormed(), JSON.stringify(text)).toBe(true);
 
-describe("set", () => {
+describe("set and applySpans", () => {
   test("set only touches what changed", () => {
     const { nodes } = paragraphs(["Hello world"]);
     const text = nodes[0]!.state.t;
@@ -46,30 +55,65 @@ describe("set", () => {
     assertWellFormed(text.get());
   });
 
-  test("set keeps a surrogate pair whole even if the target splits it", () => {
+  test("applySpans keeps a surrogate pair whole even if the target splits it", () => {
     const { nodes } = paragraphs(["\uDE00"]);
     const text = nodes[0]!.state.t;
-    text.set("\uD83D");
+    text.applySpans([{ text: "\uD83D", attrs: {} }]);
     expect(text.get()).toBe("😀");
     assertWellFormed(text.get());
+  });
+
+  test("applySpans formats with as few ranges as it can", () => {
+    const { nodes } = paragraphs(["abcdefgh"]);
+    const text = nodes[0]!.state.t;
+    const target = [
+      { text: "ab", attrs: { bold: true } },
+      { text: "cd", attrs: { bold: true, italic: true } },
+      { text: "ef", attrs: { link: "https://a" } },
+      { text: "gh", attrs: { link: "https://b" } },
+    ];
+    text.applySpans(target);
+    expect(text.spans()).toStrictEqual(target);
+    const lessItalic = [
+      { text: "abcd", attrs: { bold: true } },
+      ...target.slice(2),
+    ];
+    text.applySpans(lessItalic);
+    expect(text.spans()).toStrictEqual(lessItalic);
+    text.applySpans([{ text: "abcdefgh", attrs: {} }]);
+    expect(text.spans()).toStrictEqual([{ text: "abcdefgh", attrs: {} }]);
+  });
+
+  test("applySpans inserts letters with the state of their span", () => {
+    const { nodes } = paragraphs(["ad"]);
+    const target = [
+      { text: "a", attrs: {} },
+      { text: "bc", attrs: { bold: true } },
+      { text: "d", attrs: {} },
+    ];
+    nodes[0]!.state.t.applySpans(target);
+    expect(nodes[0]!.state.t.spans()).toStrictEqual(target);
   });
 });
 
 describe("copy", () => {
-  test("a copied paragraph has its own copy of the text", () => {
+  test("a copied paragraph has its own copy of the formatted text", () => {
     const { nodes } = paragraphs(["Hello world"]);
     const original = nodes[0]!;
+    original.state.t.format(0, 5, "bold", true);
     original.copy(original, "after");
     const copy = original.next;
     if (!copy?.is(Paragraph)) throw new Error("no copy");
-    expect(copy.state.t.get()).toBe("Hello world");
+    expect(copy.state.t.spans()).toStrictEqual(original.state.t.spans());
     copy.state.t.insert(0, "Copy: ");
     expect(original.state.t.get()).toBe("Hello world");
     expect(copy.state.t.get()).toBe("Copy: Hello world");
   });
 });
 
-describe("set with repeated text", () => {
+describe("applySpans with repeated text", () => {
+  const plain = (text: string) => [{ text, attrs: {} }];
+
   test("the caret picks which copy is the new one", () => {
     for (const [caret, original] of [
       [8, 8],
@@ -78,7 +122,7 @@ describe("set with repeated text", () => {
       const { nodes } = paragraphs(["cat dog"]);
       const t = nodes[0]!.state.t;
       const first = t.letterAt(0)!;
-      t.set("cat dog cat dog", caret);
+      t.applySpans(plain("cat dog cat dog"), caret);
       expect(t.get()).toBe("cat dog cat dog");
       expect(t.indexOfLetter(first)).toBe(original);
     }
@@ -87,29 +131,30 @@ describe("set with repeated text", () => {
   test("a caret outside the possible places is clamped", () => {
     const { nodes } = paragraphs(["aaaa"]);
     const t = nodes[0]!.state.t;
-    t.set("aaaaa", 99);
-    t.set("aaa", -5);
+    t.applySpans(plain("aaaaa"), 99);
+    t.applySpans(plain("aaa"), -5);
     expect(t.get()).toBe("aaa");
   });
 
   test("a caret that would split a surrogate pair is ignored", () => {
     const { nodes } = paragraphs(["😀😀"]);
     const t = nodes[0]!.state.t;
-    t.set("😀😀😀", 3);
-    t.set("😀😀", 1);
+    t.applySpans(plain("😀😀😀"), 3);
+    t.applySpans(plain("😀😀"), 1);
     expect(t.get()).toBe("😀😀");
   });
 });
 
 test("a text of thousands of runs finds every letter", () => {
   const letters = "abcdefghij".repeat(400);
-  const { doc, nodes } = paragraphs(["xy"]);
+  const { nodes } = paragraphs([letters]);
   const t = nodes[0]!.state.t;
-  // Each letter right after "x", before the one typed before it: a run each.
-  for (const letter of letters) t.insert(1, letter);
-  expect(t.get()).toBe(`x${[...letters].reverse().join("")}y`);
-  expect(runsOf(doc)[0]).toHaveLength(letters.length + 2);
-  for (const index of [0, 1, 777, 2048, letters.length + 1])
+  // Every other letter bold: a run per letter.
+  for (let index = 0; index < letters.length; index += 2)
+    t.format(index, index + 1, "bold", true);
+  expect(t.get()).toBe(letters);
+  expect(t.spans()).toHaveLength(letters.length);
+  for (const index of [0, 1, 777, 2048, letters.length - 1])
     expect(t.indexOfLetter(t.letterAt(index)!)).toBe(index);
 });
 
@@ -157,9 +202,27 @@ describe("edges", () => {
 });
 
 describe("hand-written text rows", () => {
+  test("a first state as flags, and parts that are neither, are read", () => {
+    const { doc, text } = flat("");
+    receive(doc, ["x.-", [["ab", "b", 5, { i: 2 }], "^"]]);
+    expect(text.spans()).toStrictEqual([{ text: "ab", attrs: { b: 1, i: 2 } }]);
+  });
+
+  test("a first state with nothing in it is none", () => {
+    const { doc, text } = flat("");
+    receive(doc, ["x.-", [["ab", 5], "^"]]);
+    expect(text.spans()).toStrictEqual([{ text: "ab", attrs: {} }]);
+  });
+
+  test("a key that reads as a number travels as one", () => {
+    const { doc, text } = flat("ab", "x");
+    const copy = reload(doc);
+    receive(copy, ...sent(doc, () => text.format(0, 1, "0", true)));
+    expect(rootText(copy).spans()).toStrictEqual(text.spans());
+  });
+
   test("an insert without letters changes nothing", () => {
     const { doc, text } = flat("ab");
-    // @ts-expect-error - an insert whose letters are not a string
     receive(doc, ["x.0", [[]]]);
     expect(text.get()).toBe("ab");
   });

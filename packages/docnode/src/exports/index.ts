@@ -32,3 +32,4 @@ export {
   TextHandle,
   _INTERNAL_textStore,
 } from "../text/defineText.js";
+export type { TextSpan } from "../text/common.js";

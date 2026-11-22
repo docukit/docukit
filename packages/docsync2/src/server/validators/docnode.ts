@@ -33,6 +33,7 @@ const headSchema = v.union([v.string(), v.array(v.string())]);
 const nodeRefSchema = v.union([v.string(), v.pipe(v.number(), v.integer())]);
 const letterRefSchema = v.union([v.string(), v.number()]);
 const nodesSchema = v.array(v.tuple([nodeRefSchema, v.string()]));
+const textSchema = v.union([v.string(), v.tuple([v.string()])]);
 const editTagSchema = v.pipe(v.number(), v.maxValue(-1));
 
 /** Each row of a batch (see `Operations` in `@docukit/docnode`). */
@@ -41,7 +42,7 @@ const rowSchema = v.union([
   v.tupleWithRest([v.literal(0), nodeRefSchema, v.string()], nodeRefSchema),
   v.tupleWithRest([v.literal(1)], nodeRefSchema),
   v.tupleWithRest([v.literal(2), nodeRefSchema], nodeRefSchema),
-  v.tupleWithRest([v.string()], letterRefSchema),
+  v.tupleWithRest([textSchema], letterRefSchema),
   v.tupleWithRest([editTagSchema], jsonSchema),
   v.string(),
 ]);

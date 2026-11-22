@@ -20,6 +20,7 @@ import {
   sent,
   sessionIds,
   stored,
+  styled,
 } from "./utils.js";
 
 describe("a delete removes letters for good", () => {
@@ -60,43 +61,51 @@ describe("a delete removes letters for good", () => {
     network.edit("a", (text) => text.delete(1, 2));
     network.edit("b", (text) => text.delete(0, 3));
     network.exchange();
-    expect(network.converged()).toBe("d");
+    expect(network.converged()).toStrictEqual([{ text: "d", attrs: {} }]);
   });
 });
 
 describe("undo", () => {
-  test("typing, deleting and their undos and redos", () => {
+  test("typing, deleting, formatting and their undos and redos", () => {
     const doc = new Doc(defaultConfig());
     const node = doc.createNode(Paragraph);
-    checkUndoManager(4, doc, () => {
+    checkUndoManager(5, doc, () => {
       doc.root.append(node);
       node.state.t.insert(0, "Hello brave world");
       doc.forceCommit();
       node.state.t.delete(5, 6);
       doc.forceCommit();
+      node.state.t.format(0, 5, "bold", true);
+      doc.forceCommit();
       node.state.t.delete(0, 2);
       doc.forceCommit();
-      node.state.t.insert(3, "y");
+      node.state.t.insert(3, "y", { italic: true, bold: null });
       doc.forceCommit();
     });
   });
 
-  test("an undo of a delete brings the same letters back", () => {
+  test("an undo of a delete brings the same letters back, with their state", () => {
     const doc = new Doc(defaultConfig());
     doc.forceCommit();
     const text = rootText(doc);
-    checkUndoManager(2, doc, () => {
+    checkUndoManager(3, doc, () => {
       text.insert(0, "Hello world");
+      doc.forceCommit();
+      text.format(0, 5, "link", "x");
       doc.forceCommit();
       text.delete(2, 6);
       doc.forceCommit();
     });
     doc.undoManager.undo();
     doc.forceCommit();
-    expect(text.get()).toBe("Hello world");
-    // Their ids: the run is whole again.
-    expect(runsOf(doc)).toStrictEqual([["Hello world"]]);
+    expect(styled(text.spans())).toStrictEqual([
+      'Hello:{"link":"x"}',
+      " world",
+    ]);
+    // Their ids: the runs are whole again.
+    expect(runsOf(doc)).toStrictEqual([["Hello", " world"]]);
     // Undoing the insert takes all of them, also those the undo brought back.
+    doc.undoManager.undo();
     doc.undoManager.undo();
     doc.forceCommit();
     expect(text.get()).toBe("");
@@ -121,7 +130,7 @@ describe("undo", () => {
     network.exchange();
     network.undo("a");
     network.exchange();
-    expect(network.converged()).toBe("aZbcd");
+    expect(network.converged()).toStrictEqual([{ text: "aZbcd", attrs: {} }]);
   });
 
   test("after the letter before it when that one is gone, else where it was", () => {
@@ -132,14 +141,14 @@ describe("undo", () => {
     network.exchange();
     network.undo("a");
     network.exchange();
-    expect(network.converged()).toBe("abc");
+    expect(network.converged()).toStrictEqual([{ text: "abc", attrs: {} }]);
     network.redo("a");
     network.edit("b", (text) => text.delete(0, 1));
     network.exchange();
-    expect(network.converged()).toBe("");
+    expect(network.converged()).toStrictEqual([]);
     network.undo("a");
     network.exchange();
-    expect(network.converged()).toBe("bc");
+    expect(network.converged()).toStrictEqual([{ text: "bc", attrs: {} }]);
   });
 
   test("of letters it never had: they are put back where they were", () => {
@@ -192,7 +201,7 @@ describe("undo", () => {
     network.undo("a");
     network.undo("b");
     network.exchange();
-    expect(network.converged()).toBe("abcd");
+    expect(network.converged()).toStrictEqual([{ text: "abcd", attrs: {} }]);
   });
 
   test("letters a peer brought back stay; the others follow them", () => {
@@ -204,7 +213,7 @@ describe("undo", () => {
     network.exchange();
     network.undo("b");
     network.exchange();
-    expect(network.converged()).toBe("abcd");
+    expect(network.converged()).toStrictEqual([{ text: "abcd", attrs: {} }]);
   });
 
   test("an undo applied again changes nothing", () => {
@@ -219,12 +228,16 @@ describe("undo", () => {
     expect(text.get()).toBe("abcd");
   });
 
-  test("the undo of a delete names the letters around it and their ids", () => {
+  test("the undo of a delete names the letters around it, their ids and state", () => {
     const { doc, text } = flat("abcd");
+    text.format(1, 2, "bold", true);
+    doc.forceCommit();
     const [batch] = sent(doc, () => text.delete(1, 2));
     const [undo] = sent(doc, () => doc.undoManager.undo());
     // The letters around them are the ids right before and after: left out.
-    expect(decode(undo!)[0]).toStrictEqual([[3, 4, "a", 4, "bc", [2, 2]]]);
+    expect(decode(undo!)[0]).toStrictEqual([
+      [3, 4, "a", 4, "bc", [2, 2], [1, { bold: true }, 1, 0]],
+    ]);
     // A delete, and its undo, cost about the same as the letters.
     const size = (batch: Operations) => JSON.stringify(batch).length;
     expect(size(batch!)).toBeLessThan(20);

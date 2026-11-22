@@ -98,8 +98,8 @@ function getStateSnapshot(doc: Doc, isTestNode = true): unknown[] {
   // A text of the root itself (a flat text, its blocks as lines).
   const textKey = doc["_editStateKey"];
   if (!isTestNode && textKey !== undefined && textKey in doc.root["_state"]) {
-    const text = _INTERNAL_textStore(doc).textOf(doc.root.id);
-    if (text.length > 0) state.push(["root", text]);
+    const spans = _INTERNAL_textStore(doc).spansOf(doc.root.id);
+    if (spans.length > 0) state.push(["root", spans]);
   }
   doc.root.descendants().forEach((node, deepLevel) => {
     count++;
@@ -117,7 +117,7 @@ function getStateSnapshot(doc: Doc, isTestNode = true): unknown[] {
       const key = doc["_editStateKey"];
       const texts =
         key !== undefined && key in doc.root["_state"]
-          ? [_INTERNAL_textStore(doc).textOf(node.id)]
+          ? [_INTERNAL_textStore(doc).spansOf(node.id)]
           : [];
       state.push([node.toJSON()[2], ...texts]);
     }
@@ -366,7 +366,7 @@ const eventData = (event: ChangeEvent) => ({
 
 /**
  * The document as it reads: its JSON, with a text value (`~t`) as the
- * visible text of each node. Undo and redo bring a text back as it read, and
+ * visible spans of each node. Undo and redo bring a text back as it read, and
  * also remember what was undone, so its stored form is not the one it had.
  */
 function readableDoc(doc: Doc): unknown[] {
@@ -378,8 +378,8 @@ function readableDoc(doc: Doc): unknown[] {
   if (value !== undefined) {
     const store = _INTERNAL_textStore(doc);
     doc.root.descendants({ includeSelf: true }).forEach((node) => {
-      const text = store.textOf(node.id);
-      if (text.length > 0) texts[node.id] = text;
+      const spans = store.spansOf(node.id);
+      if (spans.length > 0) texts[node.id] = spans;
     });
   }
   return [json[0], json[1], rootState, json[3], texts];
