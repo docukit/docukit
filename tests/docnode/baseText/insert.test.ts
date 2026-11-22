@@ -325,6 +325,47 @@ describe("letters of the root's text", () => {
   });
 });
 
+describe("inserts one after the other share a row", () => {
+  test("each one's letters, then its references", () => {
+    const { doc, text } = flat("abcd");
+    const [batch] = sent(doc, () => {
+      text.insert(1, "x");
+      text.insert(4, "y");
+    });
+    expect(batch).toStrictEqual(["a.3", "x", -2, "y", -4]);
+    const other = flat("abcd").doc;
+    receive(other, batch!);
+    expect(rootText(other).get()).toBe("axbcyd");
+  });
+
+  test("letters that read as a reference start a row of their own", () => {
+    const { doc, text } = flat("abcd");
+    const [batch] = sent(doc, () => {
+      text.insert(1, "x");
+      text.insert(3, "'");
+      text.insert(5, "<");
+      text.insert(7, "^z");
+      text.insert(9, "#z");
+      text.insert(11, "1.z");
+      text.insert(13, ".z");
+    });
+    // `.z` does not read as a letter, but its reference is not a number.
+    expect(batch).toStrictEqual([
+      "a.3",
+      ["x", -2],
+      ["'", -3],
+      ["<", -4],
+      ["^z", 0, "'"],
+      ["#z"],
+      ["1.z"],
+      [".z", "<"],
+    ]);
+    const other = flat("abcd").doc;
+    receive(other, batch!);
+    expect(rootText(other).get()).toBe(text.get());
+  });
+});
+
 describe("mergeOperations with Base's text", () => {
   test("fuses letters typed one after the other", () => {
     const { doc, text } = flat("ab");

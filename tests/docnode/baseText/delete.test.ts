@@ -102,6 +102,17 @@ describe("undo", () => {
     expect(text.get()).toBe("");
   });
 
+  test("an undo of a delete inserts its letters again with their ids", () => {
+    const { doc, text } = flat("abcd");
+    sent(doc, () => text.delete(2, 1));
+    const [again] = sent(doc, () => doc.undoManager.undo());
+    // The letters, then their ids: always a list, as a right origin never is.
+    expect(again).toStrictEqual(["a.3", "c", [2, 1]]);
+    const other = flat("abcd").doc;
+    receive(other, ...sent(other, () => rootText(other).delete(2, 1)), again!);
+    expect(rootText(other).get()).toBe("abcd");
+  });
+
   test("an undo of a delete goes before the letter that was after it", () => {
     const network = new Network("abcd", ["a", "b"]);
     network.edit("a", (text) => text.delete(1, 2));

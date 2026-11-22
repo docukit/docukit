@@ -34,12 +34,13 @@ import {
 //   before and the counter right after it. A string `"index.counter"` alone
 //   moves on to another one.
 //   - `[text, right?, left?]` inserts letters after the letter `left` (`-1`:
-//     none), and `[-tag, ...]` is any other edit (see `text/baseText.ts`):
-//     `[-1, ranges]` deletes letters and `[-4, text, ranges, 0?, right?,
-//     left?]` puts back letters a delete took (`-1`: the id next to them).
-//     `[-3, text, ...refs, text, ...refs]` is inserts one after the other,
-//     each `[text, right?, left?]` without its brackets, when their
-//     references are numbers. Only an insert takes counters.
+//     none). Inserts one after the other share a row, `[text, ...refs, text,
+//     ...refs]`, when their references are numbers: a string that does not
+//     read as a letter (see `LETTER`) starts the next one. `[text,
+//     ids, 0?, right?, left?]` inserts letters again with the ids a delete
+//     took (an undo of it, `-1`: the id next to them), and `[-tag, ...]` is
+//     any other edit (see `text/baseText.ts`): `[-1, ranges]` deletes
+//     letters. Only an insert of new letters takes counters.
 //   - A letter of the row's own session is a number: the distance back from
 //     the row's counter (in a delete, of any sign), but for the right origin
 //     of an insert, its counter + 1, negative when the insert is its left
@@ -81,18 +82,22 @@ const ABSOLUTE_RIGHT = true;
  */
 const BACKWARDS = "<";
 
-/**
- * The tag of a row of inserts one after the other (see the format): inserts
- * whose references are all numbers.
- */
-const INSERTS = 3;
+/** The tag of an edit that inserts letters again with their ids. */
+const AGAIN = 4;
 
-/** Whether an insert row can join a row of inserts (see `INSERTS`). */
+/** Whether an insert row can take the next insert: its references are numbers. */
 const isJoinable = (row: readonly Json[]): row is Json[] => {
   for (let at = 1; at < row.length; at++)
     if (typeof row[at] !== "number") return false;
   return true;
 };
+
+/**
+ * A string after an insert's letters that reads as one of its letters
+ * (`"'"`, `"<"`, `"^node"`, `"#hash"` or `"index.counter"`, its counter in
+ * base 64): any other is the letters of the next insert of the row.
+ */
+const LETTER = /^(?:'|<|[#^].*|\d*\.[-\w]+)$/s;
 
 const isList = (value: Json | undefined): value is readonly Json[] =>
   Array.isArray(value);
@@ -230,12 +235,8 @@ class Encoder {
   private _lastNamedSession = "";
   private _lastNamedCounter = -1;
   private _lastNamed = "";
-  /**
-   * The last row, if it is an insert that a next one can join (see
-   * `INSERTS`), and whether it already is a row of inserts.
-   */
+  /** The last row, if it is an insert that a next one can join. */
   private _joinable: Json[] | undefined;
-  private _joined = false;
 
   /**
    * Starts a batch: its first session and counter are those of its first
@@ -392,26 +393,23 @@ class Encoder {
         return;
       }
       // Inserts one after the other go in one row, without a pair of
-      // brackets each.
-      if (last === undefined) {
+      // brackets each, unless the letters read as a reference.
+      if (last === undefined || LETTER.test(content)) {
         rows.push(row);
         this._joinable = row;
-        this._joined = false;
-      } else if (this._joined) {
+      } else {
         last.push(...row);
         this._joinable = last;
-      } else {
-        const joined: [number, ...Json[]] = [-INSERTS, ...last, ...row];
-        rows[rows.length - 1] = joined;
-        this._joinable = joined;
-        this._joined = true;
       }
       return;
     }
     const tag = Number(op[1]);
-    const row: [number, ...Json[]] = [-tag];
-    this._payload(op, tag, c, row);
-    rows.push(row);
+    if (tag === AGAIN) rows.push(this._again(op, c));
+    else {
+      const row: [number, ...Json[]] = [-tag];
+      this._payload(op, tag, c, row);
+      rows.push(row);
+    }
     // Only an insert takes ids: the others count from where they are.
     this._next = c;
   }
@@ -426,17 +424,19 @@ class Encoder {
     const c = Number(insert ? op[2] : op[3]);
     this.base = c;
     const named = this._named(c);
-    let batch: [Head, string, ...LetterRef[]] | [Head, number, ...Json[]];
+    let batch:
+      | [Head, string, ...LetterRef[]]
+      | [Head, number, ...Json[]]
+      | [Head, string, Json[], ...Json[]];
     const content = text(op[3]);
     if (!insert) {
       const tag = Number(op[1]);
       const written = -tag;
-      if (tag === 1 && op.length === 5)
-        batch = [named, written, this.ranges(op[4]!, c)];
-      else {
-        batch = [named, written];
-        this._payload(op, tag, c, batch);
-      }
+      // A delete, or letters inserted again.
+      batch =
+        tag === AGAIN
+          ? [named, ...this._again(op, c)]
+          : [named, written, this.ranges(op[4]!, c)];
     } else if (op.length === 4) batch = [named, content];
     else if (op.length === 5)
       batch = [named, content, this.ref(op[4]!, c, ABSOLUTE_RIGHT)];
@@ -488,14 +488,23 @@ class Encoder {
   /** The payload of any other text edit (`op[4]` on), after its tag. */
   private _payload(op: EditOperation, tag: number, c: number, row: Json[]) {
     // Ranges, then the lamport and the letters brought back, if any.
-    if (tag === 1) {
-      row.push(this.ranges(op[4]!, c), ...op.slice(5));
-      return;
-    }
-    // The letters, their ids and the `0`, then the letters around them.
-    row.push(op[4]!, this.ranges(op[5]!, c));
+    row.push(this.ranges(op[4]!, c), ...op.slice(5));
+  }
+
+  /**
+   * Letters inserted again with their ids: the letters, their ids (always a
+   * list, which an insert's right origin never is) and the `0`, then the
+   * letters around them.
+   */
+  private _again(op: EditOperation, c: number): [string, Json[], ...Json[]] {
+    const ids = this.ranges(op[5]!, c);
+    const row: [string, Json[], ...Json[]] = [
+      text(op[4]),
+      isList(ids) ? [...ids] : [ids, 1],
+    ];
     if (op.length > 6) row.push(op[6]!);
     for (const ref of op.slice(7)) row.push(this._left(ref, c));
+    return row;
   }
 }
 
@@ -796,6 +805,8 @@ class Decoder {
     const head = row[at]!;
     const length = end - at;
     if (typeof head !== "number") {
+      // Letters inserted again: their ids are a list (see `_again`).
+      if (isList(row[at + 1])) return this._again(row, at, session, c);
       this.next = c + text(head).length;
       if (length === 1) return [3, session, c, head];
       const right = this.right(row[at + 1]!, c);
@@ -805,19 +816,23 @@ class Decoder {
     }
     const tag = -head;
     const op: EditOperation = [3, tag, session, c];
-    switch (tag) {
-      case 1:
-        op.push(this.ranges(row[at + 1]!, c), ...row.slice(at + 2));
-        break;
-      case 4:
-        op.push(row[at + 1]!, this.ranges(row[at + 2]!, c));
-        if (row.length > at + 3) op.push(row[at + 3]!);
-        for (const ref of row.slice(at + 4))
-          op.push(ref === -1 ? -1 : this.ref(ref, c));
-        break;
-      default:
-        op.push(...row.slice(at + 1));
-    }
+    if (tag === 1) op.push(this.ranges(row[at + 1]!, c), ...row.slice(at + 2));
+    else op.push(...row.slice(at + 1));
+    return op;
+  }
+
+  /** Letters inserted again with their ids, from `row[at]` (see `Encoder`). */
+  private _again(
+    row: readonly Json[],
+    at: number,
+    session: string,
+    c: number,
+  ): EditOperation {
+    const op: EditOperation = [3, AGAIN, session, c, row[at]!];
+    op.push(this.ranges(row[at + 1]!, c));
+    if (row.length > at + 2) op.push(row[at + 2]!);
+    for (const ref of row.slice(at + 3))
+      op.push(ref === -1 ? -1 : this.ref(ref, c));
     return op;
   }
 
@@ -852,11 +867,15 @@ class Decoder {
       ordered.push([1, this.nodeId(start), N(2)]);
     } else if (tag === 2) {
       ordered.push([2, this.nodeId(row[at + 1]), N(2), N(3), N(4), N(5)]);
-    } else if (tag === -INSERTS) {
-      // Each insert's letters, then its references, which are numbers.
-      for (let start = at + 1; start < row.length; ) {
+    } else if (typeof tag === "string") {
+      // Each insert's letters, then its references: a string that does not
+      // read as a letter starts the next one.
+      for (let start = at; start < row.length; ) {
         let end = start + 1;
-        while (end < row.length && typeof row[end] === "number") end++;
+        for (; end < row.length; end++) {
+          const next = row[end];
+          if (typeof next === "string" && !LETTER.test(next)) break;
+        }
         ordered.push(this.edit(row, start, end));
         start = end;
       }

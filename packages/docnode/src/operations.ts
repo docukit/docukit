@@ -547,11 +547,22 @@ export type MoveNodesRow = readonly [
 /**
  * `[text, right?, parent?]`: inserts letters at the row's counter, before
  * `right`, and after the letter typed before it unless `parent` says
- * otherwise.
+ * otherwise. Inserts one after the other share a row: `[text, ...refs,
+ * text, ...refs]`.
  */
 export type InsertTextRow = readonly [
   text: string,
   ...rightParent: LetterRef[],
+];
+
+/**
+ * `[text, ids, ...]`: inserts letters with the ids a delete took from them
+ * (an undo of the delete), see `text/baseText.ts`.
+ */
+export type InsertTextAgainRow = readonly [
+  text: string,
+  ids: readonly Json[],
+  ...rest: Json[],
 ];
 
 /** Any other text edit: `-tag` (`-(tag + 10)` when it undoes an insert), then its payload. */
@@ -572,6 +583,7 @@ export type OperationsRow =
   | DeleteNodesRow
   | MoveNodesRow
   | InsertTextRow
+  | InsertTextAgainRow
   | EditTextRow
   | SessionRow
   | StatePatchRow;
@@ -599,7 +611,8 @@ export type Head = string | readonly string[];
 export type Operations =
   | readonly [head: Head, ...rows: OperationsRow[]]
   | readonly [head: Head, ...row: FlatRow]
-  | readonly [head: Head, content: string, ...rightParent: LetterRef[]];
+  | readonly [head: Head, content: string, ...rightParent: LetterRef[]]
+  | readonly [head: Head, ...row: InsertTextAgainRow];
 
 /** Operations while they are built and applied: the patch is always there. */
 export type DraftOperations = [OrderedOperation[], StatePatch];
