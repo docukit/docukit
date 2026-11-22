@@ -571,17 +571,21 @@ describe("stored format 13", () => {
     expect(doc.toJSON()[7]).toStrictEqual(values.slice(1));
   });
 
-  test("a document stored in another format does not load", () => {
-    const config = { type: "root", extensions: [TextExtension] };
-    const doc = new Doc(config);
-    const stored = doc.toJSON();
-    Reflect.set(stored, 0, 10);
-    expect(() =>
-      Doc.fromJSON({ ...config, id: doc.root.id }, stored),
-    ).toThrowError(
-      "The stored document has format 10, but this version reads format 13.",
-    );
-  });
+  // 14: a later version, with text, whose columns this one would misread.
+  test.each([10, 14])(
+    "a document stored in format %i does not load",
+    (format) => {
+      const config = { type: "root", extensions: [TextExtension] };
+      const doc = new Doc(config);
+      const stored = doc.toJSON();
+      Reflect.set(stored, 0, format);
+      expect(() =>
+        Doc.fromJSON({ ...config, id: doc.root.id }, stored),
+      ).toThrowError(
+        `The stored document has format ${format}, but this version reads format 13.`,
+      );
+    },
+  );
 
   test("a stored value whose JSON is undefined cannot be stored again", () => {
     // It loads as a value with no JSON, which `set` would have refused.
