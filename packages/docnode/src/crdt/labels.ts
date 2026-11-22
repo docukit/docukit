@@ -196,7 +196,8 @@ function recordRow(fields: Json[]): EngineRow {
  * The only place that writes the labels layout. Siblings are ordered by
  * places (see `FugueSiblings.writePlace`). An insert is `[id, type, origin?,
  * right?]`, or `[id, type, origin, right, life, place]` for a place that is
- * not the node's id; a move is `[id, parent, place, origin?, right?]`, then
+ * not the node's id, and a number after an insert is that many nodes after
+ * it, each the id right after the one before and in its own place; a move is `[id, parent, place, origin?, right?]`, then
  * what `moveTail` writes. An `origin` of `false` names a place that travels
  * on its own.
  */
@@ -227,14 +228,28 @@ function encodeRecord(
     const group: Json[] = [ref(parent)];
     // A place that is not the node's id is written: a later life, or a node
     // inserted again with its life (an undo of a delete seen as hidden).
-    for (const [id, type, pos, life] of nodes)
-      group.push(
-        placed(
-          [ref(id), type],
-          pos,
-          life || pos !== id ? [life ?? 0, write(pos)] : [],
-        ),
-      );
+    const entries = nodes.map(([id, type, pos, life]) =>
+      placed(
+        [ref(id), type],
+        pos,
+        life || pos !== id ? [life ?? 0, write(pos)] : [],
+      ),
+    );
+    // Nodes right after the one before, of its type and in their own
+    // place, are a run: the first one's entry, then how many follow it.
+    for (let at = 0; at < entries.length; ) {
+      group.push(entries[at]!);
+      let count = 0;
+      while (
+        at + count + 1 < entries.length &&
+        entries[at + count + 1]!.length === 2 &&
+        nodes[at + count + 1]![1] === nodes[at]![1] &&
+        nodes[at + count + 1]![0] === nextId(nodes[at + count]![0])
+      )
+        count++;
+      if (count > 1) group.push(count);
+      at += count > 1 ? count + 1 : 1;
+    }
     inserts.push(group);
   }
   const lives: Json[] = [];
@@ -263,6 +278,15 @@ function encodeRecord(
     sessions.index(record.session),
   ];
   return recordRow(fields);
+}
+
+/** The id right after `id` in its session (see `encodeRecord`), if it has a clock. */
+function nextId(id: string): string | undefined {
+  const dot = lastDot(id);
+  const clock = dot > 0 ? clockAt(id, dot) : -1;
+  return clock < 0
+    ? undefined
+    : id.slice(0, dot + 1) + numberToBase64(clock + 1);
 }
 
 /**
@@ -297,8 +321,29 @@ function decodeRecord(
       const parent = group[0] === 0 ? 0 : id(group[0]);
       const list = parent === 0 ? rootId : parent;
       const decoded: InsertGroup = [parent];
+      let lastId = "";
+      let lastType = "";
       for (let at = 1; at < group.length; at++) {
         const node = group[at];
+        // A run: as many nodes after the last one, each in its own place.
+        if (typeof node === "number")
+          for (let k = 0; k < node; k++) {
+            const next = nextId(lastId);
+            // Broken: a count without a node before it.
+            if (next === undefined) break;
+            lastId = next;
+            previous = FugueSiblings.read(
+              undefined,
+              undefined,
+              lastId,
+              lastId,
+              list,
+              previous,
+              id,
+            );
+            places.push(previous);
+            decoded.push([lastId, lastType, lastId]);
+          }
         if (!isList(node)) continue;
         const nodeId = id(node[0]);
         const later = Number(node[4] ?? 0);
@@ -313,10 +358,12 @@ function decodeRecord(
           id,
         );
         places.push(previous);
+        lastId = nodeId;
+        lastType = text(node[1]);
         decoded.push(
           later > 0
-            ? [nodeId, text(node[1]), place, later]
-            : [nodeId, text(node[1]), place],
+            ? [nodeId, lastType, place, later]
+            : [nodeId, lastType, place],
         );
       }
       inserts.push(decoded);
