@@ -341,10 +341,17 @@ describe("mergeOperations with text edits", () => {
     const [entry] = cluster.edit(0, () => {
       for (const index of [6, 1, 4, 2]) text().insert(index, "x");
     });
-    // `-3`, then each insert's letters and references, without brackets.
+    // Each insert's letters and references, without brackets.
     expect(entry!.operations.slice(1)).toStrictEqual([
-      -3,
-      ...["x", -7, "x", -2, "x", -4, "x", 2, 2],
+      "x",
+      -7,
+      "x",
+      -2,
+      "x",
+      -4,
+      "x",
+      2,
+      2,
     ]);
     cluster.deliverAll();
     expect(cluster.text(1, id)).toBe("axxbcxdefxgh");
