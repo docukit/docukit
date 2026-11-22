@@ -1120,7 +1120,7 @@ describe("applyOperations", () => {
       nodeIdGenerator: { generate: () => ids[count++]!, validate: () => true },
     };
     const doc = new Doc(config);
-    const replica = Doc.fromJSON(config, doc.toJSON());
+    const replica = Doc.fromJSON({ ...config, id: doc.root.id }, doc.toJSON());
     const batches: Operations[] = [];
     doc.onChange(({ operations }) => batches.push(operations));
     const [a, b, c] = text(doc, "a", "b", "c");
