@@ -160,7 +160,7 @@ export type JsonDocNode<T extends NodeDefinition = NodeDefinition> = [
 ];
 
 /**
- * A stored document, as `Doc.toJSON` writes it (format 13). Elements at the
+ * A stored document, as `Doc.toJSON` writes it (format 14). Elements at the
  * end that are empty are left out.
  *
  * The root is plain: its type and its state (each value as JSON). The
@@ -186,7 +186,7 @@ export type JsonDocNode<T extends NodeDefinition = NodeDefinition> = [
  *   `defineText`), which shares `sessions` with the tree.
  */
 export type JsonDoc = [
-  format: 13,
+  format: 14,
   type: string,
   state: { [key: string]: Json },
   sessions?: string[],
@@ -194,6 +194,21 @@ export type JsonDoc = [
   keys?: string[],
   /** `0` when there is no text but more follows. */
   text?: Json[] | 0,
+  columns?: string,
+  values?: Json[],
+];
+
+/**
+ * A stored document of format 13, from before text: `Doc.fromJSON` still
+ * reads it. Its columns come right after `keys`.
+ */
+export type JsonDocWithoutText = [
+  format: 13,
+  type: string,
+  state: { [key: string]: Json },
+  sessions?: string[],
+  types?: string[],
+  keys?: string[],
   columns?: string,
   values?: Json[],
 ];

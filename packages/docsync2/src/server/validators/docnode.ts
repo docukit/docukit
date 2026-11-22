@@ -60,9 +60,9 @@ const operationsSchema = v.union([
   v.tupleWithRest([headSchema, editTagSchema], jsonSchema),
 ]);
 
-/** Format 13: see `JsonDoc` in `@docukit/docnode`. */
+/** Format 14: see `JsonDoc` in `@docukit/docnode`. */
 const jsonDocShape = v.strictTuple([
-  v.literal(13),
+  v.literal(14),
   v.string(),
   v.record(v.string(), jsonSchema),
   v.optional(v.array(v.string())),

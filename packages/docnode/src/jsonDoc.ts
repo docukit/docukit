@@ -3,6 +3,7 @@ import type {
   InternalStateDefinition,
   Json,
   JsonDoc,
+  JsonDocWithoutText,
   ResolvedNodeDefinition,
 } from "./types.js";
 import {
@@ -19,7 +20,10 @@ import { numberToBase64 } from "./idGenerator.js";
 import { jsonCopy, jsonEqual } from "./utils.js";
 
 /** The stored format `Doc.toJSON` writes (see `JsonDoc`). */
-export const FORMAT = 13;
+export const FORMAT = 14;
+
+/** The stored format before text, which is still read (see `JsonDocWithoutText`). */
+const WITHOUT_TEXT = 13;
 
 /**
  * The columns of a stored document before those of its text (see
@@ -226,6 +230,16 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
 }
 
 /**
+ * A stored document of format 13, from before text, in today's format: its
+ * columns go after a `0` for no text. Any other is returned as it is.
+ */
+export function withText(json: JsonDoc | JsonDocWithoutText): JsonDoc {
+  if (json[0] !== WITHOUT_TEXT) return json;
+  const [, type, state, sessions = [], types = [], keys = [], ...rest] = json;
+  return [FORMAT, type, state, sessions, types, keys, 0, ...rest];
+}
+
+/**
  * Builds the nodes of a stored `json` in `doc`, in place of its root. The
  * document's id is the one `Doc.fromJSON` gave it.
  */
@@ -241,13 +255,13 @@ export function readJsonDoc(doc: Doc, json: JsonDoc): void {
     tree = "",
     values = [],
   ] = json;
-  const id = doc.root.id;
-  // A number: what an older version stored has another one.
+  // A number: what another version stored can have another one.
   const format: number = json[0];
   if (format !== FORMAT)
     throw new Error(
-      `The stored document has format ${format}, but this version reads format ${FORMAT}.`,
+      `The stored document has format ${format}, but this version reads formats ${WITHOUT_TEXT} and ${FORMAT}.`,
     );
+  const id = doc.root.id;
   const rootDefinition = doc["_storedDefinition"](type);
   const state: Record<string, unknown> = {};
   for (const key in rootState)

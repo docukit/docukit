@@ -377,7 +377,7 @@ describe("json serialization", () => {
   });
 });
 
-describe("stored format 13", () => {
+describe("stored format 14", () => {
   test("nodes of sessions seen before load back with their ids", () => {
     const ids = ["a.0", "b.0", "a.1", "c.0", "b.1"];
     const config = { type: "root", extensions: [TextExtension] };
@@ -455,7 +455,7 @@ describe("stored format 13", () => {
     expect(loaded.is(Root) ? loaded.state.title.get() : "").toBe("Draft");
     root.state.title.set("");
     doc.forceCommit();
-    expect(doc.toJSON()).toStrictEqual([13, "root", {}]);
+    expect(doc.toJSON()).toStrictEqual([14, "root", {}]);
   });
 
   test("whole numbers go in a column and load back as they were", () => {
@@ -572,8 +572,7 @@ describe("stored format 13", () => {
     expect(doc.toJSON()[8]).toStrictEqual(values.slice(1));
   });
 
-  // 14: a later version, with text, whose columns this one would misread.
-  test.each([10, 14])(
+  test.each([10, 15])(
     "a document stored in format %i does not load",
     (format) => {
       const config = { type: "root", extensions: [TextExtension] };
@@ -583,10 +582,59 @@ describe("stored format 13", () => {
       expect(() =>
         Doc.fromJSON({ ...config, id: doc.root.id }, stored),
       ).toThrowError(
-        `The stored document has format ${format}, but this version reads format 13.`,
+        `The stored document has format ${format}, but this version reads formats 13 and 14.`,
       );
     },
   );
+
+  test("a document stored before text (format 13) loads", () => {
+    const config = {
+      id: "01kc52hq510g6y44jhq0wqrjb3",
+      type: "root",
+      extensions: [TextExtension, TestExtension],
+    };
+    // What format 13 wrote for "one" and "two", "two" with two test nodes.
+    const doc = Doc.fromJSON(config, [
+      13,
+      "root",
+      {},
+      ["a", "b"],
+      ["text", "test"],
+      ["value", "string", "number", "boolean"],
+      " %! !#$#%%&   !!%!# #&!!!$!(#  #&(%$#(!",
+      ["one", "two", "x", -1.5],
+    ]);
+    expect(jsonTree(doc)).toStrictEqual([
+      "01kc52hq510g6y44jhq0wqrjb3",
+      "root",
+      {},
+      [
+        ["a.0", "text", { value: '"one"' }],
+        [
+          "b.0",
+          "text",
+          { value: '"two"' },
+          [
+            ["a.1", "test", { string: '"x"', number: "7", boolean: "1" }],
+            ["a.2", "test", { number: "-1.5" }],
+          ],
+        ],
+      ],
+    ]);
+    // It is stored again in today's format, with no text.
+    doc.forceCommit();
+    expect(doc.toJSON()).toStrictEqual([
+      14,
+      "root",
+      {},
+      ["a", "b"],
+      ["text", "test"],
+      ["value", "string", "number", "boolean"],
+      0,
+      " %! !#$#%%&   !!%!# #&!!!$!(#  #&(%$#(!",
+      ["one", "two", "x", -1.5],
+    ]);
+  });
 
   test("a document with text loads only where a node type defines text", () => {
     const Paragraph = defineNode({ type: "p", state: { t: defineText() } });

@@ -2,6 +2,7 @@ import {
   type DocConfig,
   type IntersectionOf,
   type JsonDoc,
+  type JsonDocWithoutText,
   type JsonDocNode,
   type JsonTree,
   type NodeDefinition,
@@ -30,7 +31,7 @@ import {
 import * as ops from "./operations.js";
 import { NodeIds } from "./idGenerator.js";
 import { decodeOperations } from "./wire.js";
-import { readJsonDoc, writeJsonDoc } from "./jsonDoc.js";
+import { readJsonDoc, withText, writeJsonDoc } from "./jsonDoc.js";
 import { decodeTime, ulid } from "ulid";
 import { UndoManager } from "./undoManager.js";
 
@@ -1132,7 +1133,10 @@ export class Doc {
    * immediately afterward to be batched with it. A document stored by
    * `toJSON` takes its id from `config.id`, which is then required.
    */
-  static fromJSON(config: DocConfig, json: JsonDoc | JsonTree): Doc {
+  static fromJSON(
+    config: DocConfig,
+    json: JsonDoc | JsonDocWithoutText | JsonTree,
+  ): Doc {
     const id = isTree(json) ? json[0] : config.id;
     if (!id)
       throw new Error(
@@ -1145,7 +1149,7 @@ export class Doc {
     }
     const doc = new Doc({ ...config, id });
     withTransaction(doc, () => {
-      if (!isTree(json)) return readJsonDoc(doc, json);
+      if (!isTree(json)) return readJsonDoc(doc, withText(json));
       doc._setStoredRoot(doc._nodeFromTree(json));
       doc._attachTree(doc.root, json[3]);
     });
@@ -1261,8 +1265,9 @@ export class Doc {
   }
 }
 
-const isTree = (json: JsonDoc | JsonTree): json is JsonTree =>
-  typeof json[0] === "string";
+const isTree = (
+  json: JsonDoc | JsonDocWithoutText | JsonTree,
+): json is JsonTree => typeof json[0] === "string";
 
 /**
  * The methods of one state key, chosen once per node definition. Reading
