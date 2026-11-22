@@ -29,7 +29,9 @@ import {
 //   out the index of the first.
 // - `[0, nodes, parent, prev, next]`, `[1, start, end]` and `[2, start, end,
 //   parent, prev, next]` insert, delete and move nodes, without their
-//   trailing zeros.
+//   trailing zeros. One node is inserted as `[0, node, type, parent, prev,
+//   next]`, without the list, and `[1]` deletes the node at the head's clock
+//   (`[1, 1]`), the one a batch that only deletes it names in its head.
 // - The state patch, if any, is the last row: `[-9, node, key, value, ...]`,
 //   a triple per key a node changed. `[node, count], key, column` sets `key`
 //   of `count` nodes one after the other (see `Run`), a value each.
@@ -136,7 +138,10 @@ const literal = (id: string) =>
 const withSession = (id: string | 0) =>
   id !== 0 && lastDot(id) !== -1 ? id : undefined;
 
-/** A tree row without the zeros at the end of its nodes. */
+/**
+ * A tree row without the zeros at the end of its nodes: the first node, and
+ * the type of a node inserted alone, are never `0`.
+ */
 function trimmed<Row extends unknown[]>(row: Row): Row {
   while (row.length > 2 && row[row.length - 1] === 0) row.pop();
   return row;
@@ -252,21 +257,37 @@ export function encodeOperations(
         nodes.push(count > 1 ? [ref, type, count] : [ref, type]);
         at += count;
       }
-      const row: [0, typeof nodes, ...NodeRef[]] = [
-        0,
-        nodes,
-        encoder.nodeRef(op[2]),
-        encoder.nodeRef(op[3]),
-        encoder.nodeRef(op[4]),
-      ];
-      rows.push(trimmed(row));
+      const parent = encoder.nodeRef(op[2]);
+      const prev = encoder.nodeRef(op[3]);
+      const next = encoder.nodeRef(op[4]);
+      const only = nodes.length === 1 ? nodes[0]! : undefined;
+      if (only?.length === 2) {
+        // One node, without the list (see the format).
+        const row: [0, NodeRef, string, ...NodeRef[]] = [
+          0,
+          only[0],
+          only[1],
+          parent,
+          prev,
+          next,
+        ];
+        rows.push(trimmed(row));
+      } else {
+        const row: [0, typeof nodes, ...NodeRef[]] = [
+          0,
+          nodes,
+          parent,
+          prev,
+          next,
+        ];
+        rows.push(trimmed(row));
+      }
     } else if (op[0] === 1) {
-      const row: [1, NodeRef, ...NodeRef[]] = [
-        1,
-        encoder.nodeRef(op[1]),
-        encoder.nodeRef(op[2]),
-      ];
-      rows.push(trimmed(row));
+      const start = encoder.nodeRef(op[1]);
+      const end = encoder.nodeRef(op[2]);
+      // The node at the head's clock alone is left out (see the format).
+      const row: [1, ...NodeRef[]] = [1, start, end];
+      rows.push(start === 1 && end === 0 ? [1] : trimmed(row));
     } else {
       const row: [2, NodeRef, ...NodeRef[]] = [
         2,
@@ -423,21 +444,28 @@ class Decoder {
     if (tag === 0) {
       const nodes: [string, string][] = [];
       const first = row[at + 1];
-      if (isList(first))
-        for (const node of first) {
-          if (!isList(node)) continue;
-          // `[distance, type, count]`: a run of nodes one after the other.
-          if (node.length < 3) {
-            nodes.push([this.nodeId(node[0]), text(node[1])]);
-            continue;
-          }
-          const type = text(node[1]);
-          for (const id of nodesFrom(this.nodeId(node[0]), num(node[2])))
-            nodes.push([id, type]);
+      // One node, without the list.
+      if (!isList(first)) {
+        nodes.push([this.nodeId(first), text(row[at + 2])]);
+        ordered.push([0, nodes, N(3), N(4), N(5)]);
+        return;
+      }
+      for (const node of first) {
+        if (!isList(node)) continue;
+        // `[distance, type, count]`: a run of nodes one after the other.
+        if (node.length < 3) {
+          nodes.push([this.nodeId(node[0]), text(node[1])]);
+          continue;
         }
+        const type = text(node[1]);
+        for (const id of nodesFrom(this.nodeId(node[0]), num(node[2])))
+          nodes.push([id, type]);
+      }
       ordered.push([0, nodes, N(2), N(3), N(4)]);
     } else if (tag === 1) {
-      ordered.push([1, this.nodeId(row[at + 1]), N(2)]);
+      // `[1]`: the node at the head's clock.
+      const start = at + 1 < row.length ? row[at + 1] : 1;
+      ordered.push([1, this.nodeId(start), N(2)]);
     } else if (tag === 2) {
       ordered.push([2, this.nodeId(row[at + 1]), N(2), N(3), N(4), N(5)]);
     }

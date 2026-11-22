@@ -240,10 +240,18 @@ function isNodeReference(value: unknown): boolean {
 }
 
 /**
- * `[0, [[id, type, count?], ...], parent?, prev?, next?]`, `[1, start, end?]`
- * or `[2, start, end?, parent?, prev?, next?]`.
+ * `[0, [[id, type, count?], ...], parent?, prev?, next?]`, `[0, id, type,
+ * parent?, prev?, next?]`, `[1, start?, end?]` or `[2, start, end?, parent?,
+ * prev?, next?]`.
  */
 function isTreeRow([tag, first, ...rest]: unknown[]): boolean {
+  if (tag === 0 && isNodeReference(first)) {
+    const [type, ...anchors] = rest;
+    return (
+      isString(type) && anchors.length <= 3 && anchors.every(isNodeReference)
+    );
+  }
+  if (tag === 1 && first === undefined) return true;
   if (!rest.every(isNodeReference)) return false;
   if (tag === 0)
     return (

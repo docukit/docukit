@@ -33,7 +33,8 @@ const nodesSchema = v.array(v.tuple([nodeRefSchema, v.string()]));
 /** Each row of a batch (see `Operations` in `@docukit/docnode`). */
 const rowSchema = v.union([
   v.tupleWithRest([v.literal(0), nodesSchema], nodeRefSchema),
-  v.tupleWithRest([v.literal(1), nodeRefSchema], nodeRefSchema),
+  v.tupleWithRest([v.literal(0), nodeRefSchema, v.string()], nodeRefSchema),
+  v.tupleWithRest([v.literal(1)], nodeRefSchema),
   v.tupleWithRest([v.literal(2), nodeRefSchema], nodeRefSchema),
   v.tupleWithRest([v.literal(-9)], jsonSchema),
 ]);
@@ -42,7 +43,11 @@ const rowSchema = v.union([
 const operationsSchema = v.union([
   v.tupleWithRest([headSchema], rowSchema),
   v.tupleWithRest([headSchema, v.literal(0), nodesSchema], nodeRefSchema),
-  v.tupleWithRest([headSchema, v.literal(1), nodeRefSchema], nodeRefSchema),
+  v.tupleWithRest(
+    [headSchema, v.literal(0), nodeRefSchema, v.string()],
+    nodeRefSchema,
+  ),
+  v.tupleWithRest([headSchema, v.literal(1)], nodeRefSchema),
   v.tupleWithRest([headSchema, v.literal(2), nodeRefSchema], nodeRefSchema),
   v.tupleWithRest([headSchema, v.literal(-9)], jsonSchema),
 ]);

@@ -460,22 +460,24 @@ export type NodeRef = string | number;
  * `[0, nodes, parent?, prev?, next?]`: inserts `nodes` (`[id, type]` each)
  * under `parent`, between two siblings. Trailing zeros are left out.
  */
-export type InsertNodesRow = readonly [
-  op: 0,
-  /** A count is a run of nodes, each one right after the one before. */
-  nodes: readonly (
-    | readonly [id: NodeRef, type: string]
-    | readonly [id: NodeRef, type: string, count: number]
-  )[],
-  ...parentPrevNext: NodeRef[],
-];
+export type InsertNodesRow =
+  | readonly [
+      op: 0,
+      /** A count is a run of nodes, each one right after the one before. */
+      nodes: readonly (
+        | readonly [id: NodeRef, type: string]
+        | readonly [id: NodeRef, type: string, count: number]
+      )[],
+      ...parentPrevNext: NodeRef[],
+    ]
+  /** One node, without the list. */
+  | readonly [op: 0, id: NodeRef, type: string, ...parentPrevNext: NodeRef[]];
 
-/** `[1, start, end?]`: deletes the nodes from `start` to `end`. */
-export type DeleteNodesRow = readonly [
-  op: 1,
-  start: NodeRef,
-  ...end: NodeRef[],
-];
+/**
+ * `[1, start, end?]`: deletes the nodes from `start` to `end`. `[1]` is the
+ * node at the head's clock.
+ */
+export type DeleteNodesRow = readonly [op: 1, ...startEnd: NodeRef[]];
 
 /**
  * `[2, start, end?, parent?, prev?, next?]`: moves the nodes from `start` to

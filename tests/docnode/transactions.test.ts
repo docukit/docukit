@@ -472,8 +472,8 @@ describe("undoManager", () => {
       withOperations([[], 1, "a"]),
       withOperations([[1], 1, "a"]),
       // Text rows, also one written without its brackets.
-      withOperations(["s", 1]),
-      withOperations(["s", [1]]),
+      withOperations(["s", 0]),
+      withOperations(["s", [4]]),
       withOperations(["s", [null]]),
       withOperations(["s", [[1]]]),
       withOperations(["s", [[]]]),
@@ -493,7 +493,11 @@ describe("undoManager", () => {
       withOperations(["s", [2, "a", 1.5]]),
       withOperations(["s", [2, "a", 0, 0, 0, 0, 0]]),
       withOperations(["s", [3, "a"]]),
-      withOperations(["s", 1]),
+      withOperations(["s", 1, null]),
+      // One node inserted without the list: its id and type.
+      withOperations(["s", [0, "id"]]),
+      withOperations(["s", [0, "id", 1]]),
+      withOperations(["s", [0, "id", "type", 0, 0, 0, 0]]),
       // The state patch, which is the last row: node, key and value.
       withOperations(["s", [-9, "a", "value", 1], [1, "a"]]),
       withOperations(["s", { a: { value: 1 } }]),
@@ -1068,7 +1072,7 @@ describe("applyOperations", () => {
     doc.root.append(...text(doc, "a"));
     doc.forceCommit();
     expect(batches).toStrictEqual([
-      ["", [0, [["!!1", "text"]]], [-9, "!!1", "value", "a"]],
+      ["", [0, "!!1", "text"], [-9, "!!1", "value", "a"]],
     ]);
     replica.applyOperations(batches[0]!);
     replica.forceCommit();
@@ -1105,6 +1109,39 @@ describe("applyOperations", () => {
     assertDoc(replica, ["a", "b", "c", "d", "e"]);
   });
 
+  test("one node travels without the list, and a delete of it alone by the head", () => {
+    const ids = ["root", "s.5", "s.6", "s.7"];
+    let count = 0;
+    const config = {
+      type: "root",
+      extensions: [TextExtension],
+      nodeIdGenerator: { generate: () => ids[count++]!, validate: () => true },
+    };
+    const doc = new Doc(config);
+    const replica = Doc.fromJSON(config, doc.toJSON());
+    const batches: Operations[] = [];
+    doc.onChange(({ operations }) => batches.push(operations));
+    const [a, b, c] = text(doc, "a", "b", "c");
+    doc.root.append(a!);
+    doc.forceCommit();
+    a!.insertAfter(b!);
+    doc.forceCommit();
+    doc.root.append(c!);
+    b!.delete();
+    doc.forceCommit();
+    a!.delete();
+    doc.forceCommit();
+    expect(batches).toStrictEqual([
+      ["s.5", [0, 1, "text"], [-9, 1, "value", "a"]],
+      ["s.6", [0, 1, "text", 0, -1], [-9, 1, "value", "b"]],
+      ["s.7", [0, 1, "text", 0, -1], [1, -1], [-9, 1, "value", "c"]],
+      ["s.5", 1],
+    ]);
+    for (const batch of batches) replica.applyOperations(batch);
+    replica.forceCommit();
+    assertDoc(replica, ["c"]);
+  });
+
   test("a node written as a string with its sign reads as its distance", () => {
     const doc = createTextDocWithUndo();
     const [node] = text(doc, "a");
@@ -1121,8 +1158,8 @@ describe("applyOperations", () => {
     const [existing] = text(doc, "existing");
     doc.root.append(existing!);
     doc.forceCommit();
-    // @ts-expect-error - a delete without its node
-    expect(() => doc.applyOperations(["s", [1]])).not.toThrow();
+    // @ts-expect-error - a delete whose node is not an id
+    expect(() => doc.applyOperations(["s", [1, null]])).not.toThrow();
     // @ts-expect-error - an insert of a node without its type
     expect(() => doc.applyOperations(["s", [0, [[".1", 5]]]])).not.toThrow();
     assertDoc(doc, ["existing"]);

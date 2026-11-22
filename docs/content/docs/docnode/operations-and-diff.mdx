@@ -91,8 +91,11 @@ A batch is `[head, ...rows]`. The rows are applied in order:
 // Inserts nodes under `parent`, between two siblings. A count is a run of
 // nodes created one after the other.
 [0, [[node, type, count?], ...], parent?, prev?, next?];
-// Deletes the nodes from `start` to `end`, with their descendants.
-[1, start, end?];
+// Inserts one node: the same, without the list.
+[0, node, type, parent?, prev?, next?];
+// Deletes the nodes from `start` to `end`, with their descendants. Without
+// `start`, the node at the head's clock.
+[1, start?, end?];
 // Moves the nodes from `start` to `end` under `parent`, between two siblings.
 [2, start, end?, parent?, prev?, next?];
 // Sets state, always the last row: a node, a key and its value, for each key
@@ -107,8 +110,10 @@ Trailing zeros are left out, and `0` is the root as a parent, or no sibling. A n
 ["1ZcR.-", -9, 1, "v", "z"];
 // Moves a node after another one.
 ["1ZcR.-", 2, 1, 0, 0, 3];
-// Deletes a node.
-["1ZcR.0", 1, 1];
+// Inserts a node after another one.
+["1ZcR.3", 0, 1, "t", 0, -1];
+// Deletes a node: the one the head names.
+["1ZcR.0", 1];
 ```
 
 ### Upgrading from 0.4
