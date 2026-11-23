@@ -108,14 +108,16 @@ export class ColumnWriter {
       values = pairs;
       count = at;
     }
-    // One digit each, the fewest, with the first cut above every value.
-    let cutIndex = CUTS.findIndex((cut) => max < cut);
-    let step = 1;
-    let best = count;
-    // Else the cut that takes the fewest digits, on a sample.
-    if (cutIndex === -1)
-      [step, cutIndex, best] = [Math.ceil(count / SAMPLE), 0, Infinity];
-    for (const [index, candidate] of best < Infinity ? [] : CUTS.entries()) {
+    // The cut that takes the fewest digits, on a sample.
+    const step = Math.ceil(count / SAMPLE);
+    let cutIndex = 0;
+    let best = Infinity;
+    for (const [index, candidate] of CUTS.entries()) {
+      // One digit each, the fewest: the first cut above every value.
+      if (max < candidate) {
+        [cutIndex, best] = [index, count / step];
+        break;
+      }
       const scale = BASE - candidate;
       let size = 0;
       for (let index = 0; index < count && size < best; index += step) {

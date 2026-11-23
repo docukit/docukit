@@ -1151,10 +1151,8 @@ export class Doc {
    */
   static fromJSON(config: DocConfig, storedDoc: JsonDoc | JsonTree): Doc {
     // Unreleased versions wrote a number first.
-    if (!isTree(storedDoc) && !Array.isArray(storedDoc[0]))
-      throw new Error(
-        `Stored by an unreleased version: ${JSON.stringify(storedDoc[0])}`,
-      );
+    if (typeof storedDoc[0] === "number")
+      throw new Error(`Unsupported format: ${JSON.stringify(storedDoc[0])}`);
     const id = isTree(storedDoc) ? storedDoc[0] : config.id;
     if (!id)
       throw new Error(

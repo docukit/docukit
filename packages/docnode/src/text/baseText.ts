@@ -1320,17 +1320,16 @@ export class BaseText extends TextEngine {
     const nodeClocks = new ColumnWriter(flows.length);
     const stateRuns = new ColumnWriter();
     const fields = new FieldWriter();
+    /** The shapes (their flags), in the order runs first have them. */
     const shapeBits: number[] = [];
-    /** How many runs have each shape. */
-    const uses: number[] = [];
-    const bitsIndex = new Int32Array(BITS_ALL).fill(-1);
+    /** How many runs have each shape, by its flags. */
+    const uses = new Int32Array(BITS_ALL);
     const ends: number[] = [];
     const texts: string[] = [];
     let curSession = 0;
     let expectedKey: string | undefined = root;
-    let shape = 0;
     // Where the last run's long length is in `fields`, and where it ends.
-    let longAt = -1;
+    let longAt = 0;
     let longEnd = -1;
     for (const flow of flows) {
       let flags = flow === flows.at(-1) ? 0 : FLOW_MORE;
@@ -1376,12 +1375,11 @@ export class BaseText extends TextEngine {
         const session = sessions.index(run.s);
         const length = text.length;
         let bits = 0;
-        longAt = -1;
         if (length >= LONG) {
           longAt = fields.length;
           fields.write(length - LONG, CUT_LONG);
           longEnd = fields.length;
-        }
+        } else longEnd = -1;
         if (session === backS && run.c === backEnd) bits |= BITS_RESUME;
         else if (session === prevS && run.c + length === prevC)
           bits |= BITS_BEFORE;
@@ -1403,15 +1401,10 @@ export class BaseText extends TextEngine {
         prevS = session;
         prevC = run.c;
         prevEnd = run.c + length;
-        shape = bitsIndex[bits]!;
-        if (shape === -1) {
-          shape = bitsIndex[bits] = shapeBits.length;
-          shapeBits.push(bits);
-          uses.push(0);
-        }
-        uses[shape]!++;
-        // A long length is `0`, with the rest in `fields`.
-        shapeColumn.push(shape * LONG + (length < LONG ? length : 0));
+        if (!uses[bits]!++) shapeBits.push(bits);
+        // A long length is `0`, with the rest in `fields`. By its flags
+        // here, by its shape's rank once all are counted.
+        shapeColumn.push(bits * LONG + (length < LONG ? length : 0));
         if (hasState) {
           const index = stateIndex(run.state);
           if (index === lastState) stateCount++;
@@ -1434,19 +1427,17 @@ export class BaseText extends TextEngine {
       if (flags & FLOW_MORE) flowRuns.push(runs);
     }
     // The last run's long length, last in `fields`, is the letters left.
-    if (longAt !== -1 && longEnd === fields.length) fields.cut(longAt);
-    // The shapes most runs have first: lower codes.
-    const codes = new Int32Array(shapeBits.length * LONG);
-    const shapes = new ColumnWriter(shapeBits.length * 2);
-    shapeBits
-      .map((_, shape) => shape)
-      .sort((a, b) => uses[b]! - uses[a]! || a - b)
-      .forEach((shape, rank) => {
-        shapes.push(shapeBits[shape]!);
-        for (let slot = 0; slot < LONG; slot++)
-          codes[shape * LONG + slot] = rank * LONG + slot;
-      });
-    shapeColumn.remap(codes);
+    if (longEnd === fields.length) fields.cut(longAt);
+    // The shapes most runs have first (a stable sort: else the first
+    // used), with lower codes.
+    shapeBits.sort((a, b) => uses[b]! - uses[a]!);
+    const shapes = new ColumnWriter();
+    for (const bits of shapeBits) shapes.push(bits);
+    shapeColumn.remap(
+      new Int32Array(BITS_ALL * LONG).map(
+        (_, code) => shapeBits.indexOf(code >> 4) * LONG + (code % LONG),
+      ),
+    );
     // In the order of `COLUMN_*`: those a text of one list leaves empty last.
     out.push(
       shapeColumn,
@@ -1454,7 +1445,7 @@ export class BaseText extends TextEngine {
       shapes,
       // Without ghosts, their columns are empty.
       ...(ghostWriter?.columns ??
-        Array.from({ length: 5 }, () => new ColumnWriter())),
+        Array<ColumnWriter>(5).fill(new ColumnWriter())),
       flowFlags,
       flowRuns,
       stateRuns,

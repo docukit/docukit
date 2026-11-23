@@ -244,15 +244,17 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
     text !== 0 && text.length === 1 ? text[0]! : text,
     // How much each session shares, the text's, then the tree's (see
     // `COLUMN_*`): a document of text alone ends with the text's.
+    // An empty element is `0`, and those at the end are left out.
     joinColumns([
       ...sharedColumn(json[AT_SESSIONS], shared),
       ...textColumns,
       ...columns,
-    ]),
-    [...names.keys()],
-    values,
+    ]) || 0,
+    names.size ? [...names.keys()] : 0,
+    values.length ? values : 0,
   );
-  return trimEnd(json);
+  while (json.length > AT_TEXT && json.at(-1) === 0) json.pop();
+  return json;
 }
 
 /**
@@ -263,16 +265,6 @@ export const sharedColumn = (
   table: readonly string[],
   shared: ColumnWriter,
 ): ColumnWriter[] => (table.length > 1 ? [shared] : []);
-
-/** `json` without the empty elements at its end. */
-function trimEnd(json: JsonDoc): JsonDoc {
-  for (let last = json.at(-1); json.length > AT_TEXT; last = json.at(-1)) {
-    if (last !== 0 && last !== "" && !(Array.isArray(last) && !last.length))
-      break;
-    json.pop();
-  }
-  return json;
-}
 
 /** The columns of a stored `json`: an element left out, or `0`, has none. */
 export const columnsOf = (json: JsonDoc) => {

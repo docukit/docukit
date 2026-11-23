@@ -618,7 +618,7 @@ describe("stored document", () => {
       Reflect.set(stored, 0, format);
       expect(() =>
         Doc.fromJSON({ ...config, id: doc.root.id }, stored),
-      ).toThrowError(`Stored by an unreleased version: ${format}`);
+      ).toThrowError(`Unsupported format: ${format}`);
     },
   );
 
