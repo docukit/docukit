@@ -16,10 +16,8 @@ import {
   type InheritRules,
   TEXT_KEY,
   type TextEngine,
-  textState,
   type TextSpan,
 } from "./common.js";
-import { BaseText } from "./baseText.js";
 import { useTextRows } from "./wire.js";
 
 /** True when `index` falls between the two halves of a surrogate pair. */
@@ -240,30 +238,18 @@ export class TextHandle {
 }
 
 /**
- * Base's text: a list per node in the server's order (see `BaseText`). Made
- * by the first `defineText`: an app without text does not bundle it.
+ * The state of a `defineText` whose document root holds its text as `root`
+ * says: Base's (`text/base.ts`) or that of the CRDT engine (`crdt/text.ts`).
  */
-let rootDefinition: InternalStateDefinition | undefined;
-
-/**
- * Opt-in collaborative text: a list of letters per node, and a state per
- * letter and key where the last write wins. In Base the server's order
- * places letters (see `BaseText`); with a CRDT engine, FugueMax does.
- * `inherit`: the keys a letter without a value of its own reads from the
- * letters it was typed between (see `Inherit`), like
- * `{ bold: "origin", link: "both", "comment:*": "both" }`. `opaque`: the
- * characters whose letters inherit nothing, like one that ends a paragraph.
- */
-export function defineText(options?: {
-  inherit?: InheritRules;
-  opaque?: string;
-}): StateDefinition<number, Json, TextHandle> {
+export function textDefinition(
+  options: { inherit?: InheritRules; opaque?: string } | undefined,
+  root: InternalStateDefinition,
+): StateDefinition<number, Json, TextHandle> {
   const rules = rulesOf(options?.inherit, options?.opaque);
   useTextRows();
-  rootDefinition ??= textState(BaseText);
   const definition: InternalStateDefinition<number, Json, TextHandle> = {
     fromJSON: () => 0,
-    docState: { key: TEXT_KEY, definition: rootDefinition },
+    docState: { key: TEXT_KEY, definition: root },
     methodsWithNode: (_methods, node) => new TextHandle(node, rules),
     onCopy: (from, to) => {
       const store = storeOf(from.doc);

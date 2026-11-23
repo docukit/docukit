@@ -27,9 +27,6 @@ export {
 } from "../operations.js";
 export { _INTERNAL_decodeOperations } from "../wire.js";
 export type { UndoHistory } from "../undoManager.js";
-export {
-  defineText,
-  TextHandle,
-  _INTERNAL_textStore,
-} from "../text/defineText.js";
+export { defineText } from "../text/base.js";
+export { TextHandle, _INTERNAL_textStore } from "../text/defineText.js";
 export type { TextSpan } from "../text/common.js";
