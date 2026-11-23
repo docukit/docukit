@@ -37,6 +37,36 @@ export type Rules = {
   readonly opaque: string;
 };
 
+function lowerBound(runs: { readonly c: number }[], c: number): number {
+  let low = 0;
+  let high = runs.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (runs[mid]!.c < c) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
+export function isLowSurrogate(code: number): boolean {
+  return code >= 0xdc00 && code <= 0xdfff;
+}
+
+/** The rules of each `defineText` definition that has them. */
+export const inheritRules = new WeakMap<object, Rules>();
+
+export function isHighSurrogate(code: number): boolean {
+  return code >= 0xd800 && code <= 0xdbff;
+}
+
+export function decodeRef(own: string, ref: Json): [string, number] {
+  if (typeof ref === "number") return [own, ref - 1];
+  const text = stringOf(ref);
+  if (text.charCodeAt(0) === 94) return [text.slice(1), -1];
+  const dot = lastDot(text);
+  return [text.slice(0, dot), base64ToNumber(text, dot + 1)];
+}
+
 /**
  * The rules of `inherit` (see `InheritRules`), and the opaque letters; none
  * without a key.
@@ -59,40 +89,6 @@ export function rulesOf(
         : prefixes.find(([prefix]) => key.startsWith(prefix))?.[1]),
     opaque,
   };
-}
-
-/** Where the first opaque letter of `text` is, or its length. */
-export function cutIn(text: string, opaque: string): number {
-  if (opaque === "") return text.length;
-  for (let index = 0; index < text.length; index++)
-    if (opaque.includes(text[index]!)) return index;
-  return text.length;
-}
-
-/** The rules of each `defineText` definition that has them. */
-export const inheritRules = new WeakMap<object, Rules>();
-
-/** The rules of a node's type, `false` while it is not in the document. */
-export function rulesOfNode(
-  doc: Doc | undefined,
-  node: string,
-): Rules | undefined | false {
-  const found = doc?.getNodeById(node);
-  if (!found) return false;
-  const definition = doc!["_resolvedNodeDefs"].get(found.type);
-  for (const key in definition?.state) {
-    const rules = inheritRules.get(definition.state[key]!);
-    if (rules) return rules;
-  }
-  return undefined;
-}
-
-export function isHighSurrogate(code: number): boolean {
-  return code >= 0xd800 && code <= 0xdbff;
-}
-
-export function isLowSurrogate(code: number): boolean {
-  return code >= 0xdc00 && code <= 0xdfff;
 }
 
 export const sameValue = (a: Json, b: Json) =>
@@ -146,26 +142,12 @@ export function stateOfContent(
   return any ? state : undefined;
 }
 
-/**
- * An insert's content: its text, or `[text, flags?, attrs?]` with the first
- * state of its letters, where `flags` are the keys of one character set to
- * 1 (a format, like bold) and `attrs` the rest (`null`: none, not inherited).
- */
-export function contentOf(
-  text: string,
-  attrs: Readonly<Record<string, Json>> | undefined,
-): Json {
-  if (!attrs) return text;
-  let flags = "";
-  let rest: Record<string, Json> | undefined;
-  for (const key in attrs) {
-    const value = attrs[key]!;
-    if (key.length === 1 && value === 1) flags += key;
-    else (rest ??= {})[key] = value;
-  }
-  // `attrs` has a key at least: the engines send none without one.
-  if (!rest) return [text, flags];
-  return flags === "" ? [text, rest] : [text, flags, rest];
+/** Where the first opaque letter of `text` is, or its length. */
+export function cutIn(text: string, opaque: string): number {
+  if (opaque === "") return text.length;
+  for (let index = 0; index < text.length; index++)
+    if (opaque.includes(text[index]!)) return index;
+  return text.length;
 }
 
 /**
@@ -176,61 +158,6 @@ export class SessionRuns<
   R extends { readonly c: number; readonly len: number },
 > {
   #chunks: R[][] = [[]];
-
-  #chunkFor(c: number): R[] {
-    const chunks = this.#chunks;
-    let low = 0;
-    let high = chunks.length - 1;
-    while (low < high) {
-      const mid = (low + high + 1) >> 1;
-      if (chunks[mid]![0]!.c <= c) low = mid;
-      else high = mid - 1;
-    }
-    return chunks[low]!;
-  }
-
-  #last: R | undefined;
-
-  /** The last run that starts at `c` or before it, else the first one. */
-  #startingBy(c: number): R {
-    const runs = this.#chunkFor(c);
-    let low = 0;
-    let high = runs.length - 1;
-    while (low < high) {
-      const mid = (low + high + 1) >> 1;
-      if (runs[mid]!.c <= c) low = mid;
-      else high = mid - 1;
-    }
-    return runs[low]!;
-  }
-
-  find(c: number): R | undefined {
-    const last = this.#last;
-    if (last !== undefined && c >= last.c && c < last.c + last.len) return last;
-    const run = this.#startingBy(c);
-    if (c < run.c || c >= run.c + run.len) return undefined;
-    this.#last = run;
-    return run;
-  }
-
-  /** Whether any of the `length` ids from `c` is here. */
-  overlaps(c: number, length: number): boolean {
-    const last = c + length - 1;
-    const run = this.#startingBy(last);
-    return run.c <= last && run.c + run.len > c;
-  }
-
-  /** The counter after its last run. */
-  end(): number {
-    const runs = this.#chunks[this.#chunks.length - 1]!;
-    const last = runs[runs.length - 1]!;
-    return last.c + last.len;
-  }
-
-  /** Whether it has no run left (see `remove`). */
-  get empty(): boolean {
-    return this.#chunks.length === 0;
-  }
 
   static from<R extends { readonly c: number; readonly len: number }>(
     runs: R[],
@@ -258,6 +185,47 @@ export class SessionRuns<
     return out;
   }
 
+  #last: R | undefined;
+
+  #chunkFor(c: number): R[] {
+    const chunks = this.#chunks;
+    let low = 0;
+    let high = chunks.length - 1;
+    while (low < high) {
+      const mid = (low + high + 1) >> 1;
+      if (chunks[mid]![0]!.c <= c) low = mid;
+      else high = mid - 1;
+    }
+    return chunks[low]!;
+  }
+
+  /** Whether any of the `length` ids from `c` is here. */
+  overlaps(c: number, length: number): boolean {
+    const last = c + length - 1;
+    const run = this.#startingBy(last);
+    return run.c <= last && run.c + run.len > c;
+  }
+
+  /** The counter after its last run. */
+  end(): number {
+    const runs = this.#chunks[this.#chunks.length - 1]!;
+    const last = runs[runs.length - 1]!;
+    return last.c + last.len;
+  }
+
+  /** The last run that starts at `c` or before it, else the first one. */
+  #startingBy(c: number): R {
+    const runs = this.#chunkFor(c);
+    let low = 0;
+    let high = runs.length - 1;
+    while (low < high) {
+      const mid = (low + high + 1) >> 1;
+      if (runs[mid]!.c <= c) low = mid;
+      else high = mid - 1;
+    }
+    return runs[low]!;
+  }
+
   add(run: R): void {
     const runs = this.#chunkFor(run.c);
     if (runs.length === 0 || runs[runs.length - 1]!.c < run.c) runs.push(run);
@@ -267,33 +235,73 @@ export class SessionRuns<
     chunks.splice(chunks.indexOf(runs) + 1, 0, runs.splice(CHUNK));
   }
 
+  find(c: number): R | undefined {
+    const last = this.#last;
+    if (last !== undefined && c >= last.c && c < last.c + last.len) return last;
+    const run = this.#startingBy(c);
+    if (c < run.c || c >= run.c + run.len) return undefined;
+    this.#last = run;
+    return run;
+  }
+
   remove(run: R): void {
     if (this.#last === run) this.#last = undefined;
     const runs = this.#chunkFor(run.c);
     runs.splice(lowerBound(runs, run.c), 1);
     if (runs.length === 0) this.#chunks.splice(this.#chunks.indexOf(runs), 1);
   }
+
+  /** Whether it has no run left (see `remove`). */
+  get empty(): boolean {
+    return this.#chunks.length === 0;
+  }
 }
 
 /** Size at which a chunk of `SessionRuns` is cut in two. */
 const CHUNK = 256;
-
-function lowerBound(runs: { readonly c: number }[], c: number): number {
-  let low = 0;
-  let high = runs.length;
-  while (low < high) {
-    const mid = (low + high) >> 1;
-    if (runs[mid]!.c < c) low = mid + 1;
-    else high = mid;
-  }
-  return low;
-}
 
 /** The node id right after `id` (same session, next clock), if it has one. */
 export function nextId(id: string): string | undefined {
   const dot = lastDot(id);
   if (dot === -1) return undefined;
   return id.slice(0, dot + 1) + incrementStringInBase64(id.slice(dot + 1));
+}
+
+/** The rules of a node's type, `false` while it is not in the document. */
+export function rulesOfNode(
+  doc: Doc | undefined,
+  node: string,
+): Rules | undefined | false {
+  const found = doc?.getNodeById(node);
+  if (!found) return false;
+  const definition = doc!["_resolvedNodeDefs"].get(found.type);
+  for (const key in definition?.state) {
+    const rules = inheritRules.get(definition.state[key]!);
+    if (rules) return rules;
+  }
+  return undefined;
+}
+
+/**
+ * An insert's content: its text, or `[text, flags?, attrs?]` with the first
+ * state of its letters, where `flags` are the keys of one character set to
+ * 1 (a format, like bold) and `attrs` the rest (`null`: none, not inherited).
+ */
+export function contentOf(
+  text: string,
+  attrs: Readonly<Record<string, Json>> | undefined,
+): Json {
+  if (!attrs) return text;
+  let flags = "";
+  let rest: Record<string, Json> | undefined;
+  for (const key in attrs) {
+    const value = attrs[key]!;
+    if (key.length === 1 && value === 1) flags += key;
+    else (rest ??= {})[key] = value;
+  }
+  // `attrs` has a key at least: the engines send none without one.
+  if (!rest) return [text, flags];
+  return flags === "" ? [text, rest] : [text, flags, rest];
 }
 
 // ----- references to letters ----------------------------------------------
@@ -308,23 +316,29 @@ export function encodeRef(own: string, s: string, c: number): number | string {
   return `${s}.${numberToBase64(c)}`;
 }
 
-export function decodeRef(own: string, ref: Json): [string, number] {
-  if (typeof ref === "number") return [own, ref - 1];
-  const text = stringOf(ref);
-  if (text.charCodeAt(0) === 94) return [text.slice(1), -1];
-  const dot = lastDot(text);
-  return [text.slice(0, dot), base64ToNumber(text, dot + 1)];
-}
-
-export function pushRange(
-  ranges: [string, number, number][],
-  s: string,
-  c: number,
-  len: number,
-): void {
-  const last = ranges.at(-1);
-  if (last?.[0] === s && last[1] + last[2] === c) last[2] += len;
-  else ranges.push([s, c, len]);
+/** The state of the document root that holds an engine's text. */
+export function textState(engine: {
+  fromJSON(json: unknown): TextEngine;
+  fromStored(
+    stored: Json[],
+    columns: string[],
+    sessions: string[],
+    root: string,
+  ): TextEngine;
+  /** How many columns `toStored` wrote, by what it returned. */
+  columns(stored: Json[]): number;
+}): InternalStateDefinition {
+  return {
+    fromJSON: (json) => engine.fromJSON(json),
+    toJSON: (store) => asStore(store).toJSON(),
+    toStored: (store, sessions, columns, root) =>
+      asStore(store).toStored(sessions, columns, root),
+    storedColumns: (stored) => engine.columns(stored),
+    fromStored: (stored, columns, sessions, root) =>
+      engine.fromStored(stored, columns, sessions, root),
+    applyEdit: (_store, doc, operation) => storeOf(doc).apply(doc, operation),
+    prepareUndo: (undo, doc) => storeOf(doc).prepareUndo(doc, undo),
+  };
 }
 
 export const encodeRange = (
@@ -387,31 +401,6 @@ const asStore = (value: unknown): TextEngine => {
   return value;
 };
 
-/** The state of the document root that holds an engine's text. */
-export function textState(engine: {
-  fromJSON(json: unknown): TextEngine;
-  fromStored(
-    stored: Json[],
-    columns: string[],
-    sessions: string[],
-    root: string,
-  ): TextEngine;
-  /** How many columns `toStored` wrote, by what it returned. */
-  columns(stored: Json[]): number;
-}): InternalStateDefinition {
-  return {
-    fromJSON: (json) => engine.fromJSON(json),
-    toJSON: (store) => asStore(store).toJSON(),
-    toStored: (store, sessions, columns, root) =>
-      asStore(store).toStored(sessions, columns, root),
-    storedColumns: (stored) => engine.columns(stored),
-    fromStored: (stored, columns, sessions, root) =>
-      engine.fromStored(stored, columns, sessions, root),
-    applyEdit: (_store, doc, operation) => storeOf(doc).apply(doc, operation),
-    prepareUndo: (undo, doc) => storeOf(doc).prepareUndo(doc, undo),
-  };
-}
-
 /** The text of `doc`: Base's, or that of its CRDT engine (see `textState`). */
 export function storeOf(doc: Doc): TextEngine {
   const state: Record<string, unknown> = doc.root["_state"];
@@ -424,4 +413,15 @@ export function storeOf(doc: Doc): TextEngine {
   store.bind(doc);
   state[TEXT_KEY] = store;
   return store;
+}
+
+export function pushRange(
+  ranges: [string, number, number][],
+  s: string,
+  c: number,
+  len: number,
+): void {
+  const last = ranges.at(-1);
+  if (last?.[0] === s && last[1] + last[2] === c) last[2] += len;
+  else ranges.push([s, c, len]);
 }

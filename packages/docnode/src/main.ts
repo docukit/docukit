@@ -77,6 +77,12 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     return this[DOC];
   }
 
+  get state(): NodeState.Methods<T> {
+    return this.doc["_resolvedNodeDefs"]
+      .get(this.type)!
+      .methods(this) as NodeState.Methods<T>;
+  }
+
   /**
    * Links the node between `prev` and `next` under `parent`, and with
    * `attached` (a parent in the document) puts it and its descendants in the
@@ -92,57 +98,6 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     this._set("parent", parent);
     this._set("prev", prev);
     this._set("next", next);
-  }
-
-  /** Puts the node and its descendants in `map`, without an iterator. */
-  #register(map: Map<string, DocNode>) {
-    map.set(this.id, this);
-    for (let child = this.first; child; child = child.next)
-      child.#register(map);
-  }
-
-  get state(): NodeState.Methods<T> {
-    return this.doc["_resolvedNodeDefs"]
-      .get(this.type)!
-      .methods(this) as NodeState.Methods<T>;
-  }
-
-  private _set(
-    prop: "parent" | "prev" | "next" | "first" | "last",
-    node: DocNode | undefined,
-  ) {
-    // @ts-expect-error - read-only property
-    this[prop] = node;
-  }
-
-  is<
-    K extends string,
-    NDs extends [NodeDefinition<K>, ...NodeDefinition<NDs[0]["type"]>[]],
-  >(...nodeDefs: NDs): this is DocNode<IntersectionOf<NDs>> {
-    // TODO:
-    // 1. check that every nodeDef is registered
-    // 2. check that the first nodeDef matches the node's type
-    return nodeDefs[0]?.type === this.type;
-  }
-
-  // TO-DECIDE: maybe/someday
-  // changeType(_newData: DocNode) {
-  //   throw new Error("Not implemented yet");
-  //   // this._data = newData;
-  // }
-
-  /**
-   * Adds nodes as last children of this node
-   */
-  append(...nodes: DocNode[]) {
-    this.doc["_insertRange"](this, "append", nodes);
-  }
-
-  /**
-   * Adds nodes as first children of this node
-   */
-  prepend(...nodes: DocNode[]) {
-    this.doc["_insertRange"](this, "prepend", nodes);
   }
 
   /**
@@ -170,6 +125,27 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
   }
 
   /**
+   * Replaces this node with the provided nodes.
+   * @throws if the node is the root node.
+   */
+  replace(...nodes: DocNode[]) {
+    this.to(this).replace(...nodes);
+  }
+
+  // TO-DECIDE: maybe/someday
+  // changeType(_newData: DocNode) {
+  //   throw new Error("Not implemented yet");
+  //   // this._data = newData;
+  // }
+
+  /**
+   * Adds nodes as last children of this node
+   */
+  append(...nodes: DocNode[]) {
+    this.doc["_insertRange"](this, "append", nodes);
+  }
+
+  /**
    * Deletes the children and descendants of this node.
    */
   deleteChildren() {
@@ -180,35 +156,11 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
   }
 
   /**
-   * Replaces this node with the provided nodes.
-   * @throws if the node is the root node.
-   */
-  replace(...nodes: DocNode[]) {
-    this.to(this).replace(...nodes);
-  }
-
-  /**
    * Deletes the children of this node and adds the provided nodes as children.
    */
   replaceChildren(...nodes: DocNode[]) {
     if (this.first) this.first.to(this.last!).replace(...nodes);
     else this.append(...nodes);
-  }
-
-  /**
-   * Moves this node to the target node in the provided position.
-   * @throws if target is the same node or one of its descendants.
-   */
-  move(target: DocNode, position: "append" | "prepend" | "before" | "after") {
-    this.to(this).move(target, position);
-  }
-
-  /**
-   * Copies this node to the target node in the provided position.
-   * The copied node will be the same except for the id, which will receive a new one.
-   */
-  copy(target: DocNode, position: "append" | "prepend" | "before" | "after") {
-    this.to(this).copy(target, position);
   }
 
   /**
@@ -410,6 +362,44 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     };
   }
 
+  /**
+   * Returns iterable methods `forEach` and `find`
+   * over the descendants of this node.
+   */
+  descendants(options: IterableOptions = { includeSelf: false }) {
+    const forEach = (callback: (node: DocNode, deepLevel: number) => void) => {
+      const traverse = (node: DocNode | undefined, deepLevel: number): void => {
+        let current = node;
+        while (current) {
+          callback(current, deepLevel);
+          traverse(current.first, deepLevel + 1);
+          current = current.next;
+        }
+      };
+      if (options.includeSelf) callback(this, 0);
+      traverse(this.first, 1);
+    };
+
+    const find: Find = (
+      predicate: (node: DocNode) => unknown,
+    ): DocNode | undefined => {
+      const traverse = (node: DocNode | undefined): DocNode | undefined => {
+        let current = node;
+        while (current) {
+          if (predicate(current)) return current;
+          const hit = traverse(current.first);
+          if (hit) return hit;
+          current = current.next;
+        }
+        return undefined;
+      };
+      if (options.includeSelf && predicate(this)) return this;
+      return traverse(this.first);
+    };
+
+    return { forEach, find };
+  }
+
   children(options: IterableOptions = { includeSelf: false }) {
     const find: Find = (predicate: (node: DocNode) => unknown) => {
       if (options.includeSelf && predicate(this)) return this;
@@ -460,42 +450,26 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     };
   }
 
-  /**
-   * Returns iterable methods `forEach` and `find`
-   * over the descendants of this node.
-   */
-  descendants(options: IterableOptions = { includeSelf: false }) {
-    const forEach = (callback: (node: DocNode, deepLevel: number) => void) => {
-      const traverse = (node: DocNode | undefined, deepLevel: number): void => {
-        let current = node;
-        while (current) {
-          callback(current, deepLevel);
-          traverse(current.first, deepLevel + 1);
-          current = current.next;
-        }
-      };
-      if (options.includeSelf) callback(this, 0);
-      traverse(this.first, 1);
+  nextSiblings(options: IterableOptions = { includeSelf: false }) {
+    const find: Find = (predicate: (node: DocNode) => unknown) => {
+      let current = options.includeSelf ? this : this.next;
+      while (current) {
+        if (predicate(current)) return current;
+        current = current.next;
+      }
+      return undefined;
     };
 
-    const find: Find = (
-      predicate: (node: DocNode) => unknown,
-    ): DocNode | undefined => {
-      const traverse = (node: DocNode | undefined): DocNode | undefined => {
-        let current = node;
+    return {
+      forEach: (callback: (node: DocNode) => void) => {
+        let current = options.includeSelf ? this : this.next;
         while (current) {
-          if (predicate(current)) return current;
-          const hit = traverse(current.first);
-          if (hit) return hit;
+          callback(current);
           current = current.next;
         }
-        return undefined;
-      };
-      if (options.includeSelf && predicate(this)) return this;
-      return traverse(this.first);
+      },
+      find,
     };
-
-    return { forEach, find };
   }
 
   prevSiblings(options: IterableOptions = { includeSelf: false }) {
@@ -520,30 +494,41 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     };
   }
 
-  nextSiblings(options: IterableOptions = { includeSelf: false }) {
-    const find: Find = (predicate: (node: DocNode) => unknown) => {
-      let current = options.includeSelf ? this : this.next;
-      while (current) {
-        if (predicate(current)) return current;
-        current = current.next;
-      }
-      return undefined;
-    };
+  /**
+   * Adds nodes as first children of this node
+   */
+  prepend(...nodes: DocNode[]) {
+    this.doc["_insertRange"](this, "prepend", nodes);
+  }
 
-    return {
-      forEach: (callback: (node: DocNode) => void) => {
-        let current = options.includeSelf ? this : this.next;
-        while (current) {
-          callback(current);
-          current = current.next;
-        }
-      },
-      find,
-    };
+  is<
+    K extends string,
+    NDs extends [NodeDefinition<K>, ...NodeDefinition<NDs[0]["type"]>[]],
+  >(...nodeDefs: NDs): this is DocNode<IntersectionOf<NDs>> {
+    // TODO:
+    // 1. check that every nodeDef is registered
+    // 2. check that the first nodeDef matches the node's type
+    return nodeDefs[0]?.type === this.type;
+  }
+
+  /**
+   * Moves this node to the target node in the provided position.
+   * @throws if target is the same node or one of its descendants.
+   */
+  move(target: DocNode, position: "append" | "prepend" | "before" | "after") {
+    this.to(this).move(target, position);
   }
 
   toJSON(): JsonDocNode<T> {
     return [this.id, this.type, this._stateToJson(true)];
+  }
+
+  /**
+   * Copies this node to the target node in the provided position.
+   * The copied node will be the same except for the id, which will receive a new one.
+   */
+  copy(target: DocNode, position: "append" | "prepend" | "before" | "after") {
+    this.to(this).copy(target, position);
   }
 
   /**
@@ -569,6 +554,21 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
       jsonState[key] = stringifiedState;
     }
     return jsonState as NodeState.Stringified<T>;
+  }
+
+  /** Puts the node and its descendants in `map`, without an iterator. */
+  #register(map: Map<string, DocNode>) {
+    map.set(this.id, this);
+    for (let child = this.first; child; child = child.next)
+      child.#register(map);
+  }
+
+  private _set(
+    prop: "parent" | "prev" | "next" | "first" | "last",
+    node: DocNode | undefined,
+  ) {
+    // @ts-expect-error - read-only property
+    this[prop] = node;
   }
 }
 
@@ -772,14 +772,65 @@ export class Doc {
   }
 
   /**
-   * After an id or a letter of this document's session that it did not make
-   * yet: another replica has the same session, so this one takes a new one
-   * (see `NodeIds`).
+   * Aborts the current transaction and rolls back all changes.
    */
-  private _renewSession() {
-    if (!this.#nodeIds) return;
-    this.#nodeIds.renew();
-    this._sessionRenewals++;
+  abort() {
+    const inverseOps: ops.DraftOperations = [...this["_inverseOperations"]];
+    withTransaction(
+      this,
+      () => {
+        ops.onApplyOperations(this, inverseOps);
+      },
+      true,
+    );
+    this["_operations"] = [[], {}];
+    this["_inverseOperations"] = [[], {}];
+    this["_received"] = undefined;
+    this["_decoded"] = undefined;
+    this["_hasEdits"] = false;
+    this["_transactionFlags"] = {};
+    this["_diff"] = {
+      deleted: new Map(),
+      inserted: new Set(),
+      moved: new Set(),
+      updated: new Set(),
+    };
+    this["_lifeCycleStage"] = "idle";
+  }
+
+  applyOperations(operations: ops.Operations, flags?: TransactionFlags) {
+    if (operations.length < 2) {
+      if (
+        this._lifeCycleStage === "change" ||
+        this._lifeCycleStage === "disposed"
+      )
+        throw new Error(
+          `You can't trigger an update inside a ${this._lifeCycleStage} stage`,
+        );
+      if (this._lifeCycleStage === "normalize2") {
+        throw new Error(
+          "Strict mode has caught an error: normalize listeners are not idempotent. I.e, they should not mutate the document on the second pass.",
+        );
+      }
+      return;
+    }
+    if (this._lifeCycleStage === "update") this.forceCommit();
+    let didApplyOperations = false;
+    if (flags) this._transactionFlags = flags;
+    withTransaction(
+      this,
+      () => {
+        const draft = decodeOperations(operations);
+        this._received = operations;
+        this._decoded = draft;
+        ops.onApplyOperations(this, draft);
+        didApplyOperations = true;
+      },
+      true,
+    );
+    if (didApplyOperations && this._lifeCycleStage === "update") {
+      this.forceCommit();
+    }
   }
 
   /** A node another replica inserted (see `_renewSession`). */
@@ -787,93 +838,49 @@ export class Doc {
     if (this.#nodeIds?.collides(id)) this._renewSession();
   }
 
+  #forceCommit(ignoreEmptyDiff = false) {
+    if (this._lifeCycleStage === "change")
+      throw new Error("You can't trigger an update inside a change event");
+    // push + reverse is more performant than unshift at insertion time
+    this._inverseOperations[0].reverse();
+    // End update stage before normalization
+    this._lifeCycleStage = "idle";
+    ops.maybeTriggerListeners(this, ignoreEmptyDiff);
+    // A document that inserts nodes gets patches keyed by new ids each time
+    // (see `idRecord`).
+    if (this._diff.inserted.size > 0) this.#insertsNodes = true;
+    this._operations = [[], this.#insertsNodes ? idRecord() : {}];
+    this._inverseOperations = [[], {}];
+    this._received = undefined;
+    this._decoded = undefined;
+    this._hasEdits = false;
+    this._transactionFlags = {};
+    this._diff = {
+      deleted: new Map(),
+      inserted: new Set(),
+      moved: new Set(),
+      updated: new Set(),
+    };
+    this._lifeCycleStage = "idle";
+  }
+
   /** The id of a new node: a CRDT engine can choose it (see `DocConfig.crdt`). */
   private _createNodeId() {
     return this._nodeIdGenerator(this);
   }
 
-  getNodeById(docNodeId: string): DocNode | undefined {
-    return this._nodeMap.get(docNodeId);
-  }
-
-  // TODO: Subdocs. This is not implemented yet
-  // getTopLevelDoc() {
-  //   let current: Doc = this;
-  //   while (current._parentDoc) current = current._parentDoc;
-  //   return current;
-  // }
-
-  // For simplicity, we will not allow spreading of nodeDefinitions like in
-  // `is` method. Users should probably create their own wrappers instead.
-  createNode<T extends NodeDefinition>(nodeDefinition: T): DocNode<T> {
-    const type = nodeDefinition.type;
-    if (!this._nodeDefs.has(nodeDefinition)) {
+  /** A stored state value, from its JSON. */
+  private _storedValue(
+    definition: ResolvedNodeDefinition,
+    key: string,
+    json: Json,
+  ): unknown {
+    const state = definition.state[key];
+    if (!state)
       throw new Error(
-        `You attempted to create a node of type '${type}' with a node definition that was not registered.`,
+        `Attempted to create a node of type '${definition.type}' with a state that is not registered: ${key}`,
       );
-    }
-    // @ts-expect-error - private constructor
-    const node = new DocNode(this, type) as DocNode<T>;
-    return node;
-  }
-
-  /** Internal utility used for all the high level insert methods. */
-  private _insertRange(
-    target: DocNode,
-    position: "append" | "prepend" | "before" | "after",
-    nodes: DocNode[],
-  ) {
-    if (nodes.length === 0) return;
-    withTransaction(this, () => {
-      if (
-        (position === "before" || position === "after") &&
-        target === this.root
-      )
-        throw new Error("Root node cannot have siblings");
-      // One pass per node and its descendants: inserting many nodes at once
-      // (pasting, importing) costs the same per node as inserting one.
-      for (const node of nodes) this.#checkInsertable(node);
-      switch (position) {
-        case "append": {
-          const attached = this._nodeMap.has(target.id);
-          if (attached) ops.onInsertRange(this, target, position, nodes);
-          let current = target.last;
-          for (const node of nodes) {
-            node["_attachNode"](target, current, undefined, attached);
-            if (current) current["_set"]("next", node);
-            else target["_set"]("first", node);
-            current = node;
-          }
-          target["_set"]("last", current);
-          break;
-        }
-        case "prepend": {
-          if (target.first) this._insertRange(target.first, "before", nodes);
-          else this._insertRange(target, "append", nodes);
-          break;
-        }
-        case "before": {
-          const parent = target.parent!;
-          const attached = this._nodeMap.has(parent.id);
-          if (attached) ops.onInsertRange(this, target, position, nodes);
-          let current = target;
-          for (let i = nodes.length - 1; i >= 0; i--) {
-            const node = nodes[i]!;
-            node["_attachNode"](parent, current.prev, current, attached);
-            if (current.prev) current.prev["_set"]("next", node);
-            current["_set"]("prev", node);
-            current = node;
-          }
-          if (parent.first === target) parent["_set"]("first", nodes[0]);
-          break;
-        }
-        case "after": {
-          if (target.next) this._insertRange(target.next, "before", nodes);
-          else this._insertRange(target.parent!, "append", nodes);
-          break;
-        }
-      }
-    });
+    return state.fromJSON(json);
   }
 
   /** Throws unless `node` and its descendants can be inserted in this document. */
@@ -936,6 +943,17 @@ export class Doc {
   };
 
   /**
+   * After an id or a letter of this document's session that it did not make
+   * yet: another replica has the same session, so this one takes a new one
+   * (see `NodeIds`).
+   */
+  private _renewSession() {
+    if (!this.#nodeIds) return;
+    this.#nodeIds.renew();
+    this._sessionRenewals++;
+  }
+
+  /**
    * Registers a callback to be executed during the document's normalization phase.
    *
    * Lifecycle: `Idle -> Update -> Normalize -> Change`
@@ -982,41 +1000,6 @@ export class Doc {
     this._normalizeListeners.add(callback);
   }
 
-  applyOperations(operations: ops.Operations, flags?: TransactionFlags) {
-    if (operations.length < 2) {
-      if (
-        this._lifeCycleStage === "change" ||
-        this._lifeCycleStage === "disposed"
-      )
-        throw new Error(
-          `You can't trigger an update inside a ${this._lifeCycleStage} stage`,
-        );
-      if (this._lifeCycleStage === "normalize2") {
-        throw new Error(
-          "Strict mode has caught an error: normalize listeners are not idempotent. I.e, they should not mutate the document on the second pass.",
-        );
-      }
-      return;
-    }
-    if (this._lifeCycleStage === "update") this.forceCommit();
-    let didApplyOperations = false;
-    if (flags) this._transactionFlags = flags;
-    withTransaction(
-      this,
-      () => {
-        const draft = decodeOperations(operations);
-        this._received = operations;
-        this._decoded = draft;
-        ops.onApplyOperations(this, draft);
-        didApplyOperations = true;
-      },
-      true,
-    );
-    if (didApplyOperations && this._lifeCycleStage === "update") {
-      this.forceCommit();
-    }
-  }
-
   /**
    * Terminates the transaction early and synchronously, triggering events.
    * Using forceCommit is uncommon and can hurt your app's performance.
@@ -1045,57 +1028,13 @@ export class Doc {
   /** Whether a transaction of this document inserted nodes. */
   #insertsNodes = false;
 
-  #forceCommit(ignoreEmptyDiff = false) {
-    if (this._lifeCycleStage === "change")
-      throw new Error("You can't trigger an update inside a change event");
-    // push + reverse is more performant than unshift at insertion time
-    this._inverseOperations[0].reverse();
-    // End update stage before normalization
-    this._lifeCycleStage = "idle";
-    ops.maybeTriggerListeners(this, ignoreEmptyDiff);
-    // A document that inserts nodes gets patches keyed by new ids each time
-    // (see `idRecord`).
-    if (this._diff.inserted.size > 0) this.#insertsNodes = true;
-    this._operations = [[], this.#insertsNodes ? idRecord() : {}];
-    this._inverseOperations = [[], {}];
-    this._received = undefined;
-    this._decoded = undefined;
-    this._hasEdits = false;
-    this._transactionFlags = {};
-    this._diff = {
-      deleted: new Map(),
-      inserted: new Set(),
-      moved: new Set(),
-      updated: new Set(),
-    };
-    this._lifeCycleStage = "idle";
-  }
-
-  /**
-   * Aborts the current transaction and rolls back all changes.
-   */
-  abort() {
-    const inverseOps: ops.DraftOperations = [...this["_inverseOperations"]];
-    withTransaction(
-      this,
-      () => {
-        ops.onApplyOperations(this, inverseOps);
-      },
-      true,
-    );
-    this["_operations"] = [[], {}];
-    this["_inverseOperations"] = [[], {}];
-    this["_received"] = undefined;
-    this["_decoded"] = undefined;
-    this["_hasEdits"] = false;
-    this["_transactionFlags"] = {};
-    this["_diff"] = {
-      deleted: new Map(),
-      inserted: new Set(),
-      moved: new Set(),
-      updated: new Set(),
-    };
-    this["_lifeCycleStage"] = "idle";
+  /** Puts a stored root in place of the one the constructor created. */
+  private _setStoredRoot(root: DocNode): void {
+    // Nodes a normalize listener created for the replaced root are gone.
+    this._nodeMap.clear();
+    // @ts-expect-error - read-only property
+    this.root = root;
+    this._nodeMap.set(root.id, root);
   }
 
   /**
@@ -1135,6 +1074,63 @@ export class Doc {
       );
     }
     return writeJsonDoc(this);
+  }
+
+  /** The definition of a stored node's type, which must be registered. */
+  private _storedDefinition(type: string): ResolvedNodeDefinition {
+    const definition = this._resolvedNodeDefs.get(type);
+    if (!definition)
+      throw new Error(
+        `Attempted to create a node of type '${type}' that was not registered.`,
+      );
+    return definition;
+  }
+
+  // TODO: Subdocs. This is not implemented yet
+  // getTopLevelDoc() {
+  //   let current: Doc = this;
+  //   while (current._parentDoc) current = current._parentDoc;
+  //   return current;
+  // }
+
+  // For simplicity, we will not allow spreading of nodeDefinitions like in
+  // `is` method. Users should probably create their own wrappers instead.
+  createNode<T extends NodeDefinition>(nodeDefinition: T): DocNode<T> {
+    const type = nodeDefinition.type;
+    if (!this._nodeDefs.has(nodeDefinition)) {
+      throw new Error(
+        `You attempted to create a node of type '${type}' with a node definition that was not registered.`,
+      );
+    }
+    // @ts-expect-error - private constructor
+    const node = new DocNode(this, type) as DocNode<T>;
+    return node;
+  }
+
+  /** The children of a `JsonTree` node, linked under `parent`. */
+  #attachTree(parent: DocNode, children: JsonTree[] | undefined) {
+    if (!children) return;
+    let prev: DocNode | undefined;
+    for (const json of children) {
+      const node = this._nodeFromTree(json);
+      this._linkStored(parent, prev, node);
+      prev = node;
+      this.#attachTree(node, json[3]);
+    }
+    parent["_set"]("last", prev);
+  }
+
+  /** A node of a stored document, with its state already read. */
+  private _storedNode(
+    id: string,
+    type: string,
+    state: Record<string, unknown>,
+  ): DocNode {
+    if (!this._idGen.extractTime && !this._idGen.validate(id)) {
+      throw new Error(`Invalid node id: ${id}.`);
+    }
+    // @ts-expect-error - private constructor
+    return new DocNode(this, type, id, state) as DocNode;
   }
 
   // NOTE: Maybe someday, if I find it necessary, I can make a non-static method.
@@ -1178,50 +1174,81 @@ export class Doc {
     return doc;
   }
 
-  /** Puts a stored root in place of the one the constructor created. */
-  private _setStoredRoot(root: DocNode): void {
-    // Nodes a normalize listener created for the replaced root are gone.
-    this._nodeMap.clear();
-    // @ts-expect-error - read-only property
-    this.root = root;
-    this._nodeMap.set(root.id, root);
-  }
-
-  /** The definition of a stored node's type, which must be registered. */
-  private _storedDefinition(type: string): ResolvedNodeDefinition {
-    const definition = this._resolvedNodeDefs.get(type);
-    if (!definition)
-      throw new Error(
-        `Attempted to create a node of type '${type}' that was not registered.`,
-      );
-    return definition;
-  }
-
-  /** A stored state value, from its JSON. */
-  private _storedValue(
-    definition: ResolvedNodeDefinition,
-    key: string,
-    json: Json,
-  ): unknown {
-    const state = definition.state[key];
-    if (!state)
-      throw new Error(
-        `Attempted to create a node of type '${definition.type}' with a state that is not registered: ${key}`,
-      );
-    return state.fromJSON(json);
-  }
-
-  /** A node of a stored document, with its state already read. */
-  private _storedNode(
-    id: string,
-    type: string,
-    state: Record<string, unknown>,
-  ): DocNode {
-    if (!this._idGen.extractTime && !this._idGen.validate(id)) {
-      throw new Error(`Invalid node id: ${id}.`);
+  private _nodeFromTree([id, type, stored]: JsonTree): DocNode {
+    const definition = this._storedDefinition(type);
+    const state: Record<string, unknown> = {};
+    for (const key in stored) {
+      const value = stored[key]!;
+      // A text value is JSON, any other a JSON string.
+      const json = typeof value === "string" ? parseJson(value) : value;
+      state[key] = this._storedValue(definition, key, json);
     }
-    // @ts-expect-error - private constructor
-    return new DocNode(this, type, id, state) as DocNode;
+    return this._storedNode(id, type, state);
+  }
+
+  /** A node another replica inserted, before its state arrives. */
+  private _newStoredNode(id: string, type: string): DocNode {
+    this._storedDefinition(type);
+    return this._storedNode(id, type, {});
+  }
+
+  /** Internal utility used for all the high level insert methods. */
+  private _insertRange(
+    target: DocNode,
+    position: "append" | "prepend" | "before" | "after",
+    nodes: DocNode[],
+  ) {
+    if (nodes.length === 0) return;
+    withTransaction(this, () => {
+      if (
+        (position === "before" || position === "after") &&
+        target === this.root
+      )
+        throw new Error("Root node cannot have siblings");
+      // One pass per node and its descendants: inserting many nodes at once
+      // (pasting, importing) costs the same per node as inserting one.
+      for (const node of nodes) this.#checkInsertable(node);
+      switch (position) {
+        case "append": {
+          const attached = this._nodeMap.has(target.id);
+          if (attached) ops.onInsertRange(this, target, position, nodes);
+          let current = target.last;
+          for (const node of nodes) {
+            node["_attachNode"](target, current, undefined, attached);
+            if (current) current["_set"]("next", node);
+            else target["_set"]("first", node);
+            current = node;
+          }
+          target["_set"]("last", current);
+          break;
+        }
+        case "prepend": {
+          if (target.first) this._insertRange(target.first, "before", nodes);
+          else this._insertRange(target, "append", nodes);
+          break;
+        }
+        case "before": {
+          const parent = target.parent!;
+          const attached = this._nodeMap.has(parent.id);
+          if (attached) ops.onInsertRange(this, target, position, nodes);
+          let current = target;
+          for (let i = nodes.length - 1; i >= 0; i--) {
+            const node = nodes[i]!;
+            node["_attachNode"](parent, current.prev, current, attached);
+            if (current.prev) current.prev["_set"]("next", node);
+            current["_set"]("prev", node);
+            current = node;
+          }
+          if (parent.first === target) parent["_set"]("first", nodes[0]);
+          break;
+        }
+        case "after": {
+          if (target.next) this._insertRange(target.next, "before", nodes);
+          else this._insertRange(target.parent!, "append", nodes);
+          break;
+        }
+      }
+    });
   }
 
   /**
@@ -1255,35 +1282,8 @@ export class Doc {
     else parent.first = node;
   }
 
-  /** The children of a `JsonTree` node, linked under `parent`. */
-  #attachTree(parent: DocNode, children: JsonTree[] | undefined) {
-    if (!children) return;
-    let prev: DocNode | undefined;
-    for (const json of children) {
-      const node = this._nodeFromTree(json);
-      this._linkStored(parent, prev, node);
-      prev = node;
-      this.#attachTree(node, json[3]);
-    }
-    parent["_set"]("last", prev);
-  }
-
-  /** A node another replica inserted, before its state arrives. */
-  private _newStoredNode(id: string, type: string): DocNode {
-    this._storedDefinition(type);
-    return this._storedNode(id, type, {});
-  }
-
-  private _nodeFromTree([id, type, stored]: JsonTree): DocNode {
-    const definition = this._storedDefinition(type);
-    const state: Record<string, unknown> = {};
-    for (const key in stored) {
-      const value = stored[key]!;
-      // A text value is JSON, any other a JSON string.
-      const json = typeof value === "string" ? parseJson(value) : value;
-      state[key] = this._storedValue(definition, key, json);
-    }
-    return this._storedNode(id, type, state);
+  getNodeById(docNodeId: string): DocNode | undefined {
+    return this._nodeMap.get(docNodeId);
   }
 }
 

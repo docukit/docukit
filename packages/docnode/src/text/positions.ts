@@ -53,6 +53,16 @@ type TreeNode<R> = Leaf<R> | Inner<R>;
 const isLeaf = <R>(node: TreeNode<R>): node is Leaf<R> => "items" in node;
 const visOf = <R>(run: Item<R>) => (run.visible ? run.len : 0);
 
+/** An inner node over `children`, which it adopts. */
+function innerOf<R>(children: TreeNode<R>[]): Inner<R> {
+  const inner: Inner<R> = { children, vis: 0, parent: undefined };
+  for (const child of children) {
+    child.parent = inner;
+    inner.vis += child.vis;
+  }
+  return inner;
+}
+
 /** A leaf of `items`, which it adopts. */
 function leafOf<R extends Item<R>>(items: R[]): Leaf<R> {
   const leaf: Leaf<R> = { items, vis: 0, parent: undefined };
@@ -62,16 +72,6 @@ function leafOf<R extends Item<R>>(items: R[]): Leaf<R> {
     leaf.vis += run.vis;
   }
   return leaf;
-}
-
-/** An inner node over `children`, which it adopts. */
-function innerOf<R>(children: TreeNode<R>[]): Inner<R> {
-  const inner: Inner<R> = { children, vis: 0, parent: undefined };
-  for (const child of children) {
-    child.parent = inner;
-    inner.vis += child.vis;
-  }
-  return inner;
 }
 
 /**
@@ -98,16 +98,40 @@ class FlowIndex<R extends Item<R>> {
     this.#root = level[0]!;
   }
 
-  /** Inner nodes over `nodes`, `FANOUT` at a time. */
-  #group(nodes: TreeNode<R>[]): Inner<R>[] {
-    const out: Inner<R>[] = [];
-    for (let i = 0; i < nodes.length; i += FANOUT)
-      out.push(innerOf(nodes.slice(i, i + FANOUT)));
-    return out;
+  /**
+   * The visible run holding visible character `vis`, with its offset in
+   * `offset`. `vis` must be less than the total visible length.
+   */
+  findVisible(vis: number): R {
+    let node = this.#root;
+    while (!isLeaf(node)) {
+      let index = 0;
+      while (vis >= node.children[index]!.vis)
+        vis -= node.children[index++]!.vis;
+      node = node.children[index]!;
+    }
+    let index = 0;
+    while (vis >= node.items[index]!.vis) vis -= node.items[index++]!.vis;
+    this.offset = vis;
+    return node.items[index]!;
   }
 
-  #add(node: TreeNode<R> | undefined, vis: number): void {
-    for (; node; node = node.parent) node.vis += vis;
+  get vis(): number {
+    return this.#root.vis;
+  }
+
+  changed(run: R): void {
+    const vis = visOf(run) - run.vis;
+    if (vis === 0) return;
+    run.vis += vis;
+    this.#add(run.leaf, vis);
+  }
+
+  /** A leaf it leaves empty stays: lookups skip it, as it counts nothing. */
+  remove(run: R): void {
+    const leaf = run.leaf!;
+    leaf.items.splice(leaf.items.indexOf(run), 1);
+    this.#add(leaf, 0 - run.vis);
   }
 
   insert(target: R, run: R, after: boolean): void {
@@ -121,24 +145,14 @@ class FlowIndex<R extends Item<R>> {
     if (leaf.items.length >= LEAF * 2) this.#splitLeaf(leaf);
   }
 
-  /** A leaf it leaves empty stays: lookups skip it, as it counts nothing. */
-  remove(run: R): void {
-    const leaf = run.leaf!;
-    leaf.items.splice(leaf.items.indexOf(run), 1);
-    this.#add(leaf, 0 - run.vis);
-  }
-
-  changed(run: R): void {
-    const vis = visOf(run) - run.vis;
-    if (vis === 0) return;
-    run.vis += vis;
-    this.#add(run.leaf, vis);
-  }
-
   #splitLeaf(leaf: Leaf<R>): void {
     const fresh = leafOf(leaf.items.splice(LEAF));
     leaf.vis -= fresh.vis;
     this.#adopt(leaf, fresh);
+  }
+
+  #add(node: TreeNode<R> | undefined, vis: number): void {
+    for (; node; node = node.parent) node.vis += vis;
   }
 
   /** Puts `fresh` right after `node` under the same parent, splitting upwards. */
@@ -160,6 +174,17 @@ class FlowIndex<R extends Item<R>> {
     this.#adopt(parent, sibling);
   }
 
+  /** The offset in its run of the character `findVisible` last found. */
+  offset = 0;
+
+  /** Inner nodes over `nodes`, `FANOUT` at a time. */
+  #group(nodes: TreeNode<R>[]): Inner<R>[] {
+    const out: Inner<R>[] = [];
+    for (let i = 0; i < nodes.length; i += FANOUT)
+      out.push(innerOf(nodes.slice(i, i + FANOUT)));
+    return out;
+  }
+
   /** The visible length of the runs before `run`: its leaf's, then up. */
   before(run: R): number {
     let node: TreeNode<R> = run.leaf!;
@@ -177,31 +202,6 @@ class FlowIndex<R extends Item<R>> {
     }
     return before;
   }
-
-  /** The offset in its run of the character `findVisible` last found. */
-  offset = 0;
-
-  get vis(): number {
-    return this.#root.vis;
-  }
-
-  /**
-   * The visible run holding visible character `vis`, with its offset in
-   * `offset`. `vis` must be less than the total visible length.
-   */
-  findVisible(vis: number): R {
-    let node = this.#root;
-    while (!isLeaf(node)) {
-      let index = 0;
-      while (vis >= node.children[index]!.vis)
-        vis -= node.children[index++]!.vis;
-      node = node.children[index]!;
-    }
-    let index = 0;
-    while (vis >= node.items[index]!.vis) vis -= node.items[index++]!.vis;
-    this.offset = vis;
-    return node.items[index]!;
-  }
 }
 
 /** The B-tree position index of every flow, built the first time it is needed. */
@@ -218,13 +218,6 @@ export class TreePositions<R extends Item<R>> implements Positions<R> {
     return index;
   }
 
-  seek(root: R, index: number): Seek<R> {
-    const flow = this.#indexOf(root);
-    const run = flow.findVisible(index);
-    const off = flow.offset;
-    return { run, off, before: index - off };
-  }
-
   length(root: R): number {
     return this.#indexOf(root).vis;
   }
@@ -233,15 +226,22 @@ export class TreePositions<R extends Item<R>> implements Positions<R> {
     this.#indexes.get(run.flow)?.changed(run);
   }
 
-  linked(target: R, run: R, after: boolean): void {
-    this.#indexes.get(target.flow)?.insert(target, run, after);
+  before(root: R, run: R): number {
+    return this.#indexOf(root).before(run);
   }
 
   removed(run: R): void {
     this.#indexes.get(run.flow)?.remove(run);
   }
 
-  before(root: R, run: R): number {
-    return this.#indexOf(root).before(run);
+  seek(root: R, index: number): Seek<R> {
+    const flow = this.#indexOf(root);
+    const run = flow.findVisible(index);
+    const off = flow.offset;
+    return { run, off, before: index - off };
+  }
+
+  linked(target: R, run: R, after: boolean): void {
+    this.#indexes.get(target.flow)?.insert(target, run, after);
   }
 }

@@ -35,19 +35,20 @@ export class TextHandle {
     this.#rules = rules;
   }
 
+  /** `setLetterState` of a range: `value: null` removes the key. */
+  format(from: number, to: number, key: string, value: Json): void {
+    withTransaction(this.#doc, () =>
+      this.#store.format(this.#doc, this.#node.id, from, to, key, value),
+    );
+  }
+
+  /** The visible length. */
+  get length(): number {
+    return this.#store.lengthOf(this.#node.id);
+  }
+
   get #doc(): Doc {
     return this.#node.doc;
-  }
-
-  get #store(): TextEngine {
-    const store = storeOf(this.#doc);
-    store.setRules(this.#node.id, this.#rules);
-    return store;
-  }
-
-  /** The visible text. */
-  get(): string {
-    return this.#store.textOf(this.#node.id);
   }
 
   /** The visible text split into runs of identical attributes. */
@@ -55,9 +56,24 @@ export class TextHandle {
     return this.#store.spansOf(this.#node.id);
   }
 
-  /** The visible length. */
-  get length(): number {
-    return this.#store.lengthOf(this.#node.id);
+  /** The visible text. */
+  get(): string {
+    return this.#store.textOf(this.#node.id);
+  }
+
+  /**
+   * Replaces the value with `text`, without state, keeping the common prefix
+   * and suffix (see `applySpans`).
+   */
+  set(text: string, caret?: number): void {
+    this.applySpans([{ text, attrs: {} }], caret);
+  }
+
+  /** Deletes `length` visible letters from `index`. */
+  delete(index: number, length: number): void {
+    withTransaction(this.#doc, () =>
+      this.#store.delete(this.#doc, this.#node.id, index, length),
+    );
   }
 
   /**
@@ -69,6 +85,12 @@ export class TextHandle {
     return this.#store.letterAt(this.#node.id, index);
   }
 
+  get #store(): TextEngine {
+    const store = storeOf(this.#doc);
+    store.setRules(this.#node.id, this.#rules);
+    return store;
+  }
+
   /**
    * The visible index of a letter `letterAt` gave: how many visible letters
    * are before it, so a deleted letter is where it was. Undefined when this
@@ -76,38 +98,6 @@ export class TextHandle {
    */
   indexOfLetter(letter: string): number | undefined {
     return this.#store.indexOfLetter(this.#node.id, letter);
-  }
-
-  /**
-   * `insertLetters`: `attrs` is the state of the new letters (`{}`: none).
-   * Without it, they have what they inherit (see `defineText`).
-   */
-  insert(index: number, text: string, attrs?: Record<string, Json>): void {
-    withTransaction(this.#doc, () =>
-      this.#store.insert(this.#doc, this.#node.id, index, text, attrs),
-    );
-  }
-
-  /** Deletes `length` visible letters from `index`. */
-  delete(index: number, length: number): void {
-    withTransaction(this.#doc, () =>
-      this.#store.delete(this.#doc, this.#node.id, index, length),
-    );
-  }
-
-  /** `setLetterState` of a range: `value: null` removes the key. */
-  format(from: number, to: number, key: string, value: Json): void {
-    withTransaction(this.#doc, () =>
-      this.#store.format(this.#doc, this.#node.id, from, to, key, value),
-    );
-  }
-
-  /**
-   * Replaces the value with `text`, without state, keeping the common prefix
-   * and suffix (see `applySpans`).
-   */
-  set(text: string, caret?: number): void {
-    this.applySpans([{ text, attrs: {} }], caret);
   }
 
   /**
@@ -124,6 +114,59 @@ export class TextHandle {
       if (current !== next) this.#replaceDiff(current, next, caret, target);
       this.#applyFormatDiff(target);
     });
+  }
+
+  /**
+   * `insertLetters`: `attrs` is the state of the new letters (`{}`: none).
+   * Without it, they have what they inherit (see `defineText`).
+   */
+  insert(index: number, text: string, attrs?: Record<string, Json>): void {
+    withTransaction(this.#doc, () =>
+      this.#store.insert(this.#doc, this.#node.id, index, text, attrs),
+    );
+  }
+
+  #applyFormatDiff(target: TextSpan[]): void {
+    const current = this.spans();
+    const stops = new Set([0]);
+    for (const spans of [current, target]) {
+      let cursor = 0;
+      for (const span of spans) stops.add((cursor += span.text.length));
+    }
+    const positions = [...stops].sort((a, b) => a - b);
+    const attrsAt = (spans: TextSpan[], index: number) => {
+      let cursor = 0;
+      for (const span of spans)
+        if (index < (cursor += span.text.length)) return span.attrs;
+      return {};
+    };
+    /** By key, the range a format waits to be written for, and its value. */
+    const pending = new Map<string, [from: number, to: number, value: Json]>();
+    const flush = (key: string) => {
+      const range = pending.get(key);
+      if (!range) return;
+      pending.delete(key);
+      this.format(range[0], range[1], key, range[2]);
+    };
+    for (let i = 0; i < positions.length - 1; i++) {
+      const from = positions[i]!;
+      const to = positions[i + 1]!;
+      const was = attrsAt(current, from);
+      const wants = attrsAt(target, from);
+      const keys = new Set([...Object.keys(was), ...Object.keys(wants)]);
+      for (const key of keys) {
+        const after = wants[key] ?? null;
+        const open = pending.get(key);
+        if (sameValue(was[key] ?? null, after)) flush(key);
+        else if (open?.[1] === from && sameValue(open[2], after)) open[1] = to;
+        else {
+          flush(key);
+          pending.set(key, [from, to, after]);
+        }
+      }
+      for (const key of [...pending.keys()]) if (!keys.has(key)) flush(key);
+    }
+    for (const key of [...pending.keys()]) flush(key);
   }
 
   #replaceDiff(
@@ -191,49 +234,6 @@ export class TextHandle {
     }
     if (current.length - suffix > prefix)
       this.delete(end, current.length - suffix - prefix);
-  }
-
-  #applyFormatDiff(target: TextSpan[]): void {
-    const current = this.spans();
-    const stops = new Set([0]);
-    for (const spans of [current, target]) {
-      let cursor = 0;
-      for (const span of spans) stops.add((cursor += span.text.length));
-    }
-    const positions = [...stops].sort((a, b) => a - b);
-    const attrsAt = (spans: TextSpan[], index: number) => {
-      let cursor = 0;
-      for (const span of spans)
-        if (index < (cursor += span.text.length)) return span.attrs;
-      return {};
-    };
-    /** By key, the range a format waits to be written for, and its value. */
-    const pending = new Map<string, [from: number, to: number, value: Json]>();
-    const flush = (key: string) => {
-      const range = pending.get(key);
-      if (!range) return;
-      pending.delete(key);
-      this.format(range[0], range[1], key, range[2]);
-    };
-    for (let i = 0; i < positions.length - 1; i++) {
-      const from = positions[i]!;
-      const to = positions[i + 1]!;
-      const was = attrsAt(current, from);
-      const wants = attrsAt(target, from);
-      const keys = new Set([...Object.keys(was), ...Object.keys(wants)]);
-      for (const key of keys) {
-        const after = wants[key] ?? null;
-        const open = pending.get(key);
-        if (sameValue(was[key] ?? null, after)) flush(key);
-        else if (open?.[1] === from && sameValue(open[2], after)) open[1] = to;
-        else {
-          flush(key);
-          pending.set(key, [from, to, after]);
-        }
-      }
-      for (const key of [...pending.keys()]) if (!keys.has(key)) flush(key);
-    }
-    for (const key of [...pending.keys()]) flush(key);
   }
 }
 

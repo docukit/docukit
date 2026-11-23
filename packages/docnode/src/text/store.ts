@@ -93,11 +93,9 @@ const KID_BLOCK = 1 << KID_SHIFT;
 const kidsAt = (blocks: KidBlocks, c: number): Run[] | undefined =>
   blocks[(c + 1) >> KID_SHIFT]?.[(c + 1) & (KID_BLOCK - 1)];
 
-/** Sets the kids at counter `c` + 1 of a session's blocks. */
-function setKidsAt(blocks: KidBlocks, c: number, list: Run[]): void {
-  const at = (c + 1) >> KID_SHIFT;
-  const block = (blocks[at] ??= new Array<Run[] | undefined>(KID_BLOCK));
-  block[(c + 1) & (KID_BLOCK - 1)] = list;
+function compareIds(as: string, ac: number, bs: string, bc: number): number {
+  if (as !== bs) return as < bs ? -1 : 1;
+  return ac - bc;
 }
 const newKids = (): Kids => new Map();
 
@@ -265,66 +263,6 @@ type StoredEdit = TextEdit extends [3, ...infer Payload] ? Payload : never;
 type EditResult = TextInverse | undefined;
 const PENDING = Symbol("pending");
 
-function compareIds(as: string, ac: number, bs: string, bc: number): number {
-  if (as !== bs) return as < bs ? -1 : 1;
-  return ac - bc;
-}
-
-/** An element, possibly in the middle of a run. */
-type Element = { run: Run; off: number };
-
-function sameState(
-  a: LetterState | undefined,
-  b: LetterState | undefined,
-): boolean {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  let count = 0;
-  for (const key in a) {
-    const x = a[key]!;
-    const y = b[key];
-    if (x[1] !== y?.[1] || x[2] !== y[2] || !sameValue(x[0], y[0]))
-      return false;
-    count++;
-  }
-  for (const _ in b) count--;
-  return count === 0;
-}
-
-/** Whether a write stamped `(lamport, session)` beats `current`. */
-const wins = (lamport: number, session: string, current: Stamped) =>
-  compareStamps(lamport, session, current[1], current[2]) > 0;
-
-/** A state as one string, cached per state object (see `toStored`). */
-const canonCache = new WeakMap<LetterState, string>();
-function canonOf(state: LetterState): string {
-  let canon = canonCache.get(state);
-  if (canon === undefined) {
-    const entries: [string, Stamped][] = [];
-    for (const key of Object.keys(state).sort())
-      entries.push([key, state[key]!]);
-    canonCache.set(state, (canon = JSON.stringify(entries)));
-  }
-  return canon;
-}
-
-/** The visible attributes of a state, cached per state object. */
-const attrsCache = new WeakMap<LetterState, Attrs>();
-const NO_ATTRS: Attrs = { attrs: {}, key: "{}" };
-function attrsOf(state: LetterState | undefined): Attrs {
-  if (!state) return NO_ATTRS;
-  let cached = attrsCache.get(state);
-  if (cached) return cached;
-  const attrs: Record<string, Json> = {};
-  for (const key of Object.keys(state).sort()) {
-    const value = state[key]![0];
-    if (value !== null && key !== DELETED) attrs[key] = value;
-  }
-  cached = { attrs, key: JSON.stringify(attrs) };
-  attrsCache.set(state, cached);
-  return cached;
-}
-
 /**
  * The attributes of a letter with `own` state whose left origin has `left`
  * and right origin `right` (see `Inherit`).
@@ -356,6 +294,68 @@ function withInherited(
   return { attrs, key: JSON.stringify(attrs) };
 }
 
+/** An element, possibly in the middle of a run. */
+type Element = { run: Run; off: number };
+
+function sameState(
+  a: LetterState | undefined,
+  b: LetterState | undefined,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  let count = 0;
+  for (const key in a) {
+    const x = a[key]!;
+    const y = b[key];
+    if (x[1] !== y?.[1] || x[2] !== y[2] || !sameValue(x[0], y[0]))
+      return false;
+    count++;
+  }
+  for (const _ in b) count--;
+  return count === 0;
+}
+
+/** Whether a write stamped `(lamport, session)` beats `current`. */
+const wins = (lamport: number, session: string, current: Stamped) =>
+  compareStamps(lamport, session, current[1], current[2]) > 0;
+
+/** A state as one string, cached per state object (see `toStored`). */
+const canonCache = new WeakMap<LetterState, string>();
+
+/** Sets the kids at counter `c` + 1 of a session's blocks. */
+function setKidsAt(blocks: KidBlocks, c: number, list: Run[]): void {
+  const at = (c + 1) >> KID_SHIFT;
+  const block = (blocks[at] ??= new Array<Run[] | undefined>(KID_BLOCK));
+  block[(c + 1) & (KID_BLOCK - 1)] = list;
+}
+
+/** The visible attributes of a state, cached per state object. */
+const attrsCache = new WeakMap<LetterState, Attrs>();
+const NO_ATTRS: Attrs = { attrs: {}, key: "{}" };
+
+function encodeInsert(
+  s: string,
+  c: number,
+  text: string,
+  parent: Element,
+  side: 0 | 1,
+  next: Element | undefined,
+  attrs: Record<string, Json> | undefined,
+): InsertEdit {
+  const payload: InsertEdit = [3, s, c, contentOf(text, attrs)];
+  const nextRef = next ? encodeRef(s, next.run.s, next.run.c + next.off) : 0;
+  const parentRef = encodeRef(s, parent.run.s, parent.run.c + parent.off);
+  if (side === 0) {
+    if (typeof nextRef === "number") payload.push(-nextRef);
+    else payload.push(nextRef, 0);
+  } else if (parent.run.s === s && parent.run.c + parent.off === c - 1) {
+    if (nextRef !== 0) payload.push(nextRef);
+  } else {
+    payload.push(nextRef, parentRef);
+  }
+  return payload;
+}
+
 /** The first state of inserted letters (see `stateOfContent`), at lamport 0. */
 function initialState(content: Json | undefined): LetterState | undefined {
   const plain = stateOfContent(content);
@@ -363,6 +363,30 @@ function initialState(content: Json | undefined): LetterState | undefined {
   const state: Record<string, Stamped> = {};
   for (const key in plain) state[key] = [plain[key]!, 0, ""];
   return state;
+}
+
+/** Cuts a run of a list being loaded at `offset`. Returns the new one. */
+function cutAt(run: Run, offset: number): Run {
+  const tail = new Run(
+    run.s,
+    run.c + offset,
+    run.text.slice(offset),
+    run.s,
+    run.c + offset - 1,
+    1,
+    run.rs,
+    run.rc,
+  );
+  run.text = run.text.slice(0, offset);
+  tail.deleted = run.deleted;
+  tail.state = run.state;
+  tail.flow = run.flow;
+  tail.prev = run;
+  tail.next = run.next;
+  if (run.next) run.next.prev = tail;
+  else run.flow.tail = tail;
+  run.next = tail;
+  return tail;
 }
 
 export class TextStore extends TextEngine {
@@ -2248,29 +2272,18 @@ const continues = (left: Run, run: Run) =>
   run.rc === left.rc &&
   run.deleted === left.deleted &&
   sameState(run.state, left.state);
-
-/** Cuts a run of a list being loaded at `offset`. Returns the new one. */
-function cutAt(run: Run, offset: number): Run {
-  const tail = new Run(
-    run.s,
-    run.c + offset,
-    run.text.slice(offset),
-    run.s,
-    run.c + offset - 1,
-    1,
-    run.rs,
-    run.rc,
-  );
-  run.text = run.text.slice(0, offset);
-  tail.deleted = run.deleted;
-  tail.state = run.state;
-  tail.flow = run.flow;
-  tail.prev = run;
-  tail.next = run.next;
-  if (run.next) run.next.prev = tail;
-  else run.flow.tail = tail;
-  run.next = tail;
-  return tail;
+function attrsOf(state: LetterState | undefined): Attrs {
+  if (!state) return NO_ATTRS;
+  let cached = attrsCache.get(state);
+  if (cached) return cached;
+  const attrs: Record<string, Json> = {};
+  for (const key of Object.keys(state).sort()) {
+    const value = state[key]![0];
+    if (value !== null && key !== DELETED) attrs[key] = value;
+  }
+  cached = { attrs, key: JSON.stringify(attrs) };
+  attrsCache.set(state, cached);
+  return cached;
 }
 
 /** Flags of a stored list. */
@@ -2333,34 +2346,15 @@ const RUN_CAP = 4096;
 const FORMAT = 11;
 /** Stands for a deleted letter of a stored text. */
 const DELETED_LETTER = "�";
-
-/**
- * The letters of a tombstone a stored text keeps, and where each is: its
- * opaque ones. Undefined when it has none. With `opaque` undefined (rules
- * not known), the letters a loaded text kept.
- */
-function keptLetters(
-  text: string,
-  opaque: string | undefined,
-): [string, number[]] | undefined {
-  const keeps =
-    opaque === undefined
-      ? (letter: string) => letter !== DELETED_LETTER
-      : (letter: string) => opaque.includes(letter);
-  // Most tombstones have none: found without walking their letters.
-  if (opaque === undefined ? !NOT_DELETED.test(text) : !hasAny(text, opaque))
-    return undefined;
-  let letters = "";
-  const offsets: number[] = [];
-  let at = 0;
-  for (const letter of text) {
-    if (keeps(letter)) {
-      letters += letter;
-      offsets.push(at);
-    }
-    at += letter.length;
+function canonOf(state: LetterState): string {
+  let canon = canonCache.get(state);
+  if (canon === undefined) {
+    const entries: [string, Stamped][] = [];
+    for (const key of Object.keys(state).sort())
+      entries.push([key, state[key]!]);
+    canonCache.set(state, (canon = JSON.stringify(entries)));
   }
-  return [letters, offsets];
+  return canon;
 }
 
 const NOT_DELETED = /[^\ufffd]/;
@@ -2400,27 +2394,32 @@ const TAG_DELETE = 1;
 const TAG_STATE = 2;
 
 /**
- * `ranges`; with `continues`, the counter of its operation, the first one
- * starts right after the range before it and says so (see `CONTINUES`).
+ * The letters of a tombstone a stored text keeps, and where each is: its
+ * opaque ones. Undefined when it has none. With `opaque` undefined (rules
+ * not known), the letters a loaded text kept.
  */
-function encodeRanges(
-  own: string,
-  ranges: [string, number, number][],
-  continues = -1,
-): Json {
-  const ref = (index: number) => {
-    const [s, c] = ranges[index]!;
-    return index === 0 && continues >= 0
-      ? encodeRef(own, own, continues)
-      : encodeRef(own, s, c);
-  };
-  if (ranges.length === 1) {
-    const len = ranges[0]![2];
-    return len === 1 ? ref(0) : [ref(0), len];
+function keptLetters(
+  text: string,
+  opaque: string | undefined,
+): [string, number[]] | undefined {
+  const keeps =
+    opaque === undefined
+      ? (letter: string) => letter !== DELETED_LETTER
+      : (letter: string) => opaque.includes(letter);
+  // Most tombstones have none: found without walking their letters.
+  if (opaque === undefined ? !NOT_DELETED.test(text) : !hasAny(text, opaque))
+    return undefined;
+  let letters = "";
+  const offsets: number[] = [];
+  let at = 0;
+  for (const letter of text) {
+    if (keeps(letter)) {
+      letters += letter;
+      offsets.push(at);
+    }
+    at += letter.length;
   }
-  const out: Json[] = [];
-  for (const [index, [, , len]] of ranges.entries()) out.push(ref(index), len);
-  return out;
+  return [letters, offsets];
 }
 
 /** Whether `range` starts right after `previous`, of the same session. */
@@ -2461,25 +2460,26 @@ const decodeRanges = (
   return [out, continued];
 };
 
-function encodeInsert(
-  s: string,
-  c: number,
-  text: string,
-  parent: Element,
-  side: 0 | 1,
-  next: Element | undefined,
-  attrs: Record<string, Json> | undefined,
-): InsertEdit {
-  const payload: InsertEdit = [3, s, c, contentOf(text, attrs)];
-  const nextRef = next ? encodeRef(s, next.run.s, next.run.c + next.off) : 0;
-  const parentRef = encodeRef(s, parent.run.s, parent.run.c + parent.off);
-  if (side === 0) {
-    if (typeof nextRef === "number") payload.push(-nextRef);
-    else payload.push(nextRef, 0);
-  } else if (parent.run.s === s && parent.run.c + parent.off === c - 1) {
-    if (nextRef !== 0) payload.push(nextRef);
-  } else {
-    payload.push(nextRef, parentRef);
+/**
+ * `ranges`; with `continues`, the counter of its operation, the first one
+ * starts right after the range before it and says so (see `CONTINUES`).
+ */
+function encodeRanges(
+  own: string,
+  ranges: [string, number, number][],
+  continues = -1,
+): Json {
+  const ref = (index: number) => {
+    const [s, c] = ranges[index]!;
+    return index === 0 && continues >= 0
+      ? encodeRef(own, own, continues)
+      : encodeRef(own, s, c);
+  };
+  if (ranges.length === 1) {
+    const len = ranges[0]![2];
+    return len === 1 ? ref(0) : [ref(0), len];
   }
-  return payload;
+  const out: Json[] = [];
+  for (const [index, [, , len]] of ranges.entries()) out.push(ref(index), len);
+  return out;
 }

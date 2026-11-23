@@ -5,13 +5,6 @@ import type { StatePatch } from "./operations.js";
 // lowercase ulid
 export const ULID_REGEX = /^[0-7][0-9a-hjkmnp-tv-z]{25}$/;
 
-export function defineNode<
-  T extends string,
-  S extends StateRecord,
->(nodeDefinition: { type: T; state?: S }) {
-  return { state: {} as S, ...nodeDefinition };
-}
-
 export function detachRange(startNode: DocNode, endNode: DocNode) {
   const oldPrev = startNode.prev;
   const oldNext = endNode.next;
@@ -20,6 +13,15 @@ export function detachRange(startNode: DocNode, endNode: DocNode) {
   else oldParent["_set"]("first", endNode.next);
   if (oldNext) oldNext["_set"]("prev", oldPrev);
   else oldParent["_set"]("last", startNode.prev);
+}
+
+/**
+ * `JSON.parse` of a value's JSON text. A number, the value sent most, is
+ * read without it: `Number` reads JSON number text the same way.
+ */
+export function parseJson(text: string): Json {
+  const code = text.charCodeAt(0);
+  return code === 45 || (code >= 48 && code <= 57) ? Number(text) : parse(text);
 }
 
 /**
@@ -56,29 +58,15 @@ export function kidIndex<T>(
   return low;
 }
 
-/**
- * An empty state patch. V8 gives every new key of an object a new hidden
- * class, and node ids are new each time: an object whose keys were deleted
- * keeps them in a dictionary instead.
- */
-export function idRecord(): StatePatch {
-  // One deleted key is enough.
-  const patch: StatePatch = { a: {} };
-  delete patch.a;
-  return patch;
+export function defineNode<
+  T extends string,
+  S extends StateRecord,
+>(nodeDefinition: { type: T; state?: S }) {
+  return { state: {} as S, ...nodeDefinition };
 }
 
 /** `JSON.parse` without a reviver, which always gives JSON. */
 const parse: (text: string) => Json = JSON.parse;
-
-/**
- * `JSON.parse` of a value's JSON text. A number, the value sent most, is
- * read without it: `Number` reads JSON number text the same way.
- */
-export function parseJson(text: string): Json {
-  const code = text.charCodeAt(0);
-  return code === 45 || (code >= 48 && code <= 57) ? Number(text) : parse(text);
-}
 
 /**
  * `JSON.stringify` of a value; a finite number without it, which `String`
@@ -150,38 +138,6 @@ export function jsonCopy(value: unknown, key = ""): Json | undefined {
   return out;
 }
 
-const isJsonList = (json: Json): json is readonly Json[] => Array.isArray(json);
-
-/** Whether two JSON values are written the same by `JSON.stringify`. */
-export function jsonEqual(a: Json, b: Json): boolean {
-  if (a === b) return true;
-  if (typeof a !== "object" || typeof b !== "object" || !a || !b) return false;
-  if (isJsonList(a))
-    return (
-      isJsonList(b) &&
-      a.length === b.length &&
-      a.every((item, index) => jsonEqual(item, b[index]!))
-    );
-  if (isJsonList(b)) return false;
-  const keys = Object.keys(a);
-  const others = Object.keys(b);
-  return (
-    keys.length === others.length &&
-    keys.every(
-      (name, index) => name === others[index] && jsonEqual(a[name]!, b[name]!),
-    )
-  );
-}
-
-/**
- * Only way to check if an object is empty in O(1)
- * see https://stackoverflow.com/a/59787784/10476393
- */
-export function isObjectEmpty(obj: object) {
-  for (const _ in obj) return false;
-  return true;
-}
-
 /**
  * - Starts the tx if it's idle,
  * - Executes the callback,
@@ -232,4 +188,48 @@ export function withTransaction(
     }
     if (!isApplyOperations) throw errorInUpdate;
   }
+}
+
+const isJsonList = (json: Json): json is readonly Json[] => Array.isArray(json);
+
+/** Whether two JSON values are written the same by `JSON.stringify`. */
+export function jsonEqual(a: Json, b: Json): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || !a || !b) return false;
+  if (isJsonList(a))
+    return (
+      isJsonList(b) &&
+      a.length === b.length &&
+      a.every((item, index) => jsonEqual(item, b[index]!))
+    );
+  if (isJsonList(b)) return false;
+  const keys = Object.keys(a);
+  const others = Object.keys(b);
+  return (
+    keys.length === others.length &&
+    keys.every(
+      (name, index) => name === others[index] && jsonEqual(a[name]!, b[name]!),
+    )
+  );
+}
+
+/**
+ * Only way to check if an object is empty in O(1)
+ * see https://stackoverflow.com/a/59787784/10476393
+ */
+export function isObjectEmpty(obj: object) {
+  for (const _ in obj) return false;
+  return true;
+}
+
+/**
+ * An empty state patch. V8 gives every new key of an object a new hidden
+ * class, and node ids are new each time: an object whose keys were deleted
+ * keeps them in a dictionary instead.
+ */
+export function idRecord(): StatePatch {
+  // One deleted key is enough.
+  const patch: StatePatch = { a: {} };
+  delete patch.a;
+  return patch;
 }

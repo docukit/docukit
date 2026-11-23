@@ -132,20 +132,6 @@ class Run {
 /** Reused by every batch: encoding is not reentrant. */
 const run = new Run();
 
-/** The `count` nodes from `id` on (see `Run`). */
-function nodesFrom(id: string, count: number): string[] {
-  const dot = lastDot(id);
-  const prefix = id.slice(0, dot + 1);
-  const clock = clockAt(id, dot);
-  const ids: string[] = [];
-  for (let i = 0; i < count; i++) ids.push(prefix + numberToBase64(clock + i));
-  return ids;
-}
-
-/** The clock a distance from `base` stands for (see the format). */
-export const clockOf = (distance: number, base: number) =>
-  distance > 0 ? base + distance - 1 : base + distance;
-
 /**
  * The distance a node id is written as (see the format), or 0 when it is
  * not one of `session` or its distance from `base` is longer than its clock.
@@ -160,6 +146,20 @@ export function distanceTo(id: string, session: string, base: number) {
   const distance = clock >= base ? clock - base + 1 : clock - base;
   // With its sign, it takes no more characters than the dot and the clock.
   return Math.abs(distance) < 10 ** (id.length - dot - 1) ? distance : 0;
+}
+
+/** The clock a distance from `base` stands for (see the format). */
+export const clockOf = (distance: number, base: number) =>
+  distance > 0 ? base + distance - 1 : base + distance;
+
+/** The `count` nodes from `id` on (see `Run`). */
+function nodesFrom(id: string, count: number): string[] {
+  const dot = lastDot(id);
+  const prefix = id.slice(0, dot + 1);
+  const clock = clockAt(id, dot);
+  const ids: string[] = [];
+  for (let i = 0; i < count; i++) ids.push(prefix + numberToBase64(clock + i));
+  return ids;
 }
 
 /** An id as it is written whole: with a `!` if it could be misread. */
@@ -248,42 +248,6 @@ export class Encoder {
     this.base = this.#from = dot === -1 ? -1 : clockAt(named, dot);
   }
 
-  /** Starts a batch whose first session is `session`. */
-  reset(session: string): void {
-    this.first = session;
-    // Cheaper than emptying them, which reallocates even when empty.
-    if (this.others.length > 0) {
-      this.others = [];
-      this.#indexes = undefined;
-    }
-    this.counter = -1;
-    this.base = -1;
-    this.#from = -1;
-    this._session = 0;
-    this._next = 0;
-    this._lastSession = -1;
-    this._lastCounter = 0;
-    this._joinable = undefined;
-  }
-
-  index(session: string): number {
-    if (session === this.first) return 0;
-    const others = this.others;
-    // A batch names few sessions: looking through them beats a map.
-    if (others.length < FEW_SESSIONS) {
-      for (let index = 0; index < others.length; index++)
-        if (others[index] === session) return index + 1;
-      return others.push(session);
-    }
-    this.#indexes ??= new Map(others.map((other, index) => [other, index + 1]));
-    let index = this.#indexes.get(session);
-    if (index === undefined) {
-      index = others.push(session);
-      this.#indexes.set(session, index);
-    }
-    return index;
-  }
-
   id(index: number, counter: number): string {
     return `${index || ""}.${numberToBase64(counter)}`;
   }
@@ -308,12 +272,111 @@ export class Encoder {
     return distance === 0 ? this._absolute(id) : distance;
   }
 
+  index(session: string): number {
+    if (session === this.first) return 0;
+    const others = this.others;
+    // A batch names few sessions: looking through them beats a map.
+    if (others.length < FEW_SESSIONS) {
+      for (let index = 0; index < others.length; index++)
+        if (others[index] === session) return index + 1;
+      return others.push(session);
+    }
+    this.#indexes ??= new Map(others.map((other, index) => [other, index + 1]));
+    let index = this.#indexes.get(session);
+    if (index === undefined) {
+      index = others.push(session);
+      this.#indexes.set(session, index);
+    }
+    return index;
+  }
+
   /** `named` is `"session.counter"`: the head of a batch just read or written. */
   remember(session: string, c: number, named: string): void {
     this._lastNamedSession = session;
     this._lastNamedCounter = c;
     this._lastNamed = named;
   }
+
+  /** Starts a batch whose first session is `session`. */
+  reset(session: string): void {
+    this.first = session;
+    // Cheaper than emptying them, which reallocates even when empty.
+    if (this.others.length > 0) {
+      this.others = [];
+      this.#indexes = undefined;
+    }
+    this.counter = -1;
+    this.base = -1;
+    this.#from = -1;
+    this._session = 0;
+    this._next = 0;
+    this._lastSession = -1;
+    this._lastCounter = 0;
+    this._joinable = undefined;
+  }
+}
+
+/**
+ * The state patch row: `[PATCH, node, key, value, ...]`, and for nodes one
+ * after the other with the same keys (see `runLength`), `[node, count], key,
+ * column` per key (see the format).
+ */
+function patchRow(
+  ids: readonly string[],
+  states: readonly Record<string, string>[],
+): StatePatchRow {
+  const row: [typeof PATCH, ...Json[]] = [PATCH];
+  for (let at = 0; at < ids.length; ) {
+    const written = states[at]!;
+    const length = runLength(ids, states, at);
+    const node = encoder.nodeRef(ids[at]!);
+    if (length < 3) {
+      for (const key in written) row.push(node, key, parseJson(written[key]!));
+      at++;
+      continue;
+    }
+    // A column per key, a value per node from the first one on.
+    const nodes = [node, length];
+    for (const key in written) {
+      const column: Json[] = [];
+      for (let i = at; i < at + length; i++)
+        column.push(parseJson(states[i]![key]!));
+      row.push(nodes, key, column);
+    }
+    at += length;
+  }
+  return row;
+}
+
+/** The number written before the dot of `"index.counter"`, `""` being 0. */
+function indexBefore(written: string, dot: number): number {
+  let index = 0;
+  for (let i = 0; i < dot; i++) index = index * 10 + written.charCodeAt(i) - 48;
+  return index;
+}
+
+/** Whether `state` has `keys`, in that order, and no other. */
+function hasKeys(state: Record<string, string>, keys: readonly string[]) {
+  let index = 0;
+  for (const key in state) if (keys[index++] !== key) return false;
+  return index === keys.length;
+}
+
+/**
+ * The session before the dot at `dot` of a head, as `JSON.parse` returns a
+ * short string of a batch: internalized. The text store compares sessions
+ * many times to order concurrent letters, and two internalized strings
+ * compare by identity. Batches come from a few sessions in turn: the last
+ * ones are kept.
+ */
+function sessionOf(named: string, dot: number): string {
+  // Cut and compared, a short session is found faster than with `startsWith`.
+  const cut = named.slice(0, dot);
+  for (const session of recentSessions) if (cut === session) return session;
+  const session = String(JSON.parse(JSON.stringify(cut)));
+  recentSessions[nextRecent] = session;
+  nextRecent = (nextRecent + 1) % recentSessions.length;
+  return session;
 }
 
 /** The batch of a transaction as `Operations`. */
@@ -414,37 +477,12 @@ export function encodeOperations(
   return rows;
 }
 
-/**
- * The state patch row: `[PATCH, node, key, value, ...]`, and for nodes one
- * after the other with the same keys (see `runLength`), `[node, count], key,
- * column` per key (see the format).
- */
-function patchRow(
-  ids: readonly string[],
-  states: readonly Record<string, string>[],
-): StatePatchRow {
-  const row: [typeof PATCH, ...Json[]] = [PATCH];
-  for (let at = 0; at < ids.length; ) {
-    const written = states[at]!;
-    const length = runLength(ids, states, at);
-    const node = encoder.nodeRef(ids[at]!);
-    if (length < 3) {
-      for (const key in written) row.push(node, key, parseJson(written[key]!));
-      at++;
-      continue;
-    }
-    // A column per key, a value per node from the first one on.
-    const nodes = [node, length];
-    for (const key in written) {
-      const column: Json[] = [];
-      for (let i = at; i < at + length; i++)
-        column.push(parseJson(states[i]![key]!));
-      row.push(nodes, key, column);
-    }
-    at += length;
-  }
-  return row;
-}
+const NO_SESSIONS: readonly string[] = [];
+
+/** The sessions of the last heads decoded, internalized. */
+const recentSessions = ["", "", "", ""];
+/** Where the next new session goes, in turn: kept in place, none moves. */
+let nextRecent = 0;
 
 /**
  * How many patch entries from `at` on are nodes one right after the other
@@ -465,44 +503,6 @@ function runLength(
   )
     length++;
   return length;
-}
-
-/** Whether `state` has `keys`, in that order, and no other. */
-function hasKeys(state: Record<string, string>, keys: readonly string[]) {
-  let index = 0;
-  for (const key in state) if (keys[index++] !== key) return false;
-  return index === keys.length;
-}
-
-/** The number written before the dot of `"index.counter"`, `""` being 0. */
-function indexBefore(written: string, dot: number): number {
-  let index = 0;
-  for (let i = 0; i < dot; i++) index = index * 10 + written.charCodeAt(i) - 48;
-  return index;
-}
-
-const NO_SESSIONS: readonly string[] = [];
-
-/** The sessions of the last heads decoded, internalized. */
-const recentSessions = ["", "", "", ""];
-/** Where the next new session goes, in turn: kept in place, none moves. */
-let nextRecent = 0;
-
-/**
- * The session before the dot at `dot` of a head, as `JSON.parse` returns a
- * short string of a batch: internalized. The text store compares sessions
- * many times to order concurrent letters, and two internalized strings
- * compare by identity. Batches come from a few sessions in turn: the last
- * ones are kept.
- */
-function sessionOf(named: string, dot: number): string {
-  // Cut and compared, a short session is found faster than with `startsWith`.
-  const cut = named.slice(0, dot);
-  for (const session of recentSessions) if (cut === session) return session;
-  const session = String(JSON.parse(JSON.stringify(cut)));
-  recentSessions[nextRecent] = session;
-  nextRecent = (nextRecent + 1) % recentSessions.length;
-  return session;
 }
 
 /** Reads a batch: its head, tree rows and state patch (see `TextDecoder`). */
@@ -535,8 +535,9 @@ export class Decoder {
     this._lastCounter = 0;
   }
 
-  sessionAt(index: number): string {
-    return index === 0 ? this.#first : this.#sessions[index]!;
+  /** The node of the first session at `distance` from the head's counter. */
+  #at(distance: number): string {
+    return `${this.#first}.${numberToBase64(clockOf(distance, this.#base))}`;
   }
 
   /**
@@ -552,9 +553,8 @@ export class Decoder {
     return this.sessionAt(indexBefore(written, dot)) + written.slice(dot);
   }
 
-  /** The node of the first session at `distance` from the head's counter. */
-  #at(distance: number): string {
-    return `${this.#first}.${numberToBase64(clockOf(distance, this.#base))}`;
+  sessionAt(index: number): string {
+    return index === 0 ? this.#first : this.#sessions[index]!;
   }
 
   /** A node of a tree row: a number is its distance. */

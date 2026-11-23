@@ -51,18 +51,13 @@ const isEngineThenFlat = (rest: Rest): rest is EngineThenFlat =>
   isEngine(rest[0]) &&
   (typeof rest[1] === "string" || typeof rest[1] === "number");
 
-/**
- * The rows of a batch, with the brackets of a batch of one row put back, also
- * after an engine row (see `joinRows`).
- */
-function rowsOf(batch: Operations): OperationsRow[] {
-  const [, ...rest] = batch;
-  if (isFlat(rest)) return [rest];
-  if (isEngineThenFlat(rest)) {
-    const [engine, ...row] = rest;
-    return [engine, row];
-  }
-  return rest;
+/** The engine row of a batch with the tag `tag`, if it has one. */
+export function engineRow(
+  batch: Operations,
+  tag: number,
+): readonly Json[] | undefined {
+  const row = batch[1];
+  return isList(row) && row[0] === tag ? row : undefined;
 }
 
 const isTextInsert = (row: OperationsRow): row is FlatText =>
@@ -70,6 +65,46 @@ const isTextInsert = (row: OperationsRow): row is FlatText =>
 
 const isFlatRow = (row: OperationsRow): row is FlatRow =>
   isList(row) && typeof row[0] === "number";
+
+/** `batch` without its engine row. */
+export function withoutEngineRow(batch: Operations): Operations {
+  const rows = rowsOf(batch).slice(1);
+  // A batch keeps a row: an empty state patch is a row too.
+  const empty: OperationsRow = [-9];
+  return [batch[0], ...(rows.length > 0 ? rows : [empty])];
+}
+
+/**
+ * The rows of a batch but the ones of its tree (inserts, deletes and moves of
+ * nodes, which start with 0, 1 or 2): its text edits and its state patch.
+ */
+export function textRows(batch: Operations): OperationsRow[] {
+  return rowsOf(batch).filter(
+    (row) => !(isList(row) && (row[0] === 0 || row[0] === 1 || row[0] === 2)),
+  );
+}
+
+/** The id `writeId` wrote as `written`. */
+export function readId(written: string, session: (index: number) => string) {
+  if (written.charCodeAt(0) === 33) return written.slice(1);
+  const dot = written.indexOf(".");
+  if (dot === -1) return written;
+  let index = 0;
+  for (let i = 0; i < dot; i++) index = index * 10 + written.charCodeAt(i) - 48;
+  return session(index) + written.slice(dot);
+}
+
+/**
+ * A node id `session.clock` as `"index.clock"`, its session by `index`; `""`
+ * for the index 0. Any other id is itself, with a `!` in front if it starts
+ * with one. As `wire.ts` writes node ids.
+ */
+export function writeId(id: string, index: (session: string) => number) {
+  const dot = lastDot(id);
+  if (dot === -1) return literal(id);
+  const at = index(id.slice(0, dot));
+  return at === 0 ? id.slice(dot) : `${at}${id.slice(dot)}`;
+}
 
 /** The engine row, then the batch's own rows: one goes without brackets. */
 function joinRows(
@@ -86,52 +121,17 @@ function joinRows(
 }
 
 /**
- * The rows of a batch but the ones of its tree (inserts, deletes and moves of
- * nodes, which start with 0, 1 or 2): its text edits and its state patch.
+ * The rows of a batch, with the brackets of a batch of one row put back, also
+ * after an engine row (see `joinRows`).
  */
-export function textRows(batch: Operations): OperationsRow[] {
-  return rowsOf(batch).filter(
-    (row) => !(isList(row) && (row[0] === 0 || row[0] === 1 || row[0] === 2)),
-  );
-}
-
-/** The engine row of a batch with the tag `tag`, if it has one. */
-export function engineRow(
-  batch: Operations,
-  tag: number,
-): readonly Json[] | undefined {
-  const row = batch[1];
-  return isList(row) && row[0] === tag ? row : undefined;
-}
-
-/** `batch` without its engine row. */
-export function withoutEngineRow(batch: Operations): Operations {
-  const rows = rowsOf(batch).slice(1);
-  // A batch keeps a row: an empty state patch is a row too.
-  const empty: OperationsRow = [-9];
-  return [batch[0], ...(rows.length > 0 ? rows : [empty])];
-}
-
-/**
- * A node id `session.clock` as `"index.clock"`, its session by `index`; `""`
- * for the index 0. Any other id is itself, with a `!` in front if it starts
- * with one. As `wire.ts` writes node ids.
- */
-export function writeId(id: string, index: (session: string) => number) {
-  const dot = lastDot(id);
-  if (dot === -1) return literal(id);
-  const at = index(id.slice(0, dot));
-  return at === 0 ? id.slice(dot) : `${at}${id.slice(dot)}`;
-}
-
-/** The id `writeId` wrote as `written`. */
-export function readId(written: string, session: (index: number) => string) {
-  if (written.charCodeAt(0) === 33) return written.slice(1);
-  const dot = written.indexOf(".");
-  if (dot === -1) return written;
-  let index = 0;
-  for (let i = 0; i < dot; i++) index = index * 10 + written.charCodeAt(i) - 48;
-  return session(index) + written.slice(dot);
+function rowsOf(batch: Operations): OperationsRow[] {
+  const [, ...rest] = batch;
+  if (isFlat(rest)) return [rest];
+  if (isEngineThenFlat(rest)) {
+    const [engine, ...row] = rest;
+    return [engine, row];
+  }
+  return rest;
 }
 
 /**

@@ -51,7 +51,6 @@ import {
 } from "../jsonDoc.js";
 import { IdRanges } from "../idRanges.js";
 import { isRecord, storeOf, textState } from "../text/common.js";
-import { TextStore } from "../text/store.js";
 import {
   engineRow,
   readId,
@@ -63,6 +62,7 @@ import {
   type EngineRow,
 } from "./wire.js";
 import { applyLocal } from "./local.js";
+import { TextStore } from "../text/store.js";
 import { childIds, FugueSiblings, type Place } from "./fugue.js";
 
 export type CrdtOptions = {
@@ -115,11 +115,20 @@ type Nil = null;
 
 const compare = (a: Stamp, b: Stamp) => compareStamps(a[0], a[1], b[0], b[1]);
 
-/** `[session, clock]`. An id that is not `session.clock` is its own session. */
-function parseId(id: string): [string, number] {
-  const dot = lastDot(id);
-  const clock = dot > 0 ? clockAt(id, dot) : -1;
-  return clock < 0 ? [id, 0] : [id.slice(0, dot), clock];
+/** The engine row of a record's fields, without the empty ones at the end. */
+function recordRow(fields: Json[]): EngineRow {
+  let length = fields.length;
+  while (
+    length > 1 &&
+    (isEmpty(fields[length - 1]) || fields[length - 1] === 0)
+  )
+    length--;
+  const row: [number, ...Json[]] = [RECORD];
+  for (let at = 0; at < length; at++) {
+    const field = fields[at]!;
+    row.push(isEmpty(field) ? 0 : field);
+  }
+  return row;
 }
 
 /**
@@ -165,6 +174,22 @@ type LabelRecord = {
   pending: PendingRecord[];
 };
 
+/** A stored state: each value as a JSON string. A label without one has `0`. */
+function stateOf(value: Json | undefined) {
+  const state: Record<string, string> = {};
+  if (isRecord(value)) for (const key in value) state[key] = text(value[key]);
+  return state;
+}
+
+/** The id right after `id` in its session (see `encodeRecord`), if it has a clock. */
+function nextId(id: string): string | undefined {
+  const dot = lastDot(id);
+  const clock = dot > 0 ? clockAt(id, dot) : -1;
+  return clock < 0
+    ? undefined
+    : id.slice(0, dot + 1) + numberToBase64(clock + 1);
+}
+
 /**
  * What a move writes after its position, `life, backParent, backPos`,
  * without the defaults at the end: life 0, the move's own parent as the back
@@ -191,21 +216,21 @@ function moveTail(
   return tail.length === 1 && life === 0 ? [] : tail;
 }
 
-/** The engine row of a record's fields, without the empty ones at the end. */
-function recordRow(fields: Json[]): EngineRow {
-  let length = fields.length;
-  while (
-    length > 1 &&
-    (isEmpty(fields[length - 1]) || fields[length - 1] === 0)
-  )
-    length--;
-  const row: [number, ...Json[]] = [RECORD];
-  for (let at = 0; at < length; at++) {
-    const field = fields[at]!;
-    row.push(isEmpty(field) ? 0 : field);
-  }
-  return row;
+/** `[session, clock]`. An id that is not `session.clock` is its own session. */
+function parseId(id: string): [string, number] {
+  const dot = lastDot(id);
+  const clock = dot > 0 ? clockAt(id, dot) : -1;
+  return clock < 0 ? [id, 0] : [id.slice(0, dot), clock];
 }
+
+/**
+ * The clock of the first node a record inserts, which its Lamport clock is
+ * written after: an author that only types keeps the two close.
+ */
+const firstClock = (inserts: InsertGroup[]) => {
+  const first = inserts[0]?.[1];
+  return first ? parseId(first[0])[1] : 0;
+};
 
 /**
  * The only place that writes the labels layout. Siblings are ordered by
@@ -293,176 +318,6 @@ function encodeRecord(
     sessions.index(record.session),
   ];
   return recordRow(fields);
-}
-
-/** The id right after `id` in its session (see `encodeRecord`), if it has a clock. */
-function nextId(id: string): string | undefined {
-  const dot = lastDot(id);
-  const clock = dot > 0 ? clockAt(id, dot) : -1;
-  return clock < 0
-    ? undefined
-    : id.slice(0, dot + 1) + numberToBase64(clock + 1);
-}
-
-/**
- * The clock of the first node a record inserts, which its Lamport clock is
- * written after: an author that only types keeps the two close.
- */
-const firstClock = (inserts: InsertGroup[]) => {
-  const first = inserts[0]?.[1];
-  return first ? parseId(first[0])[1] : 0;
-};
-
-/** The labels an engine row holds (see `encodeRecord`). */
-function decodeRecord(
-  row: readonly Json[],
-  sessions: Sessions,
-  places: Place[],
-  rootId: string,
-): LabelRecord {
-  // One closure for every id: the rest are loops over the row's fields.
-  const id = (written: Json | undefined) => sessions.read(written);
-  const lives: Record<string, number> = {};
-  const livesList = row[5];
-  if (isList(livesList))
-    for (let index = 0; index < livesList.length; index += 2)
-      lives[id(livesList[index])] = Number(livesList[index + 1]);
-  const inserts: InsertGroup[] = [];
-  let previous: Place | undefined;
-  const groups = row[2];
-  if (isList(groups))
-    for (const group of groups) {
-      if (!isList(group)) continue;
-      const parent = group[0] === 0 ? 0 : id(group[0]);
-      const list = parent === 0 ? rootId : parent;
-      const decoded: InsertGroup = [parent];
-      let lastId = "";
-      let lastType = "";
-      for (let at = 1; at < group.length; at++) {
-        const node = group[at];
-        // A run: as many nodes after the last one, each in its own place.
-        if (typeof node === "number")
-          for (let k = 0; k < node; k++) {
-            const next = nextId(lastId);
-            // Broken: a count without a node before it.
-            if (next === undefined) break;
-            lastId = next;
-            previous = FugueSiblings.read(
-              undefined,
-              undefined,
-              lastId,
-              lastId,
-              list,
-              previous,
-              id,
-            );
-            places.push(previous);
-            decoded.push([lastId, lastType, lastId]);
-          }
-        if (!isList(node)) continue;
-        const nodeId = id(node[0]);
-        const later = Number(node[4] ?? 0);
-        const place = node[5] === undefined ? nodeId : id(node[5]);
-        previous = FugueSiblings.read(
-          node[2],
-          node[3],
-          place,
-          nodeId,
-          list,
-          previous,
-          id,
-        );
-        places.push(previous);
-        lastId = nodeId;
-        lastType = text(node[1]);
-        decoded.push(
-          later > 0
-            ? [nodeId, lastType, place, later]
-            : [nodeId, lastType, place],
-        );
-      }
-      inserts.push(decoded);
-    }
-  const moves: MoveRecord[] = [];
-  const movesList = row[3];
-  if (isList(movesList))
-    for (const move of movesList) {
-      if (!isList(move)) continue;
-      const [
-        node,
-        written,
-        pos,
-        origin,
-        right,
-        life = 0,
-        backParent = "",
-        backPos = "",
-      ] = move;
-      const nodeId = id(node);
-      const parent = written === 0 ? 0 : id(written);
-      const place = id(pos);
-      if (origin !== false) {
-        previous = FugueSiblings.read(
-          origin,
-          right,
-          place,
-          nodeId,
-          parent === 0 ? rootId : parent,
-          previous,
-          id,
-        );
-        places.push(previous);
-      }
-      // See `moveTail`.
-      const hasBack = backParent !== false;
-      moves.push([
-        nodeId,
-        parent,
-        place,
-        !hasBack
-          ? null
-          : backParent === ""
-            ? parent
-            : backParent === 0
-              ? 0
-              : id(backParent),
-        hasBack ? (backPos === "" ? nodeId : id(backPos)) : null,
-        Number(life),
-      ]);
-    }
-  const deletes: DeleteRecord[] = [];
-  const deletesList = row[4];
-  if (isList(deletesList))
-    for (const del of deletesList)
-      if (isList(del))
-        deletes.push([
-          sessions.session(Number(del[0])),
-          Number(del[1]),
-          Number(del[2]),
-          Number(del[3]),
-        ]);
-  const pending: PendingRecord[] = [];
-  const pendingList = row[6];
-  if (isList(pendingList))
-    for (const each of pendingList)
-      if (isList(each))
-        pending.push([
-          Number(each[0]),
-          sessions.session(Number(each[1])),
-          sessions.session(Number(each[2])),
-          Number(each[3]),
-          Number(each[4]),
-          Number(each[5]),
-        ]);
-  return {
-    lamport: Number(row[1]) + firstClock(inserts),
-    session: sessions.session(Number(row[7] ?? 0)),
-    inserts,
-    moves,
-    deletes,
-    lives,
-    pending,
-  };
 }
 
 /** Where each part of the stored labels is (see `StoredLabels`). */
@@ -2177,11 +2032,11 @@ function placeKind(entry: Entry, id: string, places: string[]) {
   return (own ? 0 : 1) + (entry.away ? 2 : 0);
 }
 
-/** A stored state: each value as a JSON string. A label without one has `0`. */
-function stateOf(value: Json | undefined) {
-  const state: Record<string, string> = {};
-  if (isRecord(value)) for (const key in value) state[key] = text(value[key]);
-  return state;
+/** @internal - Test helper: the FugueMax text of a CRDT document. */
+export function _INTERNAL_crdtTextStore(doc: Doc): TextStore {
+  const store = storeOf(doc);
+  if (!(store instanceof TextStore)) throw new Error("Not a CRDT document");
+  return store;
 }
 
 /**
@@ -2363,11 +2218,156 @@ const isJsonDoc = (json: unknown): json is JsonDoc =>
 /** Text that converges without a server: FugueMax, with tombstones. */
 const fugueText = textState(TextStore);
 
-/** @internal - Test helper: the FugueMax text of a CRDT document. */
-export function _INTERNAL_crdtTextStore(doc: Doc): TextStore {
-  const store = storeOf(doc);
-  if (!(store instanceof TextStore)) throw new Error("Not a CRDT document");
-  return store;
+/** The labels an engine row holds (see `encodeRecord`). */
+function decodeRecord(
+  row: readonly Json[],
+  sessions: Sessions,
+  places: Place[],
+  rootId: string,
+): LabelRecord {
+  // One closure for every id: the rest are loops over the row's fields.
+  const id = (written: Json | undefined) => sessions.read(written);
+  const lives: Record<string, number> = {};
+  const livesList = row[5];
+  if (isList(livesList))
+    for (let index = 0; index < livesList.length; index += 2)
+      lives[id(livesList[index])] = Number(livesList[index + 1]);
+  const inserts: InsertGroup[] = [];
+  let previous: Place | undefined;
+  const groups = row[2];
+  if (isList(groups))
+    for (const group of groups) {
+      if (!isList(group)) continue;
+      const parent = group[0] === 0 ? 0 : id(group[0]);
+      const list = parent === 0 ? rootId : parent;
+      const decoded: InsertGroup = [parent];
+      let lastId = "";
+      let lastType = "";
+      for (let at = 1; at < group.length; at++) {
+        const node = group[at];
+        // A run: as many nodes after the last one, each in its own place.
+        if (typeof node === "number")
+          for (let k = 0; k < node; k++) {
+            const next = nextId(lastId);
+            // Broken: a count without a node before it.
+            if (next === undefined) break;
+            lastId = next;
+            previous = FugueSiblings.read(
+              undefined,
+              undefined,
+              lastId,
+              lastId,
+              list,
+              previous,
+              id,
+            );
+            places.push(previous);
+            decoded.push([lastId, lastType, lastId]);
+          }
+        if (!isList(node)) continue;
+        const nodeId = id(node[0]);
+        const later = Number(node[4] ?? 0);
+        const place = node[5] === undefined ? nodeId : id(node[5]);
+        previous = FugueSiblings.read(
+          node[2],
+          node[3],
+          place,
+          nodeId,
+          list,
+          previous,
+          id,
+        );
+        places.push(previous);
+        lastId = nodeId;
+        lastType = text(node[1]);
+        decoded.push(
+          later > 0
+            ? [nodeId, lastType, place, later]
+            : [nodeId, lastType, place],
+        );
+      }
+      inserts.push(decoded);
+    }
+  const moves: MoveRecord[] = [];
+  const movesList = row[3];
+  if (isList(movesList))
+    for (const move of movesList) {
+      if (!isList(move)) continue;
+      const [
+        node,
+        written,
+        pos,
+        origin,
+        right,
+        life = 0,
+        backParent = "",
+        backPos = "",
+      ] = move;
+      const nodeId = id(node);
+      const parent = written === 0 ? 0 : id(written);
+      const place = id(pos);
+      if (origin !== false) {
+        previous = FugueSiblings.read(
+          origin,
+          right,
+          place,
+          nodeId,
+          parent === 0 ? rootId : parent,
+          previous,
+          id,
+        );
+        places.push(previous);
+      }
+      // See `moveTail`.
+      const hasBack = backParent !== false;
+      moves.push([
+        nodeId,
+        parent,
+        place,
+        !hasBack
+          ? null
+          : backParent === ""
+            ? parent
+            : backParent === 0
+              ? 0
+              : id(backParent),
+        hasBack ? (backPos === "" ? nodeId : id(backPos)) : null,
+        Number(life),
+      ]);
+    }
+  const deletes: DeleteRecord[] = [];
+  const deletesList = row[4];
+  if (isList(deletesList))
+    for (const del of deletesList)
+      if (isList(del))
+        deletes.push([
+          sessions.session(Number(del[0])),
+          Number(del[1]),
+          Number(del[2]),
+          Number(del[3]),
+        ]);
+  const pending: PendingRecord[] = [];
+  const pendingList = row[6];
+  if (isList(pendingList))
+    for (const each of pendingList)
+      if (isList(each))
+        pending.push([
+          Number(each[0]),
+          sessions.session(Number(each[1])),
+          sessions.session(Number(each[2])),
+          Number(each[3]),
+          Number(each[4]),
+          Number(each[5]),
+        ]);
+  return {
+    lamport: Number(row[1]) + firstClock(inserts),
+    session: sessions.session(Number(row[7] ?? 0)),
+    inserts,
+    moves,
+    deletes,
+    lives,
+    pending,
+  };
 }
 
 /**

@@ -52,13 +52,36 @@ export class Ghosts {
   /** By the session of their anchor (the node, for a start), then its counter. */
   #anchors = new Map<string, Map<number, Ghost[]>>();
 
-  get empty(): boolean {
-    return this.#ids.size === 0;
-  }
-
-  /** The ghost with id `(s, c)`. */
-  find(s: string, c: number): Ghost | undefined {
-    return this.#ids.get(s)?.find(c);
+  /**
+   * Joins the ghosts of one anchor whose ids follow each other, after
+   * `moved` came to it.
+   */
+  #join(list: Ghost[], moved: Ghost[]): void {
+    for (let ghost of moved) {
+      // Merged into another one: `len` 0.
+      if (ghost.len === 0) continue;
+      for (let joined = true; joined; ) {
+        joined = false;
+        const [prev, next] = this.#around(
+          list,
+          ghost.s,
+          ghost.c,
+          ghost.len,
+          ghost.state,
+        );
+        if (prev) {
+          prev.len += ghost.len;
+          this.#remove(ghost);
+          ghost = prev;
+          joined = true;
+        }
+        if (next) {
+          ghost.len += next.len;
+          this.#remove(next);
+          joined = true;
+        }
+      }
+    }
   }
 
   /** Whether any of the `length` ids of `s` from `c` is a ghost. */
@@ -66,29 +89,59 @@ export class Ghosts {
     return this.#ids.get(s)?.overlaps(c, length) ?? false;
   }
 
+  /**
+   * The ghosts of `s` right before and after ids `[c, c + len)` among those
+   * of one anchor, `list`, with `state`: they can take these ids.
+   */
+  #around(
+    list: Ghost[],
+    s: string,
+    c: number,
+    len: number,
+    state: Ghost["state"],
+  ): [Ghost | undefined, Ghost | undefined] {
+    let prev: Ghost | undefined;
+    let next: Ghost | undefined;
+    if (list.length <= SCAN) {
+      for (const ghost of list)
+        if (ghost.s === s && ghost.state === state)
+          if (ghost.c + ghost.len === c) prev = ghost;
+          else if (ghost.c === c + len) next = ghost;
+    } else {
+      // The anchor of the list: of any of its ghosts.
+      const { as, ac } = list[0]!;
+      prev = this.find(s, c - 1);
+      if (prev && !sameSpot(prev, as, ac, state)) prev = undefined;
+      next = this.find(s, c + len);
+      if (next && !sameSpot(next, as, ac, state)) next = undefined;
+    }
+    return [prev, next];
+  }
+
   /** The counter after the last ghost of `s`, or 0. */
   end(s: string): number {
     return this.#ids.get(s)?.end() ?? 0;
   }
 
+  /** Ids `[c, c + len)` of `s` are live again. */
+  drop(s: string, c: number, len: number): void {
+    const end = c + len;
+    for (let at = c; at < end; at++) {
+      const ghost = this.find(s, at);
+      // Letters it never had (see `BaseText._applyRestore`).
+      if (!ghost) continue;
+      const { c: from, len: length, as, ac, state } = ghost;
+      this.#remove(ghost);
+      if (from < c) this.#put({ s, c: from, len: c - from, as, ac, state });
+      if (from + length > end)
+        this.#put({ s, c: end, len: from + length - end, as, ac, state });
+      at = from + length - 1;
+    }
+  }
+
   /** Whether a ghost is anchored at the start of `node`'s text. */
   hasStart(node: string): boolean {
     return this.#anchors.get(node)?.has(-1) ?? false;
-  }
-
-  /**
-   * The counters of the letters of `as` that anchor ghosts (`-1`: the start
-   * of node `as`), sorted: see `at`.
-   */
-  anchorsOf(as: string): number[] {
-    const anchored = this.#anchors.get(as);
-    if (!anchored) return [];
-    return [...anchored.keys()].sort((a, b) => a - b);
-  }
-
-  /** The ghosts anchored at `(as, ac)`, in the order they are stored. */
-  at(as: string, ac: number): Ghost[] {
-    return this.#anchors.get(as)!.get(ac)!.sort(byId);
   }
 
   /**
@@ -132,20 +185,13 @@ export class Ghosts {
     if (moved.length > 0) this.#join(this.#anchors.get(as)!.get(ac)!, moved);
   }
 
-  /** Ids `[c, c + len)` of `s` are live again. */
-  drop(s: string, c: number, len: number): void {
-    const end = c + len;
-    for (let at = c; at < end; at++) {
-      const ghost = this.find(s, at);
-      // Letters it never had (see `BaseText._applyRestore`).
-      if (!ghost) continue;
-      const { c: from, len: length, as, ac, state } = ghost;
-      this.#remove(ghost);
-      if (from < c) this.#put({ s, c: from, len: c - from, as, ac, state });
-      if (from + length > end)
-        this.#put({ s, c: end, len: from + length - end, as, ac, state });
-      at = from + length - 1;
-    }
+  #anchor(ghost: Ghost): void {
+    let anchored = this.#anchors.get(ghost.as);
+    if (!anchored)
+      this.#anchors.set(ghost.as, (anchored = new Map<number, Ghost[]>()));
+    const list = anchored.get(ghost.ac);
+    if (list) list.push(ghost);
+    else anchored.set(ghost.ac, [ghost]);
   }
 
   /** A ghost read from a stored text: `finish` indexes them all. */
@@ -156,8 +202,55 @@ export class Ghosts {
     this.#anchor(ghost);
   }
 
+  /**
+   * The counters of the letters of `as` that anchor ghosts (`-1`: the start
+   * of node `as`), sorted: see `at`.
+   */
+  anchorsOf(as: string): number[] {
+    const anchored = this.#anchors.get(as);
+    if (!anchored) return [];
+    return [...anchored.keys()].sort((a, b) => a - b);
+  }
+
+  /** The ghost with id `(s, c)`. */
+  find(s: string, c: number): Ghost | undefined {
+    return this.#ids.get(s)?.find(c);
+  }
+
+  /** A ghost in both indexes. */
+  #put(ghost: Ghost): void {
+    let runs = this.#ids.get(ghost.s);
+    if (!runs) this.#ids.set(ghost.s, (runs = new SessionRuns<Ghost>()));
+    runs.add(ghost);
+    this.#anchor(ghost);
+  }
+
+  /** The ghosts anchored at `(as, ac)`, in the order they are stored. */
+  at(as: string, ac: number): Ghost[] {
+    return this.#anchors.get(as)!.get(ac)!.sort(byId);
+  }
+
   finish(loaded: Map<string, Ghost[]>): void {
     for (const [s, list] of loaded) this.#ids.set(s, SessionRuns.from(list));
+  }
+
+  get empty(): boolean {
+    return this.#ids.size === 0;
+  }
+
+  /** Takes `ghost` out of both indexes. */
+  #remove(ghost: Ghost): void {
+    const runs = this.#ids.get(ghost.s)!;
+    runs.remove(ghost);
+    if (runs.empty) this.#ids.delete(ghost.s);
+    const anchored = this.#anchors.get(ghost.as)!;
+    const list = anchored.get(ghost.ac)!;
+    list.splice(list.indexOf(ghost), 1);
+    if (list.length === 0) {
+      anchored.delete(ghost.ac);
+      if (anchored.size === 0) this.#anchors.delete(ghost.as);
+    }
+    ghost.len = 0;
   }
 
   /**
@@ -180,98 +273,5 @@ export class Ghosts {
         if (ac >= c && ac < c + len) take(ac);
     if (anchored.size === 0) this.#anchors.delete(as);
     return moved;
-  }
-
-  #anchor(ghost: Ghost): void {
-    let anchored = this.#anchors.get(ghost.as);
-    if (!anchored)
-      this.#anchors.set(ghost.as, (anchored = new Map<number, Ghost[]>()));
-    const list = anchored.get(ghost.ac);
-    if (list) list.push(ghost);
-    else anchored.set(ghost.ac, [ghost]);
-  }
-
-  /** A ghost in both indexes. */
-  #put(ghost: Ghost): void {
-    let runs = this.#ids.get(ghost.s);
-    if (!runs) this.#ids.set(ghost.s, (runs = new SessionRuns<Ghost>()));
-    runs.add(ghost);
-    this.#anchor(ghost);
-  }
-
-  /** Takes `ghost` out of both indexes. */
-  #remove(ghost: Ghost): void {
-    const runs = this.#ids.get(ghost.s)!;
-    runs.remove(ghost);
-    if (runs.empty) this.#ids.delete(ghost.s);
-    const anchored = this.#anchors.get(ghost.as)!;
-    const list = anchored.get(ghost.ac)!;
-    list.splice(list.indexOf(ghost), 1);
-    if (list.length === 0) {
-      anchored.delete(ghost.ac);
-      if (anchored.size === 0) this.#anchors.delete(ghost.as);
-    }
-    ghost.len = 0;
-  }
-
-  /**
-   * The ghosts of `s` right before and after ids `[c, c + len)` among those
-   * of one anchor, `list`, with `state`: they can take these ids.
-   */
-  #around(
-    list: Ghost[],
-    s: string,
-    c: number,
-    len: number,
-    state: Ghost["state"],
-  ): [Ghost | undefined, Ghost | undefined] {
-    let prev: Ghost | undefined;
-    let next: Ghost | undefined;
-    if (list.length <= SCAN) {
-      for (const ghost of list)
-        if (ghost.s === s && ghost.state === state)
-          if (ghost.c + ghost.len === c) prev = ghost;
-          else if (ghost.c === c + len) next = ghost;
-    } else {
-      // The anchor of the list: of any of its ghosts.
-      const { as, ac } = list[0]!;
-      prev = this.find(s, c - 1);
-      if (prev && !sameSpot(prev, as, ac, state)) prev = undefined;
-      next = this.find(s, c + len);
-      if (next && !sameSpot(next, as, ac, state)) next = undefined;
-    }
-    return [prev, next];
-  }
-
-  /**
-   * Joins the ghosts of one anchor whose ids follow each other, after
-   * `moved` came to it.
-   */
-  #join(list: Ghost[], moved: Ghost[]): void {
-    for (let ghost of moved) {
-      // Merged into another one: `len` 0.
-      if (ghost.len === 0) continue;
-      for (let joined = true; joined; ) {
-        joined = false;
-        const [prev, next] = this.#around(
-          list,
-          ghost.s,
-          ghost.c,
-          ghost.len,
-          ghost.state,
-        );
-        if (prev) {
-          prev.len += ghost.len;
-          this.#remove(ghost);
-          ghost = prev;
-          joined = true;
-        }
-        if (next) {
-          ghost.len += next.len;
-          this.#remove(next);
-          joined = true;
-        }
-      }
-    }
   }
 }

@@ -593,16 +593,9 @@ type Stored = {
 
 const NO_IDS: readonly string[] = [];
 
-/**
- * For `toJSON` and `load`: the ids of the children of node `id`, in order, if
- * the document shows it.
- */
-export function childIds(doc: Doc, id: string): string[] | undefined {
-  const node = id === doc.root.id ? doc.root : doc["_nodeMap"].get(id);
-  if (!node) return undefined;
-  const ids: string[] = [];
-  for (let child = node.first; child; child = child.next) ids.push(child.id);
-  return ids;
+function setKids(element: Element, side: 0 | 1, kids: Kids) {
+  if (side === 1) element.right = kids;
+  else element.left = kids;
 }
 
 /** How a stored place relates to the one before it in its list. */
@@ -638,9 +631,24 @@ const rsOffset = (element: Element) =>
 /** The kids of one side of a place: none, one, or several in order. */
 type Kids = Element | Element[] | undefined;
 
-function setKids(element: Element, side: 0 | 1, kids: Kids) {
-  if (side === 1) element.right = kids;
-  else element.left = kids;
+function linkAfter(target: Element, element: Element) {
+  const next = target.next;
+  element.prev = target;
+  element.next = next;
+  target.next = element;
+  if (next) next.prev = element;
+}
+
+/**
+ * For `toJSON` and `load`: the ids of the children of node `id`, in order, if
+ * the document shows it.
+ */
+export function childIds(doc: Doc, id: string): string[] | undefined {
+  const node = id === doc.root.id ? doc.root : doc["_nodeMap"].get(id);
+  if (!node) return undefined;
+  const ids: string[] = [];
+  for (let child = node.first; child; child = child.next) ids.push(child.id);
+  return ids;
 }
 
 function leftmost(element: Element) {
@@ -663,12 +671,4 @@ function linkBefore(target: Element, element: Element) {
   element.next = target;
   prev.next = element;
   target.prev = element;
-}
-
-function linkAfter(target: Element, element: Element) {
-  const next = target.next;
-  element.prev = target;
-  element.next = next;
-  target.next = element;
-  if (next) next.prev = element;
 }

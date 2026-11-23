@@ -89,43 +89,9 @@ const keyOf = (key: Json | undefined): string =>
 
 /** Writes text rows too. */
 class TextRowEncoder extends Encoder {
-  /** A stored reference (see `encodeRef` in the text store) as a wire one. */
-  ref(ref: Json, c: number, absolute = false): LetterRef {
-    if (typeof ref === "number") {
-      if (ref === 0) return 0;
-      const left = ref < 0;
-      const counter = Math.abs(ref) - 1;
-      // Formatting a letter just typed ends the mark at the letter's right
-      // origin: the same letter again.
-      if (
-        !left &&
-        this._lastSession === this._session &&
-        this._lastCounter === counter
-      )
-        return "'";
-      this._lastSession = this._session;
-      this._lastCounter = counter;
-      // An insert's right origin is its counter + 1, negative when the insert
-      // is its left child: as the text store writes it. Typing backwards,
-      // it is the letter just before, which a counter would not repeat.
-      if (absolute) return left && counter === c - 1 ? BACKWARDS : ref;
-      // A distance repeats more than a counter: a compressed stream takes it.
-      // Counters only grow, so an operation's own letters are behind it
-      // (but in a delete, see `#rangeRef`).
-      return c - counter;
-    }
-    const written = text(ref);
-    if (written.charCodeAt(0) === 94)
-      return `^${this._absolute(written.slice(1))}`;
-    return this._absolute(written);
-  }
-
-  /** A letter of a delete: a distance of any sign, as no letter is none. */
-  #rangeRef(ref: Json, c: number): LetterRef {
-    if (typeof ref !== "number") return this.ref(ref, c);
-    this._lastSession = this._session;
-    this._lastCounter = ref - 1;
-    return c - ref + 1;
+  /** An insert's parent, or Base's left letter: `-1` (none) as it is. */
+  #left(ref: Json, c: number): LetterRef {
+    return ref === -1 ? -1 : this.ref(ref, c);
   }
 
   ranges(ranges: Json, c: number): Json {
@@ -136,123 +102,12 @@ class TextRowEncoder extends Encoder {
     return out;
   }
 
-  override edit(op: EditOperation, rows: (Head | OperationsRow)[]): void {
-    const insert = typeof op[1] === "string";
-    const index = this.index(text(insert ? op[1] : op[2]));
-    const c = Number(insert ? op[2] : op[3]);
-    // Another row in between (a tree row) ends the row of inserts.
-    let last =
-      this._joinable === rows[rows.length - 1] ? this._joinable : undefined;
-    this._joinable = undefined;
-    if (this.counter === -1) this.counter = c;
-    else if (index !== this._session || c !== this._next) {
-      rows.push(this.id(index, c));
-      last = undefined;
-    }
-    this._session = index;
-    if (insert) {
-      const content = op[3]!;
-      const row: [string | readonly Json[], ...LetterRef[]] = [
-        isList(content) ? content : text(content),
-      ];
-      this.#insertRefs(op, c, row);
-      this._next = c + lettersOf(content).length;
-      if (!isJoinable(row)) {
-        rows.push(row);
-        return;
-      }
-      // Inserts one after the other go in one row, without a pair of
-      // brackets each, unless the letters read as a reference.
-      if (last === undefined || LETTER.test(text(row[0]))) {
-        rows.push(row);
-        this._joinable = row;
-      } else {
-        last.push(...row);
-        this._joinable = last;
-      }
-      return;
-    }
-    const tag = Number(op[1]);
-    if (tag === AGAIN) rows.push(this.#again(op, c));
-    else {
-      const row: [number, ...Json[]] = [rowTag(tag)];
-      this.#payload(op, tag, c, row);
-      rows.push(row);
-    }
-    // Only an insert takes ids: the others count from where they are.
-    this._next = c;
-  }
-
-  /**
-   * A batch of only `op`, written straight away: typing and deleting, the
-   * batches sent most often. Each array is built at its final length.
-   */
-  override single(op: EditOperation): Operations {
-    const insert = typeof op[1] === "string";
-    this.reset(text(insert ? op[1] : op[2]));
-    const c = Number(insert ? op[2] : op[3]);
-    this.base = c;
-    const named = this.#named(c);
-    let batch:
-      | [Head, string, ...LetterRef[]]
-      | [Head, number, ...Json[]]
-      | [Head, InsertTextRow]
-      | [Head, string, Json[], ...Json[]];
-    const content = op[3]!;
-    if (!insert) {
-      const tag = Number(op[1]);
-      const written = rowTag(tag);
-      if (tag === AGAIN) batch = [named, ...this.#again(op, c)];
-      else if (tag === 1 && op.length === 5)
-        batch = [named, written, this.ranges(op[4]!, c)];
-      else {
-        batch = [named, written];
-        this.#payload(op, tag, c, batch);
-      }
-    } else if (isList(content)) {
-      // An insert with attributes keeps its brackets (see `isFlat`).
-      const row: [readonly Json[], ...LetterRef[]] = [content];
-      this.#insertRefs(op, c, row);
-      batch = [named, row];
-    } else if (op.length === 4) batch = [named, text(content)];
-    else if (op.length === 5)
-      batch = [named, text(content), this.ref(op[4]!, c, ABSOLUTE_RIGHT)];
-    else
-      batch = [
-        named,
-        text(content),
-        this.ref(op[4]!, c, ABSOLUTE_RIGHT),
-        this.#left(op[5]!, c),
-      ];
-    // A reference to another session's letter adds it to the head.
-    if (this.others.length > 0) batch[0] = [named, ...this.others];
-    return batch;
-  }
-
-  /**
-   * `"session.counter"` of the first session. The inverse of an edit has the
-   * edit's own id, so the string of the last one is kept.
-   */
-  #named(c: number): string {
-    if (c === this._lastNamedCounter && this.first === this._lastNamedSession)
-      return this._lastNamed;
-    if (this.first !== this._prefixed) {
-      this._prefixed = this.first;
-      this._prefix = `${this.first}.`;
-    }
-    this.remember(this.first, c, this._prefix + numberToBase64(c));
-    return this._lastNamed;
-  }
-
-  /** An insert's right origin and parent, after its content. */
-  #insertRefs(op: EditOperation, c: number, row: Json[]): void {
-    if (op.length > 4) row.push(this.ref(op[4]!, c, ABSOLUTE_RIGHT));
-    if (op.length > 5) row.push(this.#left(op[5]!, c));
-  }
-
-  /** An insert's parent, or Base's left letter: `-1` (none) as it is. */
-  #left(ref: Json, c: number): LetterRef {
-    return ref === -1 ? -1 : this.ref(ref, c);
+  /** A letter of a delete: a distance of any sign, as no letter is none. */
+  #rangeRef(ref: Json, c: number): LetterRef {
+    if (typeof ref !== "number") return this.ref(ref, c);
+    this._lastSession = this._session;
+    this._lastCounter = ref - 1;
+    return c - ref + 1;
   }
 
   /** The payload of any other text edit (`op[4]` on), after its tag. */
@@ -303,12 +158,205 @@ class TextRowEncoder extends Encoder {
     for (const ref of op.slice(7)) row.push(this.#left(ref, c));
     return row;
   }
+
+  /** An insert's right origin and parent, after its content. */
+  #insertRefs(op: EditOperation, c: number, row: Json[]): void {
+    if (op.length > 4) row.push(this.ref(op[4]!, c, ABSOLUTE_RIGHT));
+    if (op.length > 5) row.push(this.#left(op[5]!, c));
+  }
+
+  /**
+   * A batch of only `op`, written straight away: typing and deleting, the
+   * batches sent most often. Each array is built at its final length.
+   */
+  override single(op: EditOperation): Operations {
+    const insert = typeof op[1] === "string";
+    this.reset(text(insert ? op[1] : op[2]));
+    const c = Number(insert ? op[2] : op[3]);
+    this.base = c;
+    const named = this.#named(c);
+    let batch:
+      | [Head, string, ...LetterRef[]]
+      | [Head, number, ...Json[]]
+      | [Head, InsertTextRow]
+      | [Head, string, Json[], ...Json[]];
+    const content = op[3]!;
+    if (!insert) {
+      const tag = Number(op[1]);
+      const written = rowTag(tag);
+      if (tag === AGAIN) batch = [named, ...this.#again(op, c)];
+      else if (tag === 1 && op.length === 5)
+        batch = [named, written, this.ranges(op[4]!, c)];
+      else {
+        batch = [named, written];
+        this.#payload(op, tag, c, batch);
+      }
+    } else if (isList(content)) {
+      // An insert with attributes keeps its brackets (see `isFlat`).
+      const row: [readonly Json[], ...LetterRef[]] = [content];
+      this.#insertRefs(op, c, row);
+      batch = [named, row];
+    } else if (op.length === 4) batch = [named, text(content)];
+    else if (op.length === 5)
+      batch = [named, text(content), this.ref(op[4]!, c, ABSOLUTE_RIGHT)];
+    else
+      batch = [
+        named,
+        text(content),
+        this.ref(op[4]!, c, ABSOLUTE_RIGHT),
+        this.#left(op[5]!, c),
+      ];
+    // A reference to another session's letter adds it to the head.
+    if (this.others.length > 0) batch[0] = [named, ...this.others];
+    return batch;
+  }
+  /** A stored reference (see `encodeRef` in the text store) as a wire one. */
+  ref(ref: Json, c: number, absolute = false): LetterRef {
+    if (typeof ref === "number") {
+      if (ref === 0) return 0;
+      const left = ref < 0;
+      const counter = Math.abs(ref) - 1;
+      // Formatting a letter just typed ends the mark at the letter's right
+      // origin: the same letter again.
+      if (
+        !left &&
+        this._lastSession === this._session &&
+        this._lastCounter === counter
+      )
+        return "'";
+      this._lastSession = this._session;
+      this._lastCounter = counter;
+      // An insert's right origin is its counter + 1, negative when the insert
+      // is its left child: as the text store writes it. Typing backwards,
+      // it is the letter just before, which a counter would not repeat.
+      if (absolute) return left && counter === c - 1 ? BACKWARDS : ref;
+      // A distance repeats more than a counter: a compressed stream takes it.
+      // Counters only grow, so an operation's own letters are behind it
+      // (but in a delete, see `#rangeRef`).
+      return c - counter;
+    }
+    const written = text(ref);
+    if (written.charCodeAt(0) === 94)
+      return `^${this._absolute(written.slice(1))}`;
+    return this._absolute(written);
+  }
+
+  /**
+   * `"session.counter"` of the first session. The inverse of an edit has the
+   * edit's own id, so the string of the last one is kept.
+   */
+  #named(c: number): string {
+    if (c === this._lastNamedCounter && this.first === this._lastNamedSession)
+      return this._lastNamed;
+    if (this.first !== this._prefixed) {
+      this._prefixed = this.first;
+      this._prefix = `${this.first}.`;
+    }
+    this.remember(this.first, c, this._prefix + numberToBase64(c));
+    return this._lastNamed;
+  }
+
+  override edit(op: EditOperation, rows: (Head | OperationsRow)[]): void {
+    const insert = typeof op[1] === "string";
+    const index = this.index(text(insert ? op[1] : op[2]));
+    const c = Number(insert ? op[2] : op[3]);
+    // Another row in between (a tree row) ends the row of inserts.
+    let last =
+      this._joinable === rows[rows.length - 1] ? this._joinable : undefined;
+    this._joinable = undefined;
+    if (this.counter === -1) this.counter = c;
+    else if (index !== this._session || c !== this._next) {
+      rows.push(this.id(index, c));
+      last = undefined;
+    }
+    this._session = index;
+    if (insert) {
+      const content = op[3]!;
+      const row: [string | readonly Json[], ...LetterRef[]] = [
+        isList(content) ? content : text(content),
+      ];
+      this.#insertRefs(op, c, row);
+      this._next = c + lettersOf(content).length;
+      if (!isJoinable(row)) {
+        rows.push(row);
+        return;
+      }
+      // Inserts one after the other go in one row, without a pair of
+      // brackets each, unless the letters read as a reference.
+      if (last === undefined || LETTER.test(text(row[0]))) {
+        rows.push(row);
+        this._joinable = row;
+      } else {
+        last.push(...row);
+        this._joinable = last;
+      }
+      return;
+    }
+    const tag = Number(op[1]);
+    if (tag === AGAIN) rows.push(this.#again(op, c));
+    else {
+      const row: [number, ...Json[]] = [rowTag(tag)];
+      this.#payload(op, tag, c, row);
+      rows.push(row);
+    }
+    // Only an insert takes ids: the others count from where they are.
+    this._next = c;
+  }
 }
 
 // ----- reading ---------------------------------------------------------------
 
 /** Reads text rows too. */
 class TextRowDecoder extends Decoder {
+  #rangeRef(value: Json, c: number): Json {
+    if (typeof value !== "number") return this.ref(value, c);
+    this._lastCounter = c - value;
+    return this._lastCounter + 1;
+  }
+
+  /** Ranges and their value, alternately, from `row[from]` on. */
+  #values(row: readonly Json[], from: number, c: number, op: Json[]) {
+    for (let index = from; index < row.length; index += 2) {
+      op.push(this.ranges(row[index]!, c));
+      if (index + 1 < row.length) op.push(row[index + 1]!);
+    }
+  }
+
+  /** An insert's parent, or Base's left letter: `-1` (none) as it is. */
+  #left(ref: Json, c: number): Json {
+    return ref === -1 ? -1 : this.ref(ref, c);
+  }
+
+  ranges(ranges: Json, c: number): Json {
+    if (!isList(ranges)) return this.#rangeRef(ranges, c);
+    const out: Json[] = [];
+    for (let index = 0; index < ranges.length; index += 2)
+      out.push(this.#rangeRef(ranges[index]!, c), ranges[index + 1]!);
+    return out;
+  }
+
+  /** The text row that starts at `row[at]`, added to `ordered`. */
+  override textRow(
+    row: readonly Json[],
+    at: number,
+    ordered: OrderedOperation[],
+  ): void {
+    if (typeof row[at] !== "string") {
+      ordered.push(this.edit(row, at));
+      return;
+    }
+    // Each insert's letters, then its references: a string that does not
+    // read as a letter starts the next one.
+    for (let start = at; start < row.length; ) {
+      let end = start + 1;
+      for (; end < row.length; end++) {
+        const next = row[end];
+        if (typeof next === "string" && !LETTER.test(next)) break;
+      }
+      ordered.push(this.edit(row, start, end));
+      start = end;
+    }
+  }
   ref(value: Json, c: number): Json {
     if (typeof value === "number") {
       if (value === 0) return 0;
@@ -334,20 +382,6 @@ class TextRowDecoder extends Decoder {
     if (typeof value !== "number") return this.ref(value, c);
     if (value !== 0) this._lastCounter = (value < 0 ? -value : value) - 1;
     return value;
-  }
-
-  #rangeRef(value: Json, c: number): Json {
-    if (typeof value !== "number") return this.ref(value, c);
-    this._lastCounter = c - value;
-    return this._lastCounter + 1;
-  }
-
-  ranges(ranges: Json, c: number): Json {
-    if (!isList(ranges)) return this.#rangeRef(ranges, c);
-    const out: Json[] = [];
-    for (let index = 0; index < ranges.length; index += 2)
-      out.push(this.#rangeRef(ranges[index]!, c), ranges[index + 1]!);
-    return out;
   }
 
   /** The text row that starts at `row[at]` (a batch of one row has it at 1). */
@@ -406,42 +440,6 @@ class TextRowDecoder extends Decoder {
     if (row.length > at + 2) op.push(row[at + 2]!);
     for (const ref of row.slice(at + 3)) op.push(this.#left(ref, c));
     return op;
-  }
-
-  /** An insert's parent, or Base's left letter: `-1` (none) as it is. */
-  #left(ref: Json, c: number): Json {
-    return ref === -1 ? -1 : this.ref(ref, c);
-  }
-
-  /** Ranges and their value, alternately, from `row[from]` on. */
-  #values(row: readonly Json[], from: number, c: number, op: Json[]) {
-    for (let index = from; index < row.length; index += 2) {
-      op.push(this.ranges(row[index]!, c));
-      if (index + 1 < row.length) op.push(row[index + 1]!);
-    }
-  }
-
-  /** The text row that starts at `row[at]`, added to `ordered`. */
-  override textRow(
-    row: readonly Json[],
-    at: number,
-    ordered: OrderedOperation[],
-  ): void {
-    if (typeof row[at] !== "string") {
-      ordered.push(this.edit(row, at));
-      return;
-    }
-    // Each insert's letters, then its references: a string that does not
-    // read as a letter starts the next one.
-    for (let start = at; start < row.length; ) {
-      let end = start + 1;
-      for (; end < row.length; end++) {
-        const next = row[end];
-        if (typeof next === "string" && !LETTER.test(next)) break;
-      }
-      ordered.push(this.edit(row, start, end));
-      start = end;
-    }
   }
 }
 

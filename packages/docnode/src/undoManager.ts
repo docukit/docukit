@@ -99,8 +99,55 @@ export class UndoManager {
     });
   }
 
-  get isEnabled() {
-    return this.#maxUndoSteps > 0;
+  /**
+   * Replaces this manager's history with a previously exported history.
+   * The document ID and type must match because operations contain node IDs.
+   */
+  importHistory(history: unknown): void {
+    if (!isUndoHistory(history)) {
+      throw new TypeError("Invalid undo history");
+    }
+    if (
+      history.docId !== this.#doc.root.id ||
+      history.docType !== this.#doc.root.type
+    ) {
+      throw new Error("Undo history belongs to a different document");
+    }
+
+    const maxSteps = this.#maxUndoSteps;
+    this._undoStack = importStack(history.undoStack, maxSteps);
+    this.#redoStack = importStack(history.redoStack, maxSteps);
+    this.#lastUpdate = history.lastUpdate;
+    this.#txType = "update";
+  }
+
+  /**
+   * Exports undo and redo state without exporting editor-specific listeners.
+   * Metadata uses plain objects so consumers can persist histories whose
+   * metadata values are supported by their chosen storage format.
+   */
+  exportHistory(): UndoHistory {
+    // Not only for the history: DocSync relies on this commit to push a pending
+    // edit into its local operations batch, so the replacement document picks
+    // it up. Do not skip it when undo is disabled.
+    this.#doc.forceCommit();
+    return {
+      docId: this.#doc.root.id,
+      docType: this.#doc.root.type,
+      undoStack: this._undoStack.map(exportStackItem),
+      redoStack: this.#redoStack.map(exportStackItem),
+      ...(this.#lastUpdate !== undefined && { lastUpdate: this.#lastUpdate }),
+    };
+  }
+
+  /** What applying a history item applies (see `prepareUndo`). */
+  #prepare([ordered, patch]: DraftOperations): Operations {
+    const definition = editDefinition(this.#doc);
+    const prepared = ordered.map((operation): OrderedOperation => {
+      if (operation[0] !== 3 || !definition?.prepareUndo) return operation;
+      return definition.prepareUndo(operation, this.#doc);
+    });
+    return compactOperations([prepared, patch]);
   }
 
   undo() {
@@ -133,63 +180,8 @@ export class UndoManager {
     this.#popHandlers.forEach((h) => h({ meta: item.meta, type: "redo" }));
   }
 
-  canUndo() {
-    return this._undoStack.length > 0;
-  }
-
-  canRedo() {
-    return this.#redoStack.length > 0;
-  }
-
-  /**
-   * Exports undo and redo state without exporting editor-specific listeners.
-   * Metadata uses plain objects so consumers can persist histories whose
-   * metadata values are supported by their chosen storage format.
-   */
-  exportHistory(): UndoHistory {
-    // Not only for the history: DocSync relies on this commit to push a pending
-    // edit into its local operations batch, so the replacement document picks
-    // it up. Do not skip it when undo is disabled.
-    this.#doc.forceCommit();
-    return {
-      docId: this.#doc.root.id,
-      docType: this.#doc.root.type,
-      undoStack: this._undoStack.map(exportStackItem),
-      redoStack: this.#redoStack.map(exportStackItem),
-      ...(this.#lastUpdate !== undefined && { lastUpdate: this.#lastUpdate }),
-    };
-  }
-
-  /**
-   * Replaces this manager's history with a previously exported history.
-   * The document ID and type must match because operations contain node IDs.
-   */
-  importHistory(history: unknown): void {
-    if (!isUndoHistory(history)) {
-      throw new TypeError("Invalid undo history");
-    }
-    if (
-      history.docId !== this.#doc.root.id ||
-      history.docType !== this.#doc.root.type
-    ) {
-      throw new Error("Undo history belongs to a different document");
-    }
-
-    const maxSteps = this.#maxUndoSteps;
-    this._undoStack = importStack(history.undoStack, maxSteps);
-    this.#redoStack = importStack(history.redoStack, maxSteps);
-    this.#lastUpdate = history.lastUpdate;
-    this.#txType = "update";
-  }
-
-  /** What applying a history item applies (see `prepareUndo`). */
-  #prepare([ordered, patch]: DraftOperations): Operations {
-    const definition = editDefinition(this.#doc);
-    const prepared = ordered.map((operation): OrderedOperation => {
-      if (operation[0] !== 3 || !definition?.prepareUndo) return operation;
-      return definition.prepareUndo(operation, this.#doc);
-    });
-    return compactOperations([prepared, patch]);
+  get isEnabled() {
+    return this.#maxUndoSteps > 0;
   }
 
   /**
@@ -203,6 +195,10 @@ export class UndoManager {
     };
   }
 
+  canRedo() {
+    return this.#redoStack.length > 0;
+  }
+
   /**
    * Fires synchronously after `applyOperations` returns on undo/redo.
    * Text editor bindings will often restore selection state here.
@@ -213,6 +209,61 @@ export class UndoManager {
       this.#popHandlers.delete(handler);
     };
   }
+
+  canUndo() {
+    return this._undoStack.length > 0;
+  }
+}
+
+function importStack(items: UndoHistoryItem[], maxSteps: number) {
+  const retainedItems = maxSteps === 0 ? [] : items.slice(-maxSteps);
+  return retainedItems.map((item) => ({
+    operations: decodeOperations(item.operations),
+    meta: new Map(Object.entries(item.meta)),
+  }));
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isUndoHistory(value: unknown): value is UndoHistory {
+  return (
+    isRecord(value) &&
+    typeof value.docId === "string" &&
+    typeof value.docType === "string" &&
+    Array.isArray(value.undoStack) &&
+    value.undoStack.every(isHistoryItem) &&
+    Array.isArray(value.redoStack) &&
+    value.redoStack.every(isHistoryItem) &&
+    (value.lastUpdate === undefined ||
+      (typeof value.lastUpdate === "number" &&
+        Number.isFinite(value.lastUpdate)))
+  );
+}
+
+/**
+ * `[-9, node, key, value, ...]`: a triple per key, `[node, count]` for a run
+ * of nodes.
+ */
+function isPatchRow([, ...entries]: unknown[]): boolean {
+  if (entries.length % 3 !== 0) return false;
+  for (let at = 0; at < entries.length; at += 3) {
+    const node = entries[at];
+    const run =
+      Array.isArray(node) &&
+      node.length === 2 &&
+      isNodeReference(node[0]) &&
+      Number.isInteger(node[1]);
+    if (!(run || isNodeReference(node)) || !isString(entries[at + 1]))
+      return false;
+  }
+  return true;
+}
+
+/** A node of a tree row: a string, a number (its distance), or `0`, none. */
+function isNodeReference(value: unknown): boolean {
+  return Number.isInteger(value) || typeof value === "string";
 }
 
 /** The definition of the root state that receives edit operations, if any. */
@@ -220,6 +271,39 @@ function editDefinition(doc: Doc): InternalStateDefinition | undefined {
   const key = doc["_editStateKey"];
   if (key === undefined) return undefined;
   return doc["_resolvedNodeDefs"].get(doc.root.type)?.state[key];
+}
+
+/** `[text | [node] | 5 | -tag, ...]` (see `wire.ts`). */
+function isTextRow(value: unknown[]): boolean {
+  const head: unknown = value[0];
+  return (
+    typeof head === "string" ||
+    (Array.isArray(head) && head.length === 1 && isString(head[0])) ||
+    head === 5 ||
+    (Number.isInteger(head) && Number(head) < 0)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * A tree row starts with 0, 1 or 2, the state patch with -9, a text row with
+ * anything else.
+ */
+function isRow(value: unknown, last: boolean): boolean {
+  if (!Array.isArray(value)) return false;
+  const row: unknown[] = value;
+  // The state patch is the last row.
+  if (row[0] === -9) return last && isPatchRow(row);
+  return typeof row[0] === "number" && row[0] >= 0 && row[0] !== 5
+    ? isTreeRow(row)
+    : isTextRow(row);
 }
 
 function exportStackItem(item: UndoStackItem): UndoHistoryItem {
@@ -232,40 +316,28 @@ function exportStackItem(item: UndoStackItem): UndoHistoryItem {
   };
 }
 
-function importStack(items: UndoHistoryItem[], maxSteps: number) {
-  const retainedItems = maxSteps === 0 ? [] : items.slice(-maxSteps);
-  return retainedItems.map((item) => ({
-    operations: decodeOperations(item.operations),
-    meta: new Map(Object.entries(item.meta)),
-  }));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const prototype: unknown = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
-function isString(value: unknown): value is string {
-  return typeof value === "string";
-}
-
-/** A node of a tree row: a string, a number (its distance), or `0`, none. */
-function isNodeReference(value: unknown): boolean {
-  return Number.isInteger(value) || typeof value === "string";
-}
-
-/** `[text | [node] | 5 | -tag, ...]` (see `wire.ts`). */
-function isTextRow(value: unknown[]): boolean {
-  const head: unknown = value[0];
+function isHistoryItem(value: unknown): value is UndoHistoryItem {
   return (
-    typeof head === "string" ||
-    (Array.isArray(head) && head.length === 1 && isString(head[0])) ||
-    head === 5 ||
-    (Number.isInteger(head) && Number(head) < 0)
+    isRecord(value) && isOperations(value.operations) && isRecord(value.meta)
   );
+}
+
+function isOperations(value: unknown): value is Operations {
+  if (!Array.isArray(value) || value.length < 2) return false;
+  const list: unknown[] = value;
+  const [head, ...rows] = list;
+  if (
+    typeof head !== "string" &&
+    !(Array.isArray(head) && head.length > 0 && head.every(isString))
+  )
+    return false;
+  // One row written without its brackets.
+  if (typeof rows[0] === "string" || typeof rows[0] === "number")
+    return isRow(rows, true);
+  return rows.every((row, index) => {
+    if (typeof row === "string") return /^\d*\.[\w-]+$/.test(row);
+    return isRow(row, index === rows.length - 1);
+  });
 }
 
 /**
@@ -298,77 +370,5 @@ function isTreeRow([tag, first, ...rest]: unknown[]): boolean {
   return (
     isNodeReference(first) &&
     rest.length <= (tag === 1 ? 1 : tag === 2 ? 4 : -1)
-  );
-}
-
-/**
- * `[-9, node, key, value, ...]`: a triple per key, `[node, count]` for a run
- * of nodes.
- */
-function isPatchRow([, ...entries]: unknown[]): boolean {
-  if (entries.length % 3 !== 0) return false;
-  for (let at = 0; at < entries.length; at += 3) {
-    const node = entries[at];
-    const run =
-      Array.isArray(node) &&
-      node.length === 2 &&
-      isNodeReference(node[0]) &&
-      Number.isInteger(node[1]);
-    if (!(run || isNodeReference(node)) || !isString(entries[at + 1]))
-      return false;
-  }
-  return true;
-}
-
-/**
- * A tree row starts with 0, 1 or 2, the state patch with -9, a text row with
- * anything else.
- */
-function isRow(value: unknown, last: boolean): boolean {
-  if (!Array.isArray(value)) return false;
-  const row: unknown[] = value;
-  // The state patch is the last row.
-  if (row[0] === -9) return last && isPatchRow(row);
-  return typeof row[0] === "number" && row[0] >= 0 && row[0] !== 5
-    ? isTreeRow(row)
-    : isTextRow(row);
-}
-
-function isOperations(value: unknown): value is Operations {
-  if (!Array.isArray(value) || value.length < 2) return false;
-  const list: unknown[] = value;
-  const [head, ...rows] = list;
-  if (
-    typeof head !== "string" &&
-    !(Array.isArray(head) && head.length > 0 && head.every(isString))
-  )
-    return false;
-  // One row written without its brackets.
-  if (typeof rows[0] === "string" || typeof rows[0] === "number")
-    return isRow(rows, true);
-  return rows.every((row, index) => {
-    if (typeof row === "string") return /^\d*\.[\w-]+$/.test(row);
-    return isRow(row, index === rows.length - 1);
-  });
-}
-
-function isHistoryItem(value: unknown): value is UndoHistoryItem {
-  return (
-    isRecord(value) && isOperations(value.operations) && isRecord(value.meta)
-  );
-}
-
-function isUndoHistory(value: unknown): value is UndoHistory {
-  return (
-    isRecord(value) &&
-    typeof value.docId === "string" &&
-    typeof value.docType === "string" &&
-    Array.isArray(value.undoStack) &&
-    value.undoStack.every(isHistoryItem) &&
-    Array.isArray(value.redoStack) &&
-    value.redoStack.every(isHistoryItem) &&
-    (value.lastUpdate === undefined ||
-      (typeof value.lastUpdate === "number" &&
-        Number.isFinite(value.lastUpdate)))
   );
 }

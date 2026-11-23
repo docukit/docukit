@@ -18,8 +18,8 @@ import {
   splitColumns,
 } from "./columns.js";
 import { numberToBase64 } from "./idGenerator.js";
-import { jsonCopy, jsonEqual } from "./utils.js";
 import { isRecord } from "./text/common.js";
+import { jsonCopy, jsonEqual } from "./utils.js";
 
 /**
  * The columns of a stored document's tree (see `JsonDoc`), after the one of
@@ -62,13 +62,21 @@ function storedValue(
   return jsonEqual(json, definition.defaultJson[key]!) ? undefined : json;
 }
 
-/** The root state that holds the document's text (see `docState`). */
-function textDefinition(
-  doc: Doc,
+/**
+ * A stored document of its sessions, its type and its elements (see
+ * `elementsOf`): without its state when it is `0`, and without the empty
+ * elements, `0`, at its end.
+ */
+export function storedDoc(
+  table: string[],
   type: string,
-  key: string,
-): InternalStateDefinition {
-  return doc["_resolvedNodeDefs"].get(type)!.state[key]!;
+  [state, ...rest]: [StoredState | 0, ...StoredRest],
+): JsonDoc {
+  const json: JsonDoc = state
+    ? [table, type, state, ...rest]
+    : [table, type, ...rest];
+  while (json.at(-1) === 0) json.pop();
+  return json;
 }
 
 /**
@@ -86,6 +94,15 @@ const countChildren = (node: DocNode) => {
   for (let child = node.first; child; child = child.next) count++;
   return count;
 };
+
+/** The root state that holds the document's text (see `docState`). */
+function textDefinition(
+  doc: Doc,
+  type: string,
+  key: string,
+): InternalStateDefinition {
+  return doc["_resolvedNodeDefs"].get(type)!.state[key]!;
+}
 
 /** `doc` as it is stored (see `JsonDoc`), without its id. */
 export function writeJsonDoc(doc: Doc): JsonDoc {
@@ -239,64 +256,10 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
   ]);
 }
 
-/**
- * A stored document of its sessions, its type and its elements (see
- * `elementsOf`): without its state when it is `0`, and without the empty
- * elements, `0`, at its end.
- */
-export function storedDoc(
-  table: string[],
-  type: string,
-  [state, ...rest]: [StoredState | 0, ...StoredRest],
-): JsonDoc {
-  const json: JsonDoc = state
-    ? [table, type, state, ...rest]
-    : [table, type, ...rest];
-  while (json.at(-1) === 0) json.pop();
-  return json;
-}
-
 /** Whether a stored document has its state, the only object after its type. */
 const hasState = (
   json: JsonDoc,
 ): json is [string[], string, StoredState, ...StoredRest] => isRecord(json[2]);
-
-/** The elements of a stored document after its type, its state first (`0` when empty). */
-export function elementsOf(json: JsonDoc): [StoredState | 0, ...StoredRest] {
-  if (hasState(json)) {
-    const [, , ...elements] = json;
-    return elements;
-  }
-  const [, , ...rest] = json;
-  return [0, ...rest];
-}
-
-/**
- * The first column, how much each session shares with the one before (see
- * `frontCode`), which a table of one session or none does not have.
- */
-export const sharedColumn = (
-  table: readonly string[],
-  shared: ColumnWriter,
-): ColumnWriter[] => (table.length > 1 ? [shared] : []);
-
-/** The columns of a stored `json`: an element left out, or `0`, has none. */
-export const columnsOf = (json: JsonDoc) => elementsOf(json)[2] || "";
-
-/**
- * The sessions of the table of a stored `json` (see `JsonDoc`), `id` the
- * document's: what `readJsonDoc` reads, for a CRDT engine.
- */
-export const storedSessions = (json: JsonDoc, id: string): string[] =>
-  readSessions(
-    frontDecode(
-      json[0],
-      id,
-      new ColumnReader(
-        json[0].length > 1 ? splitColumns(columnsOf(json), 1)[0]! : "",
-      ),
-    ),
-  );
 
 /**
  * Builds the nodes of a stored `json` in `doc`, in place of its root. The
@@ -398,4 +361,41 @@ export function readJsonDoc(doc: Doc, json: JsonDoc): void {
     parent["_set"]("last", prev);
   };
   attach(root);
+}
+
+/**
+ * The first column, how much each session shares with the one before (see
+ * `frontCode`), which a table of one session or none does not have.
+ */
+export const sharedColumn = (
+  table: readonly string[],
+  shared: ColumnWriter,
+): ColumnWriter[] => (table.length > 1 ? [shared] : []);
+
+/** The columns of a stored `json`: an element left out, or `0`, has none. */
+export const columnsOf = (json: JsonDoc) => elementsOf(json)[2] || "";
+
+/**
+ * The sessions of the table of a stored `json` (see `JsonDoc`), `id` the
+ * document's: what `readJsonDoc` reads, for a CRDT engine.
+ */
+export const storedSessions = (json: JsonDoc, id: string): string[] =>
+  readSessions(
+    frontDecode(
+      json[0],
+      id,
+      new ColumnReader(
+        json[0].length > 1 ? splitColumns(columnsOf(json), 1)[0]! : "",
+      ),
+    ),
+  );
+
+/** The elements of a stored document after its type, its state first (`0` when empty). */
+export function elementsOf(json: JsonDoc): [StoredState | 0, ...StoredRest] {
+  if (hasState(json)) {
+    const [, , ...elements] = json;
+    return elements;
+  }
+  const [, , ...rest] = json;
+  return [0, ...rest];
 }

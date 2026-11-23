@@ -18,6 +18,22 @@ const DIGITS = [...base64Alphabet];
  */
 let pairs: string[] | undefined;
 
+function randomStringBase64(len: number): string {
+  const out = new Array(len);
+  const CHARS_PER_U32 = 5;
+  const u32Count = Math.ceil(len / CHARS_PER_U32);
+  const buf32 = new Uint32Array(u32Count);
+  crypto.getRandomValues(buf32);
+  let o = 0; // output index
+  for (let i = 0; i < u32Count; i++) {
+    const v = buf32[i]!;
+    for (let k = 0; k < CHARS_PER_U32 && o < len; k++) {
+      out[o++] = base64Alphabet[(v >>> (k * 6)) & 63]!;
+    }
+  }
+  return out.join("");
+}
+
 export function numberToBase64(num: number): string {
   // Most clocks and counters have up to three digits.
   if (num < 64) return DIGITS[num]!;
@@ -66,31 +82,15 @@ export function clockAt(id: string, dot: number, digits = 8): number {
   return clock;
 }
 
+/** The value of a base 64 digit's character code, or -1. */
+const digitOf = (code: number): number => IDX[code] ?? -1;
+
 /** The number a `numberToBase64` string stands for, from `from` to its end. */
 export function base64ToNumber(text: string, from = 0): number {
   let num = 0;
   for (let i = from; i < text.length; i++)
     num = num * ALPH_LEN + IDX[text.charCodeAt(i)]!;
   return num;
-}
-
-/** The value of a base 64 digit's character code, or -1. */
-const digitOf = (code: number): number => IDX[code] ?? -1;
-
-function randomStringBase64(len: number): string {
-  const out = new Array(len);
-  const CHARS_PER_U32 = 5;
-  const u32Count = Math.ceil(len / CHARS_PER_U32);
-  const buf32 = new Uint32Array(u32Count);
-  crypto.getRandomValues(buf32);
-  let o = 0; // output index
-  for (let i = 0; i < u32Count; i++) {
-    const v = buf32[i]!;
-    for (let k = 0; k < CHARS_PER_U32 && o < len; k++) {
-      out[o++] = base64Alphabet[(v >>> (k * 6)) & 63]!;
-    }
-  }
-  return out.join("");
 }
 
 export function incrementStringInBase64(str: string): string {

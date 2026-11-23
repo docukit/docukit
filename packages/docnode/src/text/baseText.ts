@@ -115,17 +115,13 @@ const TAG_FORMAT = 6;
  */
 const hashable = (id: string) => id.length > 6 && lastDot(id) === -1;
 
-/** 30 bits of FNV-1a of `id`, mixed so that every letter moves them all. */
-function idHash(id: string): string {
-  let hash = 0x811c9dc5;
-  for (let at = 0; at < id.length; at++) {
-    hash ^= id.charCodeAt(at);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  hash ^= hash >>> 16;
-  hash = Math.imul(hash, 0x85ebca6b);
-  hash ^= hash >>> 13;
-  return numberToBase64((hash >>> 2) + 0x40000000).slice(1);
+function decodeRanges(own: string, flat: Json): [string, number, number][] {
+  const list = listOf(flat);
+  if (!list) return [[...decodeRef(own, flat), 1]];
+  const out: [string, number, number][] = [];
+  for (let index = 0; index < list.length; index += 2)
+    out.push([...decodeRef(own, list[index]!), Number(list[index + 1])]);
+  return out;
 }
 
 /** A letter's reference from an operation of `own` (see `encodeRef`). */
@@ -153,22 +149,346 @@ export class BaseText extends TextEngine {
   /** Where deleted letters were (see `Ghosts`). */
   #ghosts = new Ghosts();
 
-  bind(doc: Doc): void {
-    this.#doc = doc;
+  /** Cuts `run` at `offset`: the new run after it. */
+  #split(run: Run, offset: number): Run {
+    const tail = new Run(
+      run.s,
+      run.c + offset,
+      run.text.slice(offset),
+      run.state,
+      run.flow,
+    );
+    tail.anchors = run.anchors;
+    run.text = run.text.slice(0, offset);
+    this.#positions.changed(run);
+    this.#indexRun(tail);
+    this.#linkAfter(run, tail);
+    return tail;
+  }
+
+  /** The letter right before boundary `index`; the node's root for 0. */
+  #leftOf(flow: Flow, index: number): Element {
+    if (index === 0) return { run: flow.head, off: 0 };
+    return this.#positions.seek(flow.head, index - 1);
   }
 
   /**
-   * Base reads the rules of a node from its type, when the letters are
-   * inserted (see `#rules`): every replica reads the same.
+   * The start of a node's text: `^` for the root's, which every replica has,
+   * `#` and the shortest prefix of the hash of its id that no other node
+   * has here (see `hashable`), or `^node`.
    */
-  setRules(): void {
-    // Nothing to keep.
+  #startRef(doc: Doc, node: string): string {
+    if (node === doc.root.id) return "^";
+    if (!hashable(node)) return `^${node}`;
+    const hash = this.#hash(node);
+    // How many first digits it shares with the closest other one.
+    let shared = 0;
+    this.#eachHashable(doc, (id) => {
+      if (id === node) return;
+      const other = this.#hash(id);
+      let same = 0;
+      while (same < hash.length && other[same] === hash[same]) same++;
+      if (same > shared) shared = same;
+    });
+    // Two ids with one whole hash (30 bits) name the first of them.
+    return `#${hash.slice(0, shared + 1)}`;
+  }
+
+  /** The anchor of the ghost of deleted letter `(s, c)`, if it is one. */
+  #anchorOf(s: string, c: number): Element | undefined {
+    const ghost = this.#ghosts.find(s, c);
+    if (!ghost) return undefined;
+    return ghost.ac === -1
+      ? { run: this.#flow(ghost.as).head, off: 0 }
+      : this.#find(ghost.as, ghost.ac);
+  }
+
+  /** One object per distinct state, with sorted keys; none for `{}`. */
+  #intern(values: State | undefined): State | undefined {
+    if (!values) return undefined;
+    const keys = Object.keys(values).sort();
+    if (keys.length === 0) return undefined;
+    const sorted: Record<string, Json> = {};
+    for (const key of keys) sorted[key] = values[key]!;
+    const json = JSON.stringify(sorted);
+    let state = this.#states.get(json);
+    if (!state) this.#states.set(json, (state = sorted));
+    return state;
+  }
+
+  /**
+   * The start a reference names, as an element: of the nodes `#prefix` could
+   * name, the one whose hash starts so (the first id in order if several
+   * do); none if none.
+   */
+  #start(doc: Doc, ref: string): Element | undefined {
+    let node: string | undefined = ref.slice(1) || doc.root.id;
+    if (ref.charCodeAt(0) === 35) {
+      let found: string | undefined;
+      this.#eachHashable(doc, (id) => {
+        if (
+          this.#hash(id).startsWith(node!) &&
+          (found === undefined || id < found)
+        )
+          found = id;
+      });
+      node = found;
+    }
+    return node === undefined
+      ? undefined
+      : { run: this.#flow(node).head, off: 0 };
+  }
+
+  /** `index` clamped to the text and moved off the middle of a surrogate pair. */
+  #boundary(flow: Flow, index: number): number {
+    // Before the index of positions is needed: typing at the start of every
+    // text of many documents builds none.
+    if (index <= 0) return 0;
+    const length = this.#positions.length(flow.head);
+    if (index >= length) return length;
+    const left = this.#positions.seek(flow.head, index - 1);
+    const right = this.#after(left)!;
+    return isHighSurrogate(left.run.text.charCodeAt(left.off)) &&
+      isLowSurrogate(right.run.text.charCodeAt(right.off))
+      ? index + 1
+      : index;
+  }
+
+  lengthOf(node: string): number {
+    const flow = this.#flows.get(node);
+    return flow ? this.#positions.length(flow.head) : 0;
+  }
+
+  /** What an undo of the history applies: the operation as it is. */
+  prepareUndo(_doc: Doc, undo: EditOperation): EditOperation {
+    return undo;
+  }
+
+  spansOf(node: string): TextSpan[] {
+    const out: TextSpan[] = [];
+    const flow = this.#flows.get(node);
+    if (!flow) return out;
+    let state: State | undefined;
+    for (let run = flow.head.next; run; run = run.next) {
+      if (out.length > 0 && run.state === state)
+        out[out.length - 1]!.text += run.text;
+      else {
+        state = run.state;
+        out.push({ text: run.text, attrs: { ...state } });
+      }
+    }
+    return out;
+  }
+
+  /** The lists by node id: the same order in every replica. */
+  #sortedFlows(): Flow[] {
+    return [...this.#flows.keys()].sort().map((node) => this.#flows.get(node)!);
+  }
+
+  // ----- reading ---------------------------------------------------------
+
+  textOf(node: string): string {
+    let text = "";
+    const flow = this.#flows.get(node);
+    if (!flow) return text;
+    for (let run = flow.head.next; run; run = run.next) text += run.text;
+    return text;
+  }
+
+  /** The first and the last letter of `ranges` still here. */
+  #ends(
+    ranges: [string, number, number][],
+  ): [Element | undefined, Element | undefined] {
+    let first: Element | undefined;
+    let last: Element | undefined;
+    for (const [rs, rc, len] of ranges) {
+      for (let k = 0; k < len && !first; k++) first = this.#find(rs, rc + k);
+      if (first) break;
+    }
+    for (let at = ranges.length - 1; at >= 0 && !last; at--) {
+      const [rs, rc, len] = ranges[at]!;
+      for (let k = len - 1; k >= 0 && !last; k--) last = this.#find(rs, rc + k);
+    }
+    return [first, last];
+  }
+
+  #indexRun(run: Run): void {
+    let runs = this.#index.get(run.s);
+    if (!runs) this.#index.set(run.s, (runs = new SessionRuns<Run>()));
+    runs.add(run);
+  }
+
+  /**
+   * Calls `visit` with each id `#` could name: the nodes of the tree, and
+   * those whose text is not empty (the same in every replica that applied
+   * the same operations, also after a reload).
+   */
+  #eachHashable(doc: Doc, visit: (id: string) => void): void {
+    const nodes = doc["_nodeMap"];
+    for (const id of nodes.keys()) if (hashable(id)) visit(id);
+    for (const [id, flow] of this.#flows)
+      if (flow.head.next && hashable(id) && !nodes.has(id)) visit(id);
+  }
+
+  #hash(id: string): string {
+    let hash = this.#hashes.get(id);
+    if (hash === undefined) this.#hashes.set(id, (hash = idHash(id)));
+    return hash;
+  }
+
+  #flow(node: string): Flow {
+    let flow = this.#flows.get(node);
+    if (!flow) this.#flows.set(node, (flow = new Flow(node)));
+    return flow;
+  }
+
+  // ----- change reporting --------------------------------------------------
+
+  #report(doc: Doc, node: string): void {
+    const diff = doc["_diff"];
+    if (doc.getNodeById(node) && !diff.inserted.has(node))
+      diff.updated.add(node);
+  }
+
+  // ----- serialization -----------------------------------------------------
+
+  /** `[20, sessions, text, columns, states?]` (see `toStored`). */
+  toJSON(): Json {
+    const sessions = new SessionTable();
+    const columns: { encode(): string }[] = [];
+    // Without a root, every list's node is written.
+    const stored = this.toStored(sessions, columns, "");
+    if (stored === 0) return 0;
+    return [FORMAT, sessions.table, joinColumns(columns), ...stored];
   }
 
   /** The rules of a node's type while it is in the document. */
   #rules(flow: Flow): Rules | undefined {
     const rules = rulesOfNode(this.#doc, flow.node);
     return rules === false ? undefined : rules;
+  }
+
+  bind(doc: Doc): void {
+    this.#doc = doc;
+  }
+
+  #unlink(run: Run): void {
+    this.#positions.removed(run);
+    run.prev!.next = run.next;
+    if (run.next) run.next.prev = run.prev;
+    const runs = this.#index.get(run.s)!;
+    runs.remove(run);
+    // A session without letters is no more: its runs are never empty.
+    if (runs.empty) this.#index.delete(run.s);
+  }
+
+  /** Letters of this replica's session it did not write: a copy's (see `NodeIds`). */
+  #checkSession(doc: Doc, s: string, end: number): void {
+    if (s === this.#session && end > this.#counter) doc["_renewSession"]();
+  }
+
+  /** Joins `run` with the runs around it it only differs from by being apart. */
+  #join(run: Run): void {
+    while (run.prev && joins(run.prev, run)) run = run.prev;
+    while (run.next && joins(run, run.next)) {
+      const next = run.next;
+      this.#unlink(next);
+      run.text += next.text;
+      if (next.anchors) run.anchors = true;
+      this.#positions.changed(run);
+    }
+  }
+
+  #linkAfter(target: Run, run: Run): void {
+    this.#positions.linked(target, run, true);
+    const next = target.next;
+    target.next = run;
+    run.prev = target;
+    run.next = next;
+    if (next) next.prev = run;
+  }
+
+  /** The run that starts at `element`, cut from its run if needed. */
+  #startingAt({ run, off }: Element): Run {
+    return off === 0 ? run : this.#split(run, off);
+  }
+
+  // ----- local operations ---------------------------------------------------
+
+  #record(doc: Doc, operation: EditOperation, inverse: EditOperation): void {
+    doc["_operations"][0].push(operation);
+    doc["_inverseOperations"][0].push(inverse);
+    doc["_hasEdits"] = true;
+  }
+
+  /**
+   * The state of letters with `own` state typed between letters with `left`
+   * and `right` state: what they inherit (see `Inherit`) and their own
+   * (`null`: a key they do not take). Without `left`, their own only.
+   */
+  #stateFor(
+    own: Record<string, Json> | undefined,
+    left?: State,
+    right?: State,
+    rules?: Rules,
+  ): State | undefined {
+    let state: Record<string, Json> | undefined;
+    // While every key of `left` goes on and there is no own state, it is
+    // `left` itself.
+    let same = !own;
+    for (const key in left) {
+      const value = left[key]!;
+      // Letters with state to inherit have rules (see `#insert`).
+      const rule = rules!.get(key);
+      if (
+        rule === undefined ||
+        (own && Object.hasOwn(own, key)) ||
+        (rule === "both" &&
+          !(
+            right &&
+            Object.hasOwn(right, key) &&
+            sameValue(value, right[key]!)
+          ))
+      ) {
+        same = false;
+        continue;
+      }
+      (state ??= {})[key] = value;
+    }
+    // `same` means no own state: the loop adds nothing.
+    for (const key in own)
+      if (own[key] !== null) (state ??= {})[key] = own[key]!;
+    return same ? left : this.#intern(state);
+  }
+
+  letterAt(node: string, index: number): string | undefined {
+    const flow = this.#flows.get(node);
+    if (!flow || index < 0 || index >= this.#positions.length(flow.head))
+      return undefined;
+    const { run, off } = this.#positions.seek(flow.head, index);
+    return `${run.s}:${run.c + off}`;
+  }
+
+  /**
+   * What of `state` a letter typed next to it can inherit (see `Inherit`):
+   * the keys with a rule. A ghost keeps it (see `Ghost.state`).
+   */
+  #inheritable(
+    state: State | undefined,
+    rules: Rules | undefined,
+  ): State | undefined {
+    if (!state || !rules) return undefined;
+    let cache = keptByRules.get(rules);
+    if (!cache) keptByRules.set(rules, (cache = new WeakMap()));
+    let kept = cache.get(state);
+    if (kept === undefined) {
+      let some: Record<string, Json> | undefined;
+      for (const key in state)
+        if (rules.get(key) !== undefined) (some ??= {})[key] = state[key]!;
+      kept = some === undefined ? false : this.#intern(some)!;
+      cache.set(state, kept);
+    }
+    return kept === false ? undefined : kept;
   }
 
   // ----- identity --------------------------------------------------------
@@ -198,6 +518,13 @@ export class BaseText extends TextEngine {
     return [this.#session, counter];
   }
 
+  // ----- the list ----------------------------------------------------------
+
+  #after({ run, off }: Element): Element | undefined {
+    if (off + 1 < run.len) return { run, off: off + 1 };
+    return run.next && { run: run.next, off: 0 };
+  }
+
   /**
    * Whether `element` was inserted earlier in the batch being written: the
    * server applies a batch as a whole, so nobody deletes it before.
@@ -210,390 +537,16 @@ export class BaseText extends TextEngine {
     );
   }
 
+  /** The letter (or start) right before `element`. */
+  #before({ run, off }: Element): Element {
+    if (off > 0) return { run, off: off - 1 };
+    const prev = run.prev!;
+    return { run: prev, off: Math.max(prev.len - 1, 0) };
+  }
+
   #find(s: string, c: number): Element | undefined {
     const run = this.#index.get(s)?.find(c);
     return run && { run, off: c - run.c };
-  }
-
-  #indexRun(run: Run): void {
-    let runs = this.#index.get(run.s);
-    if (!runs) this.#index.set(run.s, (runs = new SessionRuns<Run>()));
-    runs.add(run);
-  }
-
-  #flow(node: string): Flow {
-    let flow = this.#flows.get(node);
-    if (!flow) this.#flows.set(node, (flow = new Flow(node)));
-    return flow;
-  }
-
-  /**
-   * The start of a node's text: `^` for the root's, which every replica has,
-   * `#` and the shortest prefix of the hash of its id that no other node
-   * has here (see `hashable`), or `^node`.
-   */
-  #startRef(doc: Doc, node: string): string {
-    if (node === doc.root.id) return "^";
-    if (!hashable(node)) return `^${node}`;
-    const hash = this.#hash(node);
-    // How many first digits it shares with the closest other one.
-    let shared = 0;
-    this.#eachHashable(doc, (id) => {
-      if (id === node) return;
-      const other = this.#hash(id);
-      let same = 0;
-      while (same < hash.length && other[same] === hash[same]) same++;
-      if (same > shared) shared = same;
-    });
-    // Two ids with one whole hash (30 bits) name the first of them.
-    return `#${hash.slice(0, shared + 1)}`;
-  }
-
-  /**
-   * The start a reference names, as an element: of the nodes `#prefix` could
-   * name, the one whose hash starts so (the first id in order if several
-   * do); none if none.
-   */
-  #start(doc: Doc, ref: string): Element | undefined {
-    let node: string | undefined = ref.slice(1) || doc.root.id;
-    if (ref.charCodeAt(0) === 35) {
-      let found: string | undefined;
-      this.#eachHashable(doc, (id) => {
-        if (
-          this.#hash(id).startsWith(node!) &&
-          (found === undefined || id < found)
-        )
-          found = id;
-      });
-      node = found;
-    }
-    return node === undefined
-      ? undefined
-      : { run: this.#flow(node).head, off: 0 };
-  }
-
-  #hash(id: string): string {
-    let hash = this.#hashes.get(id);
-    if (hash === undefined) this.#hashes.set(id, (hash = idHash(id)));
-    return hash;
-  }
-
-  /**
-   * Calls `visit` with each id `#` could name: the nodes of the tree, and
-   * those whose text is not empty (the same in every replica that applied
-   * the same operations, also after a reload).
-   */
-  #eachHashable(doc: Doc, visit: (id: string) => void): void {
-    const nodes = doc["_nodeMap"];
-    for (const id of nodes.keys()) if (hashable(id)) visit(id);
-    for (const [id, flow] of this.#flows)
-      if (flow.head.next && hashable(id) && !nodes.has(id)) visit(id);
-  }
-
-  /** One object per distinct state, with sorted keys; none for `{}`. */
-  #intern(values: State | undefined): State | undefined {
-    if (!values) return undefined;
-    const keys = Object.keys(values).sort();
-    if (keys.length === 0) return undefined;
-    const sorted: Record<string, Json> = {};
-    for (const key of keys) sorted[key] = values[key]!;
-    const json = JSON.stringify(sorted);
-    let state = this.#states.get(json);
-    if (!state) this.#states.set(json, (state = sorted));
-    return state;
-  }
-
-  // ----- the list ----------------------------------------------------------
-
-  #after({ run, off }: Element): Element | undefined {
-    if (off + 1 < run.len) return { run, off: off + 1 };
-    return run.next && { run: run.next, off: 0 };
-  }
-
-  #linkAfter(target: Run, run: Run): void {
-    this.#positions.linked(target, run, true);
-    const next = target.next;
-    target.next = run;
-    run.prev = target;
-    run.next = next;
-    if (next) next.prev = run;
-  }
-
-  #unlink(run: Run): void {
-    this.#positions.removed(run);
-    run.prev!.next = run.next;
-    if (run.next) run.next.prev = run.prev;
-    const runs = this.#index.get(run.s)!;
-    runs.remove(run);
-    // A session without letters is no more: its runs are never empty.
-    if (runs.empty) this.#index.delete(run.s);
-  }
-
-  /** Cuts `run` at `offset`: the new run after it. */
-  #split(run: Run, offset: number): Run {
-    const tail = new Run(
-      run.s,
-      run.c + offset,
-      run.text.slice(offset),
-      run.state,
-      run.flow,
-    );
-    tail.anchors = run.anchors;
-    run.text = run.text.slice(0, offset);
-    this.#positions.changed(run);
-    this.#indexRun(tail);
-    this.#linkAfter(run, tail);
-    return tail;
-  }
-
-  /** The run that starts at `element`, cut from its run if needed. */
-  #startingAt({ run, off }: Element): Run {
-    return off === 0 ? run : this.#split(run, off);
-  }
-
-  /** Joins `run` with the runs around it it only differs from by being apart. */
-  #join(run: Run): void {
-    while (run.prev && joins(run.prev, run)) run = run.prev;
-    while (run.next && joins(run, run.next)) {
-      const next = run.next;
-      this.#unlink(next);
-      run.text += next.text;
-      if (next.anchors) run.anchors = true;
-      this.#positions.changed(run);
-    }
-  }
-
-  // ----- reading ---------------------------------------------------------
-
-  textOf(node: string): string {
-    let text = "";
-    const flow = this.#flows.get(node);
-    if (!flow) return text;
-    for (let run = flow.head.next; run; run = run.next) text += run.text;
-    return text;
-  }
-
-  spansOf(node: string): TextSpan[] {
-    const out: TextSpan[] = [];
-    const flow = this.#flows.get(node);
-    if (!flow) return out;
-    let state: State | undefined;
-    for (let run = flow.head.next; run; run = run.next) {
-      if (out.length > 0 && run.state === state)
-        out[out.length - 1]!.text += run.text;
-      else {
-        state = run.state;
-        out.push({ text: run.text, attrs: { ...state } });
-      }
-    }
-    return out;
-  }
-
-  lengthOf(node: string): number {
-    const flow = this.#flows.get(node);
-    return flow ? this.#positions.length(flow.head) : 0;
-  }
-
-  letterAt(node: string, index: number): string | undefined {
-    const flow = this.#flows.get(node);
-    if (!flow || index < 0 || index >= this.#positions.length(flow.head))
-      return undefined;
-    const { run, off } = this.#positions.seek(flow.head, index);
-    return `${run.s}:${run.c + off}`;
-  }
-
-  /** A deleted letter is where its ghost is: right after its anchor. */
-  indexOfLetter(node: string, letter: string): number | undefined {
-    const flow = this.#flows.get(node);
-    const parts = /^(.*):(\d+)$/s.exec(letter);
-    if (!flow || !parts) return undefined;
-    const s = parts[1]!;
-    const c = Number(parts[2]);
-    const found = this.#find(s, c) ?? this.#anchorOf(s, c);
-    if (found?.run.flow !== flow) return undefined;
-    if (found.run.c === -1) return 0;
-    const index = this.#positions.before(flow.head, found.run) + found.off;
-    return this.#find(s, c) ? index : index + 1;
-  }
-
-  /** `index` clamped to the text and moved off the middle of a surrogate pair. */
-  #boundary(flow: Flow, index: number): number {
-    // Before the index of positions is needed: typing at the start of every
-    // text of many documents builds none.
-    if (index <= 0) return 0;
-    const length = this.#positions.length(flow.head);
-    if (index >= length) return length;
-    const left = this.#positions.seek(flow.head, index - 1);
-    const right = this.#after(left)!;
-    return isHighSurrogate(left.run.text.charCodeAt(left.off)) &&
-      isLowSurrogate(right.run.text.charCodeAt(right.off))
-      ? index + 1
-      : index;
-  }
-
-  /** The letter right before boundary `index`; the node's root for 0. */
-  #leftOf(flow: Flow, index: number): Element {
-    if (index === 0) return { run: flow.head, off: 0 };
-    return this.#positions.seek(flow.head, index - 1);
-  }
-
-  /** The letters from `from` to `to` (visible indexes), as id ranges. */
-  #ranges(flow: Flow, from: number, to: number) {
-    const ranges: [string, number, number][] = [];
-    from = this.#boundary(flow, from);
-    to = this.#boundary(flow, to);
-    if (to <= from) return ranges;
-    let { run, off } = this.#positions.seek(flow.head, from);
-    for (let left = to - from; left > 0; run = run.next!, off = 0) {
-      const take = Math.min(run.len - off, left);
-      pushRange(ranges, run.s, run.c + off, take);
-      left -= take;
-    }
-    return ranges;
-  }
-
-  // ----- local operations ---------------------------------------------------
-
-  #record(doc: Doc, operation: EditOperation, inverse: EditOperation): void {
-    doc["_operations"][0].push(operation);
-    doc["_inverseOperations"][0].push(inverse);
-    doc["_hasEdits"] = true;
-  }
-
-  #commit(doc: Doc, payload: EditOperation): void {
-    const inverse = this.apply(doc, payload);
-    if (inverse) this.#record(doc, payload, inverse);
-  }
-
-  /**
-   * `insertLetters`, at a visible index. `attrs`: the state the letters
-   * have, else what they inherit (see `Inherit`).
-   */
-  insert(
-    doc: Doc,
-    node: string,
-    index: number,
-    text: string,
-    attrs?: Record<string, Json>,
-  ): void {
-    if (text.length === 0) return;
-    const flow = this.#flow(node);
-    const left = this.#leftOf(flow, this.#boundary(flow, index));
-    const right = this.#after(left);
-    const rules = this.#rules(flow);
-    const own = attrs && this.#ownFor(rules, text, left, right, attrs);
-    const [s, c] = this.#mint(doc, text.length);
-    const payload: EditOperation = [3, s, c, contentOf(text, own)];
-    if (left.run.c === -1) payload.push(this.#startRef(doc, node));
-    else this.#neighbours(doc, payload, s, c, left, right);
-    const inverse = this.#insert(doc, s, c, text, own, rules, left, right);
-    this.#record(doc, payload, inverse);
-  }
-
-  /**
-   * The neighbours of an insert of `[3, s, c, content]` (see the format):
-   * only what the receiver needs to find `left`, or `right` if it is gone.
-   */
-  #neighbours(
-    doc: Doc,
-    payload: EditOperation,
-    s: string,
-    c: number,
-    left: Element,
-    right: Element | undefined,
-  ): void {
-    const ls = left.run.s;
-    const lc = left.run.c + left.off;
-    const rightRef = right ? refTo(s, right) : 0;
-    if (ls === s && lc === c - 1) {
-      // The letter typed before: left out.
-      if (rightRef !== 0 && !this.#local(doc, left)) payload.push(rightRef);
-    } else if (right?.run.s === ls && right.run.c + right.off === lc + 1) {
-      // The left one is the id before the right one: the sign says so.
-      if (typeof rightRef === "number") payload.push(-rightRef);
-      else payload.push(rightRef, 0);
-    } else if (this.#local(doc, left)) payload.push(0, encodeRef(s, ls, lc));
-    else if (right && this.#local(doc, right)) payload.push(rightRef, -1);
-    else payload.push(rightRef, encodeRef(s, ls, lc));
-  }
-
-  /** `setLetterState` of a visible range. `value: null` removes the key. */
-  format(
-    doc: Doc,
-    node: string,
-    from: number,
-    to: number,
-    key: string,
-    value: Json,
-  ): void {
-    const flow = this.#flow(node);
-    const ranges = this.#ranges(flow, from, to);
-    if (ranges.length === 0) return;
-    const [s, c] = this.#mint(doc, 0);
-    const origin = this.#rules(flow)?.get(key) === "origin";
-    const payload: EditOperation = [
-      3,
-      origin ? TAG_FORMAT : TAG_STATE,
-      s,
-      c,
-      key,
-      encodeRanges(s, ranges),
-    ];
-    if (!origin) {
-      if (value !== null) payload.push(value);
-    } else {
-      // A key letters inherit from the one before: the letter after the
-      // range too, so that what others type right after it goes with it.
-      payload.push(value);
-      const end = this.#boundary(flow, to);
-      const [ls, lc, len] = ranges.at(-1)!;
-      if (end >= this.#positions.length(flow.head)) payload.push(0);
-      else {
-        const after = this.#positions.seek(flow.head, end);
-        if (after.run.s !== ls || after.run.c + after.off !== lc + len)
-          payload.push(refTo(s, after));
-      }
-    }
-    this.#commit(doc, payload);
-  }
-
-  /** Deletes a visible range: its letters leave the list. */
-  delete(doc: Doc, node: string, index: number, length: number): void {
-    const ranges = this.#ranges(this.#flow(node), index, index + length);
-    if (ranges.length === 0) return;
-    const [s, c] = this.#mint(doc, 0);
-    this.#commit(doc, [3, TAG_DELETE, s, c, encodeRanges(s, ranges)]);
-  }
-
-  /** What an undo of the history applies: the operation as it is. */
-  prepareUndo(_doc: Doc, undo: EditOperation): EditOperation {
-    return undo;
-  }
-
-  // ----- applying operations ---------------------------------------------
-
-  apply(doc: Doc, payload: EditOperation): EditOperation | undefined {
-    const tag = payload[1];
-    if (typeof tag === "string") return this.#applyInsert(doc, payload, tag);
-    const s = stringOf(payload[2]);
-    const c = Number(payload[3]);
-    switch (tag) {
-      case TAG_DELETE:
-        return this.#applyDelete(doc, s, c, decodeRanges(s, payload[4]!));
-      case TAG_RESTORE:
-        return this.#applyRestore(doc, payload, s, c);
-      case TAG_STATE:
-        return this.#applyState(doc, payload, s, c);
-      case TAG_FORMAT:
-        return this.#applyFormat(doc, payload, s, c);
-      default:
-        return undefined;
-    }
-  }
-
-  /** Letters of this replica's session it did not write: a copy's (see `NodeIds`). */
-  #checkSession(doc: Doc, s: string, end: number): void {
-    if (s === this.#session && end > this.#counter) doc["_renewSession"]();
   }
 
   #applyInsert(
@@ -680,6 +633,76 @@ export class BaseText extends TextEngine {
     );
   }
 
+  // ----- applying operations ---------------------------------------------
+
+  apply(doc: Doc, payload: EditOperation): EditOperation | undefined {
+    const tag = payload[1];
+    if (typeof tag === "string") return this.#applyInsert(doc, payload, tag);
+    const s = stringOf(payload[2]);
+    const c = Number(payload[3]);
+    switch (tag) {
+      case TAG_DELETE:
+        return this.#applyDelete(doc, s, c, decodeRanges(s, payload[4]!));
+      case TAG_RESTORE:
+        return this.#applyRestore(doc, payload, s, c);
+      case TAG_STATE:
+        return this.#applyState(doc, payload, s, c);
+      case TAG_FORMAT:
+        return this.#applyFormat(doc, payload, s, c);
+      default:
+        return undefined;
+    }
+  }
+
+  /** A deleted letter is where its ghost is: right after its anchor. */
+  indexOfLetter(node: string, letter: string): number | undefined {
+    const flow = this.#flows.get(node);
+    const parts = /^(.*):(\d+)$/s.exec(letter);
+    if (!flow || !parts) return undefined;
+    const s = parts[1]!;
+    const c = Number(parts[2]);
+    const found = this.#find(s, c) ?? this.#anchorOf(s, c);
+    if (found?.run.flow !== flow) return undefined;
+    if (found.run.c === -1) return 0;
+    const index = this.#positions.before(flow.head, found.run) + found.off;
+    return this.#find(s, c) ? index : index + 1;
+  }
+
+  /**
+   * `key` is `value` on letters `[from, to)` of `run`, cut from it if
+   * needed; what they had goes to `old`.
+   */
+  #setState(
+    run: Run,
+    from: number,
+    to: number,
+    key: string,
+    value: Json,
+    old: OldValues,
+    touched: Run[],
+  ): void {
+    const was = run.state?.[key] ?? null;
+    if (sameValue(was, value)) return;
+    const piece = from > 0 ? this.#split(run, from) : run;
+    if (to - from < piece.len) this.#split(piece, to - from);
+    const index = JSON.stringify(was);
+    let entry = old.get(index);
+    if (!entry) old.set(index, (entry = [was, []]));
+    pushRange(entry[1], piece.s, piece.c, piece.len);
+    const next: Record<string, Json> = {};
+    const state = piece.state;
+    if (state)
+      for (const other in state) if (other !== key) next[other] = state[other]!;
+    if (value !== null) next[key] = value;
+    piece.state = this.#intern(next);
+    touched.push(piece);
+  }
+
+  #commit(doc: Doc, payload: EditOperation): void {
+    const inverse = this.apply(doc, payload);
+    if (inverse) this.#record(doc, payload, inverse);
+  }
+
   /**
    * What letters typed between `(ls, lc)` and `(rs, rc)` inherit from them,
    * when one of them is a ghost: its state, as if it were still there
@@ -711,20 +734,140 @@ export class BaseText extends TextEngine {
     ];
   }
 
-  /** The anchor of the ghost of deleted letter `(s, c)`, if it is one. */
-  #anchorOf(s: string, c: number): Element | undefined {
-    const ghost = this.#ghosts.find(s, c);
-    if (!ghost) return undefined;
-    return ghost.ac === -1
-      ? { run: this.#flow(ghost.as).head, off: 0 }
-      : this.#find(ghost.as, ghost.ac);
+  /**
+   * The neighbours of an insert of `[3, s, c, content]` (see the format):
+   * only what the receiver needs to find `left`, or `right` if it is gone.
+   */
+  #neighbours(
+    doc: Doc,
+    payload: EditOperation,
+    s: string,
+    c: number,
+    left: Element,
+    right: Element | undefined,
+  ): void {
+    const ls = left.run.s;
+    const lc = left.run.c + left.off;
+    const rightRef = right ? refTo(s, right) : 0;
+    if (ls === s && lc === c - 1) {
+      // The letter typed before: left out.
+      if (rightRef !== 0 && !this.#local(doc, left)) payload.push(rightRef);
+    } else if (right?.run.s === ls && right.run.c + right.off === lc + 1) {
+      // The left one is the id before the right one: the sign says so.
+      if (typeof rightRef === "number") payload.push(-rightRef);
+      else payload.push(rightRef, 0);
+    } else if (this.#local(doc, left)) payload.push(0, encodeRef(s, ls, lc));
+    else if (right && this.#local(doc, right)) payload.push(rightRef, -1);
+    else payload.push(rightRef, encodeRef(s, ls, lc));
   }
 
-  /** The letter (or start) right before `element`. */
-  #before({ run, off }: Element): Element {
-    if (off > 0) return { run, off: off - 1 };
-    const prev = run.prev!;
-    return { run: prev, off: Math.max(prev.len - 1, 0) };
+  /** `setLetterState` of a visible range. `value: null` removes the key. */
+  format(
+    doc: Doc,
+    node: string,
+    from: number,
+    to: number,
+    key: string,
+    value: Json,
+  ): void {
+    const flow = this.#flow(node);
+    const ranges = this.#ranges(flow, from, to);
+    if (ranges.length === 0) return;
+    const [s, c] = this.#mint(doc, 0);
+    const origin = this.#rules(flow)?.get(key) === "origin";
+    const payload: EditOperation = [
+      3,
+      origin ? TAG_FORMAT : TAG_STATE,
+      s,
+      c,
+      key,
+      encodeRanges(s, ranges),
+    ];
+    if (!origin) {
+      if (value !== null) payload.push(value);
+    } else {
+      // A key letters inherit from the one before: the letter after the
+      // range too, so that what others type right after it goes with it.
+      payload.push(value);
+      const end = this.#boundary(flow, to);
+      const [ls, lc, len] = ranges.at(-1)!;
+      if (end >= this.#positions.length(flow.head)) payload.push(0);
+      else {
+        const after = this.#positions.seek(flow.head, end);
+        if (after.run.s !== ls || after.run.c + after.off !== lc + len)
+          payload.push(refTo(s, after));
+      }
+    }
+    this.#commit(doc, payload);
+  }
+
+  /** Deletes a visible range: its letters leave the list. */
+  delete(doc: Doc, node: string, index: number, length: number): void {
+    const ranges = this.#ranges(this.#flow(node), index, index + length);
+    if (ranges.length === 0) return;
+    const [s, c] = this.#mint(doc, 0);
+    this.#commit(doc, [3, TAG_DELETE, s, c, encodeRanges(s, ranges)]);
+  }
+
+  /** The letters from `from` to `to` (visible indexes), as id ranges. */
+  #ranges(flow: Flow, from: number, to: number) {
+    const ranges: [string, number, number][] = [];
+    from = this.#boundary(flow, from);
+    to = this.#boundary(flow, to);
+    if (to <= from) return ranges;
+    let { run, off } = this.#positions.seek(flow.head, from);
+    for (let left = to - from; left > 0; run = run.next!, off = 0) {
+      const take = Math.min(run.len - off, left);
+      pushRange(ranges, run.s, run.c + off, take);
+      left -= take;
+    }
+    return ranges;
+  }
+
+  /** `key` is `value` from `first` to `last`, and on what is between them. */
+  #setBetween(
+    first: Element,
+    last: Element,
+    key: string,
+    value: Json,
+    old: OldValues,
+    touched: Run[],
+  ): void {
+    for (
+      let run: Run | undefined = first.run, from = first.off;
+      run;
+      from = 0
+    ) {
+      const end: boolean = run === last.run;
+      const to = end ? last.off + 1 : run.len;
+      const after: Run | undefined = run.next;
+      this.#setState(run, from, to, key, value, old, touched);
+      run = end ? undefined : after;
+    }
+  }
+
+  /**
+   * Puts letter `(s, c)` right after `at`, on the run of `at` when it goes
+   * on it. Returns where it is.
+   */
+  #place(
+    at: Element,
+    s: string,
+    c: number,
+    letter: string,
+    state: State | undefined,
+  ): Element {
+    const target = at.run;
+    if (at.off < target.len - 1) this.#split(target, at.off + 1);
+    if (target.c !== -1 && joins(target, { s, c, state })) {
+      target.text += letter;
+      this.#positions.changed(target);
+      return { run: target, off: target.len - 1 };
+    }
+    const run = new Run(s, c, letter, state, target.flow);
+    this.#indexRun(run);
+    this.#linkAfter(target, run);
+    return { run, off: 0 };
   }
 
   /**
@@ -778,46 +921,6 @@ export class BaseText extends TextEngine {
   }
 
   /**
-   * The state of letters with `own` state typed between letters with `left`
-   * and `right` state: what they inherit (see `Inherit`) and their own
-   * (`null`: a key they do not take). Without `left`, their own only.
-   */
-  #stateFor(
-    own: Record<string, Json> | undefined,
-    left?: State,
-    right?: State,
-    rules?: Rules,
-  ): State | undefined {
-    let state: Record<string, Json> | undefined;
-    // While every key of `left` goes on and there is no own state, it is
-    // `left` itself.
-    let same = !own;
-    for (const key in left) {
-      const value = left[key]!;
-      // Letters with state to inherit have rules (see `#insert`).
-      const rule = rules!.get(key);
-      if (
-        rule === undefined ||
-        (own && Object.hasOwn(own, key)) ||
-        (rule === "both" &&
-          !(
-            right &&
-            Object.hasOwn(right, key) &&
-            sameValue(value, right[key]!)
-          ))
-      ) {
-        same = false;
-        continue;
-      }
-      (state ??= {})[key] = value;
-    }
-    // `same` means no own state: the loop adds nothing.
-    for (const key in own)
-      if (own[key] !== null) (state ??= {})[key] = own[key]!;
-    return same ? left : this.#intern(state);
-  }
-
-  /**
    * The first state of letters typed between `left` and `right`: what they
    * must say of their own to have `attrs` (`null`: a key they would inherit
    * and must not have).
@@ -858,372 +961,6 @@ export class BaseText extends TextEngine {
     return own;
   }
 
-  /** `[3, 1, s, c, ranges]`: the letters leave their list. */
-  #applyDelete(
-    doc: Doc,
-    s: string,
-    c: number,
-    ranges: [string, number, number][],
-  ): EditOperation | undefined {
-    const removed: Run[] = [];
-    for (const [rs, rc, len] of ranges)
-      for (let k = 0; k < len; ) {
-        const found = this.#find(rs, rc + k);
-        if (!found) {
-          k++;
-          continue;
-        }
-        const take = Math.min(found.run.len - found.off, len - k);
-        const run = this.#startingAt(found);
-        if (take < run.len) this.#split(run, take);
-        removed.push(run);
-        k += take;
-      }
-    if (removed.length === 0) return undefined;
-    // Its undo goes back between the letters around it. Ranges are in the
-    // order of the list, which never changes: those before the first one and
-    // after the last one stay.
-    const left = removed[0]!.prev!;
-    const right = removed.at(-1)!.next;
-    const rules = this.#rules(left.flow);
-    let text = "";
-    const ids: [string, number, number][] = [];
-    const states: Json[] = [];
-    let styled = false;
-    let last: State | undefined;
-    for (const run of removed) {
-      text += run.text;
-      pushRange(ids, run.s, run.c, run.len);
-      if (states.length > 0 && run.state === last)
-        states[states.length - 2] = Number(states.at(-2)) + run.len;
-      else states.push(run.len, run.state ?? 0);
-      last = run.state;
-      if (run.state) styled = true;
-      // Its ghost: after the letter before it, which stays (a list's start
-      // is its node's id at -1, and nothing reads whether it anchors).
-      const before = run.prev!;
-      this.#ghosts.add(
-        run.s,
-        run.c,
-        run.len,
-        before.s,
-        before.c === -1 ? -1 : before.c + before.len - 1,
-        run.anchors,
-        this.#inheritable(run.state, rules),
-      );
-      before.anchors = true;
-      this.#unlink(run);
-    }
-    this.#report(doc, left.flow.node);
-    const inverse: EditOperation = [
-      3,
-      TAG_RESTORE,
-      s,
-      c,
-      text,
-      encodeRanges(s, ids),
-      styled ? states : 0,
-    ];
-    // The letters around them, unless they are the ids right before the
-    // first one and after the last one (`-1`), as when part of what was
-    // typed in a row is deleted.
-    const [fs, fc] = ids[0]!;
-    const [ls, lc, len] = ids.at(-1)!;
-    inverse.push(
-      !right
-        ? 0
-        : right.s === ls && right.c === lc + len
-          ? -1
-          : refTo(s, { run: right, off: 0 }),
-    );
-    inverse.push(
-      left.c === -1
-        ? this.#startRef(doc, left.flow.node)
-        : left.s === fs && left.c + left.len === fc
-          ? -1
-          : refTo(s, { run: left, off: left.len - 1 }),
-    );
-    // What says nothing at the end is left out: `-1`s, then no state.
-    if (inverse[8] === -1) {
-      inverse.pop();
-      if (inverse[7] === -1) {
-        inverse.pop();
-        if (!styled) inverse.pop();
-      }
-    }
-    return inverse;
-  }
-
-  /**
-   * What of `state` a letter typed next to it can inherit (see `Inherit`):
-   * the keys with a rule. A ghost keeps it (see `Ghost.state`).
-   */
-  #inheritable(
-    state: State | undefined,
-    rules: Rules | undefined,
-  ): State | undefined {
-    if (!state || !rules) return undefined;
-    let cache = keptByRules.get(rules);
-    if (!cache) keptByRules.set(rules, (cache = new WeakMap()));
-    let kept = cache.get(state);
-    if (kept === undefined) {
-      let some: Record<string, Json> | undefined;
-      for (const key in state)
-        if (rules.get(key) !== undefined) (some ??= {})[key] = state[key]!;
-      kept = some === undefined ? false : this.#intern(some)!;
-      cache.set(state, kept);
-    }
-    return kept === false ? undefined : kept;
-  }
-
-  /**
-   * `[3, 4, s, c, text, ids, states?, right?, left?]`: letters a delete
-   * took, back with their `ids` (ranges, in order) and their state
-   * (`states`: `length, state` each; `0` for none), before `right` or else
-   * after `left`: what was typed where they were since goes before them.
-   * `right` and `left` left out (or `-1`) are the ids right after the last
-   * letter and before the first; a `0` right is none. Those still here stay
-   * where they are, and the others follow them.
-   */
-  #applyRestore(
-    doc: Doc,
-    payload: EditOperation,
-    s: string,
-    c: number,
-  ): EditOperation | undefined {
-    const text = stringOf(payload[4]);
-    const ranges = decodeRanges(s, payload[5]!);
-    const [fs, fc] = ranges[0]!;
-    const [ls, lc, len] = ranges.at(-1)!;
-    const right = payload[7] ?? -1;
-    const left = payload[8] ?? -1;
-    const next =
-      right === 0
-        ? undefined
-        : right === -1
-          ? this.#find(ls, lc + len)
-          : this.#find(...decodeRef(s, right));
-    const [as, ac] = isStart(left)
-      ? ["", -1]
-      : left === -1
-        ? [fs, fc - 1]
-        : decodeRef(s, left);
-    let at = next
-      ? this.#before(next)
-      : isStart(left)
-        ? this.#start(doc, left)
-        : this.#find(as, ac);
-    // Both deleted: where the left one was.
-    at ??= this.#anchorOf(as, ac);
-    if (!at) return undefined;
-    const states = listOf(payload[6]) ?? [text.length, 0];
-    const back: [string, number, number][] = [];
-    let from = 0;
-    let piece = 0;
-    let pieceLeft = 0;
-    let state: State | undefined;
-    for (const [rs, rc, length] of ranges) {
-      this.#checkSession(doc, rs, rc + length);
-      for (let k = 0; k < length; k++, from++, pieceLeft--) {
-        if (pieceLeft === 0) {
-          pieceLeft = Number(states[piece]);
-          const written = states[piece + 1];
-          state = isState(written) ? this.#intern(written) : undefined;
-          piece += 2;
-        }
-        const found = this.#find(rs, rc + k);
-        if (found) {
-          at = found;
-          continue;
-        }
-        at = this.#place(at, rs, rc + k, text[from]!, state);
-        pushRange(back, rs, rc + k, 1);
-      }
-    }
-    if (back.length === 0) return undefined;
-    for (const [rs, rc, length] of back) this.#ghosts.drop(rs, rc, length);
-    // Back with their ids, they may go on the run after them again.
-    this.#join(at.run);
-    this.#report(doc, at.run.flow.node);
-    return [3, TAG_DELETE, s, c, encodeRanges(s, back)];
-  }
-
-  /**
-   * Puts letter `(s, c)` right after `at`, on the run of `at` when it goes
-   * on it. Returns where it is.
-   */
-  #place(
-    at: Element,
-    s: string,
-    c: number,
-    letter: string,
-    state: State | undefined,
-  ): Element {
-    const target = at.run;
-    if (at.off < target.len - 1) this.#split(target, at.off + 1);
-    if (target.c !== -1 && joins(target, { s, c, state })) {
-      target.text += letter;
-      this.#positions.changed(target);
-      return { run: target, off: target.len - 1 };
-    }
-    const run = new Run(s, c, letter, state, target.flow);
-    this.#indexRun(run);
-    this.#linkAfter(target, run);
-    return { run, off: 0 };
-  }
-
-  /**
-   * `[3, 5, s, c, key, ranges, value?, ...]`: a value for each list of
-   * ranges, the last one `null` if left out. The last one applied wins.
-   *
-   * A range is all that is between its first and its last letter still
-   * here: its letters were together when it was written, so what others
-   * typed inside it since is in it too, like the text a peer types in a
-   * word that gets bold or a link.
-   */
-  #applyState(
-    doc: Doc,
-    payload: EditOperation,
-    s: string,
-    c: number,
-  ): EditOperation | undefined {
-    const key = stringOf(payload[4]);
-    const old: OldValues = new Map();
-    const touched: Run[] = [];
-    for (let at = 5; at < payload.length; at += 2) {
-      const value = at + 1 < payload.length ? payload[at + 1]! : null;
-      for (const range of decodeRanges(s, payload[at]!)) {
-        const [first, last] = this.#ends([range]);
-        if (first && last)
-          this.#setBetween(first, last, key, value, old, touched);
-      }
-    }
-    return this.#stateDone(doc, s, c, key, old, touched);
-  }
-
-  /**
-   * `[3, 6, s, c, key, ranges, value, right?]`: `setLetterState` of a key
-   * letters inherit from the letter before them (`"origin"`, see
-   * `Inherit`). Its ranges were together: all that is between the first
-   * and the last letter still here takes the value, as in `#applyState`.
-   * So do the letters typed since right after them and before `right`, the
-   * letter that was after them, if they have the value the last one had
-   * (they would have inherited it), up to an opaque one. `right` left out
-   * is the id after the last range; `0`, the end of the text.
-   */
-  #applyFormat(
-    doc: Doc,
-    payload: EditOperation,
-    s: string,
-    c: number,
-  ): EditOperation | undefined {
-    const key = stringOf(payload[4]);
-    const value = payload[6] ?? null;
-    const ranges = decodeRanges(s, payload[5]!);
-    const [first, last] = this.#ends(ranges);
-    if (!first || !last) return undefined;
-    const was = last.run.state?.[key] ?? null;
-    const ls = last.run.s;
-    const lc = last.run.c + last.off;
-    const old: OldValues = new Map();
-    const touched: Run[] = [];
-    this.#setBetween(first, last, key, value, old, touched);
-    const right = payload[7];
-    const [rs, rc, len] = ranges.at(-1)!;
-    const [ss, sc] =
-      right === undefined
-        ? [rs, rc + len]
-        : right === 0
-          ? ["", -1]
-          : decodeRef(s, right);
-    const rules = this.#rules(last.run.flow);
-    if (rules && (sc === -1 || this.#find(ss, sc)))
-      for (let at = this.#after(this.#find(ls, lc)!); at; ) {
-        const { run, off } = at;
-        const length = run.len;
-        const stop =
-          run.s === ss && sc >= run.c + off && sc < run.c + length
-            ? sc - run.c
-            : length;
-        const end = off + cutIn(run.text.slice(off, stop), rules.opaque);
-        const following = run.next;
-        if (end > off && sameValue(run.state?.[key] ?? null, was))
-          this.#setState(run, off, end, key, value, old, touched);
-        if (end < length) break;
-        at = following && { run: following, off: 0 };
-      }
-    return this.#stateDone(doc, s, c, key, old, touched);
-  }
-
-  /** The first and the last letter of `ranges` still here. */
-  #ends(
-    ranges: [string, number, number][],
-  ): [Element | undefined, Element | undefined] {
-    let first: Element | undefined;
-    let last: Element | undefined;
-    for (const [rs, rc, len] of ranges) {
-      for (let k = 0; k < len && !first; k++) first = this.#find(rs, rc + k);
-      if (first) break;
-    }
-    for (let at = ranges.length - 1; at >= 0 && !last; at--) {
-      const [rs, rc, len] = ranges[at]!;
-      for (let k = len - 1; k >= 0 && !last; k--) last = this.#find(rs, rc + k);
-    }
-    return [first, last];
-  }
-
-  /** `key` is `value` from `first` to `last`, and on what is between them. */
-  #setBetween(
-    first: Element,
-    last: Element,
-    key: string,
-    value: Json,
-    old: OldValues,
-    touched: Run[],
-  ): void {
-    for (
-      let run: Run | undefined = first.run, from = first.off;
-      run;
-      from = 0
-    ) {
-      const end: boolean = run === last.run;
-      const to = end ? last.off + 1 : run.len;
-      const after: Run | undefined = run.next;
-      this.#setState(run, from, to, key, value, old, touched);
-      run = end ? undefined : after;
-    }
-  }
-
-  /**
-   * `key` is `value` on letters `[from, to)` of `run`, cut from it if
-   * needed; what they had goes to `old`.
-   */
-  #setState(
-    run: Run,
-    from: number,
-    to: number,
-    key: string,
-    value: Json,
-    old: OldValues,
-    touched: Run[],
-  ): void {
-    const was = run.state?.[key] ?? null;
-    if (sameValue(was, value)) return;
-    const piece = from > 0 ? this.#split(run, from) : run;
-    if (to - from < piece.len) this.#split(piece, to - from);
-    const index = JSON.stringify(was);
-    let entry = old.get(index);
-    if (!entry) old.set(index, (entry = [was, []]));
-    pushRange(entry[1], piece.s, piece.c, piece.len);
-    const next: Record<string, Json> = {};
-    const state = piece.state;
-    if (state)
-      for (const other in state) if (other !== key) next[other] = state[other]!;
-    if (value !== null) next[key] = value;
-    piece.state = this.#intern(next);
-    touched.push(piece);
-  }
-
   /** Reports the runs `touched` and joins them: the inverse, from `old`. */
   #stateDone(
     doc: Doc,
@@ -1248,26 +985,6 @@ export class BaseText extends TextEngine {
       inverse.push(encodeRanges(s, ranges), value);
     if (inverse.at(-1) === null) inverse.pop();
     return inverse;
-  }
-
-  // ----- change reporting --------------------------------------------------
-
-  #report(doc: Doc, node: string): void {
-    const diff = doc["_diff"];
-    if (doc.getNodeById(node) && !diff.inserted.has(node))
-      diff.updated.add(node);
-  }
-
-  // ----- serialization -----------------------------------------------------
-
-  /** `[20, sessions, text, columns, states?]` (see `toStored`). */
-  toJSON(): Json {
-    const sessions = new SessionTable();
-    const columns: { encode(): string }[] = [];
-    // Without a root, every list's node is written.
-    const stored = this.toStored(sessions, columns, "");
-    if (stored === 0) return 0;
-    return [FORMAT, sessions.table, joinColumns(columns), ...stored];
   }
 
   /**
@@ -1457,22 +1174,280 @@ export class BaseText extends TextEngine {
     return stored;
   }
 
-  static fromJSON(json: unknown): BaseText {
-    if (!isList(json)) return new BaseText();
-    const [format, table, columns, ...stored] = json;
-    if (format !== FORMAT)
-      throw new Error(`Unsupported text format: ${JSON.stringify(format)}`);
-    return BaseText.fromStored(
-      stored,
-      splitColumns(stringOf(columns)),
-      readSessions(listOf(table)!.map(String)),
-      "",
+  /** `[3, 1, s, c, ranges]`: the letters leave their list. */
+  #applyDelete(
+    doc: Doc,
+    s: string,
+    c: number,
+    ranges: [string, number, number][],
+  ): EditOperation | undefined {
+    const removed: Run[] = [];
+    for (const [rs, rc, len] of ranges)
+      for (let k = 0; k < len; ) {
+        const found = this.#find(rs, rc + k);
+        if (!found) {
+          k++;
+          continue;
+        }
+        const take = Math.min(found.run.len - found.off, len - k);
+        const run = this.#startingAt(found);
+        if (take < run.len) this.#split(run, take);
+        removed.push(run);
+        k += take;
+      }
+    if (removed.length === 0) return undefined;
+    // Its undo goes back between the letters around it. Ranges are in the
+    // order of the list, which never changes: those before the first one and
+    // after the last one stay.
+    const left = removed[0]!.prev!;
+    const right = removed.at(-1)!.next;
+    const rules = this.#rules(left.flow);
+    let text = "";
+    const ids: [string, number, number][] = [];
+    const states: Json[] = [];
+    let styled = false;
+    let last: State | undefined;
+    for (const run of removed) {
+      text += run.text;
+      pushRange(ids, run.s, run.c, run.len);
+      if (states.length > 0 && run.state === last)
+        states[states.length - 2] = Number(states.at(-2)) + run.len;
+      else states.push(run.len, run.state ?? 0);
+      last = run.state;
+      if (run.state) styled = true;
+      // Its ghost: after the letter before it, which stays (a list's start
+      // is its node's id at -1, and nothing reads whether it anchors).
+      const before = run.prev!;
+      this.#ghosts.add(
+        run.s,
+        run.c,
+        run.len,
+        before.s,
+        before.c === -1 ? -1 : before.c + before.len - 1,
+        run.anchors,
+        this.#inheritable(run.state, rules),
+      );
+      before.anchors = true;
+      this.#unlink(run);
+    }
+    this.#report(doc, left.flow.node);
+    const inverse: EditOperation = [
+      3,
+      TAG_RESTORE,
+      s,
+      c,
+      text,
+      encodeRanges(s, ids),
+      styled ? states : 0,
+    ];
+    // The letters around them, unless they are the ids right before the
+    // first one and after the last one (`-1`), as when part of what was
+    // typed in a row is deleted.
+    const [fs, fc] = ids[0]!;
+    const [ls, lc, len] = ids.at(-1)!;
+    inverse.push(
+      !right
+        ? 0
+        : right.s === ls && right.c === lc + len
+          ? -1
+          : refTo(s, { run: right, off: 0 }),
     );
+    inverse.push(
+      left.c === -1
+        ? this.#startRef(doc, left.flow.node)
+        : left.s === fs && left.c + left.len === fc
+          ? -1
+          : refTo(s, { run: left, off: left.len - 1 }),
+    );
+    // What says nothing at the end is left out: `-1`s, then no state.
+    if (inverse[8] === -1) {
+      inverse.pop();
+      if (inverse[7] === -1) {
+        inverse.pop();
+        if (!styled) inverse.pop();
+      }
+    }
+    return inverse;
   }
 
-  /** How many columns `toStored` wrote: the runs' three, only with letters. */
-  static columns(stored: Json[]): number {
-    return stored[0] === 1 ? 10 : 13;
+  /**
+   * `insertLetters`, at a visible index. `attrs`: the state the letters
+   * have, else what they inherit (see `Inherit`).
+   */
+  insert(
+    doc: Doc,
+    node: string,
+    index: number,
+    text: string,
+    attrs?: Record<string, Json>,
+  ): void {
+    if (text.length === 0) return;
+    const flow = this.#flow(node);
+    const left = this.#leftOf(flow, this.#boundary(flow, index));
+    const right = this.#after(left);
+    const rules = this.#rules(flow);
+    const own = attrs && this.#ownFor(rules, text, left, right, attrs);
+    const [s, c] = this.#mint(doc, text.length);
+    const payload: EditOperation = [3, s, c, contentOf(text, own)];
+    if (left.run.c === -1) payload.push(this.#startRef(doc, node));
+    else this.#neighbours(doc, payload, s, c, left, right);
+    const inverse = this.#insert(doc, s, c, text, own, rules, left, right);
+    this.#record(doc, payload, inverse);
+  }
+
+  /**
+   * `[3, 5, s, c, key, ranges, value?, ...]`: a value for each list of
+   * ranges, the last one `null` if left out. The last one applied wins.
+   *
+   * A range is all that is between its first and its last letter still
+   * here: its letters were together when it was written, so what others
+   * typed inside it since is in it too, like the text a peer types in a
+   * word that gets bold or a link.
+   */
+  #applyState(
+    doc: Doc,
+    payload: EditOperation,
+    s: string,
+    c: number,
+  ): EditOperation | undefined {
+    const key = stringOf(payload[4]);
+    const old: OldValues = new Map();
+    const touched: Run[] = [];
+    for (let at = 5; at < payload.length; at += 2) {
+      const value = at + 1 < payload.length ? payload[at + 1]! : null;
+      for (const range of decodeRanges(s, payload[at]!)) {
+        const [first, last] = this.#ends([range]);
+        if (first && last)
+          this.#setBetween(first, last, key, value, old, touched);
+      }
+    }
+    return this.#stateDone(doc, s, c, key, old, touched);
+  }
+
+  /**
+   * `[3, 6, s, c, key, ranges, value, right?]`: `setLetterState` of a key
+   * letters inherit from the letter before them (`"origin"`, see
+   * `Inherit`). Its ranges were together: all that is between the first
+   * and the last letter still here takes the value, as in `#applyState`.
+   * So do the letters typed since right after them and before `right`, the
+   * letter that was after them, if they have the value the last one had
+   * (they would have inherited it), up to an opaque one. `right` left out
+   * is the id after the last range; `0`, the end of the text.
+   */
+  #applyFormat(
+    doc: Doc,
+    payload: EditOperation,
+    s: string,
+    c: number,
+  ): EditOperation | undefined {
+    const key = stringOf(payload[4]);
+    const value = payload[6] ?? null;
+    const ranges = decodeRanges(s, payload[5]!);
+    const [first, last] = this.#ends(ranges);
+    if (!first || !last) return undefined;
+    const was = last.run.state?.[key] ?? null;
+    const ls = last.run.s;
+    const lc = last.run.c + last.off;
+    const old: OldValues = new Map();
+    const touched: Run[] = [];
+    this.#setBetween(first, last, key, value, old, touched);
+    const right = payload[7];
+    const [rs, rc, len] = ranges.at(-1)!;
+    const [ss, sc] =
+      right === undefined
+        ? [rs, rc + len]
+        : right === 0
+          ? ["", -1]
+          : decodeRef(s, right);
+    const rules = this.#rules(last.run.flow);
+    if (rules && (sc === -1 || this.#find(ss, sc)))
+      for (let at = this.#after(this.#find(ls, lc)!); at; ) {
+        const { run, off } = at;
+        const length = run.len;
+        const stop =
+          run.s === ss && sc >= run.c + off && sc < run.c + length
+            ? sc - run.c
+            : length;
+        const end = off + cutIn(run.text.slice(off, stop), rules.opaque);
+        const following = run.next;
+        if (end > off && sameValue(run.state?.[key] ?? null, was))
+          this.#setState(run, off, end, key, value, old, touched);
+        if (end < length) break;
+        at = following && { run: following, off: 0 };
+      }
+    return this.#stateDone(doc, s, c, key, old, touched);
+  }
+
+  /**
+   * `[3, 4, s, c, text, ids, states?, right?, left?]`: letters a delete
+   * took, back with their `ids` (ranges, in order) and their state
+   * (`states`: `length, state` each; `0` for none), before `right` or else
+   * after `left`: what was typed where they were since goes before them.
+   * `right` and `left` left out (or `-1`) are the ids right after the last
+   * letter and before the first; a `0` right is none. Those still here stay
+   * where they are, and the others follow them.
+   */
+  #applyRestore(
+    doc: Doc,
+    payload: EditOperation,
+    s: string,
+    c: number,
+  ): EditOperation | undefined {
+    const text = stringOf(payload[4]);
+    const ranges = decodeRanges(s, payload[5]!);
+    const [fs, fc] = ranges[0]!;
+    const [ls, lc, len] = ranges.at(-1)!;
+    const right = payload[7] ?? -1;
+    const left = payload[8] ?? -1;
+    const next =
+      right === 0
+        ? undefined
+        : right === -1
+          ? this.#find(ls, lc + len)
+          : this.#find(...decodeRef(s, right));
+    const [as, ac] = isStart(left)
+      ? ["", -1]
+      : left === -1
+        ? [fs, fc - 1]
+        : decodeRef(s, left);
+    let at = next
+      ? this.#before(next)
+      : isStart(left)
+        ? this.#start(doc, left)
+        : this.#find(as, ac);
+    // Both deleted: where the left one was.
+    at ??= this.#anchorOf(as, ac);
+    if (!at) return undefined;
+    const states = listOf(payload[6]) ?? [text.length, 0];
+    const back: [string, number, number][] = [];
+    let from = 0;
+    let piece = 0;
+    let pieceLeft = 0;
+    let state: State | undefined;
+    for (const [rs, rc, length] of ranges) {
+      this.#checkSession(doc, rs, rc + length);
+      for (let k = 0; k < length; k++, from++, pieceLeft--) {
+        if (pieceLeft === 0) {
+          pieceLeft = Number(states[piece]);
+          const written = states[piece + 1];
+          state = isState(written) ? this.#intern(written) : undefined;
+          piece += 2;
+        }
+        const found = this.#find(rs, rc + k);
+        if (found) {
+          at = found;
+          continue;
+        }
+        at = this.#place(at, rs, rc + k, text[from]!, state);
+        pushRange(back, rs, rc + k, 1);
+      }
+    }
+    if (back.length === 0) return undefined;
+    for (const [rs, rc, length] of back) this.#ghosts.drop(rs, rc, length);
+    // Back with their ids, they may go on the run after them again.
+    this.#join(at.run);
+    this.#report(doc, at.run.flow.node);
+    return [3, TAG_DELETE, s, c, encodeRanges(s, back)];
   }
 
   static fromStored(
@@ -1606,9 +1581,30 @@ export class BaseText extends TextEngine {
     });
   }
 
-  /** The lists by node id: the same order in every replica. */
-  #sortedFlows(): Flow[] {
-    return [...this.#flows.keys()].sort().map((node) => this.#flows.get(node)!);
+  static fromJSON(json: unknown): BaseText {
+    if (!isList(json)) return new BaseText();
+    const [format, table, columns, ...stored] = json;
+    if (format !== FORMAT)
+      throw new Error(`Unsupported text format: ${JSON.stringify(format)}`);
+    return BaseText.fromStored(
+      stored,
+      splitColumns(stringOf(columns)),
+      readSessions(listOf(table)!.map(String)),
+      "",
+    );
+  }
+
+  /** How many columns `toStored` wrote: the runs' three, only with letters. */
+  static columns(stored: Json[]): number {
+    return stored[0] === 1 ? 10 : 13;
+  }
+
+  /**
+   * Base reads the rules of a node from its type, when the letters are
+   * inserted (see `#rules`): every replica reads the same.
+   */
+  setRules(): void {
+    // Nothing to keep.
   }
 }
 
@@ -1646,13 +1642,17 @@ function encodeRanges(own: string, ranges: [string, number, number][]): Json {
   return out;
 }
 
-function decodeRanges(own: string, flat: Json): [string, number, number][] {
-  const list = listOf(flat);
-  if (!list) return [[...decodeRef(own, flat), 1]];
-  const out: [string, number, number][] = [];
-  for (let index = 0; index < list.length; index += 2)
-    out.push([...decodeRef(own, list[index]!), Number(list[index + 1])]);
-  return out;
+/** 30 bits of FNV-1a of `id`, mixed so that every letter moves them all. */
+function idHash(id: string): string {
+  let hash = 0x811c9dc5;
+  for (let at = 0; at < id.length; at++) {
+    hash ^= id.charCodeAt(at);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x85ebca6b);
+  hash ^= hash >>> 13;
+  return numberToBase64((hash >>> 2) + 0x40000000).slice(1);
 }
 
 const isList = (value: unknown): value is Json[] => Array.isArray(value);

@@ -72,17 +72,6 @@ export class ColumnWriter {
     this.#count = count + 1;
   }
 
-  /** A value that may be negative: 0, -1, 1, -2… as 0, 1, 2, 3… */
-  pushSigned(value: number): void {
-    this.push(value < 0 ? -2 * value - 1 : 2 * value);
-  }
-
-  /** Writes `map[value]` in place of each value, one value per entry. */
-  remap(map: Int32Array): void {
-    this.#values = this.#values.map((value) => map[value]!);
-    this.#max = Math.max(...map);
-  }
-
   encode(): string {
     let values = this.#values;
     let count = this.#count;
@@ -135,35 +124,49 @@ export class ColumnWriter {
     for (let index = 0; index < count; index++) out.write(values[index]!, cut);
     return out.encode();
   }
+
+  /** Writes `map[value]` in place of each value, one value per entry. */
+  remap(map: Int32Array): void {
+    this.#values = this.#values.map((value) => map[value]!);
+    this.#max = Math.max(...map);
+  }
+
+  /** A value that may be negative: 0, -1, 1, -2… as 0, 1, 2, 3… */
+  pushSigned(value: number): void {
+    this.push(value < 0 ? -2 * value - 1 : 2 * value);
+  }
 }
 
-/** Writes a number with `cut` at `at`, and returns where it ends. */
-function writeNumber(
-  bytes: Uint8Array,
-  at: number,
-  value: number,
-  cut: number,
-): number {
-  if (value < cut) {
-    bytes[at] = DIGITS[value]!;
-    return at + 1;
-  }
-  const scale = BASE - cut;
-  // Above 31 bits, `| 0` would cut the quotient.
-  while (value > 0x7fffffff) {
-    const rest = value - cut;
-    const next = Math.floor(rest / scale);
-    bytes[at++] = DIGITS[cut + rest - next * scale]!;
-    value = next;
-  }
-  while (value >= cut) {
-    const rest = value - cut;
-    const next = (rest / scale) | 0;
-    bytes[at++] = DIGITS[cut + rest - next * scale]!;
-    value = next;
-  }
-  bytes[at++] = DIGITS[value]!;
-  return at;
+/**
+ * Each entry without the start it shares with the one before (`first` for
+ * the first entry), whose length goes in `shared`: an entry alone is whole,
+ * with no column. Among more, an entry equal to `first` (the document's id,
+ * which no session is) is `""` sharing nothing.
+ */
+export function frontCode(
+  entries: readonly string[],
+  first: string,
+  shared: ColumnWriter,
+): string[] {
+  if (entries.length < 2) return [...entries];
+  let before = first;
+  return entries.map((entry) => {
+    if (entry === first) {
+      shared.push(0);
+      before = entry;
+      return "";
+    }
+    const end = Math.min(entry.length, before.length);
+    let length = 0;
+    while (
+      length < end &&
+      entry.charCodeAt(length) === before.charCodeAt(length)
+    )
+      length++;
+    shared.push(length);
+    before = entry;
+    return length === 0 ? entry : entry.slice(length);
+  });
 }
 
 /** Fields of different kinds, one after the other, each with its own cut. */
@@ -185,23 +188,23 @@ export class FieldWriter {
     this.#at = writeNumber(this.#bytes, this.#at, value, cut);
   }
 
+  encode(): string {
+    return ASCII.decode(this.#bytes.subarray(0, this.#at));
+  }
+
   /** A value that may be negative: 0, -1, 1, -2… as 0, 1, 2, 3… */
   writeSigned(value: number, cut: number): void {
     this.write(value < 0 ? -2 * value - 1 : 2 * value, cut);
   }
 
-  encode(): string {
-    return ASCII.decode(this.#bytes.subarray(0, this.#at));
+  /** Leaves out what it wrote from `at` on. */
+  cut(at = 0): void {
+    this.#at = at;
   }
 
   /** How many characters it wrote. */
   get length(): number {
     return this.#at;
-  }
-
-  /** Leaves out what it wrote from `at` on. */
-  cut(at = 0): void {
-    this.#at = at;
   }
 }
 
@@ -279,17 +282,46 @@ export class ColumnReader {
     return this.#value;
   }
 
-  nextSigned(): number {
-    return signed(this.next());
-  }
-
   get done(): boolean {
     return this.#left === 0 && this.#numbers.done;
+  }
+
+  nextSigned(): number {
+    return signed(this.next());
   }
 }
 
 /** The cut of the lengths that `joinColumns` writes before each column. */
 const LENGTH_CUT = 64;
+
+/** Writes a number with `cut` at `at`, and returns where it ends. */
+function writeNumber(
+  bytes: Uint8Array,
+  at: number,
+  value: number,
+  cut: number,
+): number {
+  if (value < cut) {
+    bytes[at] = DIGITS[value]!;
+    return at + 1;
+  }
+  const scale = BASE - cut;
+  // Above 31 bits, `| 0` would cut the quotient.
+  while (value > 0x7fffffff) {
+    const rest = value - cut;
+    const next = Math.floor(rest / scale);
+    bytes[at++] = DIGITS[cut + rest - next * scale]!;
+    value = next;
+  }
+  while (value >= cut) {
+    const rest = value - cut;
+    const next = (rest / scale) | 0;
+    bytes[at++] = DIGITS[cut + rest - next * scale]!;
+    value = next;
+  }
+  bytes[at++] = DIGITS[value]!;
+  return at;
+}
 
 /**
  * One string with every column, each with its length in front. Joined, not
@@ -326,38 +358,6 @@ export function splitColumns(text: string, count = Infinity): string[] {
     lengths.position = at;
   }
   return columns;
-}
-
-/**
- * Each entry without the start it shares with the one before (`first` for
- * the first entry), whose length goes in `shared`: an entry alone is whole,
- * with no column. Among more, an entry equal to `first` (the document's id,
- * which no session is) is `""` sharing nothing.
- */
-export function frontCode(
-  entries: readonly string[],
-  first: string,
-  shared: ColumnWriter,
-): string[] {
-  if (entries.length < 2) return [...entries];
-  let before = first;
-  return entries.map((entry) => {
-    if (entry === first) {
-      shared.push(0);
-      before = entry;
-      return "";
-    }
-    const end = Math.min(entry.length, before.length);
-    let length = 0;
-    while (
-      length < end &&
-      entry.charCodeAt(length) === before.charCodeAt(length)
-    )
-      length++;
-    shared.push(length);
-    before = entry;
-    return length === 0 ? entry : entry.slice(length);
-  });
 }
 
 /** The entries `frontCode` wrote. */

@@ -27,15 +27,31 @@ export function stringifyStateKey(node: DocNode, key: string): string {
   return stringified;
 }
 
-export function parseStateKey(
-  node: DocNode,
-  key: string,
-  stringifiedValue: string,
-): unknown {
-  const stateDef = node.doc["_resolvedNodeDefs"].get(node.type)?.state[key];
-  const value = parseJson(stringifiedValue);
-  const stateValue = stateDef?.fromJSON(value);
-  return stateValue;
+/**
+ * The descendants of an inserted node, in the order a walk of them finds
+ * them: each list of children is inserted when its first child is found.
+ */
+function onInsertChildren(doc: Doc, parent: DocNode) {
+  const first = parent.first;
+  if (!first) return;
+  copyInsertedToDiff(first);
+  const written: [string, string][] = [];
+  for (let child: DocNode | undefined = first; child; child = child.next)
+    written.push([child.id, child.type]);
+  doc["_operations"][0].push([0, written, parent.id, 0, 0]);
+  if (!doc["_diff"].inserted.has(parent.id)) {
+    const last = parent.last!;
+    doc["_inverseOperations"][0].push([
+      1,
+      first.id,
+      last !== first ? last.id : 0,
+    ]);
+  }
+  onInsertChildren(doc, first);
+  for (let child = first.next; child; child = child.next) {
+    copyInsertedToDiff(child);
+    onInsertChildren(doc, child);
+  }
 }
 
 export const onSetState = {
@@ -119,49 +135,39 @@ function nodesOf(nodes: readonly DocNode[]): [string, string][] {
   return written;
 }
 
-/**
- * The descendants of an inserted node, in the order a walk of them finds
- * them: each list of children is inserted when its first child is found.
- */
-function onInsertChildren(doc: Doc, parent: DocNode) {
-  const first = parent.first;
-  if (!first) return;
-  copyInsertedToDiff(first);
-  const written: [string, string][] = [];
-  for (let child: DocNode | undefined = first; child; child = child.next)
-    written.push([child.id, child.type]);
-  doc["_operations"][0].push([0, written, parent.id, 0, 0]);
-  if (!doc["_diff"].inserted.has(parent.id)) {
-    const last = parent.last!;
-    doc["_inverseOperations"][0].push([
-      1,
-      first.id,
-      last !== first ? last.id : 0,
-    ]);
+/** Concatenates batches, fusing text insertions typed one after the other. */
+export function mergeDrafts(...drafts: DraftOperations[]): DraftOperations {
+  const orderedOperations: OrderedOperation[] = [];
+  const statePatch: StatePatch = {};
+  for (const [ordered, patch] of drafts) {
+    orderedOperations.push(...ordered);
+    for (const nodeId in patch) {
+      statePatch[nodeId] ??= {};
+      Object.assign(statePatch[nodeId], patch[nodeId]);
+    }
   }
-  onInsertChildren(doc, first);
-  for (let child = first.next; child; child = child.next) {
-    copyInsertedToDiff(child);
-    onInsertChildren(doc, child);
-  }
+  return [fuseEdits(orderedOperations), statePatch];
 }
 
-function copyInsertedToDiff(node: DocNode) {
-  const doc = node.doc;
-  const diff = doc["_diff"];
-  // Most transactions that insert delete nothing: no lookup for each node.
-  const deletedInSameTransaction =
-    diff.deleted.size > 0 && diff.deleted.delete(node.id);
-  if (deletedInSameTransaction) {
-    diff.moved.add(node.id);
-    doc["_diff"].updated.add(node.id);
-  } else {
-    diff.inserted.add(node.id);
-  }
-  // [#4GOSK]
-  const jsonState = node["_stateToJson"]();
-  if (isObjectEmpty(jsonState)) return;
-  doc["_operations"][1][node.id] = jsonState;
+/**
+ * The batch the transaction applied, when its operations are exactly those it
+ * decoded to: a batch received is passed on as it came, without encoding it
+ * again. The event gets its own array: a listener that changes it does not
+ * change the batch passed to `applyOperations`, nor the other way around. No
+ * one changes a row, so they are shared.
+ */
+function receivedAsIs(doc: Doc): Operations | undefined {
+  const received = doc["_received"];
+  const draft = doc["_decoded"];
+  if (!received || !draft) return undefined;
+  const [ordered, patch] = doc["_operations"];
+  const [decoded, decodedPatch] = draft;
+  if (ordered.length !== decoded.length) return undefined;
+  for (let index = 0; index < ordered.length; index++)
+    if (ordered[index] !== decoded[index]) return undefined;
+  if (!isObjectEmpty(patch) || !isObjectEmpty(decodedPatch)) return undefined;
+  const [head, ...rows] = received;
+  return [head, ...rows];
 }
 
 export const onDeleteRange = (
@@ -412,25 +418,15 @@ export const maybeTriggerListeners = (doc: Doc, ignoreEmptyDiff = false) => {
   listeners.forEach((listener) => listener(event));
 };
 
-/**
- * The batch the transaction applied, when its operations are exactly those it
- * decoded to: a batch received is passed on as it came, without encoding it
- * again. The event gets its own array: a listener that changes it does not
- * change the batch passed to `applyOperations`, nor the other way around. No
- * one changes a row, so they are shared.
- */
-function receivedAsIs(doc: Doc): Operations | undefined {
-  const received = doc["_received"];
-  const draft = doc["_decoded"];
-  if (!received || !draft) return undefined;
-  const [ordered, patch] = doc["_operations"];
-  const [decoded, decodedPatch] = draft;
-  if (ordered.length !== decoded.length) return undefined;
-  for (let index = 0; index < ordered.length; index++)
-    if (ordered[index] !== decoded[index]) return undefined;
-  if (!isObjectEmpty(patch) || !isObjectEmpty(decodedPatch)) return undefined;
-  const [head, ...rows] = received;
-  return [head, ...rows];
+export function parseStateKey(
+  node: DocNode,
+  key: string,
+  stringifiedValue: string,
+): unknown {
+  const stateDef = node.doc["_resolvedNodeDefs"].get(node.type)?.state[key];
+  const value = parseJson(stringifiedValue);
+  const stateValue = stateDef?.fromJSON(value);
+  return stateValue;
 }
 
 const copyDeletedToDiff = (node: DocNode) => {
@@ -634,18 +630,22 @@ export type DraftOperations = [OrderedOperation[], StatePatch];
 export const compactOperations = (operations: DraftOperations): Operations =>
   encodeOperations(operations[0], operations[1]);
 
-/** Concatenates batches, fusing text insertions typed one after the other. */
-export function mergeDrafts(...drafts: DraftOperations[]): DraftOperations {
-  const orderedOperations: OrderedOperation[] = [];
-  const statePatch: StatePatch = {};
-  for (const [ordered, patch] of drafts) {
-    orderedOperations.push(...ordered);
-    for (const nodeId in patch) {
-      statePatch[nodeId] ??= {};
-      Object.assign(statePatch[nodeId], patch[nodeId]);
-    }
+function copyInsertedToDiff(node: DocNode) {
+  const doc = node.doc;
+  const diff = doc["_diff"];
+  // Most transactions that insert delete nothing: no lookup for each node.
+  const deletedInSameTransaction =
+    diff.deleted.size > 0 && diff.deleted.delete(node.id);
+  if (deletedInSameTransaction) {
+    diff.moved.add(node.id);
+    doc["_diff"].updated.add(node.id);
+  } else {
+    diff.inserted.add(node.id);
   }
-  return [fuseEdits(orderedOperations), statePatch];
+  // [#4GOSK]
+  const jsonState = node["_stateToJson"]();
+  if (isObjectEmpty(jsonState)) return;
+  doc["_operations"][1][node.id] = jsonState;
 }
 
 /**
