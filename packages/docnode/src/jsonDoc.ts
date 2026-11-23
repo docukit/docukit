@@ -87,112 +87,6 @@ const countChildren = (node: DocNode) => {
   return count;
 };
 
-/**
- * The tree of `doc` in `columns` (in the order of `COLUMN_*`), its sessions
- * in `sessions`, the names of its types and keys, each once, in `names`,
- * and its values in `values`.
- */
-function writeTree(
-  doc: Doc,
-  sessions: SessionTable,
-  columns: ColumnWriter[],
-  names: Map<string, number>,
-  values: Json[],
-): void {
-  const root = doc.root;
-  const definitions = doc["_resolvedNodeDefs"];
-  const rootDefinition = definitions.get(root.type)!;
-  const size = doc["_nodeMap"].size;
-  const sessionColumn = new ColumnWriter(size);
-  const clockColumn = new ColumnWriter(size);
-  const typeColumn = new ColumnWriter(size);
-  const childrenColumn = new ColumnWriter(size);
-  const stateColumn = new ColumnWriter(size);
-  const keyColumn = new ColumnWriter(size);
-  const numberColumn = new ColumnWriter(size, true);
-  const nameIndex = (name: string) => {
-    let index = names.get(name);
-    if (index === undefined) names.set(name, (index = names.size));
-    return index;
-  };
-  /** Each type: its index in `names`, its definition and its state keys. */
-  const types = new Map<
-    string,
-    { index: number; definition: ResolvedNodeDefinition; keys: string[] }
-  >();
-  // No node has the type `undefined`: `last` is first replaced.
-  let lastType: string | undefined;
-  let last = { index: -1, definition: rootDefinition, keys: [""] };
-  const typeOf = (name: string) => {
-    // Nodes in a row are often of one type.
-    if (name === lastType) return last;
-    let type = types.get(name);
-    if (type === undefined) {
-      const definition = definitions.get(name)!;
-      // In the order of the definition, the same in every replica.
-      const stateKeys = Object.keys(definition.state);
-      type = { index: nameIndex(name), definition, keys: stateKeys };
-      types.set(name, type);
-    }
-    lastType = name;
-    return (last = type);
-  };
-  /** The last clock of each session, which the next one is written after. */
-  const clocks: number[] = [];
-  // The session of the node before, and the highest one so far (see
-  // `sessionCode`).
-  let before = 0;
-  let highest = -1;
-  // A session's first clock is mostly 0 (its id alone), written as 0.
-  childrenColumn.push(countChildren(root));
-  let node = root.first;
-  while (node) {
-    const index = sessions.node(node.id);
-    const clock = sessions.clock;
-    sessionColumn.push(sessionCode(index, before, highest));
-    before = index;
-    if (index > highest) highest = index;
-    clockColumn.pushSigned(clock - (clocks[index] ?? -1) - 1);
-    clocks[index] = clock;
-    const type = typeOf(node.type);
-    typeColumn.push(type.index);
-    childrenColumn.push(countChildren(node));
-    let count = 0;
-    const state: Record<string, unknown> = node["_state"];
-    const definition = type.definition;
-    for (const key of type.keys) {
-      if (!(key in state)) continue;
-      const value = storedValue(node, definition, state, key);
-      if (value === undefined) continue;
-      const index = nameIndex(key);
-      // Its key says where it is: in the column of numbers or in `values`.
-      if (inColumn(value)) {
-        keyColumn.push(index * 2 + 1);
-        numberColumn.push(value);
-      } else {
-        keyColumn.push(index * 2);
-        values.push(value);
-      }
-      count++;
-    }
-    stateColumn.push(count);
-    // The next node in preorder.
-    let next = node.first;
-    for (let up: DocNode = node; !next && up !== root; up = up.parent!)
-      next = up.next;
-    node = next;
-  }
-  columns.push(
-    sessionColumn,
-    clockColumn,
-    typeColumn,
-    childrenColumn,
-    stateColumn,
-    keyColumn,
-    numberColumn,
-  );
-}
-
 /** `doc` as it is stored (see `JsonDoc`), without its id. */
 export function writeJsonDoc(doc: Doc): JsonDoc {
   const root = doc.root;
@@ -223,11 +117,109 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
         )
       : 0;
   const columns: ColumnWriter[] = [];
+  /** The names of types and keys, each once, by their index. */
   const names = new Map<string, number>();
   const values: Json[] = [];
-  // Only text: the columns of the tree, last, are empty, and its code is
-  // not compiled (a save runs once, mostly cold).
-  if (root.first) writeTree(doc, sessions, columns, names, values);
+  /**
+   * The tree in `columns` (in the order of `COLUMN_*`), its sessions in
+   * `sessions`, the names of its types and keys in `names` and its values in
+   * `values`. A function of its own, called only with a tree: a save runs
+   * once, mostly cold, and the code of a function never called is not
+   * compiled.
+   */
+  const writeTree = () => {
+    const size = doc["_nodeMap"].size;
+    const sessionColumn = new ColumnWriter(size);
+    const clockColumn = new ColumnWriter(size);
+    const typeColumn = new ColumnWriter(size);
+    const childrenColumn = new ColumnWriter(size);
+    const stateColumn = new ColumnWriter(size);
+    const keyColumn = new ColumnWriter(size);
+    const numberColumn = new ColumnWriter(size, true);
+    const nameIndex = (name: string) => {
+      let index = names.get(name);
+      if (index === undefined) names.set(name, (index = names.size));
+      return index;
+    };
+    /** Each type: its index in `names`, its definition and its state keys. */
+    const types = new Map<
+      string,
+      { index: number; definition: ResolvedNodeDefinition; keys: string[] }
+    >();
+    // No node has the type `undefined`: `last` is first replaced.
+    let lastType: string | undefined;
+    let last = { index: -1, definition: rootDefinition, keys: [""] };
+    const typeOf = (name: string) => {
+      // Nodes in a row are often of one type.
+      if (name === lastType) return last;
+      let type = types.get(name);
+      if (type === undefined) {
+        const definition = definitions.get(name)!;
+        // In the order of the definition, the same in every replica.
+        const stateKeys = Object.keys(definition.state);
+        type = { index: nameIndex(name), definition, keys: stateKeys };
+        types.set(name, type);
+      }
+      lastType = name;
+      return (last = type);
+    };
+    /** The last clock of each session, which the next one is written after. */
+    const clocks: number[] = [];
+    // The session of the node before, and the highest one so far (see
+    // `sessionCode`).
+    let before = 0;
+    let highest = -1;
+    // A session's first clock is mostly 0 (its id alone), written as 0.
+    childrenColumn.push(countChildren(root));
+    let node = root.first;
+    while (node) {
+      const index = sessions.node(node.id);
+      const clock = sessions.clock;
+      sessionColumn.push(sessionCode(index, before, highest));
+      before = index;
+      if (index > highest) highest = index;
+      clockColumn.pushSigned(clock - (clocks[index] ?? -1) - 1);
+      clocks[index] = clock;
+      const type = typeOf(node.type);
+      typeColumn.push(type.index);
+      childrenColumn.push(countChildren(node));
+      let count = 0;
+      const state: Record<string, unknown> = node["_state"];
+      const definition = type.definition;
+      for (const key of type.keys) {
+        if (!(key in state)) continue;
+        const value = storedValue(node, definition, state, key);
+        if (value === undefined) continue;
+        const index = nameIndex(key);
+        // Its key says where it is: in the column of numbers or in `values`.
+        if (inColumn(value)) {
+          keyColumn.push(index * 2 + 1);
+          numberColumn.push(value);
+        } else {
+          keyColumn.push(index * 2);
+          values.push(value);
+        }
+        count++;
+      }
+      stateColumn.push(count);
+      // The next node in preorder.
+      let next = node.first;
+      for (let up: DocNode = node; !next && up !== root; up = up.parent!)
+        next = up.next;
+      node = next;
+    }
+    columns.push(
+      sessionColumn,
+      clockColumn,
+      typeColumn,
+      childrenColumn,
+      stateColumn,
+      keyColumn,
+      numberColumn,
+    );
+  };
+  // Only text: the columns of the tree, last, are empty.
+  if (root.first) writeTree();
   // Sessions mostly share their start with the one before, the first with
   // the document's id.
   const shared = new ColumnWriter();
