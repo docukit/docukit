@@ -7,16 +7,16 @@
  */
 export class IdRanges {
   /** session -> flat [from, to, life, from, to, life, ...], sorted by `from`. */
-  protected _runs = new Map<string, number[]>();
+  #runs = new Map<string, number[]>();
 
   /** Whether nothing was added: an id needs no parsing to look it up. */
   isEmpty(): boolean {
-    return this._runs.size === 0;
+    return this.#runs.size === 0;
   }
 
   /** The life of `clock` in `session`, or -1 if it was never added. */
   get(session: string, clock: number): number {
-    const runs = this._runs.get(session);
+    const runs = this.#runs.get(session);
     if (!runs) return -1;
     let low = 0;
     let high = runs.length / 3;
@@ -30,8 +30,8 @@ export class IdRanges {
   }
 
   add(session: string, from: number, to: number, life: number) {
-    let runs = this._runs.get(session);
-    if (!runs) this._runs.set(session, (runs = []));
+    let runs = this.#runs.get(session);
+    if (!runs) this.#runs.set(session, (runs = []));
     // Ids mostly come in order: after the last run, or touching it.
     const count = runs.length;
     if (count === 0 || runs[count - 2]! < from - 1) {
@@ -91,6 +91,6 @@ export class IdRanges {
 
   /** Each session with its runs: `from, to, life` one after the other. */
   forEach(callback: (session: string, runs: readonly number[]) => void) {
-    this._runs.forEach((runs, session) => callback(session, runs));
+    this.#runs.forEach((runs, session) => callback(session, runs));
   }
 }

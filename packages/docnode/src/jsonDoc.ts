@@ -30,16 +30,14 @@ const WITHOUT_TEXT = 13;
  * `JsonDoc`): how much each session shares with the one before, and the
  * tree.
  */
-const COLUMN = {
-  SHARED: 0,
-  SESSION: 1,
-  CLOCK: 2,
-  TYPE: 3,
-  CHILDREN: 4,
-  STATE: 5,
-  KEY: 6,
-  NUMBER: 7,
-};
+const COLUMN_SHARED = 0;
+const COLUMN_SESSION = 1;
+const COLUMN_CLOCK = 2;
+const COLUMN_TYPE = 3;
+const COLUMN_CHILDREN = 4;
+const COLUMN_STATE = 5;
+const COLUMN_KEY = 6;
+const COLUMN_NUMBER = 7;
 const COLUMNS = 8;
 
 /** A value that goes in the column of numbers: a whole one, not negative. */
@@ -248,7 +246,7 @@ export const storedSessions = (json: JsonDoc, id: string): string[] =>
     frontDecode(
       json[3] ?? [],
       id,
-      new ColumnReader(splitColumns(json[7] ?? "", 1)[COLUMN.SHARED]!),
+      new ColumnReader(splitColumns(json[7] ?? "", 1)[COLUMN_SHARED]!),
     ),
   );
 
@@ -296,7 +294,7 @@ export function readJsonDoc(doc: Doc, json: JsonDoc): void {
     state[key] = doc["_storedValue"](rootDefinition, key, rootState[key]!);
   const columns = splitColumns(tree);
   const reader = (field: number) => new ColumnReader(columns[field] ?? "");
-  const sessions = readSessions(frontDecode(table, id, reader(COLUMN.SHARED)));
+  const sessions = readSessions(frontDecode(table, id, reader(COLUMN_SHARED)));
   if (text) {
     const textKey = doc["_editStateKey"];
     if (textKey === undefined)
@@ -311,13 +309,13 @@ export function readJsonDoc(doc: Doc, json: JsonDoc): void {
   }
   const root = doc["_storedNode"](id, type, state);
   doc["_setStoredRoot"](root);
-  const sessionColumn = reader(COLUMN.SESSION);
-  const clockColumn = reader(COLUMN.CLOCK);
-  const typeColumn = reader(COLUMN.TYPE);
-  const childrenColumn = reader(COLUMN.CHILDREN);
-  const stateColumn = reader(COLUMN.STATE);
-  const keyColumn = reader(COLUMN.KEY);
-  const numberColumn = reader(COLUMN.NUMBER);
+  const sessionColumn = reader(COLUMN_SESSION);
+  const clockColumn = reader(COLUMN_CLOCK);
+  const typeColumn = reader(COLUMN_TYPE);
+  const childrenColumn = reader(COLUMN_CHILDREN);
+  const stateColumn = reader(COLUMN_STATE);
+  const keyColumn = reader(COLUMN_KEY);
+  const numberColumn = reader(COLUMN_NUMBER);
   const definitions = types.map((type) => doc["_storedDefinition"](type));
   const clocks = new Float64Array(sessions.length).fill(-1);
   let before = 0;

@@ -9,7 +9,7 @@ import type {
 } from "../operations.js";
 import type { Json } from "../types.js";
 import { base64ToNumber, lastDot, numberToBase64 } from "../idGenerator.js";
-import { clockOf, distanceTo, literal } from "../wire.js";
+import { clockOf, distanceTo, isList, literal } from "../wire.js";
 
 /**
  * What the CRDT engines add to a batch of `wire.ts`. An engine's own row goes
@@ -42,9 +42,6 @@ type Rest =
 /** A batch of one row leaves out its brackets: its head and then the row. */
 const isFlat = (rest: Rest): rest is FlatRow | FlatText | InsertTextAgainRow =>
   typeof rest[0] === "string" || typeof rest[0] === "number";
-
-const isList = (value: Json | undefined): value is readonly Json[] =>
-  Array.isArray(value);
 
 const isEngine = (row: Json | undefined) =>
   isList(row) && (row[0] === 3 || row[0] === 4);
@@ -144,29 +141,32 @@ export function readId(written: string, session: (index: number) => string) {
  */
 export class Sessions {
   /** The first one is the head's own, then the others. */
-  private readonly _list: string[];
-  private readonly _named: string;
-  private readonly _length: number;
+  readonly #list: string[];
+  readonly #named: string;
+  readonly #length: number;
   /** The head's counter, which nodes are written from; -1 if it has none. */
-  private readonly _base: number;
+  readonly #base: number;
 
-  constructor(private readonly _head: Head) {
-    const named = typeof _head === "string" ? _head : _head[0]!;
+  readonly #head: Head;
+
+  constructor(head: Head) {
+    this.#head = head;
+    const named = typeof head === "string" ? head : head[0]!;
     const dot = lastDot(named);
-    this._named = named;
-    this._base = dot === -1 ? -1 : base64ToNumber(named, dot + 1);
-    this._list = [dot === -1 ? named : named.slice(0, dot)];
-    if (typeof _head !== "string") this._list.push(..._head.slice(1));
-    this._length = this._list.length;
+    this.#named = named;
+    this.#base = dot === -1 ? -1 : base64ToNumber(named, dot + 1);
+    this.#list = [dot === -1 ? named : named.slice(0, dot)];
+    if (typeof head !== "string") this.#list.push(...head.slice(1));
+    this.#length = this.#list.length;
   }
 
   /** The index of a session, added if the head does not name it. */
   index(session: string): number {
-    const list = this._list;
+    const list = this.#list;
     for (let index = 0; index < list.length; index++)
       if (list[index] === session) return index;
     // A head that names no session: nothing points to its first one yet.
-    if (list.length === 1 && list[0] === "" && this._named === "") {
+    if (list.length === 1 && list[0] === "" && this.#named === "") {
       list[0] = session;
       return 0;
     }
@@ -174,12 +174,12 @@ export class Sessions {
   }
 
   session(index: number): string {
-    return this._list[index]!;
+    return this.#list[index]!;
   }
 
   /** `id` as a batch writes it: a node of the head's session can be a number. */
   write(id: string): string | number {
-    const distance = distanceTo(id, this._list[0]!, this._base);
+    const distance = distanceTo(id, this.#list[0]!, this.#base);
     return distance !== 0
       ? distance
       : writeId(id, (session) => this.index(session));
@@ -188,21 +188,21 @@ export class Sessions {
   /** The id a batch wrote as `written` (`""` if it is neither a string nor a number). */
   read(written: Json | undefined): string {
     if (typeof written === "number")
-      return `${this._list[0]!}.${numberToBase64(clockOf(written, Math.max(this._base, 0)))}`;
+      return `${this.#list[0]!}.${numberToBase64(clockOf(written, Math.max(this.#base, 0)))}`;
     return readId(
       typeof written === "string" ? written : "",
-      (index) => this._list[index]!,
+      (index) => this.#list[index]!,
     );
   }
 
   /** The head, with the sessions added since. */
   head(): Head {
-    const list = this._list;
-    let named = this._named;
+    const list = this.#list;
+    let named = this.#named;
     // A counter after it, so that a session with a dot is read back whole.
     if (named === "" && list[0] !== "") named = `${list[0]}.-`;
-    if (list.length === this._length && named === this._named)
-      return this._head;
+    if (list.length === this.#length && named === this.#named)
+      return this.#head;
     return list.length === 1 ? named : [named, ...list.slice(1)];
   }
 }

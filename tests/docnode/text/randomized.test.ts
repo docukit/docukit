@@ -5,9 +5,11 @@ import {
   assertWellFormed,
   Cluster,
   config,
+  elementsOf,
   Paragraph,
   randomizer,
   seededSessions,
+  viewsOf,
   type Randomizer,
 } from "./utils.js";
 
@@ -107,10 +109,7 @@ function runHistory(
       randomEdit(cluster, replica, rng, doc, undo),
     );
     if (rng.next() < 0.2)
-      snapshots.push({
-        replica,
-        views: cluster.store(replica)["_debugViews"](),
-      });
+      snapshots.push({ replica, views: viewsOf(cluster.store(replica)) });
     if (cluster.log.length > 0 && rng.next() < 0.25) {
       const entry = rng.pick(cluster.log);
       const to = rng.int(3);
@@ -177,7 +176,7 @@ function analyze(
   if (ok) stats.converged++;
 
   const store = cluster.store(0);
-  const elements = store["_debugElements"]();
+  const elements = elementsOf(store);
   const position = new Map(
     elements.map((element, index) => [element.id, index]),
   );

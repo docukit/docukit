@@ -397,6 +397,68 @@ export function enter(doc: Doc, node: ParagraphNode, index: number) {
   return fresh;
 }
 
+type CrdtStore = ReturnType<typeof _INTERNAL_crdtTextStore>;
+
+/** The visible letters of each list of `store`, by node: their ids in order. */
+export function viewsOf(store: CrdtStore): Record<string, string[]> {
+  const views: Record<string, string[]> = {};
+  for (const flow of store["_flows"]) {
+    const ids: string[] = [];
+    for (let run = flow.head.next; run; run = run.next)
+      if (run.visible)
+        for (let off = 0; off < run.len; off++)
+          ids.push(`${run.s}:${run.c + off}`);
+    views[flow.head.s] = ids;
+  }
+  return views;
+}
+
+/**
+ * Every letter of `store`, deleted or not, in the order of its list (lists
+ * by node id), with its origins. A left origin is the letter before its first
+ * ancestor that is a right child (Fugue paper, Lemma 8(a)).
+ */
+export function elementsOf(store: CrdtStore) {
+  const flows = [...store["_flows"]].sort((a, b) =>
+    a.head.s < b.head.s ? -1 : a.head.s > b.head.s ? 1 : 0,
+  );
+  type Run = (typeof flows)[number]["head"];
+  const runs = new Map<string, [Run, number]>();
+  for (const flow of flows)
+    for (let run = flow.head.next; run; run = run.next)
+      for (let off = 0; off < run.len; off++)
+        runs.set(`${run.s}:${run.c + off}`, [run, off]);
+  const leftOrigin = (start: Run, startOff: number): string | undefined => {
+    let run = start;
+    let off = startOff;
+    while (true) {
+      if (off > 0) return `${run.s}:${run.c + off - 1}`;
+      // Letters always have a parent: the root, at least.
+      if (run.side === 1) return `${run.ps}:${run.pc}`;
+      [run, off] = runs.get(`${run.ps}:${run.pc}`)!;
+    }
+  };
+  return flows.flatMap((flow) => {
+    const out: {
+      id: string;
+      deleted: boolean;
+      visible: boolean;
+      leftOrigin: string | undefined;
+      rightOrigin: string | undefined;
+    }[] = [];
+    for (let run = flow.head.next; run; run = run.next)
+      for (let off = 0; off < run.len; off++)
+        out.push({
+          id: `${run.s}:${run.c + off}`,
+          deleted: run.deleted,
+          visible: run.visible,
+          leftOrigin: leftOrigin(run, off),
+          rightOrigin: run.rs === undefined ? undefined : `${run.rs}:${run.rc}`,
+        });
+    return out;
+  });
+}
+
 /** The runs of each list of `doc` (see `TextStore._debugRuns`). */
 /**
  * A batch of text edits from a session "z" no replica uses, on nodes of

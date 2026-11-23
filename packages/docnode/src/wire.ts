@@ -84,7 +84,7 @@ export const isList = (value: Json | undefined): value is readonly Json[] =>
 export const list = (value: Json | undefined): readonly Json[] =>
   isList(value) ? value : [];
 
-const num = (value: Json | undefined) => Number(value);
+export const num = (value: Json | undefined) => Number(value);
 
 /** A string of the batch, or "" where it holds something else. */
 export const text = (value: Json | undefined): string =>
@@ -102,29 +102,29 @@ const PATCH = -9;
  * are read once, whatever the length of the run.
  */
 class Run {
-  private _id = "";
-  private _dot = -1;
-  private _clock = -1;
+  #id = "";
+  #dot = -1;
+  #clock = -1;
 
   /** Starts a run at `id`. */
   start(id: string): void {
-    this._id = id;
-    this._dot = lastDot(id);
-    this._clock = this._dot === -1 ? -1 : clockAt(id, this._dot);
+    this.#id = id;
+    this.#dot = lastDot(id);
+    this.#clock = this.#dot === -1 ? -1 : clockAt(id, this.#dot);
   }
 
   /** Whether `next` follows the run's last id: then it is the last one. */
   follows(next: string): boolean {
-    const dot = this._dot;
+    const dot = this.#dot;
     // A dot of `next` after this one makes its clock unreadable (-1).
-    if (this._clock < 0 || next.charCodeAt(dot) !== 46) return false;
+    if (this.#clock < 0 || next.charCodeAt(dot) !== 46) return false;
     const clock = clockAt(next, dot);
-    if (clock !== this._clock + 1) return false;
-    const id = this._id;
+    if (clock !== this.#clock + 1) return false;
+    const id = this.#id;
     for (let i = 0; i < dot; i++)
       if (id.charCodeAt(i) !== next.charCodeAt(i)) return false;
-    this._id = next;
-    this._clock = clock;
+    this.#id = next;
+    this.#clock = clock;
     return true;
   }
 }
@@ -195,7 +195,7 @@ export class Encoder {
   /** The other sessions, from index 1. */
   others: string[] = [];
   /** The index of each other session, once there are many. */
-  private _indexes: Map<string, number> | undefined;
+  #indexes: Map<string, number> | undefined;
   /** The counter of the first text row, which the head carries. */
   counter = -1;
   /** The counter the head carries; -1 if none. */
@@ -204,7 +204,7 @@ export class Encoder {
    * The counter nodes are written from, -1 for none: with text rows the
    * head's counter is a letter's, far from the clocks of nodes.
    */
-  private _from = -1;
+  #from = -1;
   // The state of text rows (see `text/wire.ts`).
   protected _session = 0;
   protected _next = 0;
@@ -245,7 +245,7 @@ export class Encoder {
     const named = first ?? "";
     const dot = lastDot(named);
     this.reset(dot === -1 ? "" : named.slice(0, dot));
-    this.base = this._from = dot === -1 ? -1 : clockAt(named, dot);
+    this.base = this.#from = dot === -1 ? -1 : clockAt(named, dot);
   }
 
   /** Starts a batch whose first session is `session`. */
@@ -254,11 +254,11 @@ export class Encoder {
     // Cheaper than emptying them, which reallocates even when empty.
     if (this.others.length > 0) {
       this.others = [];
-      this._indexes = undefined;
+      this.#indexes = undefined;
     }
     this.counter = -1;
     this.base = -1;
-    this._from = -1;
+    this.#from = -1;
     this._session = 0;
     this._next = 0;
     this._lastSession = -1;
@@ -275,11 +275,11 @@ export class Encoder {
         if (others[index] === session) return index + 1;
       return others.push(session);
     }
-    this._indexes ??= new Map(others.map((other, index) => [other, index + 1]));
-    let index = this._indexes.get(session);
+    this.#indexes ??= new Map(others.map((other, index) => [other, index + 1]));
+    let index = this.#indexes.get(session);
     if (index === undefined) {
       index = others.push(session);
-      this._indexes.set(session, index);
+      this.#indexes.set(session, index);
     }
     return index;
   }
@@ -304,7 +304,7 @@ export class Encoder {
   /** A node of a tree row: its distance is a number there. */
   nodeRef(id: string | 0): NodeRef {
     if (id === 0) return 0;
-    const distance = distanceTo(id, this.first, this._from);
+    const distance = distanceTo(id, this.first, this.#from);
     return distance === 0 ? this._absolute(id) : distance;
   }
 
@@ -507,11 +507,11 @@ function sessionOf(named: string, dot: number): string {
 
 /** Reads a batch: its head, tree rows and state patch (see `TextDecoder`). */
 export class Decoder {
-  /** The head's sessions, the first one as `_first` (without its counter). */
-  private _sessions = NO_SESSIONS;
-  private _first = "";
+  /** The head's sessions, the first one as `#first` (without its counter). */
+  #sessions = NO_SESSIONS;
+  #first = "";
   /** The head's counter: nodes written by their distance are from it. */
-  private _base = 0;
+  #base = 0;
   /** The session and counter the next text row takes without saying them. */
   session = 0;
   next = 0;
@@ -524,19 +524,19 @@ export class Decoder {
   /** Starts a batch with its head. */
   reset(head: string | readonly string[]): void {
     const named = typeof head === "string" ? head : head[0]!;
-    this._sessions = typeof head === "string" ? NO_SESSIONS : head;
+    this.#sessions = typeof head === "string" ? NO_SESSIONS : head;
     const dot = lastDot(named);
-    this._first = dot === -1 ? named : sessionOf(named, dot);
+    this.#first = dot === -1 ? named : sessionOf(named, dot);
     this.next = dot === -1 ? 0 : base64ToNumber(named, dot + 1);
-    this._base = this.next;
+    this.#base = this.next;
     // The inverse of an edit received has the edit's id: its head is this one.
-    if (dot !== -1) encoder.remember(this._first, this.next, named);
+    if (dot !== -1) encoder.remember(this.#first, this.next, named);
     this.session = 0;
     this._lastCounter = 0;
   }
 
   sessionAt(index: number): string {
-    return index === 0 ? this._first : this._sessions[index]!;
+    return index === 0 ? this.#first : this.#sessions[index]!;
   }
 
   /**
@@ -548,18 +548,18 @@ export class Decoder {
     if (written.charCodeAt(0) === 33) return written.slice(1);
     const dot = written.indexOf(".");
     if (dot === -1)
-      return isDistance(written) ? this._at(Number(written)) : written;
+      return isDistance(written) ? this.#at(Number(written)) : written;
     return this.sessionAt(indexBefore(written, dot)) + written.slice(dot);
   }
 
   /** The node of the first session at `distance` from the head's counter. */
-  private _at(distance: number): string {
-    return `${this._first}.${numberToBase64(clockOf(distance, this._base))}`;
+  #at(distance: number): string {
+    return `${this.#first}.${numberToBase64(clockOf(distance, this.#base))}`;
   }
 
   /** A node of a tree row: a number is its distance. */
   nodeRef(value: Json | undefined): string | 0 {
-    if (typeof value === "number") return value === 0 ? 0 : this._at(value);
+    if (typeof value === "number") return value === 0 ? 0 : this.#at(value);
     return value ? this.node(text(value)) : 0;
   }
 

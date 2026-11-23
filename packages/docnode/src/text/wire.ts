@@ -111,7 +111,7 @@ class TextRowEncoder extends Encoder {
       if (absolute) return left && counter === c - 1 ? BACKWARDS : ref;
       // A distance repeats more than a counter: a compressed stream takes it.
       // Counters only grow, so an operation's own letters are behind it
-      // (but in a delete, see `_rangeRef`).
+      // (but in a delete, see `#rangeRef`).
       return c - counter;
     }
     const written = text(ref);
@@ -121,7 +121,7 @@ class TextRowEncoder extends Encoder {
   }
 
   /** A letter of a delete: a distance of any sign, as no letter is none. */
-  private _rangeRef(ref: Json, c: number): LetterRef {
+  #rangeRef(ref: Json, c: number): LetterRef {
     if (typeof ref !== "number") return this.ref(ref, c);
     this._lastSession = this._session;
     this._lastCounter = ref - 1;
@@ -129,10 +129,10 @@ class TextRowEncoder extends Encoder {
   }
 
   ranges(ranges: Json, c: number): Json {
-    if (!isList(ranges)) return this._rangeRef(ranges, c);
+    if (!isList(ranges)) return this.#rangeRef(ranges, c);
     const out: Json[] = [];
     for (let index = 0; index < ranges.length; index += 2)
-      out.push(this._rangeRef(ranges[index]!, c), ranges[index + 1]!);
+      out.push(this.#rangeRef(ranges[index]!, c), ranges[index + 1]!);
     return out;
   }
 
@@ -155,7 +155,7 @@ class TextRowEncoder extends Encoder {
       const row: [string | readonly Json[], ...LetterRef[]] = [
         isList(content) ? content : text(content),
       ];
-      this._insertRefs(op, c, row);
+      this.#insertRefs(op, c, row);
       this._next = c + lettersOf(content).length;
       if (!isJoinable(row)) {
         rows.push(row);
@@ -173,10 +173,10 @@ class TextRowEncoder extends Encoder {
       return;
     }
     const tag = Number(op[1]);
-    if (tag === AGAIN) rows.push(this._again(op, c));
+    if (tag === AGAIN) rows.push(this.#again(op, c));
     else {
       const row: [number, ...Json[]] = [rowTag(tag)];
-      this._payload(op, tag, c, row);
+      this.#payload(op, tag, c, row);
       rows.push(row);
     }
     // Only an insert takes ids: the others count from where they are.
@@ -192,7 +192,7 @@ class TextRowEncoder extends Encoder {
     this.reset(text(insert ? op[1] : op[2]));
     const c = Number(insert ? op[2] : op[3]);
     this.base = c;
-    const named = this._named(c);
+    const named = this.#named(c);
     let batch:
       | [Head, string, ...LetterRef[]]
       | [Head, number, ...Json[]]
@@ -202,17 +202,17 @@ class TextRowEncoder extends Encoder {
     if (!insert) {
       const tag = Number(op[1]);
       const written = rowTag(tag);
-      if (tag === AGAIN) batch = [named, ...this._again(op, c)];
+      if (tag === AGAIN) batch = [named, ...this.#again(op, c)];
       else if (tag === 1 && op.length === 5)
         batch = [named, written, this.ranges(op[4]!, c)];
       else {
         batch = [named, written];
-        this._payload(op, tag, c, batch);
+        this.#payload(op, tag, c, batch);
       }
     } else if (isList(content)) {
       // An insert with attributes keeps its brackets (see `isFlat`).
       const row: [readonly Json[], ...LetterRef[]] = [content];
-      this._insertRefs(op, c, row);
+      this.#insertRefs(op, c, row);
       batch = [named, row];
     } else if (op.length === 4) batch = [named, text(content)];
     else if (op.length === 5)
@@ -222,7 +222,7 @@ class TextRowEncoder extends Encoder {
         named,
         text(content),
         this.ref(op[4]!, c, ABSOLUTE_RIGHT),
-        this._left(op[5]!, c),
+        this.#left(op[5]!, c),
       ];
     // A reference to another session's letter adds it to the head.
     if (this.others.length > 0) batch[0] = [named, ...this.others];
@@ -233,7 +233,7 @@ class TextRowEncoder extends Encoder {
    * `"session.counter"` of the first session. The inverse of an edit has the
    * edit's own id, so the string of the last one is kept.
    */
-  private _named(c: number): string {
+  #named(c: number): string {
     if (c === this._lastNamedCounter && this.first === this._lastNamedSession)
       return this._lastNamed;
     if (this.first !== this._prefixed) {
@@ -245,18 +245,18 @@ class TextRowEncoder extends Encoder {
   }
 
   /** An insert's right origin and parent, after its content. */
-  private _insertRefs(op: EditOperation, c: number, row: Json[]): void {
+  #insertRefs(op: EditOperation, c: number, row: Json[]): void {
     if (op.length > 4) row.push(this.ref(op[4]!, c, ABSOLUTE_RIGHT));
-    if (op.length > 5) row.push(this._left(op[5]!, c));
+    if (op.length > 5) row.push(this.#left(op[5]!, c));
   }
 
   /** An insert's parent, or Base's left letter: `-1` (none) as it is. */
-  private _left(ref: Json, c: number): LetterRef {
+  #left(ref: Json, c: number): LetterRef {
     return ref === -1 ? -1 : this.ref(ref, c);
   }
 
   /** The payload of any other text edit (`op[4]` on), after its tag. */
-  private _payload(op: EditOperation, tag: number, c: number, row: Json[]) {
+  #payload(op: EditOperation, tag: number, c: number, row: Json[]) {
     // Ranges, then the lamport and the letters brought back, if any.
     if (tag === 1) {
       row.push(this.ranges(op[4]!, c), ...op.slice(5));
@@ -265,7 +265,7 @@ class TextRowEncoder extends Encoder {
     // Base's state has no lamport: its key, then ranges and their value.
     if (tag === 5) {
       row.push(numericKey(text(op[4])));
-      this._values(op, 5, c, row);
+      this.#values(op, 5, c, row);
       return;
     }
     // A key letters inherit: one value, then the letter after its ranges.
@@ -277,11 +277,11 @@ class TextRowEncoder extends Encoder {
     // `lamport, key`, then ranges and their value, alternately. A key that
     // reads as a number is written as one.
     row.push(op[4]!, numericKey(text(op[5])));
-    this._values(op, 6, c, row);
+    this.#values(op, 6, c, row);
   }
 
   /** Ranges and their value, alternately, from `op[from]` on. */
-  private _values(op: EditOperation, from: number, c: number, row: Json[]) {
+  #values(op: EditOperation, from: number, c: number, row: Json[]) {
     for (let at = from; at < op.length; at += 2) {
       row.push(this.ranges(op[at]!, c));
       if (at + 1 < op.length) row.push(op[at + 1]!);
@@ -293,14 +293,14 @@ class TextRowEncoder extends Encoder {
    * list, which an insert's right origin never is) and their state, then the
    * letters around them.
    */
-  private _again(op: EditOperation, c: number): [string, Json[], ...Json[]] {
+  #again(op: EditOperation, c: number): [string, Json[], ...Json[]] {
     const ids = this.ranges(op[5]!, c);
     const row: [string, Json[], ...Json[]] = [
       text(op[4]),
       isList(ids) ? [...ids] : [ids, 1],
     ];
     if (op.length > 6) row.push(op[6]!);
-    for (const ref of op.slice(7)) row.push(this._left(ref, c));
+    for (const ref of op.slice(7)) row.push(this.#left(ref, c));
     return row;
   }
 }
@@ -336,17 +336,17 @@ class TextRowDecoder extends Decoder {
     return value;
   }
 
-  private _rangeRef(value: Json, c: number): Json {
+  #rangeRef(value: Json, c: number): Json {
     if (typeof value !== "number") return this.ref(value, c);
     this._lastCounter = c - value;
     return this._lastCounter + 1;
   }
 
   ranges(ranges: Json, c: number): Json {
-    if (!isList(ranges)) return this._rangeRef(ranges, c);
+    if (!isList(ranges)) return this.#rangeRef(ranges, c);
     const out: Json[] = [];
     for (let index = 0; index < ranges.length; index += 2)
-      out.push(this._rangeRef(ranges[index]!, c), ranges[index + 1]!);
+      out.push(this.#rangeRef(ranges[index]!, c), ranges[index + 1]!);
     return out;
   }
 
@@ -357,14 +357,13 @@ class TextRowDecoder extends Decoder {
     const head = row[at]!;
     const length = end - at;
     if (typeof head !== "number") {
-      // Letters inserted again: their ids are a list (see `_again`).
-      if (isList(row[at + 1])) return this._again(row, at, session, c);
+      // Letters inserted again: their ids are a list (see `#again`).
+      if (isList(row[at + 1])) return this.#again(row, at, session, c);
       this.next = c + lettersOf(head).length;
       if (length === 1) return [3, session, c, head];
       const right = this.right(row[at + 1]!, c);
       if (length === 2) return [3, session, c, head, right];
-      const left = row[at + 2]!;
-      return [3, session, c, head, right, left === -1 ? -1 : this.ref(left, c)];
+      return [3, session, c, head, right, this.#left(row[at + 2]!, c)];
     }
     const tag =
       head !== STATE ? -head : isInherited(row[at + 1]) ? INHERITED : STATE;
@@ -375,11 +374,11 @@ class TextRowDecoder extends Decoder {
         break;
       case 2:
         op.push(row[at + 1]!, keyOf(row[at + 2]));
-        this._values(row, at + 3, c, op);
+        this.#values(row, at + 3, c, op);
         break;
       case 5:
         op.push(keyOf(row[at + 1]));
-        this._values(row, at + 2, c, op);
+        this.#values(row, at + 2, c, op);
         break;
       case INHERITED:
         op.push(
@@ -395,8 +394,8 @@ class TextRowDecoder extends Decoder {
     return op;
   }
 
-  /** Letters inserted again with their ids, from `row[at]` (see `_again` of `TextRowEncoder`). */
-  private _again(
+  /** Letters inserted again with their ids, from `row[at]` (see `#again` of `TextRowEncoder`). */
+  #again(
     row: readonly Json[],
     at: number,
     session: string,
@@ -405,13 +404,17 @@ class TextRowDecoder extends Decoder {
     const op: EditOperation = [3, AGAIN, session, c, row[at]!];
     op.push(this.ranges(row[at + 1]!, c));
     if (row.length > at + 2) op.push(row[at + 2]!);
-    for (const ref of row.slice(at + 3))
-      op.push(ref === -1 ? -1 : this.ref(ref, c));
+    for (const ref of row.slice(at + 3)) op.push(this.#left(ref, c));
     return op;
   }
 
+  /** An insert's parent, or Base's left letter: `-1` (none) as it is. */
+  #left(ref: Json, c: number): Json {
+    return ref === -1 ? -1 : this.ref(ref, c);
+  }
+
   /** Ranges and their value, alternately, from `row[from]` on. */
-  private _values(row: readonly Json[], from: number, c: number, op: Json[]) {
+  #values(row: readonly Json[], from: number, c: number, op: Json[]) {
     for (let index = from; index < row.length; index += 2) {
       op.push(this.ranges(row[index]!, c));
       if (index + 1 < row.length) op.push(row[index + 1]!);

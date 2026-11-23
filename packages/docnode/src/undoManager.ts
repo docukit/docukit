@@ -37,100 +37,100 @@ type UndoManagerEvent = { meta: UndoStackItem["meta"]; type: "undo" | "redo" };
 type Handler = (event: UndoManagerEvent) => void;
 
 export class UndoManager {
-  private readonly _doc: Doc;
-  private readonly _maxUndoSteps: number;
-  private readonly _mergeInterval: number;
+  readonly #doc: Doc;
+  readonly #maxUndoSteps: number;
+  readonly #mergeInterval: number;
   protected _undoStack: UndoStackItem[] = [];
-  protected _redoStack: UndoStackItem[] = [];
-  private _txType: "undo" | "redo" | "update" = "update";
-  private _lastUpdate: number | undefined;
-  private _pushHandlers = new Set<Handler>();
-  private _popHandlers = new Set<Handler>();
+  #redoStack: UndoStackItem[] = [];
+  #txType: "undo" | "redo" | "update" = "update";
+  #lastUpdate: number | undefined;
+  #pushHandlers = new Set<Handler>();
+  #popHandlers = new Set<Handler>();
 
   constructor(doc: Doc, options?: UndoManagerConfig) {
-    this._doc = doc;
-    this._maxUndoSteps = options?.maxUndoSteps ?? 0;
-    this._mergeInterval = options?.mergeInterval ?? 500;
+    this.#doc = doc;
+    this.#maxUndoSteps = options?.maxUndoSteps ?? 0;
+    this.#mergeInterval = options?.mergeInterval ?? 500;
     if (!this.isEnabled) return;
 
-    this._doc.onChange((event) => {
+    this.#doc.onChange((event) => {
       if (event.flags?.skipUndo) return;
       // The inverse as the core built it: decoding the event's batch would
       // only undo its encoding.
       const item: UndoStackItem = {
-        operations: this._doc["_inverseOperations"],
+        operations: this.#doc["_inverseOperations"],
         meta: new Map(),
       };
-      if (this._txType === "update") {
+      if (this.#txType === "update") {
         const now = Date.now();
         const lastItem = this._undoStack.at(-1);
         if (
           lastItem &&
-          this._lastUpdate !== undefined &&
-          now - this._lastUpdate < this._mergeInterval
+          this.#lastUpdate !== undefined &&
+          now - this.#lastUpdate < this.#mergeInterval
         ) {
           lastItem.operations = mergeDrafts(
             item.operations,
             lastItem.operations,
           );
-          this._pushHandlers.forEach((h) =>
+          this.#pushHandlers.forEach((h) =>
             h({ meta: lastItem.meta, type: "undo" }),
           );
         } else {
-          if (this._undoStack.length >= this._maxUndoSteps) {
+          if (this._undoStack.length >= this.#maxUndoSteps) {
             this._undoStack.shift();
           }
           this._undoStack.push(item);
-          this._pushHandlers.forEach((h) =>
+          this.#pushHandlers.forEach((h) =>
             h({ meta: item.meta, type: "undo" }),
           );
         }
-        this._redoStack = [];
-        this._lastUpdate = now;
-      } else if (this._txType === "undo") {
-        this._redoStack.push(item);
-        this._txType = "update";
-        this._pushHandlers.forEach((h) => h({ meta: item.meta, type: "redo" }));
+        this.#redoStack = [];
+        this.#lastUpdate = now;
+      } else if (this.#txType === "undo") {
+        this.#redoStack.push(item);
+        this.#txType = "update";
+        this.#pushHandlers.forEach((h) => h({ meta: item.meta, type: "redo" }));
       } else {
         this._undoStack.push(item);
-        this._txType = "update";
-        this._pushHandlers.forEach((h) => h({ meta: item.meta, type: "undo" }));
+        this.#txType = "update";
+        this.#pushHandlers.forEach((h) => h({ meta: item.meta, type: "undo" }));
       }
     });
   }
 
   get isEnabled() {
-    return this._maxUndoSteps > 0;
+    return this.#maxUndoSteps > 0;
   }
 
   undo() {
-    this._doc.forceCommit();
+    this.#doc.forceCommit();
     const item = this._undoStack.pop();
     if (!item) return;
-    this._txType = "undo";
-    this._lastUpdate = undefined;
+    this.#txType = "undo";
+    this.#lastUpdate = undefined;
     try {
-      this._doc.applyOperations(this._prepare(item.operations));
+      this.#doc.applyOperations(this.#prepare(item.operations));
     } finally {
       // Nothing may have changed (every operation was skipped), in which case
       // no change event resets the mode. It must not leak into the next edit.
-      this._txType = "update";
+      this.#txType = "update";
     }
-    this._popHandlers.forEach((h) => h({ meta: item.meta, type: "undo" }));
+    this.#popHandlers.forEach((h) => h({ meta: item.meta, type: "undo" }));
   }
 
   redo() {
-    this._doc.forceCommit();
-    const item = this._redoStack.pop();
+    this.#doc.forceCommit();
+    const item = this.#redoStack.pop();
     if (!item) return;
-    this._txType = "redo";
-    this._lastUpdate = undefined;
+    this.#txType = "redo";
+    this.#lastUpdate = undefined;
     try {
-      this._doc.applyOperations(this._prepare(item.operations));
+      this.#doc.applyOperations(this.#prepare(item.operations));
     } finally {
-      this._txType = "update";
+      this.#txType = "update";
     }
-    this._popHandlers.forEach((h) => h({ meta: item.meta, type: "redo" }));
+    this.#popHandlers.forEach((h) => h({ meta: item.meta, type: "redo" }));
   }
 
   canUndo() {
@@ -138,7 +138,7 @@ export class UndoManager {
   }
 
   canRedo() {
-    return this._redoStack.length > 0;
+    return this.#redoStack.length > 0;
   }
 
   /**
@@ -150,13 +150,13 @@ export class UndoManager {
     // Not only for the history: DocSync relies on this commit to push a pending
     // edit into its local operations batch, so the replacement document picks
     // it up. Do not skip it when undo is disabled.
-    this._doc.forceCommit();
+    this.#doc.forceCommit();
     return {
-      docId: this._doc.root.id,
-      docType: this._doc.root.type,
+      docId: this.#doc.root.id,
+      docType: this.#doc.root.type,
       undoStack: this._undoStack.map(exportStackItem),
-      redoStack: this._redoStack.map(exportStackItem),
-      ...(this._lastUpdate !== undefined && { lastUpdate: this._lastUpdate }),
+      redoStack: this.#redoStack.map(exportStackItem),
+      ...(this.#lastUpdate !== undefined && { lastUpdate: this.#lastUpdate }),
     };
   }
 
@@ -169,25 +169,25 @@ export class UndoManager {
       throw new TypeError("Invalid undo history");
     }
     if (
-      history.docId !== this._doc.root.id ||
-      history.docType !== this._doc.root.type
+      history.docId !== this.#doc.root.id ||
+      history.docType !== this.#doc.root.type
     ) {
       throw new Error("Undo history belongs to a different document");
     }
 
-    const maxSteps = this._maxUndoSteps;
+    const maxSteps = this.#maxUndoSteps;
     this._undoStack = importStack(history.undoStack, maxSteps);
-    this._redoStack = importStack(history.redoStack, maxSteps);
-    this._lastUpdate = history.lastUpdate;
-    this._txType = "update";
+    this.#redoStack = importStack(history.redoStack, maxSteps);
+    this.#lastUpdate = history.lastUpdate;
+    this.#txType = "update";
   }
 
   /** What applying a history item applies (see `prepareUndo`). */
-  private _prepare([ordered, patch]: DraftOperations): Operations {
-    const definition = editDefinition(this._doc);
+  #prepare([ordered, patch]: DraftOperations): Operations {
+    const definition = editDefinition(this.#doc);
     const prepared = ordered.map((operation): OrderedOperation => {
       if (operation[0] !== 3 || !definition?.prepareUndo) return operation;
-      return definition.prepareUndo(operation, this._doc);
+      return definition.prepareUndo(operation, this.#doc);
     });
     return compactOperations([prepared, patch]);
   }
@@ -197,9 +197,9 @@ export class UndoManager {
    * Text editor bindings will often store selection state here.
    */
   onPush(handler: Handler): () => void {
-    this._pushHandlers.add(handler);
+    this.#pushHandlers.add(handler);
     return () => {
-      this._pushHandlers.delete(handler);
+      this.#pushHandlers.delete(handler);
     };
   }
 
@@ -208,9 +208,9 @@ export class UndoManager {
    * Text editor bindings will often restore selection state here.
    */
   onPop(handler: Handler): () => void {
-    this._popHandlers.add(handler);
+    this.#popHandlers.add(handler);
     return () => {
-      this._popHandlers.delete(handler);
+      this.#popHandlers.delete(handler);
     };
   }
 }

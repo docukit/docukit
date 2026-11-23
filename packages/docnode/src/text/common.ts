@@ -37,13 +37,20 @@ export type Rules = {
   readonly opaque: string;
 };
 
-/** The rules of `inherit` (see `InheritRules`), and the opaque letters. */
-export function rulesOf(inherit: InheritRules, opaque = ""): Rules {
+/**
+ * The rules of `inherit` (see `InheritRules`), and the opaque letters; none
+ * without a key.
+ */
+export function rulesOf(
+  inherit: InheritRules = {},
+  opaque = "",
+): Rules | undefined {
   const exact = new Map<string, Inherit>();
   const prefixes: [string, Inherit][] = [];
   for (const [key, rule] of Object.entries(inherit))
     if (key.endsWith("*")) prefixes.push([key.slice(0, -1), rule]);
     else exact.set(key, rule);
+  if (exact.size + prefixes.length === 0) return undefined;
   return {
     get: (key) =>
       exact.get(key) ??
@@ -168,10 +175,10 @@ export function contentOf(
 export class SessionRuns<
   R extends { readonly c: number; readonly len: number },
 > {
-  private _chunks: R[][] = [[]];
+  #chunks: R[][] = [[]];
 
-  private _chunkFor(c: number): R[] {
-    const chunks = this._chunks;
+  #chunkFor(c: number): R[] {
+    const chunks = this.#chunks;
     let low = 0;
     let high = chunks.length - 1;
     while (low < high) {
@@ -182,12 +189,11 @@ export class SessionRuns<
     return chunks[low]!;
   }
 
-  private _last: R | undefined;
+  #last: R | undefined;
 
-  find(c: number): R | undefined {
-    const last = this._last;
-    if (last !== undefined && c >= last.c && c < last.c + last.len) return last;
-    const runs = this._chunkFor(c);
+  /** The last run that starts at `c` or before it, else the first one. */
+  #startingBy(c: number): R {
+    const runs = this.#chunkFor(c);
     let low = 0;
     let high = runs.length - 1;
     while (low < high) {
@@ -195,37 +201,35 @@ export class SessionRuns<
       if (runs[mid]!.c <= c) low = mid;
       else high = mid - 1;
     }
-    const run = runs[low]!;
+    return runs[low]!;
+  }
+
+  find(c: number): R | undefined {
+    const last = this.#last;
+    if (last !== undefined && c >= last.c && c < last.c + last.len) return last;
+    const run = this.#startingBy(c);
     if (c < run.c || c >= run.c + run.len) return undefined;
-    this._last = run;
+    this.#last = run;
     return run;
   }
 
   /** Whether any of the `length` ids from `c` is here. */
   overlaps(c: number, length: number): boolean {
     const last = c + length - 1;
-    const runs = this._chunkFor(last);
-    let low = 0;
-    let high = runs.length - 1;
-    while (low < high) {
-      const mid = (low + high + 1) >> 1;
-      if (runs[mid]!.c <= last) low = mid;
-      else high = mid - 1;
-    }
-    const run = runs[low]!;
+    const run = this.#startingBy(last);
     return run.c <= last && run.c + run.len > c;
   }
 
   /** The counter after its last run. */
   end(): number {
-    const runs = this._chunks[this._chunks.length - 1]!;
+    const runs = this.#chunks[this.#chunks.length - 1]!;
     const last = runs[runs.length - 1]!;
     return last.c + last.len;
   }
 
   /** Whether it has no run left (see `remove`). */
   get empty(): boolean {
-    return this._chunks.length === 0;
+    return this.#chunks.length === 0;
   }
 
   static from<R extends { readonly c: number; readonly len: number }>(
@@ -248,26 +252,26 @@ export class SessionRuns<
         runs[index] = unsorted[key - Math.floor(key / count) * count]!;
       }
     }
-    out._chunks = [];
+    out.#chunks = [];
     for (let index = 0; index < runs.length; index += CHUNK)
-      out._chunks.push(runs.slice(index, index + CHUNK));
+      out.#chunks.push(runs.slice(index, index + CHUNK));
     return out;
   }
 
   add(run: R): void {
-    const runs = this._chunkFor(run.c);
+    const runs = this.#chunkFor(run.c);
     if (runs.length === 0 || runs[runs.length - 1]!.c < run.c) runs.push(run);
     else runs.splice(lowerBound(runs, run.c), 0, run);
     if (runs.length < CHUNK * 2) return;
-    const chunks = this._chunks;
+    const chunks = this.#chunks;
     chunks.splice(chunks.indexOf(runs) + 1, 0, runs.splice(CHUNK));
   }
 
   remove(run: R): void {
-    if (this._last === run) this._last = undefined;
-    const runs = this._chunkFor(run.c);
+    if (this.#last === run) this.#last = undefined;
+    const runs = this.#chunkFor(run.c);
     runs.splice(lowerBound(runs, run.c), 1);
-    if (runs.length === 0) this._chunks.splice(this._chunks.indexOf(runs), 1);
+    if (runs.length === 0) this.#chunks.splice(this.#chunks.indexOf(runs), 1);
   }
 }
 

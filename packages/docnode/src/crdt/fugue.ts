@@ -1,6 +1,7 @@
 import type { Doc } from "../main.js";
 import type { Json } from "../types.js";
 import { kidIndex } from "../utils.js";
+import { isList, list, text } from "../wire.js";
 import {
   ColumnReader,
   ColumnWriter,
@@ -68,40 +69,44 @@ class List {
 
 /** The places of every parent of a document. */
 export class FugueSiblings {
-  private readonly _elements = new Map<string, Element>();
-  private readonly _lists = new Map<string, List>();
+  readonly #elements = new Map<string, Element>();
+  readonly #lists = new Map<string, List>();
   /** Places whose parent or right origin has not arrived, by id. */
-  private readonly _pending = new Map<string, Place>();
+  readonly #pending = new Map<string, Place>();
   /** Ids of pending places, by the id each waits for. */
-  private readonly _waiting = new Map<string, string[]>();
+  readonly #waiting = new Map<string, string[]>();
   /** Lists `load` read, built when something first asks for a place. */
-  private _deferred: [string, Stored][] = [];
+  #deferred: [string, Stored][] = [];
 
   /** Called with the id of each place once it is in its list. */
-  constructor(private readonly _onReady: (id: string) => void) {}
+  readonly #onReady: (id: string) => void;
+
+  constructor(onReady: (id: string) => void) {
+    this.#onReady = onReady;
+  }
 
   has(id: string): boolean {
-    this._ready();
-    return this._elements.has(id);
+    this.#ready();
+    return this.#elements.has(id);
   }
 
   /** Builds the lists `load` deferred. */
-  private _ready() {
-    if (this._deferred.length === 0) return;
-    const deferred = this._deferred;
-    this._deferred = [];
-    for (const [id, read] of deferred) this._build(id, read);
+  #ready() {
+    if (this.#deferred.length === 0) return;
+    const deferred = this.#deferred;
+    this.#deferred = [];
+    for (const [id, read] of deferred) this.#build(id, read);
   }
 
   /** The parent whose children place `id` orders, once it is in its list. */
   listOf(id: string): string | undefined {
-    this._ready();
-    return this._elements.get(id)?.list.id;
+    this.#ready();
+    return this.#elements.get(id)?.list.id;
   }
 
-  private _list(id: string) {
-    let list = this._lists.get(id);
-    if (!list) this._lists.set(id, (list = new List(id)));
+  #list(id: string) {
+    let list = this.#lists.get(id);
+    if (!list) this.#lists.set(id, (list = new List(id)));
     return list;
   }
 
@@ -111,52 +116,52 @@ export class FugueSiblings {
    * follows it.
    */
   create(id: string, owner: string, list: string, left: string | undefined) {
-    this._ready();
-    const listOf = this._list(list);
-    const after = left === undefined ? listOf.root : this._elements.get(left)!;
+    this.#ready();
+    const listOf = this.#list(list);
+    const after = left === undefined ? listOf.root : this.#elements.get(left)!;
     const element = after.right
       ? new Element(id, owner, listOf, after.next, 0, undefined)
       : new Element(id, owner, listOf, after, 1, after.next);
-    this._elements.set(id, element);
-    this._place(element);
+    this.#elements.set(id, element);
+    this.#place(element);
     listOf.dirty = true;
-    this._onReady(id);
+    this.#onReady(id);
   }
 
   /** Adds a place. Adding one again changes nothing. */
   add(place: Place): void {
-    this._ready();
-    if (this._elements.has(place.id) || this._pending.has(place.id)) return;
-    if (!this._integrate(place) || this._waiting.size === 0) return;
+    this.#ready();
+    if (this.#elements.has(place.id) || this.#pending.has(place.id)) return;
+    if (!this.#integrate(place) || this.#waiting.size === 0) return;
     // Places that waited for it, and those that waited for them.
     const ready = [place.id];
     while (ready.length > 0) {
       const id = ready.pop()!;
-      const waiting = this._waiting.get(id);
+      const waiting = this.#waiting.get(id);
       if (!waiting) continue;
-      this._waiting.delete(id);
+      this.#waiting.delete(id);
       for (const pendingId of waiting) {
-        const pending = this._pending.get(pendingId)!;
-        this._pending.delete(pendingId);
-        if (this._integrate(pending)) ready.push(pendingId);
+        const pending = this.#pending.get(pendingId)!;
+        this.#pending.delete(pendingId);
+        if (this.#integrate(pending)) ready.push(pendingId);
       }
     }
   }
 
   /** Puts `place` in its list, or keeps it until what it needs arrives. */
-  private _integrate(place: Place) {
+  #integrate(place: Place) {
     const parent =
       place.parent === undefined
-        ? this._list(place.list).root
-        : this._elements.get(place.parent);
+        ? this.#list(place.list).root
+        : this.#elements.get(place.parent);
     const rs =
-      place.rs === undefined ? undefined : this._elements.get(place.rs);
+      place.rs === undefined ? undefined : this.#elements.get(place.rs);
     if (!parent || (place.rs !== undefined && !rs)) {
       const missing = parent ? place.rs! : place.parent!;
-      this._pending.set(place.id, place);
-      const waiting = this._waiting.get(missing);
+      this.#pending.set(place.id, place);
+      const waiting = this.#waiting.get(missing);
       if (waiting) waiting.push(place.id);
-      else this._waiting.set(missing, [place.id]);
+      else this.#waiting.set(missing, [place.id]);
       return false;
     }
     // The list is its parent's: a place never leaves the list it was made in.
@@ -164,10 +169,10 @@ export class FugueSiblings {
     // The list's root has nothing before it: only right children.
     const side = parent === list.root ? 1 : place.side;
     const element = new Element(place.id, place.owner, list, parent, side, rs);
-    this._elements.set(place.id, element);
-    this._place(element);
+    this.#elements.set(place.id, element);
+    this.#place(element);
     list.dirty = true;
-    this._onReady(place.id);
+    this.#onReady(place.id);
     return true;
   }
 
@@ -185,14 +190,14 @@ export class FugueSiblings {
     previous: string | undefined,
     write: (id: string) => Json,
   ): [Json, Json] | undefined {
-    this._ready();
-    const element = this._elements.get(id);
+    this.#ready();
+    const element = this.#elements.get(id);
     if (!element) return undefined;
     const parent = element.parent!;
     if (element.side === 0) return [[write(parent.id)], 0];
     if (
       previous !== undefined &&
-      parent === this._elements.get(previous) &&
+      parent === this.#elements.get(previous) &&
       element.rs === parent.rs
     )
       return ["", 0];
@@ -204,7 +209,7 @@ export class FugueSiblings {
 
   // ----- FugueMax --------------------------------------------------------
 
-  private _seq(element: Element | undefined) {
+  #seq(element: Element | undefined) {
     if (!element) return Infinity;
     const list = element.list;
     if (list.dirty) {
@@ -220,13 +225,13 @@ export class FugueSiblings {
    * Among the right children of one place: the reverse order of their right
    * origins, then ids.
    */
-  private _rightBefore(a: Element, b: Element) {
+  #rightBefore(a: Element, b: Element) {
     // Different right origins are at different positions (none is last).
-    if (a.rs !== b.rs) return this._seq(a.rs) > this._seq(b.rs);
+    if (a.rs !== b.rs) return this.#seq(a.rs) > this.#seq(b.rs);
     return a.id < b.id;
   }
 
-  private _place(element: Element) {
+  #place(element: Element) {
     const parent = element.parent!;
     const kids = element.side === 1 ? parent.right : parent.left;
     // Mostly the first kid of its side, or the second.
@@ -239,7 +244,7 @@ export class FugueSiblings {
     const list = Array.isArray(kids) ? kids : [kids];
     let index: number;
     if (element.side === 1) {
-      index = kidIndex(list, (kid) => this._rightBefore(element, kid));
+      index = kidIndex(list, (kid) => this.#rightBefore(element, kid));
       if (index < list.length) linkBefore(leftmost(list[index]!), element);
       else linkAfter(rightmost(parent), element);
     } else {
@@ -263,8 +268,8 @@ export class FugueSiblings {
     id: string,
     pick: (owner: string, place: string) => T | undefined,
   ): T | undefined {
-    this._ready();
-    const element = this._elements.get(id)!;
+    this.#ready();
+    const element = this.#elements.get(id)!;
     const root = element.list.root;
     for (let at = element.prev; at && at !== root; at = at.prev) {
       const found = pick(at.owner, at.id);
@@ -279,7 +284,7 @@ export class FugueSiblings {
    * A place that waits, as `writePlace` writes one with nothing before it.
    * The root of a list is always there: it has a parent.
    */
-  private static _writePending(place: Place): [Json, Json] {
+  static #writePending(place: Place): [Json, Json] {
     const parent = place.parent!;
     return place.side === 0 ? [[parent], 0] : [parent, place.rs ?? 0];
   }
@@ -342,9 +347,9 @@ export class FugueSiblings {
     shows: (owner: string, place: string) => boolean,
     sessions: SessionTable,
   ): Json {
-    this._ready();
+    this.#ready();
     // A document without places writes nothing for them.
-    if (this._elements.size + this._pending.size === 0) return 0;
+    if (this.#elements.size + this.#pending.size === 0) return 0;
     const columns = Array.from({ length: COLUMNS }, () => new ColumnWriter());
     const column = (field: number) => columns[field]!;
     let lastClock = 0;
@@ -358,15 +363,15 @@ export class FugueSiblings {
       lastClock = sessions.clock;
     };
     // A list is made with its first place: none is empty.
-    for (const list of this._lists.values()) {
-      this._seq(list.root);
+    for (const list of this.#lists.values()) {
+      this.#seq(list.root);
       const listClock = lastClock;
-      writeId(list.id, COLUMN.LIST_SESSION, COLUMN.LIST_CLOCK);
+      writeId(list.id, COLUMN_LIST_SESSION, COLUMN_LIST_CLOCK);
       lastClock = listClock;
       let count = 0;
       for (let at: Element | undefined = list.root.next; at; at = at.next)
         count++;
-      column(COLUMN.COUNT).push(count);
+      column(COLUMN_COUNT).push(count);
       const kids = children(list.id) ?? NO_IDS;
       let kid = 0;
       for (let at: Element | undefined = list.root.next; at; at = at.next) {
@@ -374,38 +379,38 @@ export class FugueSiblings {
         const parent = at.parent!;
         let kind: number;
         if (at.side === 1 && parent === prev) {
-          if (at.rs === prev.rs) kind = KIND.CHAIN;
+          if (at.rs === prev.rs) kind = KIND_CHAIN;
           else {
-            kind = KIND.AFTER;
-            column(COLUMN.RS).pushSigned(rsOffset(at));
+            kind = KIND_AFTER;
+            column(COLUMN_RS).pushSigned(rsOffset(at));
           }
-        } else if (at.side === 0 && parent === at.next) kind = KIND.BEFORE;
+        } else if (at.side === 0 && parent === at.next) kind = KIND_BEFORE;
         else if (
           parent === prev.parent &&
           at.side === prev.side &&
           (at.side === 0 || at.rs === prev.rs)
         )
-          kind = KIND.SIBLING;
+          kind = KIND_SIBLING;
         else {
-          kind = at.side === 1 ? KIND.RIGHT : KIND.LEFT;
-          column(COLUMN.PARENT).pushSigned(parent.seq - at.seq);
-          if (at.side === 1) column(COLUMN.RS).pushSigned(rsOffset(at));
+          kind = at.side === 1 ? KIND_RIGHT : KIND_LEFT;
+          column(COLUMN_PARENT).pushSigned(parent.seq - at.seq);
+          if (at.side === 1) column(COLUMN_RS).pushSigned(rsOffset(at));
         }
         const shown = kids[kid] === at.owner && shows(at.owner, at.id) ? 1 : 0;
         kid += shown;
         const other = at.owner === at.id ? 0 : 2;
-        column(COLUMN.CODE).push(kind * 4 + other + shown);
+        column(COLUMN_CODE).push(kind * 4 + other + shown);
         if (shown && !other) continue;
-        writeId(at.id, COLUMN.SESSION, COLUMN.CLOCK);
+        writeId(at.id, COLUMN_SESSION, COLUMN_CLOCK);
         if (shown || !other) continue;
         const clock = lastClock;
-        writeId(at.owner, COLUMN.OWNER_SESSION, COLUMN.OWNER_CLOCK);
+        writeId(at.owner, COLUMN_OWNER_SESSION, COLUMN_OWNER_CLOCK);
         lastClock = clock;
       }
     }
     const pending: Json[] = [];
-    for (const place of this._pending.values()) {
-      const [origin, right] = FugueSiblings._writePending(place);
+    for (const place of this.#pending.values()) {
+      const [origin, right] = FugueSiblings.#writePending(place);
       pending.push([place.id, place.owner, place.list, origin, right]);
     }
     const stored: Json[] = [joinColumns(columns)];
@@ -423,7 +428,7 @@ export class FugueSiblings {
     children: (list: string) => readonly string[] | undefined,
     names: readonly string[],
   ): void {
-    this._ready();
+    this.#ready();
     const [joined, pending] = list(json);
     const readers = splitColumns(text(joined), COLUMNS).map(
       (column) => new ColumnReader(column),
@@ -435,11 +440,11 @@ export class FugueSiblings {
       lastClock += column(clockColumn).nextSigned();
       return joinId(session, lastClock);
     };
-    const lists = column(COLUMN.COUNT);
+    const lists = column(COLUMN_COUNT);
     // Every list has places: the counts are never 0, and none is left out.
     while (!lists.done) {
       const listClock = lastClock;
-      const listId = readId(COLUMN.LIST_SESSION, COLUMN.LIST_CLOCK);
+      const listId = readId(COLUMN_LIST_SESSION, COLUMN_LIST_CLOCK);
       lastClock = listClock;
       const count = lists.next();
       const kids = children(listId) ?? NO_IDS;
@@ -454,35 +459,35 @@ export class FugueSiblings {
       };
       const { ids, owners, sides, parents, rss } = read;
       for (let seq = 1; seq <= count; seq++) {
-        const code = column(COLUMN.CODE).next();
+        const code = column(COLUMN_CODE).next();
         const kind = code >> 2;
         let parent = seq - 1;
-        let side = kind === KIND.BEFORE || kind === KIND.LEFT ? 0 : 1;
+        let side = kind === KIND_BEFORE || kind === KIND_LEFT ? 0 : 1;
         // Right origins are made positions in the list: those that come from
         // the place before already are.
         let rs = 0;
-        if (kind === KIND.CHAIN) rs = rss[seq - 1]!;
-        else if (kind === KIND.AFTER) rs = column(COLUMN.RS).nextSigned();
-        else if (kind === KIND.BEFORE) parent = seq + 1;
-        else if (kind === KIND.SIBLING) {
+        if (kind === KIND_CHAIN) rs = rss[seq - 1]!;
+        else if (kind === KIND_AFTER) rs = column(COLUMN_RS).nextSigned();
+        else if (kind === KIND_BEFORE) parent = seq + 1;
+        else if (kind === KIND_SIBLING) {
           parent = parents[seq - 1]!;
           side = sides[seq - 1]!;
           rs = rss[seq - 1]!;
         } else {
           // `RIGHT` or `LEFT`.
-          parent = seq + column(COLUMN.PARENT).nextSigned();
-          if (kind === KIND.RIGHT) rs = column(COLUMN.RS).nextSigned();
+          parent = seq + column(COLUMN_PARENT).nextSigned();
+          if (kind === KIND_RIGHT) rs = column(COLUMN_RS).nextSigned();
         }
-        if (rs !== 0 && (kind === KIND.AFTER || kind === KIND.RIGHT)) rs += seq;
+        if (rs !== 0 && (kind === KIND_AFTER || kind === KIND_RIGHT)) rs += seq;
         const shown = code & 1;
         const other = code & 2;
         const owner = shown ? kids[kid++]! : "";
         const id =
-          shown && !other ? owner : readId(COLUMN.SESSION, COLUMN.CLOCK);
+          shown && !other ? owner : readId(COLUMN_SESSION, COLUMN_CLOCK);
         let ownerId = shown || !other ? owner || id : "";
         if (!ownerId) {
           const clock = lastClock;
-          ownerId = readId(COLUMN.OWNER_SESSION, COLUMN.OWNER_CLOCK);
+          ownerId = readId(COLUMN_OWNER_SESSION, COLUMN_OWNER_CLOCK);
           lastClock = clock;
         }
         ids.push(id);
@@ -493,9 +498,9 @@ export class FugueSiblings {
       }
       // A list new here is built as stored, when it is first needed: a
       // document can load and be read without it.
-      if (this._lists.has(listId) || this._pending.size > 0)
-        this._addStored(listId, read);
-      else this._deferred.push([listId, read]);
+      if (this.#lists.has(listId) || this.#pending.size > 0)
+        this.#addStored(listId, read);
+      else this.#deferred.push([listId, read]);
     }
     for (const row of list(pending)) {
       const [id, owner, parent, origin, right] = list(row);
@@ -514,7 +519,7 @@ export class FugueSiblings {
   }
 
   /** A stored list, place by place, as places that travel. */
-  private _addStored(list: string, read: Stored) {
+  #addStored(list: string, read: Stored) {
     const { ids, owners, sides, parents, rss } = read;
     const idAt = (seq: number) => (seq === 0 ? undefined : ids[seq - 1]!);
     ids.forEach((id, index) => {
@@ -531,9 +536,9 @@ export class FugueSiblings {
   }
 
   /** A new list, linked in its stored order: kids are met in their order. */
-  private _build(id: string, read: Stored) {
+  #build(id: string, read: Stored) {
     const { ids, owners, sides, parents, rss } = read;
-    const list = this._list(id);
+    const list = this.#list(id);
     const elements: Element[] = [list.root];
     ids.forEach((placeId, index) => {
       const side = sides[index + 1] === 0 ? 0 : 1;
@@ -545,7 +550,7 @@ export class FugueSiblings {
         side,
         undefined,
       );
-      this._elements.set(placeId, element);
+      this.#elements.set(placeId, element);
       elements.push(element);
     });
     let prev = list.root;
@@ -570,7 +575,7 @@ export class FugueSiblings {
       prev.next = element;
       prev = element;
     }
-    for (const placeId of ids) this._onReady(placeId);
+    for (const placeId of ids) this.#onReady(placeId);
   }
 }
 
@@ -588,17 +593,6 @@ type Stored = {
 
 const NO_IDS: readonly string[] = [];
 
-const isList = (value: Json | undefined): value is readonly Json[] =>
-  Array.isArray(value);
-
-const list = (value: Json | undefined): readonly Json[] =>
-  isList(value) ? value : [];
-
-/** A string of what was stored, or "" where something else is. */
-const text = (value: Json | undefined) =>
-  /* v8 ignore next -- @preserve: an engine stores its places whole. */
-  typeof value === "string" ? value : "";
-
 /**
  * For `toJSON` and `load`: the ids of the children of node `id`, in order, if
  * the document shows it.
@@ -612,33 +606,29 @@ export function childIds(doc: Doc, id: string): string[] | undefined {
 }
 
 /** How a stored place relates to the one before it in its list. */
-const KIND = {
-  /** Right child of the place before, with the same right origin. */
-  CHAIN: 0,
-  /** Right child of the place before, its right origin in `RS`. */
-  AFTER: 1,
-  /** Left child of the place after. */
-  BEFORE: 2,
-  /** Right child of the place in `PARENT`, its right origin in `RS`. */
-  RIGHT: 3,
-  /** Left child of the place in `PARENT`. */
-  LEFT: 4,
-  /** Same parent, side and right origin as the place before. */
-  SIBLING: 5,
-} as const;
+/** Right child of the place before, with the same right origin. */
+const KIND_CHAIN = 0;
+/** Right child of the place before, its right origin in `RS`. */
+const KIND_AFTER = 1;
+/** Left child of the place after. */
+const KIND_BEFORE = 2;
+/** Right child of the place in `PARENT`, its right origin in `RS`. */
+const KIND_RIGHT = 3;
+/** Left child of the place in `PARENT`. */
+const KIND_LEFT = 4;
+/** Same parent, side and right origin as the place before. */
+const KIND_SIBLING = 5;
 
-const COLUMN = {
-  LIST_SESSION: 0,
-  LIST_CLOCK: 1,
-  COUNT: 2,
-  CODE: 3,
-  SESSION: 4,
-  CLOCK: 5,
-  PARENT: 6,
-  RS: 7,
-  OWNER_SESSION: 8,
-  OWNER_CLOCK: 9,
-} as const;
+const COLUMN_LIST_SESSION = 0;
+const COLUMN_LIST_CLOCK = 1;
+const COLUMN_COUNT = 2;
+const COLUMN_CODE = 3;
+const COLUMN_SESSION = 4;
+const COLUMN_CLOCK = 5;
+const COLUMN_PARENT = 6;
+const COLUMN_RS = 7;
+const COLUMN_OWNER_SESSION = 8;
+const COLUMN_OWNER_CLOCK = 9;
 const COLUMNS = 10;
 
 /** Where a place's right origin is, from it (0 for none). */

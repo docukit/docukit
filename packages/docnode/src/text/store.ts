@@ -143,10 +143,10 @@ export class Run {
 class Derived {
   /**
    * Its attributes with the inherited ones, as of `effAt` (see
-   * `TextStore._epoch`). The same for every letter of the run too.
+   * `TextStore.#epoch`). The same for every letter of the run too.
    */
   eff: Attrs | undefined;
-  /** -1 before it is computed, `COMPUTING` while `_effOf` computes it. */
+  /** -1 before it is computed, `COMPUTING` while `#effOf` computes it. */
   effAt = -1;
   /**
    * Where its first opaque letter is (see `Rules.opaque`): from it on, its
@@ -163,14 +163,14 @@ class Derived {
   lo: Run | undefined;
   loC = 0;
   ro: Run | undefined;
-  /** Its attributes before a write `_pinsFor` tries, and that try. */
+  /** Its attributes before a write `#pinsFor` tries, and that try. */
   saved: Attrs | undefined;
   savedAt = -1;
 }
 
 const derived = (run: Run) => (run.d ??= new Derived());
 
-/** `Derived.effAt` of a run `TextStore._effOf` has yet to finish. */
+/** `Derived.effAt` of a run `TextStore.#effOf` has yet to finish. */
 const COMPUTING = -2;
 
 /** Stands for the root, or no run (see `Derived.lo`). */
@@ -214,7 +214,7 @@ type InsertEdit = [
   content: Json,
   ...refs: [] | [right: Ref] | [right: Ref, parent: Ref],
 ];
-/** `setLetterState` of `DELETED` (see `_applyDelete`). */
+/** `setLetterState` of `DELETED` (see `#applyDelete`). */
 type DeleteEdit = [
   operation: 3,
   tag: typeof TAG_DELETE,
@@ -223,7 +223,7 @@ type DeleteEdit = [
   ranges: Json,
   ...rest: [] | [lamport: number] | [lamport: number, letters: string],
 ];
-/** `setLetterState` of another key (see `_applyState`). */
+/** `setLetterState` of another key (see `#applyState`). */
 type StateEdit = [
   operation: 3,
   tag: typeof TAG_STATE,
@@ -264,8 +264,6 @@ type StoredEdit = TextEdit extends [3, ...infer Payload] ? Payload : never;
 
 type EditResult = TextInverse | undefined;
 const PENDING = Symbol("pending");
-
-const id = (s: string, c: number) => `${s}:${c}`;
 
 function compareIds(as: string, ac: number, bs: string, bc: number): number {
   if (as !== bs) return as < bs ? -1 : 1;
@@ -368,33 +366,33 @@ function initialState(content: Json | undefined): LetterState | undefined {
 }
 
 export class TextStore extends TextEngine {
-  private _session: string | undefined;
-  private _counter = 0;
-  private _renewals = 0;
-  private _lamport = 0;
+  #session: string | undefined;
+  #counter = 0;
+  #renewals = 0;
+  #lamport = 0;
   /** The lamport of `DELETED` alone: only bringing letters back moves it. */
-  private _deletes = 0;
-  private _index = new Map<string, SessionRuns<Run>>();
-  private _roots = new Map<string, Run>();
-  private _flows: Flow[] = [];
-  private _sorted: Flow[] | undefined;
-  private _kids: [Kids, Kids] = [newKids(), newKids()];
-  private _kidsReady = true;
-  private _pending: TextEdit[] = [];
-  /** Runs that may now join the run after them (see `_settle`). */
-  private _cut: Run[] = [];
+  #deletes = 0;
+  #index = new Map<string, SessionRuns<Run>>();
+  #roots = new Map<string, Run>();
+  protected _flows: Flow[] = [];
+  #sorted: Flow[] | undefined;
+  #kids: [Kids, Kids] = [newKids(), newKids()];
+  #kidsReady = true;
+  #pending: TextEdit[] = [];
+  /** Runs that may now join the run after them (see `#settle`). */
+  #cut: Run[] = [];
   /**
    * Bumped by every change of state that letters may inherit: the
    * attributes runs computed before it (`Run.eff`) are computed again.
    */
-  private _epoch = 0;
-  /** Counts the writes `_pinsFor` tries. */
-  private _tries = 0;
+  #epoch = 0;
+  /** Counts the writes `#pinsFor` tries. */
+  #tries = 0;
   /** Finds the inherit rules of a node (see `bind`). */
   /** The document whose nodes say their rules (see `bind`). */
-  private _doc: Doc | undefined;
+  #doc: Doc | undefined;
   /** Rules `setRules` gave, for nodes that may have no text yet. */
-  private _given: Map<string, Rules | undefined> | undefined;
+  #given: Map<string, Rules | undefined> | undefined;
   protected _positions: Positions<Run> = new TreePositions<Run>();
 
   /**
@@ -402,116 +400,116 @@ export class TextStore extends TextEngine {
    * the `defineText` state of their type.
    */
   bind(doc: Doc): void {
-    this._doc = doc;
+    this.#doc = doc;
   }
 
   /** The inherit rules of a node, known before it is in the document. */
   setRules(node: string, rules: Rules | undefined): void {
-    const given = (this._given ??= new Map());
+    const given = (this.#given ??= new Map());
     if (given.get(node) === rules && given.has(node)) return;
     given.set(node, rules);
-    const flow = this._roots.get(node)?.flow;
+    const flow = this.#roots.get(node)?.flow;
     if (!flow || (flow.known && flow.rules === rules)) return;
     flow.rules = rules;
     flow.known = true;
-    this._epoch++;
+    this.#epoch++;
   }
 
   /** The opaque letters of a flow, undefined when its rules are unknown. */
-  private _opaqueOf(flow: Flow): string | undefined {
-    const rules = this._rulesOf(flow);
+  #opaqueOf(flow: Flow): string | undefined {
+    const rules = this.#rulesOf(flow);
     if (!flow.known) return undefined;
     return rules ? rules.opaque : "";
   }
 
-  private _rulesOf(flow: Flow): Rules | undefined {
+  #rulesOf(flow: Flow): Rules | undefined {
     if (flow.known) return flow.rules;
     const node = flow.head.s;
-    const given = this._given;
+    const given = this.#given;
     const rules =
       given?.has(node) === true
         ? given.get(node)
-        : rulesOfNode(this._doc, node);
+        : rulesOfNode(this.#doc, node);
     if (rules === false) return undefined;
     flow.rules = rules;
     flow.known = true;
     // What was read without them is read again.
-    if (rules) this._epoch++;
+    if (rules) this.#epoch++;
     return rules;
   }
 
   // ----- identity --------------------------------------------------------
 
-  private _mint(doc: Doc, length: number): [string, number] {
+  #mint(doc: Doc, length: number): [string, number] {
     if (
-      this._session === undefined ||
-      this._renewals !== doc["_sessionRenewals"]
+      this.#session === undefined ||
+      this.#renewals !== doc["_sessionRenewals"]
     ) {
       const id = doc["_nodeIdGenerator"](doc);
       const dot = lastDot(id);
-      this._session = dot === -1 ? id : id.slice(0, dot);
-      this._renewals = doc["_sessionRenewals"];
+      this.#session = dot === -1 ? id : id.slice(0, dot);
+      this.#renewals = doc["_sessionRenewals"];
       // A custom generator names the same session after a reload: its
       // counters go on after the letters the document holds. One it already
       // has would be read as that letter (and as `CONTINUES`).
-      this._counter = this._index.get(this._session)?.end() ?? 0;
+      this.#counter = this.#index.get(this.#session)?.end() ?? 0;
     }
-    const counter = this._counter;
-    this._counter += length;
-    return [this._session, counter];
+    const counter = this.#counter;
+    this.#counter += length;
+    return [this.#session, counter];
   }
 
-  private _find(s: string, c: number): Element | undefined {
-    const run = this._runAt(s, c);
+  #find(s: string, c: number): Element | undefined {
+    const run = this.#runAt(s, c);
     return run && { run, off: c - run.c };
   }
 
-  private _runAt(s: string, c: number): Run | undefined {
-    return this._index.get(s)?.find(c);
+  #runAt(s: string, c: number): Run | undefined {
+    return this.#index.get(s)?.find(c);
   }
 
   /** Finds the element, creating a node's root if needed. */
-  private _locate(s: string, c: number): Element | undefined {
-    if (c === -1) return { run: this._rootOf(s), off: 0 };
-    return this._find(s, c);
+  #locate(s: string, c: number): Element | undefined {
+    if (c === -1) return { run: this.#rootOf(s), off: 0 };
+    return this.#find(s, c);
   }
 
-  private _kidsOf(side: 0 | 1, s: string, c: number): Run[] | undefined {
-    this._ensureKids();
-    const blocks = this._kids[side].get(s);
+  #kidsOf(side: 0 | 1, s: string, c: number): Run[] | undefined {
+    this.#ensureKids();
+    const blocks = this.#kids[side].get(s);
     return blocks && kidsAt(blocks, c);
   }
 
-  private _kidsIn(side: 0 | 1, s: string): KidBlocks {
-    const kids = this._kids[side];
+  #kidsIn(side: 0 | 1, s: string): KidBlocks {
+    const kids = this.#kids[side];
     let bySession = kids.get(s);
     if (!bySession) kids.set(s, (bySession = []));
     return bySession;
   }
 
-  private _indexRun(run: Run): void {
-    let runs = this._index.get(run.s);
-    if (!runs) this._index.set(run.s, (runs = new SessionRuns<Run>()));
+  #indexRun(run: Run): void {
+    let runs = this.#index.get(run.s);
+    if (!runs) this.#index.set(run.s, (runs = new SessionRuns<Run>()));
     runs.add(run);
   }
 
-  private _rootOf(node: string): Run {
-    const existing = this._roots.get(node);
+  #rootOf(node: string): Run {
+    const existing = this.#roots.get(node);
     if (existing) return existing;
     const run = new Run(node, -1, "", undefined, 0, 1, undefined, 0);
     const flow = new Flow(run, run);
     run.flow = flow;
     this._flows.push(flow);
-    this._sorted = undefined;
-    this._roots.set(node, run);
+    this.#sorted = undefined;
+    this.#roots.set(node, run);
     // While its node is there: a save needs them after it is gone too.
-    this._rulesOf(flow);
+    this.#rulesOf(flow);
     return run;
   }
 
   // ----- list order --------------------------------------------------------
 
-  private _ensureSeq(flow: Flow): void {
+  #ensureSeq(flow: Flow): void {
     if (!flow.dirty) return;
     let seq = 0;
     for (let run: Run | undefined = flow.head; run; run = run.next) {
@@ -522,74 +520,70 @@ export class TextStore extends TextEngine {
   }
 
   /** The position of a right origin, `Infinity` for none. */
-  private _position(s: string | undefined, c: number): number {
+  #position(s: string | undefined, c: number): number {
     if (s === undefined) return Infinity;
     // A right origin is known before the letter it is the right origin of.
-    const run = this._runAt(s, c)!;
-    this._ensureSeq(run.flow);
+    const run = this.#runAt(s, c)!;
+    this.#ensureSeq(run.flow);
     return run.seq + c - run.c;
   }
 
   /** FugueMax: right siblings in the reverse order of their right origins, then by id. */
-  private _rightBefore(a: Run, aOff: number, b: Run, bOff: number): boolean {
+  #rightBefore(a: Run, aOff: number, b: Run, bOff: number): boolean {
     // Two right origins in one list are never at the same position.
     if (a.rs !== b.rs || a.rc !== b.rc)
-      return this._position(a.rs, a.rc) > this._position(b.rs, b.rc);
+      return this.#position(a.rs, a.rc) > this.#position(b.rs, b.rc);
     return compareIds(a.s, a.c + aOff, b.s, b.c + bOff) < 0;
   }
 
-  private _leftBefore(a: Run, b: Run): boolean {
+  #leftBefore(a: Run, b: Run): boolean {
     return compareIds(a.s, a.c, b.s, b.c) < 0;
   }
 
   /** The index of the first kid that element `off` of `run` sorts before. */
-  private _rightIndex(kids: Run[], run: Run, off: number): number {
-    return kidIndex(kids, (kid) => this._rightBefore(run, off, kid, 0));
+  #rightIndex(kids: Run[], run: Run, off: number): number {
+    return kidIndex(kids, (kid) => this.#rightBefore(run, off, kid, 0));
   }
 
-  private _leftIndex(kids: Run[], run: Run): number {
-    return kidIndex(kids, (kid) => this._leftBefore(run, kid));
+  #leftIndex(kids: Run[], run: Run): number {
+    return kidIndex(kids, (kid) => this.#leftBefore(run, kid));
   }
 
-  private _nextSibling(
-    run: Run,
-    off: number,
-    anchor: Run,
-  ): Element | undefined {
-    const kids = this._kidsOf(1, run.s, run.c + off) ?? [];
-    const index = this._rightIndex(kids, anchor, 0);
+  #nextSibling(run: Run, off: number, anchor: Run): Element | undefined {
+    const kids = this.#kidsOf(1, run.s, run.c + off) ?? [];
+    const index = this.#rightIndex(kids, anchor, 0);
     if (
       off < run.len - 1 &&
-      index >= this._rightIndex(kids, run, off + 1) &&
-      this._rightBefore(anchor, 0, run, off + 1)
+      index >= this.#rightIndex(kids, run, off + 1) &&
+      this.#rightBefore(anchor, 0, run, off + 1)
     )
       return { run, off: off + 1 };
     return index < kids.length ? { run: kids[index]!, off: 0 } : undefined;
   }
 
-  private _hasRightChild(run: Run, off: number): boolean {
+  #hasRightChild(run: Run, off: number): boolean {
     return (
       off < run.len - 1 ||
-      (this._kidsOf(1, run.s, run.c + off)?.length ?? 0) > 0
+      (this.#kidsOf(1, run.s, run.c + off)?.length ?? 0) > 0
     );
   }
 
-  private _leftmost(element: Element): Element {
+  #leftmost(element: Element): Element {
     let current = element;
     while (true) {
-      const kids = this._kidsOf(0, current.run.s, current.run.c + current.off);
+      const kids = this.#kidsOf(0, current.run.s, current.run.c + current.off);
       if (!kids?.length) return current;
       current = { run: kids[0]!, off: 0 };
     }
   }
 
-  private _rightmost(run: Run, off: number): Run {
+  #rightmost(run: Run, off: number): Run {
     while (true) {
-      const kids = this._kidsOf(1, run.s, run.c + off);
+      const kids = this.#kidsOf(1, run.s, run.c + off);
       const last = kids?.at(-1);
       if (
         off < run.len - 1 &&
-        (!last || !this._rightBefore(run, off + 1, last, 0))
+        (!last || !this.#rightBefore(run, off + 1, last, 0))
       )
         off++;
       else if (last) {
@@ -599,12 +593,12 @@ export class TextStore extends TextEngine {
     }
   }
 
-  private _startingAt(element: Element): Run {
+  #startingAt(element: Element): Run {
     if (element.off === 0) return element.run;
-    return this._split(element.run, element.off);
+    return this.#split(element.run, element.off);
   }
 
-  private _split(run: Run, offset: number): Run {
+  #split(run: Run, offset: number): Run {
     const tail = new Run(
       run.s,
       run.c + offset,
@@ -624,24 +618,24 @@ export class TextStore extends TextEngine {
     const opaque = run.flow.rules ? run.flow.rules.opaque : "";
     if (cutIn(run.text, opaque) === offset && !opaque.includes(tail.text[0]!)) {
       const from = run.d;
-      if (from?.effAt === this._epoch) {
+      if (from?.effAt === this.#epoch) {
         const to = derived(tail);
         to.eff = from.eff;
         to.effAt = from.effAt;
       }
     }
     tail.flow = run.flow;
-    this._indexRun(tail);
-    this._linkAfter(run, tail);
-    this._addKid(tail);
+    this.#indexRun(tail);
+    this.#linkAfter(run, tail);
+    this.#addKid(tail);
     run.flow.dirty = true;
     // Both: a later cut of `run` puts a run between them, which only the
-    // tail sees again (see `_settle`).
-    this._cut.push(run, tail);
+    // tail sees again (see `#settle`).
+    this.#cut.push(run, tail);
     return tail;
   }
 
-  private _linkAfter(target: Run, run: Run): void {
+  #linkAfter(target: Run, run: Run): void {
     const flow = target.flow;
     this._positions.linked(target, run, true);
     const next = target.next;
@@ -653,7 +647,7 @@ export class TextStore extends TextEngine {
     flow.dirty = true;
   }
 
-  private _linkBefore(target: Run, run: Run): void {
+  #linkBefore(target: Run, run: Run): void {
     const flow = target.flow;
     this._positions.linked(target, run, false);
     const prev = target.prev;
@@ -665,9 +659,9 @@ export class TextStore extends TextEngine {
     flow.dirty = true;
   }
 
-  private _addKid(run: Run): void {
-    this._ensureKids();
-    const bySession = this._kidsIn(run.side, run.ps!);
+  #addKid(run: Run): void {
+    this.#ensureKids();
+    const bySession = this.#kidsIn(run.side, run.ps!);
     const list = kidsAt(bySession, run.pc);
     if (!list) {
       setKidsAt(bySession, run.pc, [run]);
@@ -675,70 +669,70 @@ export class TextStore extends TextEngine {
     }
     const index =
       run.side === 1
-        ? this._rightIndex(list, run, 0)
-        : this._leftIndex(list, run);
+        ? this.#rightIndex(list, run, 0)
+        : this.#leftIndex(list, run);
     if (index === list.length) list.push(run);
     else list.splice(index, 0, run);
   }
 
-  private _removeKid(run: Run): void {
-    const list = this._kidsOf(run.side, run.ps!, run.pc)!;
+  #removeKid(run: Run): void {
+    const list = this.#kidsOf(run.side, run.ps!, run.pc)!;
     list.splice(list.indexOf(run), 1);
   }
 
   /** Places a new run where its parent, side and right origin say. */
-  private _place(run: Run, parent: Element): void {
+  #place(run: Run, parent: Element): void {
     const { run: parentRun, off } = parent;
     run.flow = parentRun.flow;
     if (run.side === 1) {
-      const next = this._nextSibling(parentRun, off, run);
-      if (next) this._linkBefore(this._startingAt(this._leftmost(next)), run);
-      else this._linkAfter(this._rightmost(parentRun, off), run);
+      const next = this.#nextSibling(parentRun, off, run);
+      if (next) this.#linkBefore(this.#startingAt(this.#leftmost(next)), run);
+      else this.#linkAfter(this.#rightmost(parentRun, off), run);
     } else {
-      const kids = this._kidsOf(0, parentRun.s, parentRun.c + off) ?? [];
-      const index = this._leftIndex(kids, run);
+      const kids = this.#kidsOf(0, parentRun.s, parentRun.c + off) ?? [];
+      const index = this.#leftIndex(kids, run);
       const target =
         index < kids.length
-          ? this._leftmost({ run: kids[index]!, off: 0 })
+          ? this.#leftmost({ run: kids[index]!, off: 0 })
           : parent;
-      this._linkBefore(this._startingAt(target), run);
+      this.#linkBefore(this.#startingAt(target), run);
     }
-    this._addKid(run);
+    this.#addKid(run);
   }
 
   // ----- inherited state ----------------------------------------------------
 
   /** The left origin of the first letter of `run`, or undefined for the root. */
-  private _originOf(run: Run): Element | undefined {
+  #originOf(run: Run): Element | undefined {
     const d = derived(run);
     const known = d.lo;
     if (known === NO_RUN) return undefined;
     if (known && holds(known, d.loC))
       return { run: known, off: d.loC - known.c };
-    const found = this._findOrigin(run);
+    const found = this.#findOrigin(run);
     d.lo = found ? found.run : NO_RUN;
     d.loC = found ? found.run.c + found.off : 0;
     return found;
   }
 
   /** The right origin of `run`, if any (see `Derived.ro`). */
-  private _rightOf(run: Run): Element | undefined {
+  #rightOf(run: Run): Element | undefined {
     if (run.rs === undefined) return undefined;
     const d = derived(run);
     const known = d.ro;
     if (known && holds(known, run.rc))
       return { run: known, off: run.rc - known.c };
     // A right origin is known before the letter it is the right origin of.
-    const found = this._locate(run.rs, run.rc)!;
+    const found = this.#locate(run.rs, run.rc)!;
     d.ro = found.run;
     return found;
   }
 
-  private _findOrigin(run: Run): Element | undefined {
+  #findOrigin(run: Run): Element | undefined {
     let current = run;
     while (true) {
       // Letters always have a parent: the root, at least.
-      const parent = this._locate(current.ps!, current.pc)!;
+      const parent = this.#locate(current.ps!, current.pc)!;
       if (parent.run.c === -1) return undefined;
       // Fugue paper, Lemma 8(a): a left child has its parent's left origin.
       if (current.side === 1) return parent;
@@ -748,7 +742,7 @@ export class TextStore extends TextEngine {
   }
 
   /** Where the first opaque letter of `run` is (see `Run.cut`). */
-  private _cutOf(run: Run, rules: Rules): number {
+  #cutOf(run: Run, rules: Rules): number {
     const d = derived(run);
     if (d.cutFor !== run.text) {
       d.cut = cutIn(run.text, rules.opaque);
@@ -761,27 +755,27 @@ export class TextStore extends TextEngine {
    * The attributes of the letters of `run`, inherited ones included: of all
    * of them, or of those before its first opaque letter (see `Run.cut`).
    */
-  private _effOf(run: Run): Attrs {
-    const rules = this._rulesOf(run.flow);
+  #effOf(run: Run): Attrs {
+    const rules = this.#rulesOf(run.flow);
     if (!rules) return attrsOf(run.state);
-    if (run.d?.effAt === this._epoch) return run.d.eff!;
+    if (run.d?.effAt === this.#epoch) return run.d.eff!;
     // Origins come before what was typed next to them: no cycles, but long
     // chains, walked without recursion.
     // Only what is before an opaque letter is asked for or pushed (see
-    // `_effKnown`), and a run only once: it is computed before it is asked
+    // `#effKnown`), and a run only once: it is computed before it is asked
     // for again.
     const stack = [run];
     derived(run).effAt = COMPUTING;
     while (stack.length > 0) {
       const top = stack.at(-1)!;
-      const left = this._acyclic(this._originOf(top), rules);
-      if (left && !this._effKnown(left, rules)) {
+      const left = this.#acyclic(this.#originOf(top), rules);
+      if (left && !this.#effKnown(left, rules)) {
         derived(left.run).effAt = COMPUTING;
         stack.push(left.run);
         continue;
       }
-      const right = this._acyclic(this._rightOf(top), rules);
-      if (right && !this._effKnown(right, rules)) {
+      const right = this.#acyclic(this.#rightOf(top), rules);
+      if (right && !this.#effKnown(right, rules)) {
         derived(right.run).effAt = COMPUTING;
         stack.push(right.run);
         continue;
@@ -790,13 +784,13 @@ export class TextStore extends TextEngine {
       d.eff = withInherited(
         rules,
         top.state,
-        this._effAt(left),
-        this._effAt(right),
+        this.#effAt(left),
+        this.#effAt(right),
       );
       // The epoch after reading the origins: one in a flow whose rules were
       // not known yet moves it, and with the epoch from before, this run
       // would never count as known and be computed forever.
-      d.effAt = this._epoch;
+      d.effAt = this.#epoch;
       stack.pop();
     }
     return run.d!.eff!;
@@ -808,46 +802,43 @@ export class TextStore extends TextEngine {
    * with the same session make (see `NodeIds`). It is read as no origin, or
    * the stack would grow until memory runs out.
    */
-  private _acyclic(
-    element: Element | undefined,
-    rules: Rules,
-  ): Element | undefined {
+  #acyclic(element: Element | undefined, rules: Rules): Element | undefined {
     return element?.run.d?.effAt === COMPUTING &&
-      !this._effKnown(element, rules)
+      !this.#effKnown(element, rules)
       ? undefined
       : element;
   }
 
   /** Whether the attributes of `element` need no computing. */
-  private _effKnown(element: Element, rules: Rules): boolean {
+  #effKnown(element: Element, rules: Rules): boolean {
     const run = element.run;
     return (
       run.c === -1 ||
-      run.d?.effAt === this._epoch ||
-      element.off >= this._cutOf(run, rules)
+      run.d?.effAt === this.#epoch ||
+      element.off >= this.#cutOf(run, rules)
     );
   }
 
   /** The attributes of an element; the root has none. */
-  private _effAt(element: Element | undefined): Attrs | undefined {
+  #effAt(element: Element | undefined): Attrs | undefined {
     if (!element || element.run.c === -1) return undefined;
     const run = element.run;
-    const rules = this._rulesOf(run.flow);
-    if (rules && element.off >= this._cutOf(run, rules))
+    const rules = this.#rulesOf(run.flow);
+    if (rules && element.off >= this.#cutOf(run, rules))
       return attrsOf(run.state);
-    return this._effOf(run);
+    return this.#effOf(run);
   }
 
   /**
    * The parts of `run` with the same attributes: `[length, attrs]` of the
    * letters before its first opaque one, then of the rest.
    */
-  private _effParts(run: Run): [number, Attrs][] {
-    const rules = this._rulesOf(run.flow);
-    const cut = rules ? this._cutOf(run, rules) : run.len;
-    if (cut >= run.len) return [[run.len, this._effOf(run)]];
+  #effParts(run: Run): [number, Attrs][] {
+    const rules = this.#rulesOf(run.flow);
+    const cut = rules ? this.#cutOf(run, rules) : run.len;
+    if (cut >= run.len) return [[run.len, this.#effOf(run)]];
     const rest: [number, Attrs] = [run.len - cut, attrsOf(run.state)];
-    return cut === 0 ? [rest] : [[cut, this._effOf(run)], rest];
+    return cut === 0 ? [rest] : [[cut, this.#effOf(run)], rest];
   }
 
   /**
@@ -855,7 +846,7 @@ export class TextStore extends TextEngine {
    * they must say of their own to have `attrs`. Without `attrs`, they say
    * nothing: they have what they inherit.
    */
-  private _ownFor(
+  #ownFor(
     flow: Flow,
     text: string,
     parent: Element,
@@ -863,7 +854,7 @@ export class TextStore extends TextEngine {
     next: Element | undefined,
     attrs: Record<string, Json> | undefined,
   ): Record<string, Json> | undefined {
-    const rules = this._rulesOf(flow);
+    const rules = this.#rulesOf(flow);
     if (!attrs) return undefined;
     const cut = rules ? cutIn(text, rules.opaque) : text.length;
     if (!rules || cut === 0) {
@@ -874,15 +865,15 @@ export class TextStore extends TextEngine {
     }
     const left =
       side === 1
-        ? this._effAt(parent)
+        ? this.#effAt(parent)
         : parent.off > 0
-          ? this._effAt({ run: parent.run, off: parent.off - 1 })
-          : this._effAt(this._originOf(parent.run));
+          ? this.#effAt({ run: parent.run, off: parent.off - 1 })
+          : this.#effAt(this.#originOf(parent.run));
     const inherited = withInherited(
       rules,
       undefined,
       left,
-      this._effAt(next),
+      this.#effAt(next),
     ).attrs;
     let own: Record<string, Json> | undefined;
     for (const key in attrs) {
@@ -905,7 +896,7 @@ export class TextStore extends TextEngine {
 
   textOf(node: string): string {
     let text = "";
-    const root = this._roots.get(node);
+    const root = this.#roots.get(node);
     if (!root) return text;
     for (let run = root.next; run; run = run.next)
       if (!run.deleted) text += run.text;
@@ -914,13 +905,13 @@ export class TextStore extends TextEngine {
 
   spansOf(node: string): TextSpan[] {
     const out: TextSpan[] = [];
-    const root = this._roots.get(node);
+    const root = this.#roots.get(node);
     if (!root) return out;
     let key = "";
     for (let run = root.next; run; run = run.next) {
       if (run.deleted) continue;
       let at = 0;
-      for (const [length, attrs] of this._effParts(run)) {
+      for (const [length, attrs] of this.#effParts(run)) {
         const text =
           at === 0 && length === run.len
             ? run.text
@@ -939,7 +930,7 @@ export class TextStore extends TextEngine {
 
   /** The visible length of a node's text. */
   lengthOf(node: string): number {
-    const root = this._roots.get(node);
+    const root = this.#roots.get(node);
     if (!root) return 0;
     return this._positions.length(root);
   }
@@ -949,7 +940,7 @@ export class TextStore extends TextEngine {
     if (index < 0) return undefined;
     const found = this._seek(node, index);
     if (typeof found === "number") return undefined;
-    return id(found.run.s, found.run.c + found.off);
+    return `${found.run.s}:${found.run.c + found.off}`;
   }
 
   /**
@@ -960,8 +951,8 @@ export class TextStore extends TextEngine {
     const parts = /^(.*):(\d+)$/s.exec(letter);
     if (!parts) return undefined;
     const c = Number(parts[2]);
-    const run = this._runAt(parts[1]!, c);
-    const root = this._roots.get(node);
+    const run = this.#runAt(parts[1]!, c);
+    const root = this.#roots.get(node);
     if (!run || !root) return undefined;
     if (run.flow !== root.flow) return undefined;
     return this._positions.before(root, run) + (run.visible ? c - run.c : 0);
@@ -969,7 +960,7 @@ export class TextStore extends TextEngine {
 
   /** The visible element at `index` of the node's text, or the text length. */
   protected _seek(node: string, index: number): Seek<Run> | number {
-    const root = this._roots.get(node);
+    const root = this.#roots.get(node);
     if (!root) return 0;
     const length = this._positions.length(root);
     return index < length ? this._positions.seek(root, index) : length;
@@ -977,23 +968,23 @@ export class TextStore extends TextEngine {
 
   // ----- local operations ---------------------------------------------------
 
-  private _record(doc: Doc, operation: TextEdit, inverse: TextInverse): void {
+  #record(doc: Doc, operation: TextEdit, inverse: TextInverse): void {
     doc["_operations"][0].push(operation);
     doc["_inverseOperations"][0].push(inverse);
     doc["_hasEdits"] = true;
   }
 
-  private _commit(doc: Doc, payload: TextEdit): void {
+  #commit(doc: Doc, payload: TextEdit): void {
     const inverse = this.apply(doc, payload);
-    /* v8 ignore if -- @preserve: a write that loses to one of another
-       replica with the same session and lamport (a generator that gives two
-       replicas one session). */
+    // A write that loses to one of another replica with the same session and
+    // lamport (a generator that gives two replicas one session).
+    /* v8 ignore next -- @preserve */
     if (inverse === undefined) return;
-    this._record(doc, payload, inverse);
+    this.#record(doc, payload, inverse);
   }
 
   /** Inserts letters typed here, a child of `parent` on `side` before `next`. */
-  private _commitInsert(
+  #commitInsert(
     doc: Doc,
     text: string,
     parent: Element,
@@ -1001,7 +992,7 @@ export class TextStore extends TextEngine {
     next: Element | undefined,
     attrs: Record<string, Json> | undefined,
   ): void {
-    const [s, c] = this._mint(doc, text.length);
+    const [s, c] = this.#mint(doc, text.length);
     const payload = encodeInsert(s, c, text, parent, side, next, attrs);
     const state = initialState(payload[3]);
     const run = new Run(
@@ -1015,11 +1006,11 @@ export class TextStore extends TextEngine {
       next ? next.run.c + next.off : 0,
     );
     run.state = state;
-    this._ensureKids();
+    this.#ensureKids();
     const touched: Run[] = [];
-    const inverse = this._insertRun(run, parent, touched);
-    this._settle(doc, touched);
-    this._record(doc, payload, inverse);
+    const inverse = this.#insertRun(run, parent, touched);
+    this.#settle(doc, touched);
+    this.#record(doc, payload, inverse);
   }
 
   /**
@@ -1035,11 +1026,11 @@ export class TextStore extends TextEngine {
   ): void {
     if (attrs && Object.hasOwn(attrs, DELETED)) throw deletedKey();
     if (text.length === 0) return;
-    const left = this._leftOf(node, index);
-    const [parent, side] = this._parentFor(left);
-    const next = this._nextOf(left);
-    const own = this._ownFor(left.run.flow, text, parent, side, next, attrs);
-    this._commitInsert(doc, text, parent, side, next, own);
+    const left = this.#leftOf(node, index);
+    const [parent, side] = this.#parentFor(left);
+    const next = this.#nextOf(left);
+    const own = this.#ownFor(left.run.flow, text, parent, side, next, attrs);
+    this.#commitInsert(doc, text, parent, side, next, own);
   }
 
   /**
@@ -1047,8 +1038,8 @@ export class TextStore extends TextEngine {
    * off the middle of a surrogate pair. The node's root for index 0, as if
    * it were the visible letter at -1.
    */
-  private _leftOf(node: string, index: number): Seek<Run> {
-    const root = this._rootOf(node);
+  #leftOf(node: string, index: number): Seek<Run> {
+    const root = this.#rootOf(node);
     const start = { run: root, off: 0, before: -1 };
     if (index <= 0) return start;
     const length = this._positions.length(root);
@@ -1067,35 +1058,35 @@ export class TextStore extends TextEngine {
     return left;
   }
 
-  private _nextOf(element: Element): Element | undefined {
+  #nextOf(element: Element): Element | undefined {
     if (element.off < element.run.len - 1)
       return { run: element.run, off: element.off + 1 };
     return element.run.next ? { run: element.run.next, off: 0 } : undefined;
   }
 
   /** The Fugue rule: right child of the left element, or left child of the next one. */
-  private _parentFor(left: Element): [Element, 0 | 1] {
-    if (!this._hasRightChild(left.run, left.off)) return [left, 1];
-    return [this._nextOf(left)!, 0];
+  #parentFor(left: Element): [Element, 0 | 1] {
+    if (!this.#hasRightChild(left.run, left.off)) return [left, 1];
+    return [this.#nextOf(left)!, 0];
   }
 
   /** `index` clamped to the text and moved off the middle of a surrogate pair. */
-  private _boundary(node: string, index: number): number {
-    const left = this._leftOf(node, index);
+  #boundary(node: string, index: number): number {
+    const left = this.#leftOf(node, index);
     return left.before + left.off + 1;
   }
 
   /** `setLetterState` of `DELETED` on a visible range. */
   delete(doc: Doc, node: string, index: number, length: number): void {
-    const from = this._boundary(node, index);
-    const to = this._boundary(node, index + length);
+    const from = this.#boundary(node, index);
+    const to = this.#boundary(node, index + length);
     if (to <= from) return;
-    const root = this._rootOf(node);
+    const root = this.#rootOf(node);
     const first = this._positions.seek(root, from);
-    const [s, c] = this._mint(doc, 0);
-    this._ensureKids();
+    const [s, c] = this.#mint(doc, 0);
+    this.#ensureKids();
     // Deleting needs no new lamport: it wins over the undos it saw at theirs.
-    const lamport = this._deletes;
+    const lamport = this.#deletes;
     const touched: Run[] = [];
     const ranges: [string, number, number][] = [];
     let letters = "";
@@ -1103,20 +1094,20 @@ export class TextStore extends TextEngine {
     let off = first.off;
     for (let run = first.run; remaining > 0; run = run.next!) {
       if (!run.visible) continue;
-      if (off > 0) run = this._split(run, off);
-      if (run.len > remaining) this._split(run, remaining);
-      this._setDeleted(run, true, lamport);
+      if (off > 0) run = this.#split(run, off);
+      if (run.len > remaining) this.#split(run, remaining);
+      this.#setDeleted(run, true, lamport);
       touched.push(run);
       pushRange(ranges, run.s, run.c, run.len);
       letters += run.text;
       remaining -= run.len;
       off = 0;
     }
-    this._settle(doc, touched);
+    this.#settle(doc, touched);
     const encoded = encodeRanges(s, ranges);
     const payload: DeleteEdit = [3, TAG_DELETE, s, c, encoded];
     if (lamport > 0) payload.push(lamport);
-    this._record(doc, payload, [3, TAG_DELETE, s, c, encoded, 0, letters]);
+    this.#record(doc, payload, [3, TAG_DELETE, s, c, encoded, 0, letters]);
   }
 
   /**
@@ -1124,7 +1115,7 @@ export class TextStore extends TextEngine {
    * Returns 2 if the letters were visible and are not, or the other way, 1
    * if only the stamp changed, else 0.
    */
-  private _setDeleted(run: Run, deleted: boolean, lamport: number): number {
+  #setDeleted(run: Run, deleted: boolean, lamport: number): number {
     const current = run.state?.[DELETED];
     const was = current ? current[1] : run.deleted ? 0 : -1;
     if (deleted ? lamport < was : lamport <= was) return 0;
@@ -1151,10 +1142,10 @@ export class TextStore extends TextEngine {
     value: Json,
   ): void {
     if (key === DELETED) throw deletedKey();
-    from = this._boundary(node, from);
-    to = this._boundary(node, to);
+    from = this.#boundary(node, from);
+    to = this.#boundary(node, to);
     if (to <= from) return;
-    const root = this._rootOf(node);
+    const root = this.#rootOf(node);
     const ranges: [string, number, number][] = [];
     let remaining = to - from;
     const first = this._positions.seek(root, from);
@@ -1166,13 +1157,13 @@ export class TextStore extends TextEngine {
       remaining -= take;
       off = 0;
     }
-    const rules = this._rulesOf(root.flow);
-    const [s, c] = this._mint(doc, 0);
-    const lamport = ++this._lamport;
+    const rules = this.#rulesOf(root.flow);
+    const [s, c] = this.#mint(doc, 0);
+    const lamport = ++this.#lamport;
     const encoded = encodeRanges(s, ranges);
     const pins =
       rules?.get(key) !== undefined
-        ? this._pinsFor(root, rules, key, value, lamport, s, ranges)
+        ? this.#pinsFor(root, rules, key, value, lamport, s, ranges)
         : [];
     // Pins (the groups after the first) are at lamport 0: those that start
     // right after the group before say so with where they start (see
@@ -1198,7 +1189,7 @@ export class TextStore extends TextEngine {
     if (value !== null || pins.length > 0) payload.push(value);
     payload.push(...groups);
     if (payload.at(-1) === null) payload.pop();
-    this._commit(doc, payload);
+    this.#commit(doc, payload);
   }
 
   /**
@@ -1206,7 +1197,7 @@ export class TextStore extends TextEngine {
    * have now: a write of `value` there would change it. They are written
    * what they have, at lamport 0, so that any other write wins over it.
    */
-  private _pinsFor(
+  #pinsFor(
     root: Run,
     rules: Rules,
     key: string,
@@ -1215,12 +1206,12 @@ export class TextStore extends TextEngine {
     session: string,
     ranges: [string, number, number][],
   ): [Json, [string, number, number][]][] {
-    const head = (run: Run) => Math.min(this._cutOf(run, rules), run.len);
+    const head = (run: Run) => Math.min(this.#cutOf(run, rules), run.len);
     // What each run has before the try, kept on it (`Run.saved`).
-    const token = ++this._tries;
+    const token = ++this.#tries;
     for (let run = root.next; run; run = run.next)
       if (head(run) > 0) {
-        const eff = this._effOf(run);
+        const eff = this.#effOf(run);
         const d = derived(run);
         d.saved = eff;
         d.savedAt = token;
@@ -1229,11 +1220,11 @@ export class TextStore extends TextEngine {
     const written = new Map<Run, LetterState | undefined>();
     const stamped: Stamped = [value, lamport, session];
     for (const [rs, rc, len] of ranges)
-      this._forRange(rs, rc, len, (run) => {
+      this.#forRange(rs, rc, len, (run) => {
         written.set(run, run.state);
         run.state = { ...run.state, [key]: stamped };
       });
-    this._epoch++;
+    this.#epoch++;
     const groups = new Map<string, [Json, [string, number, number][]]>();
     let was: Json | undefined;
     for (let run = root.next; run; run = run.next) {
@@ -1241,7 +1232,7 @@ export class TextStore extends TextEngine {
       if (run.d?.savedAt === token) was = run.d.saved!.attrs[key];
       const length = head(run);
       if (written.has(run) || length === 0) continue;
-      const now = this._effOf(run).attrs[key];
+      const now = this.#effOf(run).attrs[key];
       if (sameValue(now ?? null, was ?? null)) continue;
       const pin = was ?? null;
       const index = JSON.stringify(pin);
@@ -1251,7 +1242,7 @@ export class TextStore extends TextEngine {
     }
     for (const [run, state] of written) run.state = state;
     // What the runs had before the try is theirs again, without computing.
-    const epoch = ++this._epoch;
+    const epoch = ++this.#epoch;
     for (let run = root.next; run; run = run.next) {
       // Every run has one: `head` looked at each.
       const d = derived(run);
@@ -1272,9 +1263,9 @@ export class TextStore extends TextEngine {
    */
   prepareUndo(doc: Doc, undo: TextInverse): TextInverse {
     if (undo[1] === TAG_STATE) {
-      const [s, c] = this._mint(doc, 0);
+      const [s, c] = this.#mint(doc, 0);
       const own = undo[2];
-      const out: StateEdit = [3, TAG_STATE, s, c, ++this._lamport, undo[5]];
+      const out: StateEdit = [3, TAG_STATE, s, c, ++this.#lamport, undo[5]];
       for (let at = 6; at < undo.length; at += 2) {
         out.push(encodeRanges(s, decodeRanges(own, undo[at]!)[0]));
         if (at + 1 < undo.length) out.push(undo[at + 1]!);
@@ -1282,93 +1273,93 @@ export class TextStore extends TextEngine {
       return out;
     }
     const out: DeleteEdit = [3, TAG_DELETE, undo[2], undo[3], undo[4]];
-    if (typeof undo[6] === "string") out.push(++this._deletes, undo[6]);
-    else if (this._deletes > 0) out.push(this._deletes);
+    if (typeof undo[6] === "string") out.push(++this.#deletes, undo[6]);
+    else if (this.#deletes > 0) out.push(this.#deletes);
     return out;
   }
 
   // ----- applying operations ---------------------------------------------
 
   apply(doc: Doc, payload: TextEdit): EditResult {
-    this._ensureKids();
+    this.#ensureKids();
     const touched: Run[] = [];
-    const result = this._applyRaw(doc, payload, touched);
+    const result = this.#applyRaw(doc, payload, touched);
     if (result === PENDING) {
-      this._pending.push(payload);
+      this.#pending.push(payload);
       return undefined;
     }
-    this._settle(doc, touched);
+    this.#settle(doc, touched);
     return result;
   }
 
-  private _settle(doc: Doc, touched: Run[]): void {
-    if (this._pending.length > 0) this._drainPending(doc, touched);
-    for (const run of touched) this._report(doc, run.flow.head.s);
-    this._joinAround(touched);
-    const cut = this._cut;
+  #settle(doc: Doc, touched: Run[]): void {
+    if (this.#pending.length > 0) this.#drainPending(doc, touched);
+    for (const run of touched) this.#report(doc, run.flow.head.s);
+    this.#joinAround(touched);
+    const cut = this.#cut;
     if (cut.length > 0) {
-      this._cut = [];
-      this._joinAround(cut);
+      this.#cut = [];
+      this.#joinAround(cut);
     }
   }
 
-  private _joinAround(runs: Iterable<Run>): void {
+  #joinAround(runs: Iterable<Run>): void {
     for (let run of runs) {
       if (run.prev && run.prev.next !== run) continue;
-      while (run.prev && this._mergeable(run.prev, run)) run = run.prev;
-      while (run.next && this._mergeable(run, run.next))
-        this._absorb(run, run.next);
+      while (run.prev && this.#mergeable(run.prev, run)) run = run.prev;
+      while (run.next && this.#mergeable(run, run.next))
+        this.#absorb(run, run.next);
     }
   }
 
-  private _absorb(left: Run, run: Run): void {
+  #absorb(left: Run, run: Run): void {
     left.text += run.text;
     const next = run.next;
     left.next = next;
     if (next) next.prev = left;
     else left.flow.tail = left;
-    this._removeKid(run);
-    this._index.get(run.s)!.remove(run);
+    this.#removeKid(run);
+    this.#index.get(run.s)!.remove(run);
     this._positions.removed(run);
     this._positions.changed(left);
     // Its letters are `left`'s now: a lookup kept on it misses (see `holds`).
     run.text = "";
   }
 
-  private _drainPending(doc: Doc, touched: Run[]): void {
+  #drainPending(doc: Doc, touched: Run[]): void {
     let progressed = true;
-    while (progressed && this._pending.length > 0) {
+    while (progressed && this.#pending.length > 0) {
       progressed = false;
       const rest: TextEdit[] = [];
-      for (const payload of this._pending) {
-        const result = this._applyRaw(doc, payload, touched);
+      for (const payload of this.#pending) {
+        const result = this.#applyRaw(doc, payload, touched);
         if (result === PENDING) rest.push(payload);
         else progressed = true;
       }
-      this._pending = rest;
+      this.#pending = rest;
     }
   }
 
-  private _applyRaw(
+  #applyRaw(
     doc: Doc,
     payload: TextEdit,
     touched: Run[],
   ): EditResult | typeof PENDING {
     if (payload[1] === TAG_DELETE)
-      return this._applyDelete(doc, payload, touched);
+      return this.#applyDelete(doc, payload, touched);
     if (payload[1] === TAG_STATE)
-      return this._applyState(doc, payload, touched);
+      return this.#applyState(doc, payload, touched);
     // Letters of this replica's session that it has not written yet come
     // from another replica with the same session (see `NodeIds`).
     if (
-      payload[1] === this._session &&
-      payload[2] + lettersOf(payload[3]).length > this._counter
+      payload[1] === this.#session &&
+      payload[2] + lettersOf(payload[3]).length > this.#counter
     )
       doc["_renewSession"]();
-    return this._applyInsert(payload, touched);
+    return this.#applyInsert(payload, touched);
   }
 
-  private _applyInsert(
+  #applyInsert(
     payload: InsertEdit,
     touched: Run[],
   ): EditResult | typeof PENDING {
@@ -1380,9 +1371,9 @@ export class TextStore extends TextEngine {
     // Inserts typed one after the other arrive fused, sometimes on top of
     // inserts this replica already applied: the known prefix is skipped.
     let known = 0;
-    if (c < (this._index.get(s)?.end() ?? 0)) {
+    if (c < (this.#index.get(s)?.end() ?? 0)) {
       while (known < text.length) {
-        const found = this._find(s, c + known);
+        const found = this.#find(s, c + known);
         if (!found) break;
         known += found.run.len - found.off;
       }
@@ -1409,27 +1400,27 @@ export class TextStore extends TextEngine {
     } else {
       [ps, pc] = decodeRef(s, parent);
     }
-    const parentElement = this._locate(ps, pc);
+    const parentElement = this.#locate(ps, pc);
     if (!parentElement) return PENDING;
-    if (rs !== undefined && !this._locate(rs, rc)) return PENDING;
+    if (rs !== undefined && !this.#locate(rs, rc)) return PENDING;
     const run = new Run(s, c, text, ps, pc, side, rs, rc);
     run.state = state;
-    return this._insertRun(run, parentElement, touched);
+    return this.#insertRun(run, parentElement, touched);
   }
 
   /** Adds a new run, a child of `parent`. Returns the insert's inverse. */
-  private _insertRun(run: Run, parent: Element, touched: Run[]): DeleteEdit {
+  #insertRun(run: Run, parent: Element, touched: Run[]): DeleteEdit {
     const { s, c } = run;
     const len = run.len;
     let placed = run;
-    if (this._canExtend(parent, run)) {
+    if (this.#canExtend(parent, run)) {
       placed = parent.run;
       placed.text += run.text;
       placed.flow.dirty = true;
       this._positions.changed(placed);
     } else {
-      this._indexRun(run);
-      this._place(run, parent);
+      this.#indexRun(run);
+      this.#place(run, parent);
     }
     touched.push(placed);
     // No run crosses a multiple of `RUN_CAP`: whatever order letters came in,
@@ -1439,13 +1430,13 @@ export class TextStore extends TextEngine {
       boundary < c + len;
       boundary += RUN_CAP
     ) {
-      placed = this._split(placed, boundary - placed.c);
+      placed = this.#split(placed, boundary - placed.c);
       touched.push(placed);
     }
     return [3, TAG_DELETE, s, c, encodeRange(s, s, c, len)];
   }
 
-  private _canExtend(parent: Element, run: Run): boolean {
+  #canExtend(parent: Element, run: Run): boolean {
     const left = parent.run;
     return (
       left.c !== -1 &&
@@ -1458,12 +1449,12 @@ export class TextStore extends TextEngine {
       left.rc === run.rc &&
       run.c % RUN_CAP !== 0 &&
       sameState(left.state, run.state) &&
-      !this._hasRightChild(left, parent.off)
+      !this.#hasRightChild(left, parent.off)
     );
   }
 
   /** Runs `callback` over runs covering exactly the given known range. */
-  private _forRange(
+  #forRange(
     s: string,
     c: number,
     len: number,
@@ -1472,22 +1463,22 @@ export class TextStore extends TextEngine {
     let cursor = c;
     let remaining = len;
     while (remaining > 0) {
-      const found = this._find(s, cursor)!;
+      const found = this.#find(s, cursor)!;
       let run = found.run;
-      if (found.off > 0) run = this._split(run, found.off);
-      if (run.len > remaining) this._split(run, remaining);
+      if (found.off > 0) run = this.#split(run, found.off);
+      if (run.len > remaining) this.#split(run, remaining);
       callback(run);
       remaining -= run.len;
       cursor += run.len;
     }
   }
 
-  private _rangesKnown(ranges: readonly [string, number, number][]): boolean {
+  #rangesKnown(ranges: readonly [string, number, number][]): boolean {
     for (const [s, c, len] of ranges) {
       let cursor = c;
       let remaining = len;
       while (remaining > 0) {
-        const found = this._find(s, cursor);
+        const found = this.#find(s, cursor);
         if (!found) return false;
         const available = found.run.len - found.off;
         remaining -= available;
@@ -1501,26 +1492,26 @@ export class TextStore extends TextEngine {
    * `setLetterState` of `DELETED`: `[1, session, counter, ranges, lamport?,
    * text?]`. With `text`, the letters of the ranges, it brings them back.
    */
-  private _applyDelete(
+  #applyDelete(
     doc: Doc,
     payload: DeleteEdit,
     touched: Run[],
   ): EditResult | typeof PENDING {
     const [, , s, c, encodedRanges, lamport = 0, letters] = payload;
     const [ranges] = decodeRanges(s, encodedRanges);
-    if (!this._rangesKnown(ranges)) return PENDING;
-    if (lamport > this._deletes) this._deletes = lamport;
+    if (!this.#rangesKnown(ranges)) return PENDING;
+    if (lamport > this.#deletes) this.#deletes = lamport;
     const revive = typeof letters === "string";
     const undo = !doc["_transactionFlags"].skipUndo;
     const changed: [string, number, number][] = [];
     let text = "";
     let at = 0;
     for (const [rs, rc, len] of ranges) {
-      this._forRange(rs, rc, len, (run) => {
+      this.#forRange(rs, rc, len, (run) => {
         // A replica that loaded the tombstones has no letters for them.
         if (revive) run.text = letters.slice(at, at + run.len);
         at += run.len;
-        const result = this._setDeleted(run, !revive, lamport);
+        const result = this.#setDeleted(run, !revive, lamport);
         if (result === 0) return;
         touched.push(run);
         if (result === 1 || !undo) return;
@@ -1540,7 +1531,7 @@ export class TextStore extends TextEngine {
    * ...]`. A negative lamport writes the groups after the first at lamport
    * 0 (see `format`).
    */
-  private _applyState(
+  #applyState(
     doc: Doc,
     payload: StateEdit,
     touched: Run[],
@@ -1555,19 +1546,19 @@ export class TextStore extends TextEngine {
     let previous: [string, number, number] | undefined;
     for (let at = 6; at < payload.length; at += 2) {
       const [ranges, continued] = decodeRanges(s, payload[at]!, c, previous);
-      if (!this._rangesKnown(ranges)) return PENDING;
+      if (!this.#rangesKnown(ranges)) return PENDING;
       const value = at + 1 < payload.length ? payload[at + 1]! : null;
       groups.push([ranges, value, at > 6 && (signed < 0 || continued)]);
       previous = ranges.at(-1);
     }
-    if (lamport > this._lamport) this._lamport = lamport;
+    if (lamport > this.#lamport) this.#lamport = lamport;
     const skipUndo = doc["_transactionFlags"].skipUndo;
     // The runs it writes, and what they had (with what they inherited).
     const writes: [Run, Stamped][] = [];
     for (const [ranges, value, weak] of groups) {
       const stamped: Stamped = [value, weak ? 0 : lamport, s];
       for (const [rs, rc, len] of ranges)
-        this._forRange(rs, rc, len, (run) => {
+        this.#forRange(rs, rc, len, (run) => {
           const current = run.state?.[key];
           if (current && !wins(stamped[1], s, current)) return;
           writes.push([run, stamped]);
@@ -1578,7 +1569,7 @@ export class TextStore extends TextEngine {
     if (!skipUndo)
       for (const [run] of writes) {
         let at = run.c;
-        for (const [length, attrs] of this._effParts(run)) {
+        for (const [length, attrs] of this.#effParts(run)) {
           const was = attrs.attrs[key] ?? null;
           const index = JSON.stringify(was);
           let entry = old.get(index);
@@ -1602,7 +1593,7 @@ export class TextStore extends TextEngine {
       run.state = state;
       touched.push(run);
     }
-    this._epoch++;
+    this.#epoch++;
     const inverse: StateEdit = [3, TAG_STATE, s, c, 0, key];
     // Removals last: a trailing `null` is left out.
     const entries = [...old.values()].sort(
@@ -1616,7 +1607,7 @@ export class TextStore extends TextEngine {
 
   // ----- change reporting --------------------------------------------------
 
-  private _report(doc: Doc, node: string): void {
+  #report(doc: Doc, node: string): void {
     const diff = doc["_diff"];
     if (doc.getNodeById(node) && !diff.inserted.has(node))
       diff.updated.add(node);
@@ -1649,7 +1640,6 @@ export class TextStore extends TextEngine {
     sessions: SessionTable,
     out: { encode(): string }[],
   ): StoredText | 0 {
-    const B = BITS;
     const sessionOf = (s: string) => sessions.index(s);
     const size = this._flows.length;
     const columns = Array.from(
@@ -1658,16 +1648,16 @@ export class TextStore extends TextEngine {
         new ColumnWriter(
           size,
           false,
-          field === COLUMN.FLOW_FLAGS || field === COLUMN.SHAPES,
+          field === COLUMN_FLOW_FLAGS || field === COLUMN_SHAPES,
         ),
     );
     const column = (field: number) => columns[field]!;
-    const shapeColumn = column(COLUMN.SHAPE);
-    const nodeSessions = column(COLUMN.NODE_SESSION);
-    const nodeClocks = column(COLUMN.NODE_CLOCK);
-    const flowFlags = column(COLUMN.FLOW_FLAGS);
-    const flowRuns = column(COLUMN.FLOW_RUNS);
-    const stateRuns = column(COLUMN.STATE_RUNS);
+    const shapeColumn = column(COLUMN_SHAPE);
+    const nodeSessions = column(COLUMN_NODE_SESSION);
+    const nodeClocks = column(COLUMN_NODE_CLOCK);
+    const flowFlags = column(COLUMN_FLOW_FLAGS);
+    const flowRuns = column(COLUMN_FLOW_RUNS);
+    const stateRuns = column(COLUMN_STATE_RUNS);
     const fields = new FieldWriter();
     const writeId = (id: string) => {
       nodeSessions.push(sessions.node(id));
@@ -1716,22 +1706,24 @@ export class TextStore extends TextEngine {
       return index;
     };
     const texts: string[] = [];
+    /** Each run's shape and length (see `LONG`), before shapes are ranked. */
+    const shapeCodes: number[] = [];
     const shapeBits: number[] = [];
-    const bitsIndex = new Int32Array(B.KEPT * 2).fill(-1);
+    const bitsIndex = new Int32Array(BITS_KEPT * 2).fill(-1);
     let curSession = 0;
     let curCounter = 0;
     let expectedKey: string | undefined;
-    const flows = this._sortedFlows();
+    const flows = this.#sortedFlows();
     let any = false;
     for (const flow of flows) {
       const head = flow.head;
-      const opaque = this._opaqueOf(flow);
+      const opaque = this.#opaqueOf(flow);
       if (!head.next) continue;
       any = true;
       const key = head.s;
       let flags = 0;
       if (expectedKey !== key) {
-        flags |= FLOW.KEY;
+        flags |= FLOW_KEY;
         writeId(key);
       }
       expectedKey = flow.nextKey ??= nextId(key);
@@ -1741,7 +1733,7 @@ export class TextStore extends TextEngine {
           hasState = true;
           break;
         }
-      if (hasState) flags |= FLOW.STATES;
+      if (hasState) flags |= FLOW_STATES;
       flowFlags.push(flags);
       let runs = 0;
       let prevPlain = false;
@@ -1782,7 +1774,7 @@ export class TextStore extends TextEngine {
           const side = run.side;
           const deleted = run.deleted;
           let bits = 0;
-          if (length >= LONG) fields.write(length - LONG, CUT.LONG);
+          if (length >= LONG) fields.write(length - LONG, CUT_LONG);
           const resumes =
             backPlain &&
             s === backS &&
@@ -1795,21 +1787,21 @@ export class TextStore extends TextEngine {
             runIndex = sessionOf(s);
           }
           if (resumes) {
-            bits |= B.RESUME;
+            bits |= BITS_RESUME;
             curSession = runIndex;
             curCounter = c + length;
           } else if (prevPlain && prevS === s && c + length === prevC) {
-            bits |= B.BEFORE;
+            bits |= BITS_BEFORE;
             curSession = runIndex;
             curCounter = prevC;
           } else {
             if (runIndex !== curSession) {
-              bits |= B.SESSION;
-              fields.write(runIndex, CUT.SESSION);
+              bits |= BITS_SESSION;
+              fields.write(runIndex, CUT_SESSION);
             }
             if (c !== curCounter) {
-              bits |= B.COUNTER;
-              fields.writeSigned(c - curCounter, CUT.COUNTER);
+              bits |= BITS_COUNTER;
+              fields.writeSigned(c - curCounter, CUT_COUNTER);
             }
             curSession = runIndex;
             curCounter = c + length;
@@ -1818,14 +1810,14 @@ export class TextStore extends TextEngine {
           if (resumes) {
             // Its parent is the end of `back`.
           } else if (side === 0 && ps === next?.s && pc === next?.c) {
-            bits |= B.LEFT_OF_NEXT;
+            bits |= BITS_LEFT_OF_NEXT;
           } else if (!parentIsPrev) {
-            bits |= B.PARENT;
+            bits |= BITS_PARENT;
             if (ps !== s) {
-              bits |= B.PARENT_SESSION;
-              fields.write(sessionOf(ps!), CUT.SESSION);
+              bits |= BITS_PARENT_SESSION;
+              fields.write(sessionOf(ps!), CUT_SESSION);
             }
-            fields.writeSigned((pc - c) * 2 + side, CUT.PARENT);
+            fields.writeSigned((pc - c) * 2 + side, CUT_PARENT);
           }
           const rightIsDefault = resumes
             ? rs === backRs && rc === backRc
@@ -1835,33 +1827,33 @@ export class TextStore extends TextEngine {
                 ? rs === next.s && rc === next.c
                 : rs === undefined;
           if (!rightIsDefault) {
-            if (rs === undefined) bits |= B.NO_RIGHT;
+            if (rs === undefined) bits |= BITS_NO_RIGHT;
             else if (rs === lastRight && rc === lastRightCounter)
-              bits |= B.SAME_RIGHT;
+              bits |= BITS_SAME_RIGHT;
             else {
-              bits |= B.RIGHT;
+              bits |= BITS_RIGHT;
               if (rs !== s) {
-                bits |= B.RIGHT_SESSION;
-                fields.write(sessionOf(rs), CUT.SESSION);
+                bits |= BITS_RIGHT_SESSION;
+                fields.write(sessionOf(rs), CUT_SESSION);
               }
-              fields.writeSigned(rc - lastRightCounter, CUT.RIGHT);
+              fields.writeSigned(rc - lastRightCounter, CUT_RIGHT);
               lastRight = rs;
               lastRightCounter = rc;
             }
           }
           if (!deleted) texts.push(text);
           else {
-            bits |= B.DELS;
+            bits |= BITS_DELS;
             // Opaque letters stay opaque when deleted (see `Rules.opaque`):
             // they are kept, with how far each is from the one before.
             const kept = keptLetters(text, opaque);
             if (kept !== undefined) {
-              bits |= B.KEPT;
+              bits |= BITS_KEPT;
               texts.push(kept[0]);
-              fields.write(kept[1].length, CUT.COUNTER);
+              fields.write(kept[1].length, CUT_COUNTER);
               let at = 0;
               for (const offset of kept[1]) {
-                fields.write(offset - at, CUT.COUNTER);
+                fields.write(offset - at, CUT_COUNTER);
                 at = offset;
               }
             }
@@ -1871,9 +1863,7 @@ export class TextStore extends TextEngine {
             shape = bitsIndex[bits] = shapeBits.length;
             shapeBits.push(bits);
           }
-          shapeColumn.push(
-            shape * (LONG + 1) + (length < LONG ? length : LONG),
-          );
+          shapeCodes.push(shape * (LONG + 1) + (length < LONG ? length : LONG));
           if (hasState) {
             const index = stateIndex(run.state);
             if (index === lastState) stateCount++;
@@ -1907,27 +1897,29 @@ export class TextStore extends TextEngine {
       }
       flowRuns.push(runs);
     }
-    const pending = this._pending
+    const pending = this.#pending
       .map(([, ...payload]) => JSON.stringify(payload))
       .sort();
     if (!any && pending.length === 0) return 0;
-    const counts = shapeColumn.tally(shapeBits.length * (LONG + 1));
+    // Shapes are numbered by how many runs have them: the most common is 0.
+    const counts = new Int32Array(shapeBits.length * (LONG + 1));
+    for (const code of shapeCodes) counts[code]!++;
     const ranked: number[] = [];
     for (let shape = 0; shape < counts.length; shape++)
       if (counts[shape]) ranked.push(shape);
     ranked.sort((a, b) => counts[b]! - counts[a]! || a - b);
     const rank = new Int32Array(counts.length);
-    const shapes = column(COLUMN.SHAPES);
+    const shapes = column(COLUMN_SHAPES);
     for (const [index, shape] of ranked.entries()) {
       rank[shape] = index;
       shapes.push(shape % (LONG + 1));
       shapes.push(shapeBits[Math.floor(shape / (LONG + 1))]!);
     }
-    shapeColumn.remap(rank);
+    for (const code of shapeCodes) shapeColumn.push(rank[code]!);
     out.push(
-      ...columns.slice(0, COLUMN.FIELDS),
+      ...columns.slice(0, COLUMN_FIELDS),
       fields,
-      ...columns.slice(COLUMN.FIELDS),
+      ...columns.slice(COLUMN_FIELDS),
     );
     // Keys and values come with the states that use them.
     const text = texts.join("");
@@ -1936,14 +1928,14 @@ export class TextStore extends TextEngine {
     return states.length > 0 ? [text, keyList, values, states] : [text];
   }
 
-  private _sortedFlows(): readonly Flow[] {
-    return (this._sorted ??= [...this._flows].sort((a, b) =>
+  #sortedFlows(): readonly Flow[] {
+    return (this.#sorted ??= [...this._flows].sort((a, b) =>
       compareIds(a.head.s, a.head.c, b.head.s, b.head.c),
     ));
   }
 
   /** Whether `run`, right after `left`, only differs from it by how it was built. */
-  private _mergeable(left: Run, run: Run): boolean {
+  #mergeable(left: Run, run: Run): boolean {
     return (
       left.c !== -1 &&
       left.s === run.s &&
@@ -1965,7 +1957,7 @@ export class TextStore extends TextEngine {
     if (json[0] !== FORMAT)
       throw new Error(`Unsupported text format: ${JSON.stringify(json[0])}`);
     const [, table, text, columns, ...rest] = json;
-    return store._readColumns(
+    return store.#readColumns(
       readSessions(table),
       [text, ...rest],
       splitColumns(columns),
@@ -1977,15 +1969,14 @@ export class TextStore extends TextEngine {
     columns: string[],
     sessions: string[],
   ): TextStore {
-    return new TextStore()._readColumns(sessions, stored, columns);
+    return new TextStore().#readColumns(sessions, stored, columns);
   }
 
-  private _readColumns(
+  #readColumns(
     sessions: string[],
     stored: StoredText,
     columns: string[],
   ): TextStore {
-    const B = BITS;
     const [text, keys = [], values = [], states = [], pending = []] = stored;
     const sessionIndex = new Map(
       sessions.map((session, index) => [session, index]),
@@ -1994,19 +1985,19 @@ export class TextStore extends TextEngine {
       { length: COLUMNS + 1 },
       (_, field) => columns[field] ?? "",
     );
-    const fields = new FieldReader(texts[COLUMN.FIELDS]!);
-    texts.splice(COLUMN.FIELDS, 1);
+    const fields = new FieldReader(texts[COLUMN_FIELDS]!);
+    texts.splice(COLUMN_FIELDS, 1);
     const readers = texts.map((text) => new ColumnReader(text));
     const column = (field: number) => readers[field]!;
-    const shapes = column(COLUMN.SHAPES);
+    const shapes = column(COLUMN_SHAPES);
     const shapeLengths: number[] = [];
     const shapeBits: number[] = [];
     while (!shapes.done) {
       shapeLengths.push(shapes.next());
       shapeBits.push(shapes.next());
     }
-    const nodeSessions = column(COLUMN.NODE_SESSION);
-    const nodeClocks = column(COLUMN.NODE_CLOCK);
+    const nodeSessions = column(COLUMN_NODE_SESSION);
+    const nodeClocks = column(COLUMN_NODE_CLOCK);
     const readId = () =>
       joinId(sessions[nodeSessions.next()]!, nodeClocks.next());
     const decodedStates: (LetterState | undefined)[] = [undefined];
@@ -2021,8 +2012,8 @@ export class TextStore extends TextEngine {
           session === -1 ? "" : sessions[session]!,
         ];
         if (keys[flat[at]!] === DELETED) {
-          if (lamport > this._deletes) this._deletes = lamport;
-        } else if (lamport > this._lamport) this._lamport = lamport;
+          if (lamport > this.#deletes) this.#deletes = lamport;
+        } else if (lamport > this.#lamport) this.#lamport = lamport;
       }
       decodedStates.push(state);
     }
@@ -2033,15 +2024,15 @@ export class TextStore extends TextEngine {
     let curSession = 0;
     let curCounter = 0;
     let previousKey: string | undefined;
-    const flowFlags = column(COLUMN.FLOW_FLAGS);
-    const flowRuns = column(COLUMN.FLOW_RUNS);
-    const runShapes = column(COLUMN.SHAPE);
-    const stateRuns = column(COLUMN.STATE_RUNS);
+    const flowFlags = column(COLUMN_FLOW_FLAGS);
+    const flowRuns = column(COLUMN_FLOW_RUNS);
+    const runShapes = column(COLUMN_SHAPE);
+    const stateRuns = column(COLUMN_STATE_RUNS);
     while (!flowFlags.done) {
       const flags = flowFlags.next();
-      const key = flags & FLOW.KEY ? readId() : nextId(previousKey!)!;
+      const key = flags & FLOW_KEY ? readId() : nextId(previousKey!)!;
       previousKey = key;
-      const root = this._rootOf(key);
+      const root = this.#rootOf(key);
       const flow = root.flow;
       let prev: Run = root;
       let back: Run | undefined;
@@ -2072,8 +2063,8 @@ export class TextStore extends TextEngine {
         const shape = runShapes.next();
         const bits = shapeBits[shape]!;
         let length = shapeLengths[shape]!;
-        if (length === LONG) length += fields.read(CUT.LONG);
-        const resumed = bits & B.RESUME ? back! : undefined;
+        if (length === LONG) length += fields.read(CUT_LONG);
+        const resumed = bits & BITS_RESUME ? back! : undefined;
         let s: string;
         let c: number;
         if (resumed) {
@@ -2081,14 +2072,14 @@ export class TextStore extends TextEngine {
           c = resumed.c + resumed.text.length;
           curSession = sessionIndex.get(s)!;
           curCounter = c + length;
-        } else if (bits & B.BEFORE) {
+        } else if (bits & BITS_BEFORE) {
           s = prev.s;
           c = prev.c - length;
           curSession = sessionIndex.get(s)!;
           curCounter = prev.c;
         } else {
-          if (bits & B.SESSION) curSession = fields.read(CUT.SESSION);
-          if (bits & B.COUNTER) curCounter += fields.readSigned(CUT.COUNTER);
+          if (bits & BITS_SESSION) curSession = fields.read(CUT_SESSION);
+          if (bits & BITS_COUNTER) curCounter += fields.readSigned(CUT_COUNTER);
           s = sessions[curSession]!;
           c = curCounter;
           curCounter += length;
@@ -2099,38 +2090,44 @@ export class TextStore extends TextEngine {
         if (resumed) {
           ps = s;
           pc = c - 1;
-        } else if (bits & B.PARENT) {
+        } else if (bits & BITS_PARENT) {
           ps =
-            bits & B.PARENT_SESSION ? sessions[fields.read(CUT.SESSION)]! : s;
-          const code = fields.readSigned(CUT.PARENT);
+            bits & BITS_PARENT_SESSION
+              ? sessions[fields.read(CUT_SESSION)]!
+              : s;
+          const code = fields.readSigned(CUT_PARENT);
           side = (code & 1) as 0 | 1;
           pc = c + (code - side) / 2;
-        } else if (bits & B.LEFT_OF_NEXT) side = 0;
+        } else if (bits & BITS_LEFT_OF_NEXT) side = 0;
         let rs: string | undefined;
         let rc = 0;
-        const defaultRight = !(bits & (B.RIGHT | B.NO_RIGHT | B.SAME_RIGHT));
-        if (bits & B.RIGHT) {
-          rs = bits & B.RIGHT_SESSION ? sessions[fields.read(CUT.SESSION)]! : s;
-          rc = lastRightCounter + fields.readSigned(CUT.RIGHT);
+        const defaultRight = !(
+          bits &
+          (BITS_RIGHT | BITS_NO_RIGHT | BITS_SAME_RIGHT)
+        );
+        if (bits & BITS_RIGHT) {
+          rs =
+            bits & BITS_RIGHT_SESSION ? sessions[fields.read(CUT_SESSION)]! : s;
+          rc = lastRightCounter + fields.readSigned(CUT_RIGHT);
           lastRight = rs;
           lastRightCounter = rc;
-        } else if (bits & B.SAME_RIGHT) {
+        } else if (bits & BITS_SAME_RIGHT) {
           rs = lastRight;
           rc = lastRightCounter;
         } else if (defaultRight && resumed) {
           rs = resumed.rs;
           rc = resumed.rc;
-        } else if (defaultRight && side === 0 && !(bits & B.LEFT_OF_NEXT)) {
+        } else if (defaultRight && side === 0 && !(bits & BITS_LEFT_OF_NEXT)) {
           rs = ps;
           rc = pc;
         }
         const run = new Run(s, c, "", ps, pc, side, rs, rc);
-        run.deleted = (bits & B.DELS) !== 0;
-        if (bits & B.KEPT) {
+        run.deleted = (bits & BITS_DELS) !== 0;
+        if (bits & BITS_KEPT) {
           let letters = "";
           let at = 0;
-          for (let left = fields.read(CUT.COUNTER); left > 0; left--) {
-            const offset = at + fields.read(CUT.COUNTER);
+          for (let left = fields.read(CUT_COUNTER); left > 0; left--) {
+            const offset = at + fields.read(CUT_COUNTER);
             const letter = String.fromCodePoint(text.codePointAt(position)!);
             position += letter.length;
             letters += DELETED_LETTER.repeat(offset - letters.length) + letter;
@@ -2142,7 +2139,7 @@ export class TextStore extends TextEngine {
           run.text = text.slice(position, position + length);
           position += length;
         }
-        if (flags & FLOW.STATES) {
+        if (flags & FLOW_STATES) {
           if (stateLeft === 0) {
             stateLeft = stateRuns.next();
             state = decodedStates[stateRuns.next()];
@@ -2153,7 +2150,7 @@ export class TextStore extends TextEngine {
         const runs = bySession.get(s);
         if (runs) runs.push(run);
         else bySession.set(s, [run]);
-        const parentWaits = bits & B.LEFT_OF_NEXT ? 1 : 0;
+        const parentWaits = bits & BITS_LEFT_OF_NEXT ? 1 : 0;
         push(
           run,
           parentWaits |
@@ -2161,7 +2158,7 @@ export class TextStore extends TextEngine {
         );
       }
       flow.tail = prev;
-      // Cut where `_insertRun` cuts (see `toStored`).
+      // Cut where `#insertRun` cuts (see `toStored`).
       for (let run = root.next; run; run = run.next)
         for (
           let boundary = (Math.floor(run.c / RUN_CAP) + 1) * RUN_CAP;
@@ -2173,25 +2170,25 @@ export class TextStore extends TextEngine {
         }
     }
     for (const [session, runs] of bySession)
-      this._index.set(session, SessionRuns.from(runs));
-    this._kidsReady = false;
+      this.#index.set(session, SessionRuns.from(runs));
+    this.#kidsReady = false;
     // Each one as `toStored` wrote it: its payload after the kind.
     // TODO: to be decided. The cast trusts the stored document, like the rest
     // of `Doc.fromJSON`. Storing pending edits as arrays instead of JSON
     // strings would remove it (a format change).
     for (const payload of pending)
-      this._pending.push([3, ...(JSON.parse(payload) as StoredEdit)]);
+      this.#pending.push([3, ...(JSON.parse(payload) as StoredEdit)]);
     return this;
   }
 
   /** Builds the kid lists of a loaded store from its lists. */
-  private _ensureKids(): void {
-    if (this._kidsReady) return;
-    this._kidsReady = true;
+  #ensureKids(): void {
+    if (this.#kidsReady) return;
+    this.#kidsReady = true;
     for (const flow of this._flows)
       for (let run: Run | undefined = flow.head; run; run = run.next)
         if (run.ps !== undefined) {
-          const bySession = this._kidsIn(run.side, run.ps);
+          const bySession = this.#kidsIn(run.side, run.ps);
           const list = kidsAt(bySession, run.pc);
           if (list) list.push(run);
           else setKidsAt(bySession, run.pc, [run]);
@@ -2202,69 +2199,12 @@ export class TextStore extends TextEngine {
 
   /** The runs of each list, in order: a tombstone is a `-` per letter. */
   protected _debugRuns(): string[][] {
-    return this._sortedFlows().map((flow) => {
+    return this.#sortedFlows().map((flow) => {
       const runs: string[] = [];
       for (let run = flow.head.next; run; run = run.next)
         runs.push(run.deleted ? "-".repeat(run.len) : run.text);
       return runs;
     });
-  }
-
-  protected _debugViews(): Record<string, string[]> {
-    const views: Record<string, string[]> = {};
-    for (const flow of this._flows) {
-      const ids: string[] = [];
-      for (let run = flow.head.next; run; run = run.next) {
-        if (!run.visible) continue;
-        for (let off = 0; off < run.len; off++)
-          ids.push(id(run.s, run.c + off));
-      }
-      views[flow.head.s] = ids;
-    }
-    return views;
-  }
-
-  protected _debugElements(): {
-    id: string;
-    deleted: boolean;
-    visible: boolean;
-    leftOrigin: string | undefined;
-    rightOrigin: string | undefined;
-  }[] {
-    const out: {
-      id: string;
-      deleted: boolean;
-      visible: boolean;
-      leftOrigin: string | undefined;
-      rightOrigin: string | undefined;
-    }[] = [];
-    for (const flow of this._sortedFlows()) {
-      for (let run = flow.head.next; run; run = run.next) {
-        for (let off = 0; off < run.len; off++) {
-          out.push({
-            id: id(run.s, run.c + off),
-            deleted: run.deleted,
-            visible: run.visible,
-            leftOrigin: this._leftOrigin({ run, off }),
-            rightOrigin: run.rs === undefined ? undefined : id(run.rs, run.rc),
-          });
-        }
-      }
-    }
-    return out;
-  }
-
-  /** Fugue paper, Lemma 8(a). */
-  private _leftOrigin(element: Element): string | undefined {
-    let { run, off } = element;
-    while (true) {
-      if (off > 0) return id(run.s, run.c + off - 1);
-      // Letters always have a parent: the root, at least.
-      if (run.side === 1) return id(run.ps!, run.pc);
-      const parent = this._find(run.ps!, run.pc)!;
-      run = parent.run;
-      off = parent.off;
-    }
   }
 }
 
@@ -2306,47 +2246,45 @@ function cutAt(run: Run, offset: number): Run {
 }
 
 /** Flags of a stored list. */
-const FLOW = {
-  /** Its node id is not the one right after the previous list's. */
-  KEY: 1,
-  /** Its runs have state (see `COLUMN.STATE_RUNS`). */
-  STATES: 2,
-};
+/** Its node id is not the one right after the previous list's. */
+const FLOW_KEY = 1;
+/** Its runs have state (see `COLUMN_STATE_RUNS`). */
+const FLOW_STATES = 2;
 /** Flags of a stored run. */
-const BITS = {
-  PARENT_SESSION: 1,
-  SAME_RIGHT: 2,
-  COUNTER: 4,
-  RESUME: 8,
-  LEFT_OF_NEXT: 16,
-  RIGHT: 32,
-  DELS: 64,
-  NO_RIGHT: 128,
-  SESSION: 256,
-  PARENT: 512,
-  RIGHT_SESSION: 1024,
-  /** It ends where the run before starts, of its session: typed before it. */
-  BEFORE: 2048,
-  /** Deleted, with its opaque letters among placeholders in the text. */
-  KEPT: 4096,
-};
+const BITS_PARENT_SESSION = 1;
+const BITS_SAME_RIGHT = 2;
+const BITS_COUNTER = 4;
+const BITS_RESUME = 8;
+const BITS_LEFT_OF_NEXT = 16;
+const BITS_RIGHT = 32;
+const BITS_DELS = 64;
+const BITS_NO_RIGHT = 128;
+const BITS_SESSION = 256;
+const BITS_PARENT = 512;
+const BITS_RIGHT_SESSION = 1024;
+/** It ends where the run before starts, of its session: typed before it. */
+const BITS_BEFORE = 2048;
+/** Deleted, with its opaque letters among placeholders in the text. */
+const BITS_KEPT = 4096;
 /** The columns of a stored text, the most common first. */
-const COLUMN = {
-  FLOW_FLAGS: 0,
-  FLOW_RUNS: 1,
-  SHAPE: 2,
-  SHAPES: 3,
-  /** The fields of the runs one after the other (see `CUT`). */
-  FIELDS: 4,
-  NODE_SESSION: 4,
-  NODE_CLOCK: 5,
-  /** Per list with state: `count, state` for each stretch of runs. */
-  STATE_RUNS: 6,
-};
+const COLUMN_FLOW_FLAGS = 0;
+const COLUMN_FLOW_RUNS = 1;
+const COLUMN_SHAPE = 2;
+const COLUMN_SHAPES = 3;
+/** The fields of the runs one after the other (see `CUT`). */
+const COLUMN_FIELDS = 4;
+const COLUMN_NODE_SESSION = 4;
+const COLUMN_NODE_CLOCK = 5;
+/** Per list with state: `count, state` for each stretch of runs. */
+const COLUMN_STATE_RUNS = 6;
 const COLUMNS = 7;
-const CUT = { LONG: 48, SESSION: 8, COUNTER: 40, PARENT: 40, RIGHT: 43 };
+const CUT_LONG = 48;
+const CUT_SESSION = 8;
+const CUT_COUNTER = 40;
+const CUT_PARENT = 40;
+const CUT_RIGHT = 43;
 const LONG = 16;
-/** Runs end at counters that are multiples of it (see `_insertRun`). */
+/** Runs end at counters that are multiples of it (see `#insertRun`). */
 const RUN_CAP = 4096;
 /** The stored format this version writes (see `toJSON`). */
 const FORMAT = 11;

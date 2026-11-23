@@ -26,7 +26,14 @@ import {
   isObjectEmpty,
   withTransaction,
 } from "../utils.js";
-import { decodeOperations, encodeOperations } from "../wire.js";
+import {
+  decodeOperations,
+  encodeOperations,
+  isList,
+  list,
+  num,
+  text,
+} from "../wire.js";
 import {
   ColumnReader,
   ColumnWriter,
@@ -38,7 +45,7 @@ import {
 import { FORMAT, storedSessions, withCrdt } from "../jsonDoc.js";
 import { IdRanges } from "../idRanges.js";
 import { applyLocal } from "./local.js";
-import { storeOf, textState } from "../text/common.js";
+import { isRecord, storeOf, textState } from "../text/common.js";
 import { TextStore } from "../text/store.js";
 import { childIds, FugueSiblings, type Place } from "./fugue.js";
 import {
@@ -91,7 +98,7 @@ type Entry = {
   alive: boolean;
   /**
    * Whether it is shown away from its place, after the nodes
-   * placed in its parent (see `_prevSibling`).
+   * placed in its parent (see `#prevSibling`).
    */
   away: boolean;
 };
@@ -452,13 +459,6 @@ function decodeRecord(
   };
 }
 
-const isList = (value: Json | undefined): value is readonly Json[] =>
-  Array.isArray(value);
-
-/** A string of a row, or "" where a row that came broken has something else. */
-const text = (value: Json | undefined) =>
-  typeof value === "string" ? value : "";
-
 const isEmpty = (value: Json | undefined) =>
   value === null || (Array.isArray(value) && value.length === 0);
 
@@ -466,7 +466,7 @@ type Pending = { life: number; seen: Stamp; own: boolean };
 
 const ROOT_POS = "";
 
-/** Steps up from a node before `_hasNewCycle` keeps the ids it walked. */
+/** Steps up from a node before `#hasNewCycle` keeps the ids it walked. */
 const CYCLE_STEPS = 32;
 
 /** What a remote change runs instead of the normalize listeners: nothing. */
@@ -484,114 +484,114 @@ const mergeEvent = (doc: Doc, operations: Operations): ChangeEvent => ({
 });
 
 class Engine implements CrdtEngine {
-  protected _entries = new Map<string, Entry>();
-  protected _deleted = new IdRanges();
-  protected _clock = 0;
-  private _session: string | undefined;
+  #entries = new Map<string, Entry>();
+  #deleted = new IdRanges();
+  #clock = 0;
+  #session: string | undefined;
   /** Entries that wait for a parent that is missing, by the missing parent. */
-  protected _waiting = new Map<string, Set<Entry>>();
+  #waiting = new Map<string, Set<Entry>>();
   /** The cycle cut: node id -> where it is shown instead of its pointer. */
-  protected _cuts = new Map<string, Back>();
-  private readonly _doc: Doc;
-  private readonly _generator: Doc["_nodeIdGenerator"];
-  private readonly _options: Required<CrdtOptions>;
+  #cuts = new Map<string, Back>();
+  readonly #doc: Doc;
+  readonly #generator: Doc["_nodeIdGenerator"];
+  readonly #options: Required<CrdtOptions>;
   /** The diff of the transaction that merged remote labels, if any. */
-  private _remoteDiff: Diff | undefined;
-  private _dirty = new Set<Entry>();
-  /** Reused by `_mergeRecord`: the inserts of a record without a stamp. */
-  private readonly _unstamped = new Set<string>();
+  #remoteDiff: Diff | undefined;
+  #dirty = new Set<Entry>();
+  /** Reused by `#mergeRecord`: the inserts of a record without a stamp. */
+  readonly #unstamped = new Set<string>();
   /** Entries whose place may not fit their neighbours: placed again. */
-  private _forced = new Set<Entry>();
-  private _dropped: Entry[] = [];
-  private _repairing: { lamport: number } | undefined;
-  private _normalizeClock = -1;
-  private _normalizeCount = 0;
+  #forced = new Set<Entry>();
+  #dropped: Entry[] = [];
+  #repairing: { lamport: number } | undefined;
+  #normalizeClock = -1;
+  #normalizeCount = 0;
   /** What `Doc` does without an engine, for what the engine passes on. */
-  private readonly _apply: Doc["applyOperations"];
+  readonly #apply: Doc["applyOperations"];
   /** `newId`: old id -> id it got when its delete was undone. */
-  protected _aliases = new Map<string, string>();
+  #aliases = new Map<string, string>();
   /** Descendants of deleted nodes: they die unless a move took them out. */
-  protected _pending = new Map<string, Pending>();
+  #pending = new Map<string, Pending>();
   /** Whether a stored node was loaded away from where it points, or hidden. */
-  private _offTree = false;
+  #offTree = false;
   /** Ids this replica must remove for good, with the clock they were queued. */
-  protected _garbage = new Map<string, number>();
+  #garbage = new Map<string, number>();
   /** The places of every parent's children (FugueMax, see `./fugue.ts`). */
-  private _fugue: FugueSiblings;
+  #fugue: FugueSiblings;
   /** The session of the places this replica makes. */
-  private _ownPlaces: string | undefined;
+  #ownPlaces: string | undefined;
   /** Entries waiting for a place to be shown there, by the place. */
-  private readonly _placeWaiters = new Map<string, Set<Entry>>();
+  readonly #placeWaiters = new Map<string, Set<Entry>>();
 
   constructor(doc: Doc, options: CrdtOptions = {}) {
-    this._doc = doc;
-    this._options = {
+    this.#doc = doc;
+    this.#options = {
       undo: options.undo ?? "lives",
       gcDelay: options.gcDelay ?? 100,
     };
-    this._fugue = this._newFugue();
-    this._generator = doc["_nodeIdGenerator"];
+    this.#fugue = this.#newFugue();
+    this.#generator = doc["_nodeIdGenerator"];
     // The engine takes over what it changes of the document: it is created
     // before the extensions and the undo manager, so its change listener is
     // the first one, and it turns the event into what it sends.
-    doc["_createNodeId"] = () => this._normalizeId() ?? this._generator(doc);
-    this._apply = doc.applyOperations.bind(doc);
+    doc["_createNodeId"] = () => this.#normalizeId() ?? this.#generator(doc);
+    this.#apply = doc.applyOperations.bind(doc);
     doc.applyOperations = (operations, flags) =>
-      this._applyOperations(operations, flags);
+      this.#applyOperations(operations, flags);
     const toJSON = doc.toJSON.bind(doc);
-    doc.toJSON = (options) => this._toJSON(toJSON(options));
-    doc.onChange((event) => this._commit(event));
+    doc.toJSON = (options) => this.#toJSON(toJSON(options));
+    doc.onChange((event) => this.#commit(event));
   }
 
   /**
    * A node created by normalize gets an id every replica computes alike, so
    * two replicas repairing the same state end up with one node, not two.
    */
-  private _normalizeId() {
-    const doc = this._doc;
+  #normalizeId() {
+    const doc = this.#doc;
     const stage = doc["_lifeCycleStage"];
-    if (!this._repairing && stage !== "normalize" && stage !== "normalize2") {
+    if (!this.#repairing && stage !== "normalize" && stage !== "normalize2") {
       return undefined;
     }
-    if (this._normalizeClock !== this._clock) {
-      this._normalizeClock = this._clock;
-      this._normalizeCount = 0;
+    if (this.#normalizeClock !== this.#clock) {
+      this.#normalizeClock = this.#clock;
+      this.#normalizeCount = 0;
     }
-    const id = `r${this._clock}.${this._normalizeCount}`;
+    const id = `r${this.#clock}.${this.#normalizeCount}`;
     if (!doc["_idGen"].validate(id)) return undefined;
-    this._normalizeCount++;
+    this.#normalizeCount++;
     return id;
   }
 
   /* ----------------------------------- fugue ----------------------------------- */
 
-  private _newFugue() {
+  #newFugue() {
     return new FugueSiblings((id) => {
-      if (this._placeWaiters.size === 0) return;
-      const waiting = this._placeWaiters.get(id);
+      if (this.#placeWaiters.size === 0) return;
+      const waiting = this.#placeWaiters.get(id);
       if (!waiting) return;
-      this._placeWaiters.delete(id);
+      this.#placeWaiters.delete(id);
       // Placed again, from the end to its place.
-      for (const entry of waiting) this._dirty.add(entry);
+      for (const entry of waiting) this.#dirty.add(entry);
     });
   }
 
   /** If `place` is not in its list yet, `entry` is placed again when it is. */
-  private _waitForPlace(place: string, entry: Entry) {
-    if (this._fugue.has(place)) return;
-    let waiting = this._placeWaiters.get(place);
-    if (!waiting) this._placeWaiters.set(place, (waiting = new Set()));
+  #waitForPlace(place: string, entry: Entry) {
+    if (this.#fugue.has(place)) return;
+    let waiting = this.#placeWaiters.get(place);
+    if (!waiting) this.#placeWaiters.set(place, (waiting = new Set()));
     waiting.add(entry);
   }
 
   /** A session only this replica uses, for the places it makes. */
-  private _placeSession() {
-    return (this._ownPlaces ??= parseId(this._generator(this._doc))[0]);
+  #placeSession() {
+    return (this.#ownPlaces ??= parseId(this.#generator(this.#doc))[0]);
   }
 
   /** Whether a node shown at `key` under `parent` is away from it. */
-  private _isAway(key: string, parent: string) {
-    return this._fugue.listOf(key) !== parent;
+  #isAway(key: string, parent: string) {
+    return this.#fugue.listOf(key) !== parent;
   }
 
   /**
@@ -599,21 +599,21 @@ class Engine implements CrdtEngine {
    * after the place of the node before it. A first life's place has the
    * node's id; `mint` names any other.
    */
-  private _placeRun(run: DocNode[], inserted: Set<string>, mint: () => string) {
+  #placeRun(run: DocNode[], inserted: Set<string>, mint: () => string) {
     const first = run[0]!;
     const parent = first.parent!;
-    // Nodes shown away from their place go last (see `_prevSibling`): the
+    // Nodes shown away from their place go last (see `#prevSibling`): the
     // run goes after the last placed one, and is sorted again.
     let before = first.prev;
-    while (before && this._entries.get(before.id)!.away) before = before.prev;
-    let left = before ? this._keyOf(before) : undefined;
+    while (before && this.#entries.get(before.id)!.away) before = before.prev;
+    let left = before ? this.#keyOf(before) : undefined;
     const list = parent.id;
     const ids = run.map((node) => {
-      const entry = this._entries.get(node.id);
+      const entry = this.#entries.get(node.id);
       const fresh =
-        inserted.has(node.id) && !entry && this._deadLife(node.id) < 0;
+        inserted.has(node.id) && !entry && this.#deadLife(node.id) < 0;
       const id = fresh ? node.id : mint();
-      this._fugue.create(id, node.id, list, left);
+      this.#fugue.create(id, node.id, list, left);
       left = id;
       return id;
     });
@@ -623,35 +623,35 @@ class Engine implements CrdtEngine {
   /* ---------------------------------- session ---------------------------------- */
 
   /** A fresh local id tells the session without spending an id on it. */
-  private _sessionId(fresh: Set<string>) {
-    if (this._session === undefined) {
-      const doc = this._doc;
+  #sessionId(fresh: Set<string>) {
+    if (this.#session === undefined) {
+      const doc = this.#doc;
       const [first] = fresh;
       const id =
-        first !== undefined && this._deadLife(first) < 0
+        first !== undefined && this.#deadLife(first) < 0
           ? first
-          : this._generator(doc);
-      this._session = parseId(id)[0];
+          : this.#generator(doc);
+      this.#session = parseId(id)[0];
     }
-    return this._session;
+    return this.#session;
   }
 
   /* ----------------------------------- labels ----------------------------------- */
 
-  private _rootEntry() {
-    const { root } = this._doc;
-    let entry = this._entries.get(root.id);
+  #rootEntry() {
+    const { root } = this.#doc;
+    let entry = this.#entries.get(root.id);
     if (!entry) {
-      entry = this._newEntry(root.id, 0, root.type);
+      entry = this.#newEntry(root.id, 0, root.type);
       entry.node = root;
       entry.at = [0, ""];
       entry.key = ROOT_POS;
-      this._entries.set(root.id, entry);
+      this.#entries.set(root.id, entry);
     }
     return entry;
   }
 
-  private _newEntry(id: string, life: number, type?: string): Entry {
+  #newEntry(id: string, life: number, type?: string): Entry {
     return {
       id,
       life,
@@ -670,22 +670,22 @@ class Engine implements CrdtEngine {
     };
   }
 
-  private _deadLife(id: string) {
-    if (this._deleted.isEmpty()) return -1;
+  #deadLife(id: string) {
+    if (this.#deleted.isEmpty()) return -1;
     const [session, clock] = parseId(id);
-    return this._deleted.get(session, clock);
+    return this.#deleted.get(session, clock);
   }
 
-  private _ensure(id: string, life: number): Entry | undefined {
-    if (this._deadLife(id) >= life) return undefined;
-    let entry = this._entries.get(id);
+  #ensure(id: string, life: number): Entry | undefined {
+    if (this.#deadLife(id) >= life) return undefined;
+    let entry = this.#entries.get(id);
     if (entry) {
       if (entry.life > life) return undefined;
       if (entry.life === life) return entry;
-      this._kill(entry);
+      this.#kill(entry);
     }
-    entry = this._newEntry(id, life);
-    this._entries.set(id, entry);
+    entry = this.#newEntry(id, life);
+    this.#entries.set(id, entry);
     return entry;
   }
 
@@ -693,46 +693,47 @@ class Engine implements CrdtEngine {
    * Forgets what was pending for this life of the node. A record for a later
    * life may have arrived before that life's insert, and stays.
    */
-  private _dropPending(entry: Entry) {
-    if ((this._pending.get(entry.id)?.life ?? 0) <= entry.life)
-      this._pending.delete(entry.id);
+  #dropPending(entry: Entry) {
+    if ((this.#pending.get(entry.id)?.life ?? 0) <= entry.life)
+      this.#pending.delete(entry.id);
   }
 
-  private _kill(entry: Entry) {
-    this._entries.delete(entry.id);
-    this._dropPending(entry);
-    this._garbage.delete(entry.id);
-    this._dropped.push(entry);
-    for (const parent of this._watchedParents(entry))
-      this._unwait(parent, entry);
-    const waiters = this._waiting.get(entry.id);
-    waiters?.forEach((waiter) => this._dirty.add(waiter));
-    if (entry.node) this._dirtyChildren(entry.node);
+  #kill(entry: Entry) {
+    this.#entries.delete(entry.id);
+    this.#dropPending(entry);
+    this.#garbage.delete(entry.id);
+    this.#dropped.push(entry);
+    for (const parent of this.#watchedParents(entry))
+      this.#unwait(parent, entry);
+    const waiters = this.#waiting.get(entry.id);
+    waiters?.forEach((waiter) => this.#dirty.add(waiter));
+    if (entry.node) this.#dirtyChildren(entry.node);
   }
 
   /** A hidden node can still link children that were removed since. */
-  private _dirtyChildren(node: DocNode) {
+  #dirtyChildren(node: DocNode) {
     node.children().forEach((child) => {
-      const childEntry = this._entries.get(child.id);
-      /* v8 ignore next -- @preserve: a child killed in the same batch (fuzz). */
-      if (childEntry) this._dirty.add(childEntry);
+      const childEntry = this.#entries.get(child.id);
+      // Not one killed in the same batch (the fuzz reaches it).
+      /* v8 ignore next -- @preserve */
+      if (childEntry) this.#dirty.add(childEntry);
     });
   }
 
-  private _wait(parent: string, entry: Entry) {
-    let waiters = this._waiting.get(parent);
+  #wait(parent: string, entry: Entry) {
+    let waiters = this.#waiting.get(parent);
     if (!waiters) {
       waiters = new Set();
-      this._waiting.set(parent, waiters);
+      this.#waiting.set(parent, waiters);
     }
     waiters.add(entry);
   }
 
-  private _unwait(parent: string, entry: Entry) {
-    const waiters = this._waiting.get(parent);
+  #unwait(parent: string, entry: Entry) {
+    const waiters = this.#waiting.get(parent);
     if (!waiters) return;
     waiters.delete(entry);
-    if (waiters.size === 0) this._waiting.delete(parent);
+    if (waiters.size === 0) this.#waiting.delete(parent);
   }
 
   /* ------------------------------- local commits ------------------------------- */
@@ -742,12 +743,12 @@ class Engine implements CrdtEngine {
    * `operations` becomes the labels (or, for a remote batch, the batch as it
    * came, to pass on).
    */
-  private _commit(event: ChangeEvent) {
-    const doc = this._doc;
-    this._rootEntry();
-    if (this._remoteDiff === doc["_diff"]) {
+  #commit(event: ChangeEvent) {
+    const doc = this.#doc;
+    this.#rootEntry();
+    if (this.#remoteDiff === doc["_diff"]) {
       // The event sends on the batch that came (see `mergeEvent`).
-      this._remoteDiff = undefined;
+      this.#remoteDiff = undefined;
       return;
     }
     const classic = doc["_operations"];
@@ -773,27 +774,27 @@ class Engine implements CrdtEngine {
         event.operations = [classicBatch[0], ...textRows(classicBatch)];
       return;
     }
-    const session = this._repairing ? "" : this._sessionId(fresh);
-    const lamport = this._repairing ? this._repairing.lamport : ++this._clock;
+    const session = this.#repairing ? "" : this.#sessionId(fresh);
+    const lamport = this.#repairing ? this.#repairing.lamport : ++this.#clock;
     const stamp: Stamp = [lamport, session];
 
     const moved = new Map<string, Back>();
     for (const id of diff.moved) {
-      moved.set(id, this._shownBack(this._entries.get(id)!));
+      moved.set(id, this.#shownBack(this.#entries.get(id)!));
     }
 
     const inserts: InsertGroup[] = [];
     const moves: MoveRecord[] = [];
     const lives: Record<string, number> = {};
-    this._assignPositions(fresh, moved, stamp, inserts, moves, lives);
+    this.#assignPositions(fresh, moved, stamp, inserts, moves, lives);
 
-    const [deletes, pending] = this._commitDeletes(diff.deleted);
+    const [deletes, pending] = this.#commitDeletes(diff.deleted);
 
     const states = classic[1];
     for (const id in states) {
-      const entry = this._entries.get(id)!;
+      const entry = this.#entries.get(id)!;
       const stamps = entry.stamps;
-      // The values an insert writes share its stamp (see `_birthStamp`).
+      // The values an insert writes share its stamp (see `#birthStamp`).
       const at = fresh.has(id) ? entry.born! : stamp;
       for (const key in states[id]) stamps[key] = at;
       if (entry.life > 0) lives[id] = entry.life;
@@ -805,48 +806,48 @@ class Engine implements CrdtEngine {
       typeof classicBatch[0] === "string"
         ? classicBatch
         : encodeOperations(passThrough, states);
-    this._affirm(stamp, moves, moved);
-    for (const entry of this._forced) this._dirty.add(entry);
+    this.#affirm(stamp, moves, moved);
+    for (const entry of this.#forced) this.#dirty.add(entry);
     if (
-      this._cuts.size > 0 ||
-      this._dirty.size > 0 ||
-      this._dropped.length > 0
+      this.#cuts.size > 0 ||
+      this.#dirty.size > 0 ||
+      this.#dropped.length > 0
     ) {
       // The local edit may dissolve or form a cut: same pure function as remote.
       doc["_lifeCycleStage"] = "update";
-      this._reconcile();
+      this.#reconcile();
       doc["_lifeCycleStage"] = "change";
     }
     if (inverse[0].length !== inverseLength)
       event.inverseOperations = compactOperations(inverse);
-    event.operations = this._batch(
+    event.operations = this.#batch(
       { lamport, session, inserts, moves, deletes, lives, pending },
       textAndState,
     );
   }
 
   /** A batch with the labels of `record`, and the text and state of `classic`. */
-  private _batch(record: LabelRecord, classic: Operations = [""]): Operations {
+  #batch(record: LabelRecord, classic: Operations = [""]): Operations {
     const sessions = new Sessions(classic[0]);
     return withEngineRow(
       sessions,
-      encodeRecord(record, sessions, this._fugue),
+      encodeRecord(record, sessions, this.#fugue),
       textRows(classic),
     );
   }
 
   /** Where the author saw this node before moving it. */
-  private _shownBack(entry: Entry): Back {
+  #shownBack(entry: Entry): Back {
     // A node the user could move was shown somewhere.
-    return { parent: this._target(entry)[0]!, pos: entry.key };
+    return { parent: this.#target(entry)[0]!, pos: entry.key };
   }
 
-  private _affirm(stamp: Stamp, moves: MoveRecord[], moved: Map<string, Back>) {
-    if (moved.size === 0 || this._cuts.size === 0) return;
-    const root = this._doc.root.id;
+  #affirm(stamp: Stamp, moves: MoveRecord[], moved: Map<string, Back>) {
+    if (moved.size === 0 || this.#cuts.size === 0) return;
+    const root = this.#doc.root.id;
     const wire = (id: string) => (id === root ? 0 : id);
-    for (const [id, cut] of this._cuts) {
-      const entry = this._entries.get(id);
+    for (const [id, cut] of this.#cuts) {
+      const entry = this.#entries.get(id);
       if (!entry || moved.has(id)) continue;
       const move: MoveBase = [id, wire(cut.parent), cut.pos, null, null];
       moves.push(entry.life > 0 ? [...move, entry.life] : move);
@@ -854,11 +855,11 @@ class Engine implements CrdtEngine {
       entry.pos = cut.pos;
       entry.at = stamp;
       entry.back = undefined;
-      this._cuts.delete(id);
+      this.#cuts.delete(id);
     }
   }
 
-  private _assignPositions(
+  #assignPositions(
     inserted: Set<string>,
     moved: Map<string, Back>,
     stamp: Stamp,
@@ -866,7 +867,7 @@ class Engine implements CrdtEngine {
     moves: MoveRecord[],
     lives: Record<string, number>,
   ) {
-    const doc = this._doc;
+    const doc = this.#doc;
     const root = doc.root;
     const wire = (id: string): string | 0 => (id === root.id ? 0 : id);
     const groups = new Map<DocNode, InsertGroup>();
@@ -876,12 +877,12 @@ class Engine implements CrdtEngine {
       done.add(node.id);
       const parent = node.parent!;
       const wireParent = wire(parent.id);
-      let entry = this._entries.get(node.id);
+      let entry = this.#entries.get(node.id);
       let at = stamp;
       if (inserted.has(node.id)) {
         // After its last dead life, and never before a life others already
         // gave it (a concurrent undo revived it while it was hidden here).
-        const life = Math.max(this._deadLife(node.id) + 1, entry?.life ?? 0);
+        const life = Math.max(this.#deadLife(node.id) + 1, entry?.life ?? 0);
         const insert: InsertRecord =
           life > 0
             ? [node.id, node.type, pos, life]
@@ -896,12 +897,12 @@ class Engine implements CrdtEngine {
         // An undo can bring back a node that was hidden here: a new object.
         // Nodes hidden under the old one wait for its id and follow it.
         if (entry?.node) {
-          this._dirtyChildren(entry.node);
-          this._unlink(entry.node);
+          this.#dirtyChildren(entry.node);
+          this.#unlink(entry.node);
         }
-        entry = this._newEntry(node.id, life, node.type);
-        at = entry.born = this._birthStamp(node.id, life, pos, stamp);
-        this._entries.set(node.id, entry);
+        entry = this.#newEntry(node.id, life, node.type);
+        at = entry.born = this.#birthStamp(node.id, life, pos, stamp);
+        this.#entries.set(node.id, entry);
         if (life > 0) lives[node.id] = life;
       } else {
         entry = entry!;
@@ -916,7 +917,7 @@ class Engine implements CrdtEngine {
         moves.push(entry.life > 0 ? [...move, entry.life] : move);
         // Its old place (the node may have moved in this transaction).
         entry.back = back;
-        this._cuts.delete(node.id);
+        this.#cuts.delete(node.id);
       }
       entry.node = node;
       entry.parent = parent.id;
@@ -924,8 +925,8 @@ class Engine implements CrdtEngine {
       entry.at = at;
       entry.key = pos;
       entry.away = false;
-      this._dirty.add(entry);
-      this._waiting.get(node.id)?.forEach((waiter) => this._dirty.add(waiter));
+      this.#dirty.add(entry);
+      this.#waiting.get(node.id)?.forEach((waiter) => this.#dirty.add(waiter));
     };
     let minted = 0;
     // A repair makes the same places on every replica. Anything else is a
@@ -933,9 +934,9 @@ class Engine implements CrdtEngine {
     // that of its stamps, which may be another's: that of the first node it
     // inserts) and a clock of its own, the stamp's and then new ones.
     const mint = () =>
-      this._repairing
+      this.#repairing
         ? `~${minted++ || ""}.${numberToBase64(stamp[0])}`
-        : `${this._placeSession()}~.${numberToBase64(minted++ === 0 ? stamp[0] : ++this._clock)}`;
+        : `${this.#placeSession()}~.${numberToBase64(minted++ === 0 ? stamp[0] : ++this.#clock)}`;
     const process = (start: DocNode) => {
       let first = start;
       while (first.prev && dirty(first.prev.id)) first = first.prev;
@@ -944,10 +945,10 @@ class Engine implements CrdtEngine {
         run.push(cur);
         cur = cur.next;
       }
-      const { ids, resort } = this._placeRun(run, inserted, mint);
+      const { ids, resort } = this.#placeRun(run, inserted, mint);
       run.forEach((node, i) => assign(node, ids[i]!));
       if (resort)
-        for (const node of run) this._forced.add(this._entries.get(node.id)!);
+        for (const node of run) this.#forced.add(this.#entries.get(node.id)!);
     };
     for (const id of [...inserted, ...moved.keys()]) {
       if (done.has(id)) continue;
@@ -956,37 +957,37 @@ class Engine implements CrdtEngine {
     }
   }
 
-  private _keyOf(node: DocNode) {
-    return this._entries.get(node.id)!.key;
+  #keyOf(node: DocNode) {
+    return this.#entries.get(node.id)!.key;
   }
 
   /**
    * A deleted node dies for good. Its descendants stay pending: they die unless
    * a concurrent move takes them out of the subtree first.
    */
-  private _commitDeletes(
+  #commitDeletes(
     deleted: Map<string, DocNode>,
   ): [DeleteRecord[], PendingRecord[]] {
     const dead: [string, number][] = [];
     const pending = new Map<string, [Stamp, string, number, number[]]>();
     for (const [id, node] of deleted) {
-      const entry = this._entries.get(id)!;
+      const entry = this.#entries.get(id)!;
       if (node.parent && deleted.has(node.parent.id)) {
         const seen = entry.at!;
         // A remote delete of an ancestor may have seen a later pointer: the
         // latest one decides, whatever the order they arrive in.
-        const known = this._pending.get(id);
+        const known = this.#pending.get(id);
         const latest =
           known?.life === entry.life && compare(known.seen, seen) > 0
             ? known.seen
             : seen;
-        // A later life's pending stays, as `_mergePending` keeps it when this
+        // A later life's pending stays, as `#mergePending` keeps it when this
         // record comes back.
         if (!known || known.life <= entry.life)
-          this._pending.set(id, { life: entry.life, seen: latest, own: true });
-        this._garbage.set(id, this._clock);
+          this.#pending.set(id, { life: entry.life, seen: latest, own: true });
+        this.#garbage.set(id, this.#clock);
         // Placed again so it waits for its parent: an undo may bring it back.
-        this._dirty.add(entry);
+        this.#dirty.add(entry);
         const [owner, clock] = parseId(id);
         const key = `${seen[0]} ${seen[1]} ${owner} ${entry.life}`;
         const group = pending.get(key) ?? [seen, owner, entry.life, []];
@@ -995,25 +996,25 @@ class Engine implements CrdtEngine {
         continue;
       }
       dead.push([id, entry.life]);
-      this._forget(entry);
+      this.#forget(entry);
     }
-    this._collectGarbage(dead);
+    this.#collectGarbage(dead);
     const records: PendingRecord[] = [];
     for (const [seen, owner, life, clocks] of pending.values()) {
       for (const [from, to] of runsOf(clocks)) {
         records.push([seen[0], seen[1], owner, from, to, life]);
       }
     }
-    return [this._deadRanges(dead), records];
+    return [this.#deadRanges(dead), records];
   }
 
   /** Removes an entry this replica deleted itself. */
-  private _forget(entry: Entry) {
-    this._entries.delete(entry.id);
-    this._dropPending(entry);
-    this._garbage.delete(entry.id);
-    for (const parent of this._watchedParents(entry)) {
-      this._unwait(parent, entry);
+  #forget(entry: Entry) {
+    this.#entries.delete(entry.id);
+    this.#dropPending(entry);
+    this.#garbage.delete(entry.id);
+    for (const parent of this.#watchedParents(entry)) {
+      this.#unwait(parent, entry);
     }
   }
 
@@ -1023,34 +1024,35 @@ class Engine implements CrdtEngine {
    * is the same for every replica in any order, so this is safe in P2P; what
    * it costs is that a move or an undo arriving later cannot rescue them.
    */
-  private _collectGarbage(dead: [string, number][]) {
-    for (const [id, queued] of this._garbage) {
-      if (this._clock - queued < this._options.gcDelay) continue;
-      const entry = this._entries.get(id);
-      this._garbage.delete(id);
-      if (!entry || this._isPlaced(entry)) continue;
+  #collectGarbage(dead: [string, number][]) {
+    for (const [id, queued] of this.#garbage) {
+      if (this.#clock - queued < this.#options.gcDelay) continue;
+      const entry = this.#entries.get(id);
+      this.#garbage.delete(id);
+      if (!entry || this.#isPlaced(entry)) continue;
       // Hidden only while its parent has not arrived: not garbage.
-      /* v8 ignore next -- @preserve: a hidden own node whose parent is alive. */
-      if (!this._isDoomed(entry) && !this._parentGone(entry)) continue;
+      // A hidden own node whose parent is alive.
+      /* v8 ignore next -- @preserve */
+      if (!this.#isDoomed(entry) && !this.#parentGone(entry)) continue;
       dead.push([id, entry.life]);
-      this._kill(entry);
+      this.#kill(entry);
     }
   }
 
-  private _parentGone(entry: Entry) {
+  #parentGone(entry: Entry) {
     const parent = entry.parent!;
-    const parentEntry = this._entries.get(parent);
+    const parentEntry = this.#entries.get(parent);
     return parentEntry
-      ? this._isDoomed(parentEntry)
-      : this._deadLife(parent) >= 0;
+      ? this.#isDoomed(parentEntry)
+      : this.#deadLife(parent) >= 0;
   }
 
-  private _isPlaced(entry: Entry) {
+  #isPlaced(entry: Entry) {
     const node = entry.node;
-    return node !== undefined && this._doc["_nodeMap"].get(node.id) === node;
+    return node !== undefined && this.#doc["_nodeMap"].get(node.id) === node;
   }
 
-  private _deadRanges(dead: [string, number][]): DeleteRecord[] {
+  #deadRanges(dead: [string, number][]): DeleteRecord[] {
     const bySession = new Map<string, Map<number, number[]>>();
     for (const [id, life] of dead) {
       const [session, clock] = parseId(id);
@@ -1065,7 +1067,7 @@ class Engine implements CrdtEngine {
       for (const [life, clocks] of byLife) {
         for (const [from, to] of runsOf(clocks)) {
           records.push([session, from, to, life]);
-          this._deleted.add(session, from, to, life);
+          this.#deleted.add(session, from, to, life);
         }
       }
     }
@@ -1075,16 +1077,16 @@ class Engine implements CrdtEngine {
   /* --------------------------------- remote merge -------------------------------- */
 
   /** `doc.applyOperations`: labels merge, anything else is a local edit. */
-  private _applyOperations(operations: Operations, flags?: TransactionFlags) {
+  #applyOperations(operations: Operations, flags?: TransactionFlags) {
     const record = engineRow(operations, RECORD);
     const snapshot = engineRow(operations, SNAPSHOT);
     if (!record && !snapshot) {
       // An undo, which may name nodes that changed since.
-      return applyLocal(this._apply, operations, flags, (draft) =>
-        this._prepareClassic(draft),
+      return applyLocal(this.#apply, operations, flags, (draft) =>
+        this.#prepareClassic(draft),
       );
     }
-    const doc = this._doc;
+    const doc = this.#doc;
     if (doc["_lifeCycleStage"] === "update") doc.forceCommit();
     const sessions = new Sessions(operations[0]);
     const [text, states] = decodeOperations(withoutEngineRow(operations));
@@ -1093,15 +1095,15 @@ class Engine implements CrdtEngine {
     withTransaction(
       doc,
       () => {
-        this._rootEntry();
-        this._remoteDiff = doc["_diff"];
+        this.#rootEntry();
+        this.#remoteDiff = doc["_diff"];
         if (record) {
           const places: Place[] = [];
           const labels = decodeRecord(record, sessions, places, doc.root.id);
-          for (const place of places) this._fugue.add(place);
-          this._mergeRecord(labels, states);
-        } else this._mergeSnapshot(snapshot![1]);
-        this._reconcile();
+          for (const place of places) this.#fugue.add(place);
+          this.#mergeRecord(labels, states);
+        } else this.#mergeSnapshot(snapshot![1]);
+        this.#reconcile();
         if (text.length > 0) onApplyOperations(doc, [text, {}]);
         // A merge is never undone: no inverse to encode for it.
         doc["_inverseOperations"] = [[], {}];
@@ -1120,64 +1122,64 @@ class Engine implements CrdtEngine {
         doc["_normalizeListeners"] = listeners;
       }
     }
-    this._remoteDiff = undefined;
+    this.#remoteDiff = undefined;
     doc["_event"] = undefined;
     if (
       listeners.size > 0 &&
       doc["_lifeCycleStage"] === "idle" &&
       !doc["_isForceCommitCallback"]
     )
-      this._repair();
+      this.#repair();
   }
 
-  private _mergeRecord(record: LabelRecord, states: StatePatch) {
+  #mergeRecord(record: LabelRecord, states: StatePatch) {
     const { lamport, session, inserts, moves, deletes, lives, pending } =
       record;
-    this._clock = Math.max(this._clock, lamport);
+    this.#clock = Math.max(this.#clock, lamport);
     const stamp: Stamp = [lamport, session];
-    deletes.forEach((del) => this._mergeDelete(del));
+    deletes.forEach((del) => this.#mergeDelete(del));
     pending.forEach(([seenLamport, seenSession, owner, from, to, life]) => {
       for (let clock = from; clock <= to; clock++) {
-        this._mergePending(this._idOf(owner, clock), life, [
+        this.#mergePending(this.#idOf(owner, clock), life, [
           seenLamport,
           seenSession,
         ]);
       }
     });
     // Inserts without a stamp, and the values written with them.
-    const unstamped = this._unstamped;
+    const unstamped = this.#unstamped;
     unstamped.clear();
     inserts.forEach(([parent, ...nodes]) => {
       for (const insert of nodes) {
         const [id, type, pos] = insert;
         const life = insert.length > 3 ? insert[3]! : 0;
-        const entry = this._ensure(id, life);
+        const entry = this.#ensure(id, life);
         if (!entry) continue;
         const wasTyped = entry.type !== undefined;
         entry.type = type;
-        const born = this._birthStamp(id, life, pos, stamp);
+        const born = this.#birthStamp(id, life, pos, stamp);
         if (born === ZERO) unstamped.add(id);
-        this._mergePointer(entry, this._parentId(parent), pos, born, undefined);
-        if (!wasTyped) this._onTyped(entry);
-        this._mergeBirth(entry, born);
+        this.#mergePointer(entry, this.#parentId(parent), pos, born, undefined);
+        if (!wasTyped) this.#onTyped(entry);
+        this.#mergeBirth(entry, born);
       }
     });
     moves.forEach((move) => {
       const [id, parent, pos, backParent, backPos, life = 0] = move;
-      const entry = this._ensure(id, life);
+      const entry = this.#ensure(id, life);
       if (!entry) return;
       const back =
         backParent === null || backPos === null
           ? undefined
-          : { parent: this._parentId(backParent), pos: backPos };
-      this._mergePointer(entry, this._parentId(parent), pos, stamp, back);
+          : { parent: this.#parentId(backParent), pos: backPos };
+      this.#mergePointer(entry, this.#parentId(parent), pos, stamp, back);
     });
     for (const id in states) {
-      const entry = this._ensure(id, lives[id] ?? 0);
+      const entry = this.#ensure(id, lives[id] ?? 0);
       if (!entry) continue;
       const values = states[id]!;
       const at = unstamped.has(id) ? ZERO : stamp;
-      for (const key in values) this._mergeState(entry, key, values[key]!, at);
+      for (const key in values) this.#mergeState(entry, key, values[key]!, at);
     }
   }
 
@@ -1187,43 +1189,43 @@ class Engine implements CrdtEngine {
    * comes from a replica that saw the insert, so it has a newer stamp anyway,
    * and the stored labels of nodes never moved need no stamp columns.
    */
-  private _birthStamp(id: string, life: number, pos: string, stamp: Stamp) {
+  #birthStamp(id: string, life: number, pos: string, stamp: Stamp) {
     return life === 0 && pos === id ? ZERO : stamp;
   }
 
-  private _parentId(wire: string | 0) {
-    return wire === 0 ? this._doc.root.id : wire;
+  #parentId(wire: string | 0) {
+    return wire === 0 ? this.#doc.root.id : wire;
   }
 
-  private _mergeDelete([session, from, to, life]: DeleteRecord) {
-    this._deleted.add(session, from, to, life);
+  #mergeDelete([session, from, to, life]: DeleteRecord) {
+    this.#deleted.add(session, from, to, life);
     for (let clock = from; clock <= to; clock++) {
-      for (const id of this._idsOf(session, clock)) {
-        const entry = this._entries.get(id);
-        if (entry && entry.life <= life) this._kill(entry);
+      for (const id of this.#idsOf(session, clock)) {
+        const entry = this.#entries.get(id);
+        if (entry && entry.life <= life) this.#kill(entry);
       }
     }
   }
 
   /** A whole-id session names the id itself, with no clock suffix. */
-  private _idsOf(session: string, clock: number) {
-    const id = this._idOf(session, clock);
+  #idsOf(session: string, clock: number) {
+    const id = this.#idOf(session, clock);
     return clock === 0 ? [id, session] : [id];
   }
 
-  private _idOf(session: string, clock: number) {
+  #idOf(session: string, clock: number) {
     return `${session}.${numberToBase64(clock)}`;
   }
 
-  private _mergePending(id: string, life: number, seen: Stamp) {
+  #mergePending(id: string, life: number, seen: Stamp) {
     const whole = id.slice(0, -2);
-    const wholeId = id.endsWith(".-") && this._entries.has(whole);
+    const wholeId = id.endsWith(".-") && this.#entries.has(whole);
     for (const candidate of wholeId ? [id, whole] : [id]) {
-      if (this._deadLife(candidate) >= life) continue;
+      if (this.#deadLife(candidate) >= life) continue;
       // A later life of the node replaced this one: its record, applied
       // again, is old news.
-      if ((this._entries.get(candidate)?.life ?? life) > life) continue;
-      const current = this._pending.get(candidate);
+      if ((this.#entries.get(candidate)?.life ?? life) > life) continue;
+      const current = this.#pending.get(candidate);
       if (
         current &&
         (current.life > life ||
@@ -1231,25 +1233,25 @@ class Engine implements CrdtEngine {
       ) {
         continue;
       }
-      this._pending.set(candidate, { life, seen, own: current?.own ?? false });
-      const entry = this._entries.get(candidate);
-      if (entry) this._dirty.add(entry);
+      this.#pending.set(candidate, { life, seen, own: current?.own ?? false });
+      const entry = this.#entries.get(candidate);
+      if (entry) this.#dirty.add(entry);
     }
   }
 
-  private _onTyped(entry: Entry) {
-    const doc = this._doc;
+  #onTyped(entry: Entry) {
+    const doc = this.#doc;
     const node = doc["_nodeFromTree"]([entry.id, entry.type!, {}]);
     entry.node = node;
     for (const key in entry.pending) {
-      this._writeState(entry, key, entry.pending[key]!);
+      this.#writeState(entry, key, entry.pending[key]!);
     }
     entry.pending = undefined;
-    this._waiting.get(entry.id)?.forEach((waiter) => this._dirty.add(waiter));
-    this._dirty.add(entry);
+    this.#waiting.get(entry.id)?.forEach((waiter) => this.#dirty.add(waiter));
+    this.#dirty.add(entry);
   }
 
-  private _mergePointer(
+  #mergePointer(
     entry: Entry,
     parent: string,
     pos: string,
@@ -1257,40 +1259,41 @@ class Engine implements CrdtEngine {
     back: Back | undefined,
   ) {
     if (entry.at && compare(stamp, entry.at) <= 0) return;
-    if (entry.parent !== undefined) this._unwait(entry.parent, entry);
+    if (entry.parent !== undefined) this.#unwait(entry.parent, entry);
     entry.parent = parent;
     entry.pos = pos;
     entry.at = stamp;
     entry.back = back;
-    this._dirty.add(entry);
+    this.#dirty.add(entry);
   }
 
   /** An insert sets every key: older writes go back to the default. */
-  private _mergeBirth(entry: Entry, stamp: Stamp) {
+  #mergeBirth(entry: Entry, stamp: Stamp) {
     if (entry.born && compare(stamp, entry.born) <= 0) return;
     entry.born = stamp;
-    const defaults = this._doc["_resolvedNodeDefs"].get(entry.type!)!;
+    const defaults = this.#doc["_resolvedNodeDefs"].get(entry.type!)!;
     for (const key in entry.stamps) {
       if (compare(entry.stamps[key]!, stamp) >= 0) continue;
       delete entry.stamps[key];
-      this._writeState(entry, key, defaults.defaultStrings[key]!);
+      this.#writeState(entry, key, defaults.defaultStrings[key]!);
     }
   }
 
-  private _mergeState(entry: Entry, key: string, value: string, stamp: Stamp) {
+  #mergeState(entry: Entry, key: string, value: string, stamp: Stamp) {
     const current = entry.stamps[key];
     if (current && compare(stamp, current) <= 0) return;
     // The insert's own values share its stamp.
-    /* v8 ignore next -- @preserve: a key the newer insert left at its default. */
+    // A key the newer insert left at its default.
+    /* v8 ignore next -- @preserve */
     if (entry.born && compare(stamp, entry.born) < 0) return;
     entry.stamps[key] = stamp;
-    if (entry.node) this._writeState(entry, key, value);
+    if (entry.node) this.#writeState(entry, key, value);
     else (entry.pending ??= {})[key] = value;
   }
 
-  private _writeState(entry: Entry, key: string, value: string) {
+  #writeState(entry: Entry, key: string, value: string) {
     const node = entry.node!;
-    const doc = this._doc;
+    const doc = this.#doc;
     const diff = doc["_diff"];
     const attached = doc["_nodeMap"].get(node.id) === node;
     if (attached && !diff.inserted.has(node.id)) {
@@ -1307,30 +1310,30 @@ class Engine implements CrdtEngine {
 
   /* ---------------------------------- the view ---------------------------------- */
 
-  private _isAlive(id: string) {
-    if (id === this._doc.root.id) return true;
-    const entry = this._entries.get(id);
-    return entry?.type !== undefined && !this._isDoomed(entry);
+  #isAlive(id: string) {
+    if (id === this.#doc.root.id) return true;
+    const entry = this.#entries.get(id);
+    return entry?.type !== undefined && !this.#isDoomed(entry);
   }
 
   /**
    * A pending descendant dies while its pointer is still the one its deleter
    * saw and its parent is dead or doomed too: still under the deleted node.
    */
-  private _isDoomed(entry: Entry): boolean {
-    if (this._pending.size === 0) return false;
+  #isDoomed(entry: Entry): boolean {
+    if (this.#pending.size === 0) return false;
     // Concurrent moves can leave pending pointers in a cycle. Its nodes were
     // all under the deleted node when its deleter saw them: doomed. Most
     // walks end at the first node, which needs no set.
     let visited: Set<Entry> | undefined;
     for (let current = entry; ; ) {
-      const pending = this._pending.get(current.id);
+      const pending = this.#pending.get(current.id);
       if (pending?.life !== current.life || !current.at) return false;
       if (compare(current.at, pending.seen) > 0) return false;
       const parent = current.parent!;
-      const parentEntry = this._entries.get(parent);
+      const parentEntry = this.#entries.get(parent);
       // Gone, or never arrived (the root always has its entry).
-      if (parentEntry?.type === undefined) return parent !== this._doc.root.id;
+      if (parentEntry?.type === undefined) return parent !== this.#doc.root.id;
       (visited ??= new Set()).add(current);
       if (visited.has(parentEntry)) return true;
       current = parentEntry;
@@ -1338,28 +1341,28 @@ class Engine implements CrdtEngine {
   }
 
   /** Where the pointer of an entry takes it, before looking at cycles. */
-  private _pointerTarget(entry: Entry): string | undefined {
+  #pointerTarget(entry: Entry): string | undefined {
     if (entry.parent === undefined) return undefined;
-    if (this._isAlive(entry.parent)) return entry.parent;
-    if (entry.back && this._isAlive(entry.back.parent))
+    if (this.#isAlive(entry.parent)) return entry.parent;
+    if (entry.back && this.#isAlive(entry.back.parent))
       return entry.back.parent;
     return undefined;
   }
 
-  private _target(entry: Entry): [string | undefined, string] {
-    if (this._isDoomed(entry)) return [undefined, entry.pos];
-    const cut = this._cuts.get(entry.id);
+  #target(entry: Entry): [string | undefined, string] {
+    if (this.#isDoomed(entry)) return [undefined, entry.pos];
+    const cut = this.#cuts.get(entry.id);
     if (cut) return [cut.parent, cut.pos];
-    const parent = this._pointerTarget(entry);
+    const parent = this.#pointerTarget(entry);
     if (parent === undefined) return [undefined, entry.pos];
     if (parent === entry.parent) return [parent, entry.pos];
     return [parent, entry.back!.pos];
   }
 
   /** True if some cycle exists, found by walking up from the changed entries. */
-  private _hasNewCycle() {
-    const rootId = this._doc.root.id;
-    for (const entry of this._dirty) {
+  #hasNewCycle() {
+    const rootId = this.#doc.root.id;
+    for (const entry of this.#dirty) {
       // Most walks reach the root in a few steps: the set that finds a
       // cycle is made only for a long one.
       let seen: Set<string> | undefined;
@@ -1369,8 +1372,8 @@ class Engine implements CrdtEngine {
           if (seen.has(cur)) return true;
           seen.add(cur);
         }
-        const at = this._entries.get(cur);
-        const parent = at && this._pointerTarget(at);
+        const at = this.#entries.get(cur);
+        const parent = at && this.#pointerTarget(at);
         if (parent === undefined || parent === rootId) break;
         cur = parent;
       }
@@ -1379,21 +1382,21 @@ class Engine implements CrdtEngine {
   }
 
   /** The cycle cut: a pure function of the labels. */
-  private _resolveCuts() {
-    const rootId = this._doc.root.id;
+  #resolveCuts() {
+    const rootId = this.#doc.root.id;
     const cuts = new Map<string, Back>();
     const stages = new Map<string, number>();
     const edge = new Map<string, string | undefined>();
-    for (const entry of this._entries.values()) {
+    for (const entry of this.#entries.values()) {
       if (entry.id !== rootId && entry.type !== undefined && entry.at) {
-        edge.set(entry.id, this._pointerTarget(entry));
+        edge.set(entry.id, this.#pointerTarget(entry));
       }
     }
     const worst = (cycle: string[]) => {
       let best = cycle[0]!;
       for (const id of cycle) {
-        const a = this._entries.get(id)!.at!;
-        const b = this._entries.get(best)!.at!;
+        const a = this.#entries.get(id)!.at!;
+        const b = this.#entries.get(best)!.at!;
         if (compare(a, b) > 0) best = id;
       }
       return best;
@@ -1417,15 +1420,16 @@ class Engine implements CrdtEngine {
       if (cycles.length === 0) break;
       for (const cycle of cycles) {
         const id = worst(cycle);
-        const entry = this._entries.get(id)!;
+        const entry = this.#entries.get(id)!;
         const stage = stages.get(id) ?? 0;
         let next = rootId;
-        /* v8 ignore next 9 -- @preserve: a second cut of the same node, when
-           its previous position closes another cycle. The lab fuzz reaches it. */
+        // A second cut of the same node, when its previous position closes
+        // another cycle. The lab fuzz reaches it.
+        /* v8 ignore next 9 -- @preserve */
         if (
           stage === 0 &&
           entry.back &&
-          this._isAlive(entry.back.parent) &&
+          this.#isAlive(entry.back.parent) &&
           entry.back.parent !== id
         ) {
           next = entry.back.parent;
@@ -1434,82 +1438,83 @@ class Engine implements CrdtEngine {
           stages.set(id, 2);
         }
         edge.set(id, next);
-        /* v8 ignore next -- @preserve: a cut node is always one that moved. */
+        // A cut node is always one that moved.
+        /* v8 ignore next -- @preserve */
         cuts.set(id, { parent: next, pos: entry.back?.pos ?? entry.pos });
       }
     }
     return cuts;
   }
 
-  private _reconcile() {
-    const rootId = this._doc.root.id;
-    this._updateCuts();
+  #reconcile() {
+    const rootId = this.#doc.root.id;
+    this.#updateCuts();
     // Real removals first, so that a removed parent never receives children.
-    for (const entry of this._dropped) this._remove(entry);
-    this._dropped = [];
+    for (const entry of this.#dropped) this.#remove(entry);
+    this.#dropped = [];
 
     // Placing an entry can change whether others are visible, and so where
     // their pointers lead, which can close or open a cycle: repeat.
-    while (this._dirty.size > 0) {
-      const order = this._topDown([...this._dirty], rootId);
-      this._dirty.clear();
+    while (this.#dirty.size > 0) {
+      const order = this.#topDown([...this.#dirty], rootId);
+      this.#dirty.clear();
       for (const entry of order) {
-        if (this._entries.get(entry.id) !== entry) continue;
-        this._place(entry);
+        if (this.#entries.get(entry.id) !== entry) continue;
+        this.#place(entry);
       }
-      if (this._dirty.size > 0) this._updateCuts();
+      if (this.#dirty.size > 0) this.#updateCuts();
     }
   }
 
-  private _updateCuts() {
-    if (this._cuts.size === 0 && !this._hasNewCycle()) return;
-    const previous = this._cuts;
-    this._cuts = this._resolveCuts();
-    for (const id of new Set([...previous.keys(), ...this._cuts.keys()])) {
-      const entry = this._entries.get(id);
-      if (entry) this._dirty.add(entry);
+  #updateCuts() {
+    if (this.#cuts.size === 0 && !this.#hasNewCycle()) return;
+    const previous = this.#cuts;
+    this.#cuts = this.#resolveCuts();
+    for (const id of new Set([...previous.keys(), ...this.#cuts.keys()])) {
+      const entry = this.#entries.get(id);
+      if (entry) this.#dirty.add(entry);
     }
   }
 
-  private _remove(entry: Entry) {
+  #remove(entry: Entry) {
     const node = entry.node;
     if (!node) return;
-    const doc = this._doc;
+    const doc = this.#doc;
     const attached = doc["_nodeMap"].get(node.id) === node;
-    // `_unlink` does nothing for a hidden node that is not linked anywhere.
-    if (attached) this._classicDelete(node);
-    else this._unlink(node);
+    // `#unlink` does nothing for a hidden node that is not linked anywhere.
+    if (attached) this.#classicDelete(node);
+    else this.#unlink(node);
     entry.node = undefined;
   }
 
   /** Classic delete leaves stale prev/next/parent pointers on the node. */
-  private _classicDelete(node: DocNode) {
+  #classicDelete(node: DocNode) {
     node.to(node).delete();
-    this._clearLinks(node);
+    this.#clearLinks(node);
   }
 
-  private _clearLinks(node: DocNode) {
+  #clearLinks(node: DocNode) {
     node["_set"]("parent", undefined);
     node["_set"]("prev", undefined);
     node["_set"]("next", undefined);
   }
 
-  private _unlink(node: DocNode) {
+  #unlink(node: DocNode) {
     if (node.parent) detachRange(node, node);
-    this._clearLinks(node);
+    this.#clearLinks(node);
   }
 
-  private _topDown(entries: Entry[], rootId: string) {
+  #topDown(entries: Entry[], rootId: string) {
     if (entries.length === 1) return entries;
     const depth = new Map<Entry, number>();
     const depthOf = (entry: Entry): number => {
       const known = depth.get(entry);
       if (known !== undefined) return known;
       depth.set(entry, 0);
-      const [parent] = this._target(entry);
+      const [parent] = this.#target(entry);
       const parentEntry =
         parent !== undefined && parent !== rootId
-          ? this._entries.get(parent)
+          ? this.#entries.get(parent)
           : undefined;
       const value = parentEntry ? 1 + depthOf(parentEntry) : 0;
       depth.set(entry, value);
@@ -1521,22 +1526,22 @@ class Engine implements CrdtEngine {
       .map(([, entry]) => entry);
   }
 
-  private _place(entry: Entry) {
+  #place(entry: Entry) {
     const node = entry.node;
     if (!node) return;
-    const alive = this._isAlive(entry.id);
+    const alive = this.#isAlive(entry.id);
     if (alive !== entry.alive) {
       entry.alive = alive;
-      this._wake(entry);
+      this.#wake(entry);
     }
-    const doc = this._doc;
+    const doc = this.#doc;
     const map = doc["_nodeMap"];
-    const [parentId, key] = this._target(entry);
-    // A place that has not arrived yet places the node again when it does. Meanwhile it goes after the placed ones (see `_prevSibling`).
-    if (parentId !== undefined) this._waitForPlace(key, entry);
-    const away = parentId !== undefined && this._isAway(key, parentId);
+    const [parentId, key] = this.#target(entry);
+    // A place that has not arrived yet places the node again when it does. Meanwhile it goes after the placed ones (see `#prevSibling`).
+    if (parentId !== undefined) this.#waitForPlace(key, entry);
+    const away = parentId !== undefined && this.#isAway(key, parentId);
     const parentEntry =
-      parentId === undefined ? undefined : this._entries.get(parentId);
+      parentId === undefined ? undefined : this.#entries.get(parentId);
     const parent =
       parentId === undefined
         ? undefined
@@ -1550,55 +1555,55 @@ class Engine implements CrdtEngine {
       key === entry.key &&
       away === entry.away &&
       map.get(parent.id) === parent;
-    if (unchanged && !this._forced.delete(entry)) {
-      this._refreshWaiting(entry);
+    if (unchanged && !this.#forced.delete(entry)) {
+      this.#refreshWaiting(entry);
       return;
     }
     entry.key = key;
     entry.away = away;
-    this._refreshWaiting(entry);
+    this.#refreshWaiting(entry);
     const attachedNow = map.get(node.id) === node;
     const parentAttached =
       parent !== undefined && map.get(parent.id) === parent;
 
     if (parent === undefined) {
       // Limbo: invisible, but its labels stay until garbage collection.
-      if (attachedNow) this._classicDelete(node);
-      else if (node.parent) this._unlink(node);
+      if (attachedNow) this.#classicDelete(node);
+      else if (node.parent) this.#unlink(node);
       if (
-        this._session === parseId(entry.id)[0] &&
-        !this._garbage.has(entry.id)
+        this.#session === parseId(entry.id)[0] &&
+        !this.#garbage.has(entry.id)
       ) {
-        this._garbage.set(entry.id, this._clock);
+        this.#garbage.set(entry.id, this.#clock);
       }
       return;
     }
     if (attachedNow && parentAttached) {
       // Its new parent is still shown inside it, until the nodes between
       // them are placed: those go first, then this one again.
-      if (this._defer(entry, node, parent)) return;
-      const prev = this._prevSibling(parent, entry);
+      if (this.#defer(entry, node, parent)) return;
+      const prev = this.#prevSibling(parent, entry);
       if (prev) node.to(node).move(prev, "after");
       else node.to(node).move(parent, "prepend");
       return;
     }
-    if (attachedNow && !parentAttached) this._classicDelete(node);
-    else if (node.parent) this._unlink(node);
+    if (attachedNow && !parentAttached) this.#classicDelete(node);
+    else if (node.parent) this.#unlink(node);
     // Under a hidden parent too: nothing outside the document is recorded.
-    const prev = this._prevSibling(parent, entry);
+    const prev = this.#prevSibling(parent, entry);
     if (prev) doc["_insertRange"](prev, "after", [node]);
     else doc["_insertRange"](parent, "prepend", [node]);
   }
 
-  private _defer(entry: Entry, node: DocNode, parent: DocNode) {
+  #defer(entry: Entry, node: DocNode, parent: DocNode) {
     const between: Entry[] = [];
     for (let up: DocNode | undefined = parent; up; up = up.parent) {
       if (up === node) {
-        for (const each of between) this._dirty.add(each);
-        this._dirty.add(entry);
+        for (const each of between) this.#dirty.add(each);
+        this.#dirty.add(entry);
         return true;
       }
-      between.push(this._entries.get(up.id)!);
+      between.push(this.#entries.get(up.id)!);
     }
     return false;
   }
@@ -1607,12 +1612,12 @@ class Engine implements CrdtEngine {
    * Entries that point at this one may now be shown, or hidden. Its children
    * too: a child moved into a node that is now doomed falls back elsewhere.
    */
-  private _wake(entry: Entry) {
-    this._waiting.get(entry.id)?.forEach((waiter) => this._dirty.add(waiter));
-    this._dirtyChildren(entry.node!);
+  #wake(entry: Entry) {
+    this.#waiting.get(entry.id)?.forEach((waiter) => this.#dirty.add(waiter));
+    this.#dirtyChildren(entry.node!);
   }
 
-  private _watchedParents(entry: Entry) {
+  #watchedParents(entry: Entry) {
     const parents = new Set<string>();
     if (entry.parent !== undefined) parents.add(entry.parent);
     if (entry.back) parents.add(entry.back.parent);
@@ -1620,26 +1625,26 @@ class Engine implements CrdtEngine {
   }
 
   /** An entry shown away from a missing parent must hear when it arrives. */
-  private _refreshWaiting(entry: Entry) {
+  #refreshWaiting(entry: Entry) {
     // Most entries watch only their parent.
     if (!entry.back && entry.parent !== undefined) {
-      this._rewait(entry.parent, entry);
+      this.#rewait(entry.parent, entry);
       return;
     }
-    for (const parent of this._watchedParents(entry))
-      this._rewait(parent, entry);
+    for (const parent of this.#watchedParents(entry))
+      this.#rewait(parent, entry);
   }
 
-  private _rewait(parent: string, entry: Entry) {
-    this._unwait(parent, entry);
-    if (!this._isAlive(parent)) this._wait(parent, entry);
+  #rewait(parent: string, entry: Entry) {
+    this.#unwait(parent, entry);
+    if (!this.#isAlive(parent)) this.#wait(parent, entry);
   }
 
-  private _prevSibling(parent: DocNode, entry: Entry): DocNode | undefined {
+  #prevSibling(parent: DocNode, entry: Entry): DocNode | undefined {
     // A node placed again later, still away, is not one to go after.
     if (!entry.away)
-      return this._fugue.findBefore(entry.key, (owner, place) => {
-        const other = this._entries.get(owner);
+      return this.#fugue.findBefore(entry.key, (owner, place) => {
+        const other = this.#entries.get(owner);
         return other?.key === place &&
           other.node?.parent === parent &&
           !other.away
@@ -1650,7 +1655,7 @@ class Engine implements CrdtEngine {
     // has not arrived): after the nodes placed in this parent, by id.
     for (let prev = parent.last; prev; prev = prev.prev) {
       if (prev === entry.node) continue;
-      const other = this._entries.get(prev.id)!;
+      const other = this.#entries.get(prev.id)!;
       if (!other.away || prev.id < entry.id) return prev;
     }
     return undefined;
@@ -1662,10 +1667,10 @@ class Engine implements CrdtEngine {
    * Normalize listeners never run on a remote change. If it left something
    * they would repair, they repair it now, as a local change of its own.
    */
-  private _repair() {
-    const doc = this._doc;
+  #repair() {
+    const doc = this.#doc;
     const listeners = doc["_normalizeListeners"];
-    this._repairing = { lamport: this._clock };
+    this.#repairing = { lamport: this.#clock };
     try {
       doc.forceCommit(
         () => {
@@ -1674,15 +1679,16 @@ class Engine implements CrdtEngine {
         { skipUndo: true },
       );
     } finally {
-      this._repairing = undefined;
+      this.#repairing = undefined;
     }
   }
 
   /* --------------------------- undo and aborts (classic) --------------------------- */
 
-  /* v8 ignore next 8 -- @preserve: only an undo of a range move whose target
-     ended inside the range, which the lab fuzz reaches. */
-  private _isInside(target: DocNode, start: DocNode, end: DocNode) {
+  // Only an undo of a range move whose target ended inside the range, which
+  // the lab fuzz reaches.
+  /* v8 ignore next 8 -- @preserve */
+  #isInside(target: DocNode, start: DocNode, end: DocNode) {
     for (let cur: DocNode | undefined = start; cur; cur = cur.next) {
       if (target === cur) return true;
       if (target.ancestors().find((a) => a === cur)) return true;
@@ -1691,24 +1697,24 @@ class Engine implements CrdtEngine {
     return false;
   }
 
-  private _resolveAlias(id: string) {
+  #resolveAlias(id: string) {
     let current = id;
-    let alias = this._aliases.get(current);
+    let alias = this.#aliases.get(current);
     while (alias !== undefined) {
       current = alias;
-      alias = this._aliases.get(current);
+      alias = this.#aliases.get(current);
     }
     return current;
   }
 
   /** Makes an inverse apply reliable when anchors or ids changed meanwhile. */
-  private _prepareClassic(operations: DraftOperations): DraftOperations {
-    const doc = this._doc;
+  #prepareClassic(operations: DraftOperations): DraftOperations {
+    const doc = this.#doc;
     const { root } = doc;
-    const newId = this._options.undo === "newId";
+    const newId = this.#options.undo === "newId";
     const fresh = new Map<string, string>();
     const name = (id: string) => {
-      const known = fresh.get(id) ?? this._resolveAlias(id);
+      const known = fresh.get(id) ?? this.#resolveAlias(id);
       return known;
     };
     const mapId = (id: string | 0) => (id === 0 ? 0 : name(id));
@@ -1719,12 +1725,12 @@ class Engine implements CrdtEngine {
           const nodes = op[1].flatMap(([id, type]): [string, string][] => {
             if (
               newId &&
-              this._deadLife(name(id)) >= 0 &&
+              this.#deadLife(name(id)) >= 0 &&
               !doc.getNodeById(name(id))
             ) {
               const replacement = doc["_nodeIdGenerator"](doc);
               fresh.set(id, replacement);
-              this._aliases.set(this._resolveAlias(id), replacement);
+              this.#aliases.set(this.#resolveAlias(id), replacement);
               return [[replacement, type]];
             }
             return [[name(id), type]];
@@ -1743,8 +1749,9 @@ class Engine implements CrdtEngine {
           // The inverse of a move can no longer apply: the node stays where it is.
           if (!start || !target) return [];
           const end = live(op[2]) ?? start;
-          /* v8 ignore next -- @preserve: see `_isInside`. */
-          if (this._isInside(target, start, end)) return [];
+          // See `#isInside`.
+          /* v8 ignore next -- @preserve */
+          if (this.#isInside(target, start, end)) return [];
           // Range undo, and a parent that died while an anchor moved away:
           // both are rare enough that only the lab fuzz reaches them.
           /* v8 ignore next -- @preserve */
@@ -1769,9 +1776,9 @@ class Engine implements CrdtEngine {
    * `doc.toJSON`: the labels go after the tree and the text, and their
    * sessions in the document's table, after those (see `StoredLabels`).
    */
-  private _toJSON(json: JsonDoc): JsonDoc {
-    this._rootEntry();
-    const rootId = this._doc.root.id;
+  #toJSON(json: JsonDoc): JsonDoc {
+    this.#rootEntry();
+    const rootId = this.#doc.root.id;
     const sessions = new SessionTable();
     for (const session of storedSessions(json, rootId)) sessions.index(session);
     const names = sessionWriter(sessions);
@@ -1784,57 +1791,57 @@ class Engine implements CrdtEngine {
     let lamport = 0;
     const walk = (parent: DocNode) => {
       for (let child = parent.first; child; child = child.next) {
-        const entry = this._entries.get(child.id)!;
+        const entry = this.#entries.get(child.id)!;
         const [clock, session] = entry.at!;
         sessionColumn.push(names.index(session));
         lamportColumn.pushSigned(clock - lamport);
         lamport = clock;
         // A place with the node's id is not written.
         placeColumn.push(placeKind(entry, child.id, places));
-        const extra = this._extra(entry, names, false);
+        const extra = this.#extra(entry, names, false);
         if (extra) extras.push(index, extra);
         index++;
         walk(child);
       }
     };
-    walk(this._doc.root);
+    walk(this.#doc.root);
     const hidden: Entry[] = [];
-    for (const entry of this._entries.values()) {
+    for (const entry of this.#entries.values()) {
       if (entry.id === rootId) continue;
       const node = entry.node;
       // Shown: linked under a node of the document.
-      if (node && this._doc["_nodeMap"].get(node.id) === node) continue;
+      if (node && this.#doc["_nodeMap"].get(node.id) === node) continue;
       hidden.push(entry);
     }
     hidden.sort((a, b) => Number(a.id > b.id) - Number(a.id < b.id));
     const limbo = hidden.map((entry): Json[] => {
       const [clock, session] = entry.at ?? ZERO;
       // A hidden label always says where its pointer is.
-      const extra = this._extra(entry, names, true)!;
+      const extra = this.#extra(entry, names, true)!;
       const label: Json[] = [entry.pos, clock, names.index(session), extra];
       const state = entry.node ? entry.node["_stateToJson"]() : entry.pending;
       return [names.write(entry.id), entry.type ?? 0, label, state ?? 0];
     });
     const aliases: Json[] = [];
-    for (const [old, renamed] of this._aliases)
+    for (const [old, renamed] of this.#aliases)
       aliases.push(names.write(old), names.write(renamed));
     const rootStamps: Json[] = [];
-    const root = this._entries.get(rootId)!;
+    const root = this.#entries.get(rootId)!;
     for (const key in root.stamps) {
       const [clock, session] = root.stamps[key]!;
       rootStamps.push(key, clock, names.index(session));
     }
     const pending: Json[] = [];
-    for (const [id, { life, seen, own }] of [...this._pending].sort(
+    for (const [id, { life, seen, own }] of [...this.#pending].sort(
       (a, b) => Number(a[0] > b[0]) - Number(a[0] < b[0]),
     ))
       pending.push(names.write(id), life, seen[0], names.index(seen[1]), +own);
     const deleted: Json[] = [];
-    this._deleted.forEach((session, runs) =>
+    this.#deleted.forEach((session, runs) =>
       deleted.push([names.index(session), ...runs]),
     );
     const stored: Json[] = [
-      this._clock,
+      this.#clock,
       joinColumns([sessionColumn, lamportColumn, placeColumn]),
       places,
       extras,
@@ -1843,9 +1850,9 @@ class Engine implements CrdtEngine {
       aliases,
       rootStamps,
       pending,
-      this._fugue.toJSON(
-        (list) => childIds(this._doc, list),
-        (owner, place) => this._entries.get(owner)?.key === place,
+      this.#fugue.toJSON(
+        (list) => childIds(this.#doc, list),
+        (owner, place) => this.#entries.get(owner)?.key === place,
         sessions,
       ),
     ];
@@ -1864,7 +1871,7 @@ class Engine implements CrdtEngine {
   }
 
   /** What a label has that its columns leave out, or nothing. */
-  private _extra(
+  #extra(
     entry: Entry,
     names: ReturnType<typeof sessionWriter>,
     hidden: boolean,
@@ -1896,8 +1903,8 @@ class Engine implements CrdtEngine {
     return isObjectEmpty(extra) ? undefined : extra;
   }
 
-  /** Sets what `label` stores on `entry` (see `_extra`). */
-  private _restoreLabel(
+  /** Sets what `label` stores on `entry` (see `#extra`). */
+  #restoreLabel(
     entry: Entry,
     label: Label,
     names: StoredLabels,
@@ -1921,11 +1928,11 @@ class Engine implements CrdtEngine {
     if (extra.b !== undefined)
       entry.back = { parent: names.read(extra.b), pos: text(extra.p) };
     if (extra.u !== undefined) {
-      this._offTree = true;
+      this.#offTree = true;
       entry.parent = extra.u === 0 ? undefined : names.read(extra.u);
       entry.pos = text(extra.q);
       // Without a pointer it has no stamp either: an insert without one (see
-      // `_birthStamp`) still applies.
+      // `#birthStamp`) still applies.
       if (extra.u === 0) entry.at = undefined;
     }
     const stamps = list(extra.s);
@@ -1935,17 +1942,17 @@ class Engine implements CrdtEngine {
 
   /** Rebuilds the labels once `Doc.fromJSON` built the tree. */
   load(json: JsonDoc | JsonTree) {
-    const doc = this._doc;
-    const root = this._rootEntry();
+    const doc = this.#doc;
+    const root = this.#rootEntry();
     root.node = doc.root;
-    const fugue = this._newFugue();
-    this._fugue = fugue;
+    const fugue = this.#newFugue();
+    this.#fugue = fugue;
     const stored = isTree(json) ? undefined : json[9];
     if (isTree(json) || !isList(stored)) {
       // A document without labels: deterministic labels, same on every replica.
       const walk = (node: DocNode) => {
         for (let child = node.first; child; child = child.next) {
-          const entry = this._newEntry(child.id, 0, child.type);
+          const entry = this.#newEntry(child.id, 0, child.type);
           entry.node = child;
           entry.parent = node.id;
           // The same places on every replica that loads it.
@@ -1953,7 +1960,7 @@ class Engine implements CrdtEngine {
           entry.pos = entry.key = child.id;
           entry.at = ZERO;
           for (const key in child["_state"]) entry.stamps[key] = ZERO;
-          this._entries.set(child.id, entry);
+          this.#entries.set(child.id, entry);
           walk(child);
         }
       };
@@ -1961,30 +1968,30 @@ class Engine implements CrdtEngine {
       return;
     }
     const labels = new StoredLabels(stored, storedSessions(json, doc.root.id));
-    this._clock = labels.clock;
+    this.#clock = labels.clock;
     labels.places(fugue, doc);
     labels.deleted((session, from, to, life) =>
-      this._deleted.add(session, from, to, life),
+      this.#deleted.add(session, from, to, life),
     );
-    labels.aliases((old, renamed) => this._aliases.set(old, renamed));
+    labels.aliases((old, renamed) => this.#aliases.set(old, renamed));
     labels.visible(doc.root, (child, parent, label) => {
-      const entry = this._newEntry(child.id, 0, child.type);
+      const entry = this.#newEntry(child.id, 0, child.type);
       entry.node = child;
       entry.parent = parent.id;
-      this._restoreLabel(entry, label, labels, child["_state"]);
+      this.#restoreLabel(entry, label, labels, child["_state"]);
       // A cut keeps the view where it was shown and its pointer elsewhere.
       entry.key = entry.pos;
       entry.away = !!label.away;
       // Shown before its place arrived, it waits for it again.
-      if (entry.away) this._waitForPlace(entry.key, entry);
-      this._entries.set(child.id, entry);
+      if (entry.away) this.#waitForPlace(entry.key, entry);
+      this.#entries.set(child.id, entry);
     });
     labels.rootStamps((key, stamp) => (root.stamps[key] = stamp));
     labels.limbo((id, type, label, state) => {
-      this._offTree = true;
-      const entry = this._newEntry(id, 0, type);
-      this._restoreLabel(entry, label, labels, state);
-      this._entries.set(id, entry);
+      this.#offTree = true;
+      const entry = this.#newEntry(id, 0, type);
+      this.#restoreLabel(entry, label, labels, state);
+      this.#entries.set(id, entry);
       if (type !== undefined) {
         entry.node = doc["_nodeFromTree"]([id, type, state]);
       } else {
@@ -1996,52 +2003,52 @@ class Engine implements CrdtEngine {
       entry.key = entry.pos;
     });
     labels.pending((id, life, seen, own) => {
-      this._mergePending(id, life, seen);
+      this.#mergePending(id, life, seen);
       if (own) {
-        this._pending.get(id)!.own = true;
-        this._garbage.set(id, this._clock);
+        this.#pending.get(id)!.own = true;
+        this.#garbage.set(id, this.#clock);
       }
     });
-    this._rebuildAfterHydrate();
+    this.#rebuildAfterHydrate();
   }
 
-  private _rebuildAfterHydrate() {
+  #rebuildAfterHydrate() {
     // Every node is shown where it points, as one that never moved: there is
     // no cycle to cut and nothing to link.
-    if (!this._offTree) return;
+    if (!this.#offTree) return;
     // Limbo nodes are linked to the parents they already point to, and the
     // cycle cut is recomputed. Both are pure functions of the labels.
-    const rootId = this._doc.root.id;
-    for (const entry of this._entries.values()) {
+    const rootId = this.#doc.root.id;
+    for (const entry of this.#entries.values()) {
       if (entry.id === rootId || !entry.node) continue;
-      if (!entry.node.parent) this._dirty.add(entry);
+      if (!entry.node.parent) this.#dirty.add(entry);
     }
-    this._cuts = this._resolveCuts();
-    for (const entry of this._entries.values()) {
+    this.#cuts = this.#resolveCuts();
+    for (const entry of this.#entries.values()) {
       if (entry.node && entry.id !== rootId) {
-        const [, key] = this._target(entry);
+        const [, key] = this.#target(entry);
         entry.key = key;
         const shownIn = entry.node.parent;
-        if (shownIn) entry.away = this._isAway(key, shownIn.id);
-        if (entry.away) this._waitForPlace(key, entry);
+        if (shownIn) entry.away = this.#isAway(key, shownIn.id);
+        if (entry.away) this.#waitForPlace(key, entry);
         // A node shown away from a dead parent goes back when it revives.
-        this._refreshWaiting(entry);
+        this.#refreshWaiting(entry);
       }
     }
     // Dirty limbo entries re-link under their (possibly invisible) parents.
-    const order = this._topDown([...this._dirty], rootId);
-    for (const entry of order) this._place(entry);
-    this._dirty.clear();
+    const order = this.#topDown([...this.#dirty], rootId);
+    for (const entry of order) this.#place(entry);
+    this.#dirty.clear();
   }
 
-  private _mergeSnapshot(stored: Json | undefined) {
+  #mergeSnapshot(stored: Json | undefined) {
     if (!isJsonDoc(stored) || !isList(stored[9])) return;
     // A snapshot is one of this document, which has its id.
-    const id = this._doc.root.id;
+    const id = this.#doc.root.id;
     const labels = new StoredLabels(stored[9], storedSessions(stored, id));
-    this._clock = Math.max(this._clock, labels.clock);
+    this.#clock = Math.max(this.#clock, labels.clock);
     labels.deleted((session, from, to, life) =>
-      this._mergeDelete([session, from, to, life]),
+      this.#mergeDelete([session, from, to, life]),
     );
     const ingest = (
       id: string,
@@ -2050,15 +2057,15 @@ class Engine implements CrdtEngine {
       label: Label,
       state: Record<string, string>,
     ) => {
-      const scratch = this._newEntry(id, 0, type);
+      const scratch = this.#newEntry(id, 0, type);
       scratch.parent = parent;
-      this._restoreLabel(scratch, label, labels, state);
-      const entry = this._ensure(id, scratch.life);
+      this.#restoreLabel(scratch, label, labels, state);
+      const entry = this.#ensure(id, scratch.life);
       if (!entry) return;
       const wasTyped = entry.type !== undefined;
       if (type !== undefined) entry.type = type;
       if (scratch.parent !== undefined) {
-        this._mergePointer(
+        this.#mergePointer(
           entry,
           scratch.parent,
           scratch.pos,
@@ -2066,22 +2073,22 @@ class Engine implements CrdtEngine {
           scratch.back,
         );
       }
-      if (!wasTyped && type !== undefined) this._onTyped(entry);
+      if (!wasTyped && type !== undefined) this.#onTyped(entry);
       // As its insert would: state written before this life began is reset.
-      if (type !== undefined) this._mergeBirth(entry, scratch.born!);
+      if (type !== undefined) this.#mergeBirth(entry, scratch.born!);
       for (const key in state) {
-        this._mergeState(entry, key, state[key]!, scratch.stamps[key]!);
+        this.#mergeState(entry, key, state[key]!, scratch.stamps[key]!);
       }
       for (const key in scratch.stamps) {
         if (key in state) continue;
         // Only a typed node leaves a written value out: its key's default.
-        const defaults = this._doc["_resolvedNodeDefs"].get(entry.type!)!;
+        const defaults = this.#doc["_resolvedNodeDefs"].get(entry.type!)!;
         const value = defaults.defaultStrings[key]!;
-        this._mergeState(entry, key, value, scratch.stamps[key]!);
+        this.#mergeState(entry, key, value, scratch.stamps[key]!);
       }
     };
     // The stored tree, read by a document of the same node types.
-    const doc = this._doc;
+    const doc = this.#doc;
     const copy = Doc.fromJSON(
       {
         id,
@@ -2091,14 +2098,14 @@ class Engine implements CrdtEngine {
       },
       stored,
     );
-    labels.places(this._fugue, copy);
+    labels.places(this.#fugue, copy);
     labels.visible(copy.root, (child, parent, label) =>
       ingest(child.id, child.type, parent.id, label, child["_stateToJson"]()),
     );
     labels.limbo((id, type, label, state) =>
       ingest(id, type, undefined, label, state),
     );
-    labels.pending((id, life, seen) => this._mergePending(id, life, seen));
+    labels.pending((id, life, seen) => this.#mergePending(id, life, seen));
   }
 }
 
@@ -2135,16 +2142,6 @@ function placeKind(entry: Entry, id: string, places: string[]) {
   return (own ? 0 : 1) + (entry.away ? 2 : 0);
 }
 
-const num = (value: Json | undefined) => Number(value);
-
-const list = (value: Json | undefined): readonly Json[] =>
-  isList(value) ? value : [];
-
-const isRecord = (
-  value: Json | undefined,
-): value is { readonly [key: string]: Json | undefined } =>
-  typeof value === "object" && value !== null && !isList(value);
-
 /** A stored state: each value as a JSON string. A label without one has `0`. */
 function stateOf(value: Json | undefined) {
   const state: Record<string, string> = {};
@@ -2174,7 +2171,7 @@ const sessionWriter = (table: SessionTable) => {
  *   node's, and how its place is stored (see `placeKind`). `places` lists
  *   the places that are not the node's id.
  * - `extras`: `[index, extra, …]`, what the labels of those nodes have that
- *   the columns leave out (see `_extra`).
+ *   the columns leave out (see `#extra`).
  * - `deleted`: `[[session, from, to, life, …], …]`.
  * - `limbo`: `[[id, type | 0, [key, clock, session, extra?], state | 0], …]`,
  *   the labels of nodes not shown.
@@ -2184,17 +2181,18 @@ const sessionWriter = (table: SessionTable) => {
  */
 class StoredLabels {
   readonly clock: number;
+  readonly #stored: readonly Json[];
+  readonly #sessions: readonly string[];
 
-  constructor(
-    private readonly _stored: readonly Json[],
-    private readonly _sessions: readonly string[],
-  ) {
-    this.clock = num(_stored[0]);
+  constructor(stored: readonly Json[], sessions: readonly string[]) {
+    this.#stored = stored;
+    this.#sessions = sessions;
+    this.clock = num(stored[0]);
   }
 
   /** A session `sessionWriter` wrote. */
   session(index: Json | undefined): string {
-    return this._sessions[num(index) - 1] ?? "";
+    return this.#sessions[num(index) - 1] ?? "";
   }
 
   /** A node id `sessionWriter` wrote. */
@@ -2204,10 +2202,10 @@ class StoredLabels {
 
   /** The stored places of the stored tree `doc`. */
   places(fugue: FugueSiblings, doc: Doc) {
-    fugue.load(this._stored[9], (list) => childIds(doc, list), this._sessions);
+    fugue.load(this.#stored[9], (list) => childIds(doc, list), this.#sessions);
   }
 
-  private _label(value: Json | undefined): Label {
+  #label(value: Json | undefined): Label {
     const label = list(value);
     return {
       pos: text(label[0]),
@@ -2221,7 +2219,7 @@ class StoredLabels {
     root: DocNode,
     visit: (child: DocNode, parent: DocNode, label: Label) => void,
   ) {
-    const stored = this._stored;
+    const stored = this.#stored;
     const [sessions, clocks, kinds] = splitColumns(text(stored[1]), 3).map(
       (column) => new ColumnReader(column),
     );
@@ -2254,7 +2252,7 @@ class StoredLabels {
   deleted(
     visit: (session: string, from: number, to: number, life: number) => void,
   ) {
-    for (const group of list(this._stored[4])) {
+    for (const group of list(this.#stored[4])) {
       const [session, ...runs] = list(group);
       for (let at = 0; at < runs.length; at += 3)
         visit(
@@ -2274,25 +2272,25 @@ class StoredLabels {
       state: Record<string, string>,
     ) => void,
   ) {
-    for (const item of list(this._stored[5])) {
+    for (const item of list(this.#stored[5])) {
       const [id, type, label, state] = list(item);
       visit(
         this.read(id),
         typeof type === "string" ? type : undefined,
-        this._label(label),
+        this.#label(label),
         stateOf(state),
       );
     }
   }
 
   aliases(visit: (old: string, renamed: string) => void) {
-    const aliases = list(this._stored[6]);
+    const aliases = list(this.#stored[6]);
     for (let at = 0; at < aliases.length; at += 2)
       visit(this.read(aliases[at]), this.read(aliases[at + 1]));
   }
 
   rootStamps(visit: (key: string, stamp: Stamp) => void) {
-    const stamps = list(this._stored[7]);
+    const stamps = list(this.#stored[7]);
     for (let at = 0; at < stamps.length; at += 3)
       visit(text(stamps[at]), [
         num(stamps[at + 1]),
@@ -2303,7 +2301,7 @@ class StoredLabels {
   pending(
     visit: (id: string, life: number, seen: Stamp, own: boolean) => void,
   ) {
-    const pending = list(this._stored[8]);
+    const pending = list(this.#stored[8]);
     for (let at = 0; at < pending.length; at += 5)
       visit(
         this.read(pending[at]),

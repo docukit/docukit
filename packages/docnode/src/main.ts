@@ -89,17 +89,17 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     next: DocNode | undefined,
     attached: boolean,
   ) {
-    if (attached) this._register(this.doc["_nodeMap"]);
+    if (attached) this.#register(this.doc["_nodeMap"]);
     this._set("parent", parent);
     this._set("prev", prev);
     this._set("next", next);
   }
 
   /** Puts the node and its descendants in `map`, without an iterator. */
-  private _register(map: Map<string, DocNode>) {
+  #register(map: Map<string, DocNode>) {
     map.set(this.id, this);
     for (let child = this.first; child; child = child.next)
-      child._register(map);
+      child.#register(map);
   }
 
   get state(): NodeState.Methods<T> {
@@ -622,7 +622,7 @@ export class Doc {
   protected _nodeIdGenerator: (doc: Doc) => string;
   protected _idGen: NodeIdGenerator;
   /** The ids of this document's session, unless a generator without time makes them. */
-  protected _nodeIds: NodeIds | undefined;
+  #nodeIds: NodeIds | undefined;
   /**
    * How many times this document took a new session (see `NodeIds`): what
    * keeps its own counters, like the text, starts over.
@@ -746,10 +746,10 @@ export class Doc {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     this.root = new DocNode(this, config.type, id);
     this._nodeMap.set(id, this.root);
-    this._nodeIds = idGen.extractTime
+    this.#nodeIds = idGen.extractTime
       ? new NodeIds(this, idGen.extractTime)
       : undefined;
-    this._nodeIdGenerator = this._nodeIds?.generate ?? idGen.generate;
+    this._nodeIdGenerator = this.#nodeIds?.generate ?? idGen.generate;
     // Before the extensions and the undo manager: the engine sees them come.
     this._crdt = config.crdt?.(this);
 
@@ -758,7 +758,7 @@ export class Doc {
       extension.register?.(this);
     });
     this._lifeCycleStage = "idle";
-    this._forceCommit(true);
+    this.#forceCommit(true);
     this.undoManager = new UndoManager(this, config.undoManager);
     this._transactionFlags = { skipUndo: true };
     // If the first tx happens in the same microtask the doc is created,
@@ -778,14 +778,14 @@ export class Doc {
    * (see `NodeIds`).
    */
   private _renewSession() {
-    if (!this._nodeIds) return;
-    this._nodeIds.renew();
+    if (!this.#nodeIds) return;
+    this.#nodeIds.renew();
     this._sessionRenewals++;
   }
 
   /** A node another replica inserted (see `_renewSession`). */
   private _checkSession(id: string) {
-    if (this._nodeIds?.collides(id)) this._renewSession();
+    if (this.#nodeIds?.collides(id)) this._renewSession();
   }
 
   /** The id of a new node: a CRDT engine can choose it (see `DocConfig.crdt`). */
@@ -833,7 +833,7 @@ export class Doc {
         throw new Error("Root node cannot have siblings");
       // One pass per node and its descendants: inserting many nodes at once
       // (pasting, importing) costs the same per node as inserting one.
-      for (const node of nodes) this._checkInsertable(node);
+      for (const node of nodes) this.#checkInsertable(node);
       switch (position) {
         case "append": {
           const attached = this._nodeMap.has(target.id);
@@ -878,7 +878,7 @@ export class Doc {
   }
 
   /** Throws unless `node` and its descendants can be inserted in this document. */
-  private _checkInsertable(node: DocNode) {
+  #checkInsertable(node: DocNode) {
     if (this !== node.doc) throw new Error("Node is from a different doc");
     if (this._nodeMap.has(node.id))
       // TODO: replace node.id with ${JSON.stringify(this.toJSON())). But for that,
@@ -889,7 +889,7 @@ export class Doc {
     if (node.type === this.root.type)
       throw new Error("You cannot insert nodes of type 'root'");
     for (let child = node.first; child; child = child.next)
-      this._checkInsertable(child);
+      this.#checkInsertable(child);
   }
 
   /**
@@ -1030,13 +1030,13 @@ export class Doc {
         "You can't call forceCommit inside a forceCommit callback",
       );
     }
-    this._forceCommit();
+    this.#forceCommit();
     if (!callback) return;
     this._transactionFlags = flags;
     this._isForceCommitCallback = true;
     try {
       withTransaction(this, callback);
-      if (this._lifeCycleStage === "update") this._forceCommit();
+      if (this._lifeCycleStage === "update") this.#forceCommit();
       else this._transactionFlags = {};
     } finally {
       this._isForceCommitCallback = false;
@@ -1044,9 +1044,9 @@ export class Doc {
   }
 
   /** Whether a transaction of this document inserted nodes. */
-  private _insertsNodes = false;
+  #insertsNodes = false;
 
-  private _forceCommit(ignoreEmptyDiff = false) {
+  #forceCommit(ignoreEmptyDiff = false) {
     if (this._lifeCycleStage === "change")
       throw new Error("You can't trigger an update inside a change event");
     // push + reverse is more performant than unshift at insertion time
@@ -1056,8 +1056,8 @@ export class Doc {
     ops.maybeTriggerListeners(this, ignoreEmptyDiff);
     // A document that inserts nodes gets patches keyed by new ids each time
     // (see `idRecord`).
-    if (this._diff.inserted.size > 0) this._insertsNodes = true;
-    this._operations = [[], this._insertsNodes ? idRecord() : {}];
+    if (this._diff.inserted.size > 0) this.#insertsNodes = true;
+    this._operations = [[], this.#insertsNodes ? idRecord() : {}];
     this._inverseOperations = [[], {}];
     this._received = undefined;
     this._decoded = undefined;
@@ -1173,7 +1173,7 @@ export class Doc {
     withTransaction(doc, () => {
       if (!isTree(json)) return readJsonDoc(doc, json);
       doc._setStoredRoot(doc._nodeFromTree(json));
-      doc._attachTree(doc.root, json[3]);
+      doc.#attachTree(doc.root, json[3]);
     });
     // In the transaction of the load, which is still open.
     doc._crdt?.load(json);
@@ -1258,14 +1258,14 @@ export class Doc {
   }
 
   /** The children of a `JsonTree` node, linked under `parent`. */
-  private _attachTree(parent: DocNode, children: JsonTree[] | undefined) {
+  #attachTree(parent: DocNode, children: JsonTree[] | undefined) {
     if (!children) return;
     let prev: DocNode | undefined;
     for (const json of children) {
       const node = this._nodeFromTree(json);
       this._linkStored(parent, prev, node);
       prev = node;
-      this._attachTree(node, json[3]);
+      this.#attachTree(node, json[3]);
     }
     parent["_set"]("last", prev);
   }

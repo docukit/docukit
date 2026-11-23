@@ -34,11 +34,9 @@ const SAMPLE = 256;
 
 /** The numbers of a column, as they are stored. */
 export class ColumnWriter {
-  private _values: Int32Array | Float64Array;
-  private _count = 0;
-  private _changes = 0;
-  /** Each value's replacement when it is written. */
-  private _map: Int32Array | undefined;
+  #values: Int32Array | Float64Array;
+  #count = 0;
+  #changes = 0;
 
   /**
    * `capacity`: how many values it will likely hold, taken at the first
@@ -48,25 +46,28 @@ export class ColumnWriter {
    * `keepZeros`: its zeros at the end are written, for a column read until
    * it is done (see `ColumnReader.done`).
    */
-  constructor(
-    private readonly _capacity = 64,
-    private readonly _wide = false,
-    private readonly _keepZeros = false,
-  ) {
-    this._values = _wide ? NO_WIDE_VALUES : NO_VALUES;
+  readonly #capacity: number;
+  readonly #wide: boolean;
+  readonly #keepZeros: boolean;
+
+  constructor(capacity = 64, wide = false, keepZeros = false) {
+    this.#capacity = capacity;
+    this.#wide = wide;
+    this.#keepZeros = keepZeros;
+    this.#values = wide ? NO_WIDE_VALUES : NO_VALUES;
   }
 
   push(value: number): void {
-    const count = this._count;
-    if (count === this._values.length) {
-      const size = count * 2 || this._capacity;
-      const grown = this._wide ? new Float64Array(size) : new Int32Array(size);
-      grown.set(this._values);
-      this._values = grown;
+    const count = this.#count;
+    if (count === this.#values.length) {
+      const size = count * 2 || this.#capacity;
+      const grown = this.#wide ? new Float64Array(size) : new Int32Array(size);
+      grown.set(this.#values);
+      this.#values = grown;
     }
-    if (count === 0 || value !== this._values[count - 1]) this._changes++;
-    this._values[count] = value;
-    this._count = count + 1;
+    if (count === 0 || value !== this.#values[count - 1]) this.#changes++;
+    this.#values[count] = value;
+    this.#count = count + 1;
   }
 
   /** A value that may be negative: 0, -1, 1, -2… as 0, 1, 2, 3… */
@@ -74,48 +75,28 @@ export class ColumnWriter {
     this.push(value < 0 ? -2 * value - 1 : 2 * value);
   }
 
-  /** How many times each value below `size` was pushed. */
-  tally(size: number): Int32Array {
-    const counts = new Int32Array(size);
-    for (let index = 0; index < this._count; index++)
-      counts[this._values[index]!]!++;
-    return counts;
-  }
-
-  /** Writes `map[value]` in place of each value (one value per entry). */
-  remap(map: Int32Array): void {
-    this._map = map;
-  }
-
   encode(): string {
-    let values = this._values;
-    let count = this._count;
-    const written = this._map;
+    let values = this.#values;
+    let count = this.#count;
     // A reader past the end reads zeros.
-    if (!this._keepZeros)
-      while (
-        count > 0 &&
-        (written ? written[values[count - 1]!]! : values[count - 1]!) === 0
-      )
-        count--;
+    if (!this.#keepZeros) while (count > 0 && values[count - 1] === 0) count--;
     if (count === 0) return "";
     // Runs of one value, as `value, times`, when they take fewer numbers.
-    const runs = this._changes * 2 < count;
+    const runs = this.#changes * 2 < count;
     if (runs) {
-      const pairs = new Float64Array(this._changes * 2);
+      const pairs = new Float64Array(this.#changes * 2);
       let at = 0;
       for (let index = 0; index < count; ) {
         const value = values[index]!;
         let end = index + 1;
         while (end < count && values[end] === value) end++;
-        pairs[at++] = written ? written[value]! : value;
+        pairs[at++] = value;
         pairs[at++] = end - index;
         index = end;
       }
       values = pairs;
       count = at;
     }
-    const map = runs ? undefined : written;
     // The cut that takes the fewest digits, on a sample.
     const step = Math.ceil(count / SAMPLE);
     let cutIndex = 0;
@@ -125,7 +106,7 @@ export class ColumnWriter {
       let size = 0;
       for (let index = 0; index < count && size < best; index += step) {
         size++;
-        let value = map ? map[values[index]!]! : values[index]!;
+        let value = values[index]!;
         for (; value >= candidate; size++)
           value = Math.floor((value - candidate) / scale);
       }
@@ -135,8 +116,7 @@ export class ColumnWriter {
     const out = new FieldWriter(Math.ceil(best * step * 1.25) + 10);
     // One digit: whether it holds runs, and the cut.
     out.write(runs ? CUTS.length + cutIndex : cutIndex, BASE);
-    for (let index = 0; index < count; index++)
-      out.write(map ? map[values[index]!]! : values[index]!, cut);
+    for (let index = 0; index < count; index++) out.write(values[index]!, cut);
     return out.encode();
   }
 }
@@ -172,21 +152,21 @@ function writeNumber(
 
 /** Fields of different kinds, one after the other, each with its own cut. */
 export class FieldWriter {
-  private _bytes: Uint8Array;
-  private _at = 0;
+  #bytes: Uint8Array;
+  #at = 0;
 
   constructor(capacity = 1024) {
-    this._bytes = new Uint8Array(capacity);
+    this.#bytes = new Uint8Array(capacity);
   }
 
   write(value: number, cut: number): void {
     // A safe integer never takes more than 15 digits (with the lowest scale).
-    if (this._at + 15 > this._bytes.length) {
-      const grown = new Uint8Array(this._bytes.length * 2);
-      grown.set(this._bytes);
-      this._bytes = grown;
+    if (this.#at + 15 > this.#bytes.length) {
+      const grown = new Uint8Array(this.#bytes.length * 2);
+      grown.set(this.#bytes);
+      this.#bytes = grown;
     }
-    this._at = writeNumber(this._bytes, this._at, value, cut);
+    this.#at = writeNumber(this.#bytes, this.#at, value, cut);
   }
 
   /** A value that may be negative: 0, -1, 1, -2… as 0, 1, 2, 3… */
@@ -195,11 +175,11 @@ export class FieldWriter {
   }
 
   encode(): string {
-    return ASCII.decode(this._bytes.subarray(0, this._at));
+    return ASCII.decode(this.#bytes.subarray(0, this.#at));
   }
 
   clear(): void {
-    this._at = 0;
+    this.#at = 0;
   }
 }
 
@@ -208,33 +188,33 @@ const signed = (value: number) => (value % 2 ? -(value + 1) / 2 : value / 2);
 
 /** Reads what a `FieldWriter` wrote, in the same order and with the same cuts. */
 export class FieldReader {
-  private readonly _text: string;
-  private _at = 0;
+  readonly #text: string;
+  #at = 0;
 
   constructor(text: string) {
-    this._text = text;
+    this.#text = text;
   }
 
   /** Where the next number starts. */
   get position(): number {
-    return this._at;
+    return this.#at;
   }
 
   set position(at: number) {
-    this._at = at;
+    this.#at = at;
   }
 
   get done(): boolean {
-    return this._at >= this._text.length;
+    return this.#at >= this.#text.length;
   }
 
   read(cut: number): number {
-    const text = this._text;
+    const text = this.#text;
     const scale = BASE - cut;
     let value = 0;
     let weight = 1;
     for (;;) {
-      const digit = VALUES[text.charCodeAt(this._at++)]!;
+      const digit = VALUES[text.charCodeAt(this.#at++)]!;
       value += digit * weight;
       if (digit < cut) return value;
       weight *= scale;
@@ -251,30 +231,30 @@ export class FieldReader {
  * end, zeros.
  */
 export class ColumnReader {
-  private readonly _numbers: FieldReader;
-  private readonly _runs: boolean = false;
-  private readonly _cut: number = 0;
-  private _left = 0;
-  private _value = 0;
+  readonly #numbers: FieldReader;
+  readonly #runs: boolean = false;
+  readonly #cut: number = 0;
+  #left = 0;
+  #value = 0;
 
   constructor(text: string) {
-    this._numbers = new FieldReader(text);
+    this.#numbers = new FieldReader(text);
     if (text === "") return;
-    const head = this._numbers.read(BASE);
-    this._runs = head >= CUTS.length;
-    this._cut = CUTS[head % CUTS.length]!;
+    const head = this.#numbers.read(BASE);
+    this.#runs = head >= CUTS.length;
+    this.#cut = CUTS[head % CUTS.length]!;
   }
 
   next(): number {
-    const numbers = this._numbers;
-    if (numbers.done && this._left === 0) return 0;
-    if (!this._runs) return numbers.read(this._cut);
-    if (this._left === 0) {
-      this._value = this._numbers.read(this._cut);
-      this._left = this._numbers.read(this._cut);
+    const numbers = this.#numbers;
+    if (numbers.done && this.#left === 0) return 0;
+    if (!this.#runs) return numbers.read(this.#cut);
+    if (this.#left === 0) {
+      this.#value = this.#numbers.read(this.#cut);
+      this.#left = this.#numbers.read(this.#cut);
     }
-    this._left--;
-    return this._value;
+    this.#left--;
+    return this.#value;
   }
 
   nextSigned(): number {
@@ -282,7 +262,7 @@ export class ColumnReader {
   }
 
   get done(): boolean {
-    return this._left === 0 && this._numbers.done;
+    return this.#left === 0 && this.#numbers.done;
   }
 }
 
@@ -372,10 +352,10 @@ export class SessionTable {
   readonly table: string[] = [];
   /** The clock of the last id `node` split, plus one, or 0. */
   clock = 0;
-  private readonly _indexes = new Map<string, number>();
+  readonly #indexes = new Map<string, number>();
   // Ids in a row mostly share a session: the last one found is kept.
-  private _last: string | undefined;
-  private _lastIndex = 0;
+  #last: string | undefined;
+  #lastIndex = 0;
 
   /**
    * The index of a node id's session, with its clock in `clock`. An id is
@@ -394,13 +374,13 @@ export class SessionTable {
     // Ids in a row mostly share a session. Cut and compared, a short session
     // is found faster than with `startsWith`.
     const session = id.slice(0, dot);
-    if (session === this._last) return this._lastIndex;
+    if (session === this.#last) return this.#lastIndex;
     return this.index(session);
   }
 
   index(session: string): number {
-    if (session === this._last) return this._lastIndex;
-    let index = this._indexes.get(session);
+    if (session === this.#last) return this.#lastIndex;
+    let index = this.#indexes.get(session);
     if (index === undefined) {
       const dot = lastDot(session);
       const prefix = dot === -1 ? undefined : this.index(session.slice(0, dot));
@@ -408,10 +388,10 @@ export class SessionTable {
       this.table.push(
         prefix === undefined ? session : `${prefix || ""}${session.slice(dot)}`,
       );
-      this._indexes.set(session, index);
+      this.#indexes.set(session, index);
     }
-    this._last = session;
-    this._lastIndex = index;
+    this.#last = session;
+    this.#lastIndex = index;
     return index;
   }
 }

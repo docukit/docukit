@@ -97,7 +97,7 @@ export function incrementStringInBase64(str: string): string {
   const n = str.length;
   for (let i = n - 1; i >= 0; i--) {
     const idx = IDX[str.charCodeAt(i)]!;
-    /* v8 ignore if -- @preserve */
+    /* v8 ignore next -- @preserve */
     if (idx < 0) throw new Error("Invalid base64 digit");
     if (idx !== ALPH_LEN - 1) {
       const tailLen = n - i - 1;
@@ -126,16 +126,16 @@ export function incrementStringInBase64(str: string): string {
  * writes next can no longer collide. What collided before stays as it was.
  */
 export class NodeIds {
-  private readonly _createdAt: number;
-  private _session = "";
-  private _clock = FIRST_CHAR;
-  /** How many ids this session made: `_clock` as a number. */
-  private _made = 0;
+  readonly #createdAt: number;
+  #session = "";
+  #clock = FIRST_CHAR;
+  /** How many ids this session made: `#clock` as a number. */
+  #made = 0;
 
   constructor(doc: Doc, extractTime: (id: string) => number) {
     const rootId = doc.root.id;
     try {
-      this._createdAt = extractTime(rootId);
+      this.#createdAt = extractTime(rootId);
     } catch (error) {
       throw new Error(
         `Failed to extract time from root id '${rootId}'. ${error instanceof Error ? error.message : String(error)}`,
@@ -146,19 +146,19 @@ export class NodeIds {
 
   /** The next id. */
   readonly generate = () => {
-    const id = `${this._session}.${this._clock}`;
-    this._clock = incrementStringInBase64(this._clock);
-    this._made++;
+    const id = `${this.#session}.${this.#clock}`;
+    this.#clock = incrementStringInBase64(this.#clock);
+    this.#made++;
     return id;
   };
 
   /** Starts a new session: later ids are of it. */
   renew() {
     // Absolute: a root clock ahead of this device would leave the time part empty.
-    const milisecondsPassed = Math.abs(Date.now() - this._createdAt);
-    this._session = numberToBase64(milisecondsPassed) + randomStringBase64(3);
-    this._clock = FIRST_CHAR;
-    this._made = 0;
+    const milisecondsPassed = Math.abs(Date.now() - this.#createdAt);
+    this.#session = numberToBase64(milisecondsPassed) + randomStringBase64(3);
+    this.#clock = FIRST_CHAR;
+    this.#made = 0;
   }
 
   /**
@@ -167,11 +167,11 @@ export class NodeIds {
    * undo, a change sent back) are behind.
    */
   collides(id: string) {
-    const length = this._session.length;
+    const length = this.#session.length;
     return (
       id.charCodeAt(length) === 46 &&
-      id.startsWith(this._session) &&
-      base64ToNumber(id, length + 1) >= this._made
+      id.startsWith(this.#session) &&
+      base64ToNumber(id, length + 1) >= this.#made
     );
   }
 }
