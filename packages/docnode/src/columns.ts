@@ -37,6 +37,7 @@ export class ColumnWriter {
   #values: Int32Array | Float64Array;
   #count = 0;
   #changes = 0;
+  #max = 0;
 
   /**
    * `capacity`: how many values it will likely hold, taken at the first
@@ -66,6 +67,7 @@ export class ColumnWriter {
       this.#values = grown;
     }
     if (count === 0 || value !== this.#values[count - 1]) this.#changes++;
+    if (value > this.#max) this.#max = value;
     this.#values[count] = value;
     this.#count = count + 1;
   }
@@ -78,6 +80,7 @@ export class ColumnWriter {
   /** Writes `map[value]` in place of each value, one value per entry. */
   remap(map: Int32Array): void {
     this.#values = this.#values.map((value) => map[value]!);
+    this.#max = Math.max(...map);
   }
 
   encode(): string {
@@ -88,6 +91,8 @@ export class ColumnWriter {
     if (count === 0) return "";
     // Runs of one value, as `value, times`, when they take fewer numbers.
     const runs = this.#changes * 2 < count;
+    // The largest value written, or above it.
+    let max = this.#max;
     if (runs) {
       const pairs = new Float64Array(this.#changes * 2);
       let at = 0;
@@ -97,16 +102,20 @@ export class ColumnWriter {
         while (end < count && values[end] === value) end++;
         pairs[at++] = value;
         pairs[at++] = end - index;
+        if (end - index > max) max = end - index;
         index = end;
       }
       values = pairs;
       count = at;
     }
-    // The cut that takes the fewest digits, on a sample.
-    const step = Math.ceil(count / SAMPLE);
-    let cutIndex = 0;
-    let best = Infinity;
-    for (const [index, candidate] of CUTS.entries()) {
+    // One digit each, the fewest, with the first cut above every value.
+    let cutIndex = CUTS.findIndex((cut) => max < cut);
+    let step = 1;
+    let best = count;
+    // Else the cut that takes the fewest digits, on a sample.
+    if (cutIndex === -1)
+      [step, cutIndex, best] = [Math.ceil(count / SAMPLE), 0, Infinity];
+    for (const [index, candidate] of best < Infinity ? [] : CUTS.entries()) {
       const scale = BASE - candidate;
       let size = 0;
       for (let index = 0; index < count && size < best; index += step) {
@@ -183,8 +192,14 @@ export class FieldWriter {
     return ASCII.decode(this.#bytes.subarray(0, this.#at));
   }
 
-  clear(): void {
-    this.#at = 0;
+  /** How many characters it wrote. */
+  get length(): number {
+    return this.#at;
+  }
+
+  /** Leaves out what it wrote from `at` on. */
+  cut(at = 0): void {
+    this.#at = at;
   }
 }
 
@@ -286,7 +301,7 @@ export function joinColumns(columns: { encode(): string }[]): string {
   for (const column of encoded) {
     lengths.write(column.length, LENGTH_CUT);
     parts.push(lengths.encode(), column);
-    lengths.clear();
+    lengths.cut();
   }
   return parts.join("");
 }
@@ -313,15 +328,23 @@ export function splitColumns(text: string, count = Infinity): string[] {
 
 /**
  * Each entry without the start it shares with the one before (`first` for
- * the first entry), whose length goes in `shared`.
+ * the first entry), whose length goes in `shared`: an entry alone is whole,
+ * with no column. Among more, an entry equal to `first` (the document's id,
+ * which no session is) is `""` sharing nothing.
  */
 export function frontCode(
   entries: readonly string[],
   first: string,
   shared: ColumnWriter,
 ): string[] {
+  if (entries.length < 2) return [...entries];
   let before = first;
   return entries.map((entry) => {
+    if (entry === first) {
+      shared.push(0);
+      before = entry;
+      return "";
+    }
     const end = Math.min(entry.length, before.length);
     let length = 0;
     while (
@@ -342,9 +365,11 @@ export function frontDecode(
   shared: ColumnReader,
 ): string[] {
   let before = first;
-  return entries.map(
-    (entry) => (before = before.slice(0, shared.next()) + entry),
-  );
+  return entries.map((entry) => {
+    const length = shared.next();
+    return (before =
+      entry === "" && length === 0 ? first : before.slice(0, length) + entry);
+  });
 }
 
 /**

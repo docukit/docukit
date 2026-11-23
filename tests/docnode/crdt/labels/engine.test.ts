@@ -946,7 +946,7 @@ describe("deleted subtrees", () => {
 });
 
 describe("garbage collection", () => {
-  const labels = (replica: Replica) => JSON.stringify(replica.doc.toJSON()[9]);
+  const labels = (replica: Replica) => JSON.stringify(replica.doc.toJSON()[7]);
 
   test("the deleter removes pending descendants after the delay", () => {
     const a = createReplica({ peer: "a", gcDelay: 2 });

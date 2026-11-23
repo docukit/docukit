@@ -61,17 +61,15 @@ const operationsSchema = v.union([
   v.tupleWithRest([headSchema, editTagSchema], jsonSchema),
 ]);
 
-/** Format 14: see `JsonDoc` in `@docukit/docnode`. */
+/** See `JsonDoc` in `@docukit/docnode`. */
 const jsonDocShape = v.strictTuple([
-  v.literal(14),
+  v.array(v.string()),
   v.string(),
-  v.record(v.string(), jsonSchema),
-  v.optional(v.array(v.string())),
-  v.optional(v.array(v.string())),
-  v.optional(v.array(v.string())),
+  v.union([v.record(v.string(), jsonSchema), v.literal(0)]),
+  v.optional(v.union([v.string(), v.array(jsonSchema), v.literal(0)])),
+  v.optional(v.union([v.string(), v.literal(0)])),
+  v.optional(v.union([v.array(v.string()), v.literal(0)])),
   v.optional(v.union([v.array(jsonSchema), v.literal(0)])),
-  v.optional(v.string()),
-  v.optional(v.array(jsonSchema)),
 ]);
 // Its elements at the end are left out, not undefined.
 const jsonDocSchema = v.custom<JsonDoc>((input) => v.is(jsonDocShape, input));

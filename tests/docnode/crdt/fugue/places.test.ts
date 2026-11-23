@@ -138,7 +138,7 @@ describe("fugue places", () => {
 
 describe("stored labels and moves", () => {
   /** How many sessions the stored document's one table has. */
-  const sessions = (replica: Replica) => replica.stored()[3]?.length ?? 0;
+  const sessions = (replica: Replica) => replica.stored()[0].length;
 
   test("labels add only the sessions of moves to the stored table", () => {
     const [a, b, c] = peers(["a", "b", "c"], genesis());

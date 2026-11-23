@@ -82,12 +82,20 @@ export type InternalStateDefinition<
     value: V,
     sessions: SessionTable,
     columns: { encode(): string }[],
+    root: string,
   ): Json[] | 0;
+  /** How many columns `toStored` writes. */
+  storedColumns?: number;
   /**
    * Reads what `toStored` wrote, with its columns (missing ones at the end
-   * are empty) and the document's sessions.
+   * are empty), the document's sessions and its root's id.
    */
-  fromStored?(stored: Json[], columns: string[], sessions: string[]): V;
+  fromStored?(
+    stored: Json[],
+    columns: string[],
+    sessions: string[],
+    root: string,
+  ): V;
   /** Applies an edit operation. Returns its inverse, or undefined if nothing changed. */
   applyEdit?(
     value: V,
@@ -160,10 +168,11 @@ export type JsonDocNode<T extends NodeDefinition = NodeDefinition> = [
 ];
 
 /**
- * A stored document, as `Doc.toJSON` writes it (format 14). Elements at the
- * end that are empty are left out.
+ * A stored document, as `Doc.toJSON` writes it. Elements at the end that are
+ * empty are left out.
  *
- * The root is plain: its type and its state (each value as JSON). The
+ * It starts with its sessions, a list: a `JsonTree` starts with its id. The
+ * root is plain: its type and its state (each value as JSON). The
  * document's id is not stored: whoever stores the document keeps it next to
  * it, and `Doc.fromJSON` takes it from `config.id`.
  * The type comes second, at the same place as in a `JsonTree`: a binding that
@@ -173,49 +182,35 @@ export type JsonDocNode<T extends NodeDefinition = NodeDefinition> = [
  * them better there):
  * - `sessions`: each without the start it shares with the one before (the
  *   first, with the document's id), whose length is the first column.
+ * - The columns of `text`, the letter-by-letter text of the document (see
+ *   `defineText`), which shares `sessions` with the tree. Letters without
+ *   state are their string alone.
  * - The tree, in preorder: each node's session (an index in `sessions`,
  *   written as 0 for that of the node before, 1 for the one after the
  *   highest so far, else the index plus 2), its clock as the difference
  *   from the last one of its session plus one, its type (an index in
- *   `types`), its number of children and the keys of its state (twice
- *   their index in `keys`, plus one for a value in the column of numbers).
+ *   `names`), its number of children and the keys of its state (twice
+ *   their index in `names`, plus one for a value in the column of numbers).
  *   A whole number that is not negative goes in that column, in base 93;
  *   the other values follow one another in `values`. The root's number of
  *   children goes first.
- * - The columns of `text`, the letter-by-letter text of the document (see
- *   `defineText`), which shares `sessions` with the tree.
  * - `crdt`, what a CRDT engine stores (see `DocConfig.crdt`), which adds
  *   its sessions to `sessions`. With one, every element before it is
- *   written.
+ *   written, `0` when empty.
  */
 export type JsonDoc = [
-  format: 14,
+  sessions: string[],
   type: string,
-  state: { [key: string]: Json },
-  sessions?: string[],
-  types?: string[],
-  keys?: string[],
+  /** `0` when it is empty. */
+  state: { [key: string]: Json } | 0,
   /** `0` when there is no text but more follows. */
-  text?: Json[] | 0,
-  columns?: string,
-  values?: Json[],
+  text?: string | Json[] | 0,
+  columns?: string | 0,
+  /** The types of nodes and the keys of their state, each once. */
+  names?: string[] | 0,
+  values?: Json[] | 0,
   /** What a CRDT engine stores besides the tree (see `DocConfig.crdt`). */
   crdt?: Json,
-];
-
-/**
- * A stored document of format 13, from before text: `Doc.fromJSON` still
- * reads it. Its columns come right after `keys`.
- */
-export type JsonDocWithoutText = [
-  format: 13,
-  type: string,
-  state: { [key: string]: Json },
-  sessions?: string[],
-  types?: string[],
-  keys?: string[],
-  columns?: string,
-  values?: Json[],
 ];
 
 /**

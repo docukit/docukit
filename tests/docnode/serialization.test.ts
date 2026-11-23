@@ -414,7 +414,7 @@ describe("json serialization", () => {
   });
 });
 
-describe("stored format 14", () => {
+describe("stored document", () => {
   /** A document whose nodes get the ids of `ids`, in order. */
   const withIds = (ids: string[]) => {
     const queue = ["01kdjkhm2wkfkcw7xkjdjrd1cc", ...ids];
@@ -492,7 +492,7 @@ describe("stored format 14", () => {
     expect(loaded.is(Root) ? loaded.state.title.get() : "").toBe("Draft");
     root.state.title.set("");
     doc.forceCommit();
-    expect(doc.toJSON()).toStrictEqual([14, "root", {}]);
+    expect(doc.toJSON()).toStrictEqual([[], "root", 0]);
   });
 
   test("whole numbers go in a column and load back as they were", () => {
@@ -527,7 +527,7 @@ describe("stored format 14", () => {
     doc.forceCommit();
     const json = doc.toJSON();
     // Only what is not a whole number of at least 0 stays in `values`.
-    expect(json[8]).toStrictEqual([-3, 1.5, "12", 2 ** 60]);
+    expect(json[6]).toStrictEqual([-3, 1.5, "12", 2 ** 60]);
     const loaded: unknown[] = [];
     Doc.fromJSON({ ...config, id: doc.root.id }, json)
       .root.children()
@@ -567,7 +567,7 @@ describe("stored format 14", () => {
     }
     doc.forceCommit();
     const roundTrip: unknown = JSON.parse(JSON.stringify(values));
-    expect(doc.toJSON()[8]).toStrictEqual(roundTrip);
+    expect(doc.toJSON()[6]).toStrictEqual(roundTrip);
     const loaded: unknown[] = [];
     Doc.fromJSON({ ...config, id: doc.root.id }, doc.toJSON())
       .root.children()
@@ -606,11 +606,11 @@ describe("stored format 14", () => {
     }
     doc.forceCommit();
     // The first one is the default; the rest only look like it.
-    expect(doc.toJSON()[8]).toStrictEqual(values.slice(1));
+    expect(doc.toJSON()[6]).toStrictEqual(values.slice(1));
   });
 
-  test.each([10, 15])(
-    "a document stored in format %i does not load",
+  test.each([13, 14])(
+    "a document an unreleased version stored (format %i) does not load",
     (format) => {
       const config = { type: "root", extensions: [TextExtension] };
       const doc = new Doc(config);
@@ -618,30 +618,17 @@ describe("stored format 14", () => {
       Reflect.set(stored, 0, format);
       expect(() =>
         Doc.fromJSON({ ...config, id: doc.root.id }, stored),
-      ).toThrowError(
-        `The stored document has format ${format}, but this version reads formats 13 and 14.`,
-      );
+      ).toThrowError(`Stored by an unreleased version: ${format}`);
     },
   );
 
-  test("a document stored before text (format 13) loads", () => {
+  test("a stored document names each type and key once, in one list", () => {
     const config = {
       id: "01kc52hq510g6y44jhq0wqrjb3",
       type: "root",
       extensions: [TextExtension, TestExtension],
     };
-    // What format 13 wrote for "one" and "two", "two" with two test nodes.
-    const doc = Doc.fromJSON(config, [
-      13,
-      "root",
-      {},
-      ["a", "b"],
-      ["text", "test"],
-      ["value", "string", "number", "boolean"],
-      " %! !#$#%%&   !!%!# #&!!!$!(#  #&(%$#(!",
-      ["one", "two", "x", -1.5],
-    ]);
-    expect(jsonTree(doc)).toStrictEqual([
+    const tree: JsonTree = [
       "01kc52hq510g6y44jhq0wqrjb3",
       "root",
       {},
@@ -657,20 +644,19 @@ describe("stored format 14", () => {
           ],
         ],
       ],
-    ]);
-    // It is stored again in today's format, with no text.
+    ];
+    const doc = Doc.fromJSON(config, tree);
     doc.forceCommit();
-    expect(doc.toJSON()).toStrictEqual([
-      14,
-      "root",
-      {},
-      ["a", "b"],
-      ["text", "test"],
-      ["value", "string", "number", "boolean"],
-      0,
-      " %! !#$#%%&   !!%!# #&!!!$!(#  #&(%$#(!",
+    const json = doc.toJSON();
+    // Sessions, type, an empty root state, no text, the columns, the names
+    // and the values that are not whole numbers.
+    expect(json).toHaveLength(7);
+    expect(json.slice(0, 4)).toStrictEqual([["a", "b"], "root", 0, 0]);
+    expect(json.slice(5)).toStrictEqual([
+      ["text", "value", "test", "string", "number", "boolean"],
       ["one", "two", "x", -1.5],
     ]);
+    expect(jsonTree(Doc.fromJSON(config, json))).toStrictEqual(tree);
   });
 
   test("a document with text loads only where a node type defines text", () => {

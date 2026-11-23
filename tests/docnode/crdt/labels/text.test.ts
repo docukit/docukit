@@ -1,6 +1,12 @@
 import { describe, expect, test } from "vitest";
 
-import { Doc, type JsonTree, type Operations } from "@docukit/docnode";
+import {
+  defineNode,
+  defineText,
+  Doc,
+  type JsonTree,
+  type Operations,
+} from "@docukit/docnode";
 import {
   _INTERNAL_crdtTextStore,
   labelsEngine,
@@ -309,6 +315,55 @@ describe("stored documents", () => {
     const reloaded = Doc.fromJSON({ ...config, id: a.root.id }, a.toJSON());
     reloaded.forceCommit();
     expect(reloaded.toJSON()).toStrictEqual(a.toJSON());
+  });
+
+  test("a text typed in one go is stored as its letters alone", () => {
+    const Root = defineNode({ type: "root", state: { t: defineText() } });
+    const config = {
+      type: "root",
+      id: ROOT_ID,
+      extensions: [{ nodes: [Root] }],
+      crdt: labelsEngine(),
+    };
+    const letters = "a text longer than a short run";
+    const doc = new Doc(config);
+    if (doc.root.is(Root)) doc.root.state.t.insert(0, letters);
+    doc.forceCommit();
+    // Its one run needs nothing but its session, and the engine no labels.
+    const json = doc.toJSON();
+    expect(json.slice(1)).toStrictEqual(["root", 0, letters]);
+    const copy = Doc.fromJSON(config, json);
+    expect(copy.root.is(Root) && copy.root.state.t.get()).toBe(letters);
+  });
+
+  test("a text of edits still waiting for their letters is stored and loads", () => {
+    const Root = defineNode({ type: "root", state: { t: defineText() } });
+    const config = {
+      type: "root",
+      id: ROOT_ID,
+      extensions: [{ nodes: [Root] }],
+      crdt: labelsEngine(),
+    };
+    const a = new Doc(config);
+    a.forceCommit();
+    const sent: Operations[] = [];
+    a.onChange((event) => sent.push(event.operations));
+    const type = (at: number, letters: string) => {
+      if (a.root.is(Root)) a.root.state.t.insert(at, letters);
+      a.forceCommit();
+    };
+    type(0, "ab");
+    type(2, "c");
+    // The second edit arrives first: it waits for the letters it names.
+    const b = new Doc(config);
+    b.forceCommit();
+    b.applyOperations(structuredClone(sent[1]!), { skipUndo: true });
+    b.forceCommit();
+    const copy = Doc.fromJSON(config, b.toJSON());
+    copy.forceCommit();
+    copy.applyOperations(structuredClone(sent[0]!), { skipUndo: true });
+    copy.forceCommit();
+    expect(copy.root.is(Root) && copy.root.state.t.get()).toBe("abc");
   });
 });
 

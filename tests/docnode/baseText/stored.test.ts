@@ -115,8 +115,8 @@ describe("the stored text", () => {
     const { doc } = nodes([""]);
     expect(doc.root.toJSON()[2]).toStrictEqual({});
     // Without text: `0` in its place, before the columns.
-    expect(doc.toJSON()).toHaveLength(8);
-    expect(doc.toJSON()[6]).toBe(0);
+    expect(doc.toJSON()).toHaveLength(6);
+    expect(doc.toJSON()[3]).toBe(0);
   });
 
   test("the document keeps its text before its columns, with the sessions of its tree", () => {
@@ -126,9 +126,9 @@ describe("the stored text", () => {
     doc.root.append(node);
     node.state.t.insert(0, "Hello");
     doc.forceCommit();
-    const [, , , sessions, , , text] = doc.toJSON();
+    const [sessions, , , text] = doc.toJSON();
     expect(sessions).toStrictEqual(["a"]);
-    expect(text).toStrictEqual(["Hello"]);
+    expect(text).toBe("Hello");
     expect(reload(doc).root.first).toBeDefined();
   });
 
@@ -169,8 +169,8 @@ describe("the stored text", () => {
     for (const session of ["a", "b", "c", "d"])
       network.edit(session, (text) => text.insert(0, session.repeat(3)));
     network.exchange();
-    const [, , , , , , text, columns] = network.server.toJSON();
-    expect(text).toStrictEqual(["dddcccbbbaaa"]);
+    const [, , , text, columns] = network.server.toJSON();
+    expect(text).toBe("dddcccbbbaaa");
     expect(String(columns).length).toBeLessThan(30);
   });
 });

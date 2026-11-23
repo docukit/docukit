@@ -16,14 +16,15 @@ import stored from "./fixtures.json" with { type: "json" };
 import { NODES } from "./nodes.js";
 
 const isStoredDocument = (json: unknown): json is JsonDoc | JsonTree =>
-  Array.isArray(json) && (json[0] === 14 || typeof json[0] === "string");
+  Array.isArray(json) &&
+  (Array.isArray(json[0]) || typeof json[0] === "string");
 
 /**
  * Stored "node" documents, each with the Lexical state an editor of the
  * "node" mode shows when it opens it. Written by editors with the nodes of
  * `nodes.ts`, with the code of the published version (`main: …`, nested
  * nodes) and of the "node" entry point before it was removed (`node: …`,
- * format 14).
+ * in today's columns).
  */
 export const FIXTURES = stored.map(({ name, id, json, state }) => {
   if (!isStoredDocument(json)) throw new Error(`Not a document: ${name}`);

@@ -1619,7 +1619,8 @@ export class TextStore extends TextEngine {
   toJSON(): TextJson | 0 {
     const sessions = new SessionTable();
     const columns: { encode(): string }[] = [];
-    const stored = this.toStored(sessions, columns);
+    // Without a root, every list's node is written.
+    const stored = this.toStored(sessions, columns, "");
     if (stored === 0) return 0;
     const [text, ...rest] = stored;
     return [FORMAT, sessions.table, text, joinColumns(columns), ...rest];
@@ -1639,17 +1640,13 @@ export class TextStore extends TextEngine {
   toStored(
     sessions: SessionTable,
     out: { encode(): string }[],
+    root: string,
   ): StoredText | 0 {
     const sessionOf = (s: string) => sessions.index(s);
     const size = this._flows.length;
     const columns = Array.from(
       { length: COLUMNS },
-      (_, field) =>
-        new ColumnWriter(
-          size,
-          false,
-          field === COLUMN_FLOW_FLAGS || field === COLUMN_SHAPES,
-        ),
+      () => new ColumnWriter(size),
     );
     const column = (field: number) => columns[field]!;
     const shapeColumn = column(COLUMN_SHAPE);
@@ -1712,16 +1709,17 @@ export class TextStore extends TextEngine {
     const bitsIndex = new Int32Array(BITS_KEPT * 2).fill(-1);
     let curSession = 0;
     let curCounter = 0;
-    let expectedKey: string | undefined;
-    const flows = this.#sortedFlows();
-    let any = false;
+    let expectedKey: string | undefined = root;
+    // Lists without runs are not written.
+    const flows = this.#sortedFlows().filter((flow) => flow.head.next);
+    // Where the last run's long length is in `fields`, and where it ends.
+    let longAt = -1;
+    let longEnd = -1;
     for (const flow of flows) {
       const head = flow.head;
       const opaque = this.#opaqueOf(flow);
-      if (!head.next) continue;
-      any = true;
       const key = head.s;
-      let flags = 0;
+      let flags = flow === flows.at(-1) ? 0 : FLOW_MORE;
       if (expectedKey !== key) {
         flags |= FLOW_KEY;
         writeId(key);
@@ -1774,7 +1772,13 @@ export class TextStore extends TextEngine {
           const side = run.side;
           const deleted = run.deleted;
           let bits = 0;
-          if (length >= LONG) fields.write(length - LONG, CUT_LONG);
+          longAt = -1;
+          if (length >= LONG) {
+            // A live one's may be the letters left (see `longAt`).
+            if (!deleted) longAt = fields.length;
+            fields.write(length - LONG, CUT_LONG);
+            longEnd = fields.length;
+          }
           const resumes =
             backPlain &&
             s === backS &&
@@ -1866,7 +1870,8 @@ export class TextStore extends TextEngine {
             grown.set(counts);
             counts = grown;
           }
-          const code = shape * (LONG + 1) + (length < LONG ? length : LONG);
+          // A long length is `0`, with the rest in `fields`.
+          const code = shape * (LONG + 1) + (length < LONG ? length : 0);
           shapeColumn.push(code);
           counts[code]!++;
           if (hasState) {
@@ -1900,12 +1905,16 @@ export class TextStore extends TextEngine {
         stateRuns.push(stateCount);
         stateRuns.push(lastState);
       }
-      flowRuns.push(runs);
+      // A list has a run at least.
+      flowRuns.push(runs - 1);
     }
     const pending = this.#pending
       .map(([, ...payload]) => JSON.stringify(payload))
       .sort();
-    if (!any && pending.length === 0) return 0;
+    if (flows.length === 0 && pending.length === 0) return 0;
+    // The last run's long length, live and last in `fields`, is the letters
+    // left.
+    if (longAt !== -1 && longEnd === fields.length) fields.cut(longAt);
     // Shapes are numbered by how many runs have them: the most common is 0.
     const ranked: number[] = [];
     for (let shape = 0; shape < counts.length; shape++)
@@ -1919,11 +1928,8 @@ export class TextStore extends TextEngine {
       shapes.push(shapeBits[Math.floor(shape / (LONG + 1))]!);
     }
     shapeColumn.remap(rank);
-    out.push(
-      ...columns.slice(0, COLUMN_FIELDS),
-      fields,
-      ...columns.slice(COLUMN_FIELDS),
-    );
+    // In the order of `STORED`: those a text of one list leaves empty last.
+    out.push(...STORED.map((field) => (field === -1 ? fields : column(field))));
     // Keys and values come with the states that use them.
     const text = texts.join("");
     const keyList = [...keys.keys()];
@@ -1964,37 +1970,44 @@ export class TextStore extends TextEngine {
       readSessions(table),
       [text, ...rest],
       splitColumns(columns),
+      "",
     );
   }
+
+  /** How many columns `toStored` writes. */
+  static readonly columns = 8;
 
   static fromStored(
     stored: StoredText,
     columns: string[],
     sessions: string[],
+    root: string,
   ): TextStore {
-    return new TextStore().#readColumns(sessions, stored, columns);
+    return new TextStore().#readColumns(sessions, stored, columns, root);
   }
 
   #readColumns(
     sessions: string[],
     stored: StoredText,
     columns: string[],
+    root: string,
   ): TextStore {
     const [text, keys = [], values = [], states = [], pending = []] = stored;
     const sessionIndex = new Map(
       sessions.map((session, index) => [session, index]),
     );
-    const texts = Array.from(
-      { length: COLUMNS + 1 },
-      (_, field) => columns[field] ?? "",
-    );
-    const fields = new FieldReader(texts[COLUMN_FIELDS]!);
-    texts.splice(COLUMN_FIELDS, 1);
-    const readers = texts.map((text) => new ColumnReader(text));
+    const readers: ColumnReader[] = [];
+    let fields = new FieldReader("");
+    for (const [at, field] of STORED.entries()) {
+      const text = columns[at] ?? "";
+      if (field === -1) fields = new FieldReader(text);
+      else readers[field] = new ColumnReader(text);
+    }
     const column = (field: number) => readers[field]!;
     const shapes = column(COLUMN_SHAPES);
     const shapeLengths: number[] = [];
     const shapeBits: number[] = [];
+    // Its zeros at the end are left out: a shape of a live long run.
     while (!shapes.done) {
       shapeLengths.push(shapes.next());
       shapeBits.push(shapes.next());
@@ -2026,15 +2039,19 @@ export class TextStore extends TextEngine {
     let position = 0;
     let curSession = 0;
     let curCounter = 0;
-    let previousKey: string | undefined;
+    let expected: string | undefined = root;
     const flowFlags = column(COLUMN_FLOW_FLAGS);
     const flowRuns = column(COLUMN_FLOW_RUNS);
     const runShapes = column(COLUMN_SHAPE);
     const stateRuns = column(COLUMN_STATE_RUNS);
-    while (!flowFlags.done) {
-      const flags = flowFlags.next();
-      const key = flags & FLOW_KEY ? readId() : nextId(previousKey!)!;
-      previousKey = key;
+    for (
+      // Without lists, no shape and no letters: what is pending alone.
+      let flags = shapeLengths.length > 0 || text !== "" ? FLOW_MORE : 0;
+      flags & FLOW_MORE;
+    ) {
+      flags = flowFlags.next();
+      const key = flags & FLOW_KEY ? readId() : expected!;
+      expected = nextId(key);
       const root = this.#rootOf(key);
       const flow = root.flow;
       let prev: Run = root;
@@ -2062,11 +2079,15 @@ export class TextStore extends TextEngine {
         back = prev;
         prev = run;
       };
-      for (let left = flowRuns.next(); left > 0; left--) {
+      for (let left = flowRuns.next() + 1; left > 0; left--) {
         const shape = runShapes.next();
-        const bits = shapeBits[shape]!;
-        let length = shapeLengths[shape]!;
-        if (length === LONG) length += fields.read(CUT_LONG);
+        const bits = shapeBits[shape] ?? 0;
+        let length = shapeLengths[shape] ?? 0;
+        // A long one; past the end of `fields`, the letters left.
+        if (length === 0)
+          length = fields.done
+            ? text.length - position
+            : LONG + fields.read(CUT_LONG);
         const resumed = bits & BITS_RESUME ? back! : undefined;
         let s: string;
         let c: number;
@@ -2253,6 +2274,8 @@ function cutAt(run: Run, offset: number): Run {
 const FLOW_KEY = 1;
 /** Its runs have state (see `COLUMN_STATE_RUNS`). */
 const FLOW_STATES = 2;
+/** Another list follows it. */
+const FLOW_MORE = 4;
 /** Flags of a stored run. */
 const BITS_PARENT_SESSION = 1;
 const BITS_SAME_RIGHT = 2;
@@ -2274,13 +2297,26 @@ const COLUMN_FLOW_FLAGS = 0;
 const COLUMN_FLOW_RUNS = 1;
 const COLUMN_SHAPE = 2;
 const COLUMN_SHAPES = 3;
-/** The fields of the runs one after the other (see `CUT`). */
-const COLUMN_FIELDS = 4;
 const COLUMN_NODE_SESSION = 4;
 const COLUMN_NODE_CLOCK = 5;
 /** Per list with state: `count, state` for each stretch of runs. */
 const COLUMN_STATE_RUNS = 6;
 const COLUMNS = 7;
+/**
+ * The columns as they are stored, by their `COLUMN_*`, and `-1` for the
+ * fields of the runs one after the other (see `CUT_*`): those a text of one
+ * list leaves empty last.
+ */
+const STORED = [
+  COLUMN_SHAPE,
+  COLUMN_SHAPES,
+  -1,
+  COLUMN_FLOW_FLAGS,
+  COLUMN_FLOW_RUNS,
+  COLUMN_STATE_RUNS,
+  COLUMN_NODE_SESSION,
+  COLUMN_NODE_CLOCK,
+];
 const CUT_LONG = 48;
 const CUT_SESSION = 8;
 const CUT_COUNTER = 40;

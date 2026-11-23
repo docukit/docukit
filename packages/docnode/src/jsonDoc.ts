@@ -3,7 +3,6 @@ import type {
   InternalStateDefinition,
   Json,
   JsonDoc,
-  JsonDocWithoutText,
   ResolvedNodeDefinition,
 } from "./types.js";
 import {
@@ -19,26 +18,23 @@ import {
 import { numberToBase64 } from "./idGenerator.js";
 import { jsonCopy, jsonEqual } from "./utils.js";
 
-/** The stored format `Doc.toJSON` writes (see `JsonDoc`). */
-export const FORMAT = 14;
-
-/** The stored format before text, which is still read (see `JsonDocWithoutText`). */
-const WITHOUT_TEXT = 13;
-
 /**
- * The columns of a stored document before those of its text (see
- * `JsonDoc`): how much each session shares with the one before, and the
- * tree.
+ * The columns of a stored document's tree (see `JsonDoc`), after the one of
+ * how much each session shares with the one before and those of its text.
  */
-const COLUMN_SHARED = 0;
-const COLUMN_SESSION = 1;
-const COLUMN_CLOCK = 2;
-const COLUMN_TYPE = 3;
-const COLUMN_CHILDREN = 4;
-const COLUMN_STATE = 5;
-const COLUMN_KEY = 6;
-const COLUMN_NUMBER = 7;
-const COLUMNS = 8;
+const COLUMN_SESSION = 0;
+const COLUMN_CLOCK = 1;
+const COLUMN_TYPE = 2;
+const COLUMN_CHILDREN = 3;
+const COLUMN_STATE = 4;
+const COLUMN_KEY = 5;
+const COLUMN_NUMBER = 6;
+
+/** Where each element of a stored document is (see `JsonDoc`). */
+const AT_SESSIONS = 0;
+const AT_TEXT = 3;
+const AT_COLUMNS = 4;
+const AT_CRDT = 7;
 
 /** A value that goes in the column of numbers: a whole one, not negative. */
 const inColumn = (value: Json): value is number =>
@@ -95,15 +91,15 @@ const countChildren = (node: DocNode) => {
 };
 
 /**
- * The tree of `doc` in `columns` (from `COLUMN.SESSION` on), its sessions in
- * `sessions`, and its types, keys and values, each once in order.
+ * The tree of `doc` in `columns` (in the order of `COLUMN_*`), its sessions
+ * in `sessions`, the names of its types and keys, each once, in `names`,
+ * and its values in `values`.
  */
 function writeTree(
   doc: Doc,
   sessions: SessionTable,
   columns: ColumnWriter[],
-  typeNames: string[],
-  keyNames: string[],
+  names: Map<string, number>,
   values: Json[],
 ): void {
   const root = doc.root;
@@ -117,7 +113,12 @@ function writeTree(
   const stateColumn = new ColumnWriter(size);
   const keyColumn = new ColumnWriter(size);
   const numberColumn = new ColumnWriter(size, true);
-  /** Each type: its index in `types`, its definition and its state keys. */
+  const nameIndex = (name: string) => {
+    let index = names.get(name);
+    if (index === undefined) names.set(name, (index = names.size));
+    return index;
+  };
+  /** Each type: its index in `names`, its definition and its state keys. */
   const types = new Map<
     string,
     { index: number; definition: ResolvedNodeDefinition; keys: string[] }
@@ -133,13 +134,12 @@ function writeTree(
       const definition = definitions.get(name)!;
       // In the order of the definition, the same in every replica.
       const stateKeys = Object.keys(definition.state);
-      type = { index: types.size, definition, keys: stateKeys };
+      type = { index: nameIndex(name), definition, keys: stateKeys };
       types.set(name, type);
     }
     lastType = name;
     return (last = type);
   };
-  const keys = new Map<string, number>();
   /** The last clock of each session, which the next one is written after. */
   const clocks: number[] = [];
   // The session of the node before, and the highest one so far (see
@@ -167,8 +167,7 @@ function writeTree(
       if (!(key in state)) continue;
       const value = storedValue(node, definition, state, key);
       if (value === undefined) continue;
-      let index = keys.get(key);
-      if (index === undefined) keys.set(key, (index = keys.size));
+      const index = nameIndex(key);
       // Its key says where it is: in the column of numbers or in `values`.
       if (inColumn(value)) {
         keyColumn.push(index * 2 + 1);
@@ -195,8 +194,6 @@ function writeTree(
     keyColumn,
     numberColumn,
   );
-  typeNames.push(...types.keys());
-  keyNames.push(...keys.keys());
 }
 
 /** `doc` as it is stored (see `JsonDoc`), without its id. */
@@ -206,16 +203,20 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
   const textKey = doc["_editStateKey"];
   const rootValues: Record<string, unknown> = root["_state"];
   const rootState: Record<string, Json> = {};
+  let stateful = false;
   const rootDefinition = definitions.get(root.type)!;
   // In the order of the definition, the same in every replica.
   for (const key in rootDefinition.state) {
     // The text goes apart.
     if (key === textKey || !(key in rootValues)) continue;
     const value = storedValue(root, rootDefinition, rootValues, key);
-    if (value !== undefined) rootState[key] = value;
+    if (value === undefined) continue;
+    rootState[key] = value;
+    stateful = true;
   }
-  const json: JsonDoc = [FORMAT, root.type, rootState];
   const sessions = new SessionTable();
+  // An empty state is `0`.
+  const json: JsonDoc = [sessions.table, root.type, stateful ? rootState : 0];
   const textColumns: { encode(): string }[] = [];
   const text =
     textKey !== undefined && textKey in rootValues
@@ -223,46 +224,61 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
           rootValues[textKey],
           sessions,
           textColumns,
+          root.id,
         )
       : 0;
   if (!root.first && text === 0) return json;
   const columns: ColumnWriter[] = [];
-  const types: string[] = [];
-  const keys: string[] = [];
+  const names = new Map<string, number>();
   const values: Json[] = [];
-  // Only text: the columns of the tree are empty, and its code is not
-  // compiled (a save runs once, mostly cold).
-  if (root.first) writeTree(doc, sessions, columns, types, keys, values);
-  else
-    for (let column = 1; column < COLUMNS; column++)
-      columns.push(new ColumnWriter());
+  // Only text: the columns of the tree, last, are empty, and its code is
+  // not compiled (a save runs once, mostly cold).
+  if (root.first) writeTree(doc, sessions, columns, names, values);
   // Sessions mostly share their start with the one before, the first with
   // the document's id.
-  const sharedColumn = new ColumnWriter();
-  const table = frontCode(sessions.table, root.id, sharedColumn);
-  // The text before the columns: gzip compresses the letters better when
-  // they come first. Only `values` can be empty at the end.
+  const shared = new ColumnWriter();
+  json[AT_SESSIONS] = frontCode(sessions.table, root.id, shared);
   json.push(
-    table,
-    types,
-    keys,
-    text,
-    // In the order of `COLUMN`, then the text's.
-    joinColumns([sharedColumn, ...columns, ...textColumns]),
+    // Letters without state are stored as their string alone. The text
+    // goes before the columns: gzip compresses the letters better first.
+    text !== 0 && text.length === 1 ? text[0]! : text,
+    // How much each session shares, the text's, then the tree's (see
+    // `COLUMN_*`): a document of text alone ends with the text's.
+    joinColumns([
+      ...sharedColumn(json[AT_SESSIONS], shared),
+      ...textColumns,
+      ...columns,
+    ]),
+    [...names.keys()],
+    values,
   );
-  if (values.length > 0) json.push(values);
-  return json;
+  return trimEnd(json);
 }
 
 /**
- * A stored document of format 13, from before text, in today's format: its
- * columns go after a `0` for no text. Any other is returned as it is.
+ * The first column, how much each session shares with the one before (see
+ * `frontCode`), which a table of one session or none does not have.
  */
-export function withText(json: JsonDoc | JsonDocWithoutText): JsonDoc {
-  if (json[0] !== WITHOUT_TEXT) return json;
-  const [, type, state, sessions = [], types = [], keys = [], ...rest] = json;
-  return [FORMAT, type, state, sessions, types, keys, 0, ...rest];
+export const sharedColumn = (
+  table: readonly string[],
+  shared: ColumnWriter,
+): ColumnWriter[] => (table.length > 1 ? [shared] : []);
+
+/** `json` without the empty elements at its end. */
+function trimEnd(json: JsonDoc): JsonDoc {
+  for (let last = json.at(-1); json.length > AT_TEXT; last = json.at(-1)) {
+    if (last !== 0 && last !== "" && !(Array.isArray(last) && !last.length))
+      break;
+    json.pop();
+  }
+  return json;
 }
+
+/** The columns of a stored `json`: an element left out, or `0`, has none. */
+export const columnsOf = (json: JsonDoc) => {
+  const columns = json[AT_COLUMNS];
+  return typeof columns === "string" ? columns : "";
+};
 
 /**
  * The sessions of the table of a stored `json` (see `JsonDoc`), `id` the
@@ -271,9 +287,13 @@ export function withText(json: JsonDoc | JsonDocWithoutText): JsonDoc {
 export const storedSessions = (json: JsonDoc, id: string): string[] =>
   readSessions(
     frontDecode(
-      json[3] ?? [],
+      json[AT_SESSIONS],
       id,
-      new ColumnReader(splitColumns(json[7] ?? "", 1)[COLUMN_SHARED]!),
+      new ColumnReader(
+        json[AT_SESSIONS].length > 1
+          ? splitColumns(columnsOf(json), 1)[0]!
+          : "",
+      ),
     ),
   );
 
@@ -282,13 +302,13 @@ export const storedSessions = (json: JsonDoc, id: string): string[] =>
  * `DocConfig.crdt`), and every element before it.
  */
 export function withCrdt(json: JsonDoc, crdt: Json): JsonDoc {
-  json[3] ??= [];
-  json[4] ??= [];
-  json[5] ??= [];
-  json[6] ??= 0;
-  json[7] ??= "";
-  json[8] ??= [];
-  json[9] = crdt;
+  json[AT_TEXT] ??= 0;
+  // An empty element is `0`, as a missing one is.
+  for (let at = AT_COLUMNS; at < AT_CRDT; at++) {
+    const element = json[at];
+    if (!element || (Array.isArray(element) && !element.length)) json[at] = 0;
+  }
+  json[AT_CRDT] = crdt;
   return json;
 }
 
@@ -298,42 +318,52 @@ export function withCrdt(json: JsonDoc, crdt: Json): JsonDoc {
  */
 export function readJsonDoc(doc: Doc, json: JsonDoc): void {
   const [
-    ,
+    table,
     type,
     rootState,
-    table = [],
-    types = [],
-    keys = [],
-    text,
-    tree = "",
-    values = [],
+    text = 0,
+    ,
+    storedNames = 0,
+    storedValues = 0,
   ] = json;
-  // A number: what another version stored can have another one.
-  const format: number = json[0];
-  if (format !== FORMAT)
-    throw new Error(
-      `The stored document has format ${format}, but this version reads formats ${WITHOUT_TEXT} and ${FORMAT}.`,
-    );
+  // An element left out, or `0`, is empty.
+  const names = storedNames || [];
+  const values = storedValues || [];
   const id = doc.root.id;
   const rootDefinition = doc["_storedDefinition"](type);
   const state: Record<string, unknown> = {};
-  for (const key in rootState)
-    state[key] = doc["_storedValue"](rootDefinition, key, rootState[key]!);
-  const columns = splitColumns(tree);
-  const reader = (field: number) => new ColumnReader(columns[field] ?? "");
-  const sessions = readSessions(frontDecode(table, id, reader(COLUMN_SHARED)));
-  if (text) {
+  // An empty state is `0`.
+  if (rootState)
+    for (const key in rootState)
+      state[key] = doc["_storedValue"](rootDefinition, key, rootState[key]!);
+  const columns = splitColumns(columnsOf(json));
+  const sessions = readSessions(
+    frontDecode(
+      table,
+      id,
+      new ColumnReader(table.length > 1 ? (columns[0] ?? "") : ""),
+    ),
+  );
+  // The tree's columns come after the text's.
+  const start = table.length > 1 ? 1 : 0;
+  let first = start;
+  if (text !== 0) {
     const textKey = doc["_editStateKey"];
     if (textKey === undefined)
       throw new Error(
         "The stored document has text, but no node type defines it (see `defineText`).",
       );
-    state[textKey] = textDefinition(doc, type, textKey).fromStored!(
-      text,
-      columns.slice(COLUMNS),
+    const definition = textDefinition(doc, type, textKey);
+    first += definition.storedColumns!;
+    state[textKey] = definition.fromStored!(
+      typeof text === "string" ? [text] : text,
+      columns.slice(start, first),
       sessions,
+      id,
     );
   }
+  const reader = (field: number) =>
+    new ColumnReader(columns[first + field] ?? "");
   const root = doc["_storedNode"](id, type, state);
   doc["_setStoredRoot"](root);
   const sessionColumn = reader(COLUMN_SESSION);
@@ -343,7 +373,8 @@ export function readJsonDoc(doc: Doc, json: JsonDoc): void {
   const stateColumn = reader(COLUMN_STATE);
   const keyColumn = reader(COLUMN_KEY);
   const numberColumn = reader(COLUMN_NUMBER);
-  const definitions = types.map((type) => doc["_storedDefinition"](type));
+  /** The definition of each type, by its index in `names`. */
+  const definitions: ResolvedNodeDefinition[] = [];
   const clocks = new Float64Array(sessions.length).fill(-1);
   let before = 0;
   let highest = -1;
@@ -359,11 +390,13 @@ export function readJsonDoc(doc: Doc, json: JsonDoc): void {
       const clock = clocks[session]! + 1 + clockColumn.nextSigned();
       clocks[session] = clock;
       const index = typeColumn.next();
-      const definition = definitions[index]!;
+      const type = names[index]!;
+      const definition = (definitions[index] ??=
+        doc["_storedDefinition"](type));
       const state: Record<string, unknown> = {};
       for (let count = stateColumn.next(); count > 0; count--) {
         const code = keyColumn.next();
-        const key = keys[code >> 1]!;
+        const key = names[code >> 1]!;
         state[key] = doc["_storedValue"](
           definition,
           key,
@@ -374,7 +407,7 @@ export function readJsonDoc(doc: Doc, json: JsonDoc): void {
         clock === 0
           ? sessions[session]!
           : prefixes[session]! + numberToBase64(clock - 1);
-      const node = doc["_storedNode"](id, types[index]!, state);
+      const node = doc["_storedNode"](id, type, state);
       doc["_linkStored"](parent, prev, node);
       prev = node;
       attach(node);

@@ -42,7 +42,12 @@ import {
   SessionTable,
   splitColumns,
 } from "../columns.js";
-import { FORMAT, storedSessions, withCrdt } from "../jsonDoc.js";
+import {
+  columnsOf,
+  sharedColumn,
+  storedSessions,
+  withCrdt,
+} from "../jsonDoc.js";
 import { IdRanges } from "../idRanges.js";
 import { isRecord, storeOf, textState } from "../text/common.js";
 import { TextStore } from "../text/store.js";
@@ -458,6 +463,22 @@ function decodeRecord(
     pending,
   };
 }
+
+/** Where each part of the stored labels is (see `StoredLabels`). */
+const LABELS_CLOCK = 0;
+const LABELS_COLUMNS = 1;
+const LABELS_DELETED = 2;
+const LABELS_ROOT_STAMPS = 3;
+const LABELS_PLACES = 4;
+const LABELS_EXTRAS = 5;
+const LABELS_LIMBO = 6;
+const LABELS_ALIASES = 7;
+const LABELS_PENDING = 8;
+const LABELS_LISTS = 9;
+
+/** A part of the stored labels that is left out at the end (see `LABELS_*`). */
+const unwritten = (value: Json | undefined) =>
+  value === 0 || value === "" || (Array.isArray(value) && value.length === 0);
 
 const isEmpty = (value: Json | undefined) =>
   value === null || (Array.isArray(value) && value.length === 0);
@@ -1840,15 +1861,16 @@ class Engine implements CrdtEngine {
     this.#deleted.forEach((session, runs) =>
       deleted.push([names.index(session), ...runs]),
     );
+    // In the order of `LABELS_*`, without the empty ones at the end.
     const stored: Json[] = [
       this.#clock,
       joinColumns([sessionColumn, lamportColumn, placeColumn]),
+      deleted,
+      rootStamps,
       places,
       extras,
-      deleted,
       limbo,
       aliases,
-      rootStamps,
       pending,
       this.#fugue.toJSON(
         (list) => childIds(this.#doc, list),
@@ -1856,17 +1878,19 @@ class Engine implements CrdtEngine {
         sessions,
       ),
     ];
+    while (stored.length > 1 && unwritten(stored.at(-1))) stored.pop();
+    // Labels of no node, with clock 0, are those of a document stored
+    // without them (see `load`): they are left out.
+    if (stored.length === 1 && stored[0] === 0) return json;
     // The document's table again, with the labels' sessions after its own,
     // and its first column, how much each shares with the one before.
-    const columns = splitColumns(json[7] ?? "").map((column) => ({
+    const columns = splitColumns(columnsOf(json)).map((column) => ({
       encode: () => column,
     }));
-    json[3] = frontCode(
-      sessions.table,
-      rootId,
-      (columns[0] = new ColumnWriter()),
-    );
-    json[7] = joinColumns(columns);
+    if (json[0].length > 1) columns.shift();
+    const shared = new ColumnWriter();
+    json[0] = frontCode(sessions.table, rootId, shared);
+    json[4] = joinColumns([...sharedColumn(json[0], shared), ...columns]);
     return withCrdt(json, stored);
   }
 
@@ -1947,7 +1971,7 @@ class Engine implements CrdtEngine {
     root.node = doc.root;
     const fugue = this.#newFugue();
     this.#fugue = fugue;
-    const stored = isTree(json) ? undefined : json[9];
+    const stored = isTree(json) ? undefined : json[7];
     if (isTree(json) || !isList(stored)) {
       // A document without labels: deterministic labels, same on every replica.
       const walk = (node: DocNode) => {
@@ -2042,10 +2066,10 @@ class Engine implements CrdtEngine {
   }
 
   #mergeSnapshot(stored: Json | undefined) {
-    if (!isJsonDoc(stored) || !isList(stored[9])) return;
+    if (!isJsonDoc(stored) || !isList(stored[7])) return;
     // A snapshot is one of this document, which has its id.
     const id = this.#doc.root.id;
-    const labels = new StoredLabels(stored[9], storedSessions(stored, id));
+    const labels = new StoredLabels(stored[7], storedSessions(stored, id));
     this.#clock = Math.max(this.#clock, labels.clock);
     labels.deleted((session, from, to, life) =>
       this.#mergeDelete([session, from, to, life]),
@@ -2160,11 +2184,12 @@ const sessionWriter = (table: SessionTable) => {
 };
 
 /**
- * The labels of a stored document, `json[9]`:
+ * The labels of a stored document, `json[7]`:
  *
- * `[clock, columns, places, extras, deleted, limbo, aliases, rootStamps,
- * pending, lists]`. Node ids are written by the sessions of the document's
- * table (see `writeId`), and so are stamps, `[clock, session]`.
+ * `[clock, columns, deleted, rootStamps, places, extras, limbo, aliases,
+ * pending, lists]` (see `LABELS_*`), without the empty ones at the end.
+ * Node ids are written by the sessions of the document's table (see
+ * `writeId`), and so are stamps, `[clock, session]`.
  *
  * - `columns`, one number per visible node in the order of the stored tree:
  *   the session of its stamp, its clock as the difference from the previous
@@ -2187,7 +2212,7 @@ class StoredLabels {
   constructor(stored: readonly Json[], sessions: readonly string[]) {
     this.#stored = stored;
     this.#sessions = sessions;
-    this.clock = num(stored[0]);
+    this.clock = num(stored[LABELS_CLOCK]);
   }
 
   /** A session `sessionWriter` wrote. */
@@ -2202,7 +2227,11 @@ class StoredLabels {
 
   /** The stored places of the stored tree `doc`. */
   places(fugue: FugueSiblings, doc: Doc) {
-    fugue.load(this.#stored[9], (list) => childIds(doc, list), this.#sessions);
+    fugue.load(
+      this.#stored[LABELS_LISTS],
+      (list) => childIds(doc, list),
+      this.#sessions,
+    );
   }
 
   #label(value: Json | undefined): Label {
@@ -2220,12 +2249,13 @@ class StoredLabels {
     visit: (child: DocNode, parent: DocNode, label: Label) => void,
   ) {
     const stored = this.#stored;
-    const [sessions, clocks, kinds] = splitColumns(text(stored[1]), 3).map(
-      (column) => new ColumnReader(column),
-    );
-    const places = list(stored[2]).map(text);
+    const [sessions, clocks, kinds] = splitColumns(
+      text(stored[LABELS_COLUMNS]),
+      3,
+    ).map((column) => new ColumnReader(column));
+    const places = list(stored[LABELS_PLACES]).map(text);
     const extras = new Map<number, Json | undefined>();
-    const extraList = list(stored[3]);
+    const extraList = list(stored[LABELS_EXTRAS]);
     for (let at = 0; at < extraList.length; at += 2)
       extras.set(num(extraList[at]), extraList[at + 1]);
     let place = 0;
@@ -2252,7 +2282,7 @@ class StoredLabels {
   deleted(
     visit: (session: string, from: number, to: number, life: number) => void,
   ) {
-    for (const group of list(this.#stored[4])) {
+    for (const group of list(this.#stored[LABELS_DELETED])) {
       const [session, ...runs] = list(group);
       for (let at = 0; at < runs.length; at += 3)
         visit(
@@ -2272,7 +2302,7 @@ class StoredLabels {
       state: Record<string, string>,
     ) => void,
   ) {
-    for (const item of list(this.#stored[5])) {
+    for (const item of list(this.#stored[LABELS_LIMBO])) {
       const [id, type, label, state] = list(item);
       visit(
         this.read(id),
@@ -2284,13 +2314,13 @@ class StoredLabels {
   }
 
   aliases(visit: (old: string, renamed: string) => void) {
-    const aliases = list(this.#stored[6]);
+    const aliases = list(this.#stored[LABELS_ALIASES]);
     for (let at = 0; at < aliases.length; at += 2)
       visit(this.read(aliases[at]), this.read(aliases[at + 1]));
   }
 
   rootStamps(visit: (key: string, stamp: Stamp) => void) {
-    const stamps = list(this.#stored[7]);
+    const stamps = list(this.#stored[LABELS_ROOT_STAMPS]);
     for (let at = 0; at < stamps.length; at += 3)
       visit(text(stamps[at]), [
         num(stamps[at + 1]),
@@ -2301,7 +2331,7 @@ class StoredLabels {
   pending(
     visit: (id: string, life: number, seen: Stamp, own: boolean) => void,
   ) {
-    const pending = list(this.#stored[8]);
+    const pending = list(this.#stored[LABELS_PENDING]);
     for (let at = 0; at < pending.length; at += 5)
       visit(
         this.read(pending[at]),
@@ -2317,10 +2347,7 @@ const isTree = (json: JsonDoc | JsonTree): json is JsonTree =>
 
 /** A stored document of the current format, as a snapshot carries it. */
 const isJsonDoc = (json: unknown): json is JsonDoc =>
-  Array.isArray(json) &&
-  json[0] === FORMAT &&
-  typeof json[1] === "string" &&
-  typeof json[2] === "object";
+  Array.isArray(json) && Array.isArray(json[0]) && typeof json[1] === "string";
 
 /** Text that converges without a server: FugueMax, with tombstones. */
 const fugueText = textState(TextStore);

@@ -53,10 +53,14 @@ function rootOf(type: string) {
 const lexicalDocs = new WeakSet<Doc>();
 
 /** Whether a stored document merges its text letter by letter. */
-const storesLetters = (json: JsonDoc | JsonTree) =>
-  typeof json[0] === "string"
-    ? json[2][TEXT_CONFLICTS] === JSON.stringify("letter")
-    : json[2][TEXT_CONFLICTS] === "letter";
+const storesLetters = (json: JsonDoc | JsonTree) => {
+  const state = json[2];
+  // A stored document's empty state is `0`.
+  if (state === 0) return false;
+  return typeof json[0] === "string"
+    ? state[TEXT_CONFLICTS] === JSON.stringify("letter")
+    : state[TEXT_CONFLICTS] === "letter";
+};
 
 /**
  * The config of Lexical documents, whose concurrent text edits merge letter

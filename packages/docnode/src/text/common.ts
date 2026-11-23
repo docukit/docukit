@@ -376,6 +376,7 @@ export abstract class TextEngine {
   abstract toStored(
     sessions: SessionTable,
     out: { encode(): string }[],
+    root: string,
   ): Json[] | 0;
   /** The runs of each list, in order (a tombstone is a `-` per letter). */
   protected abstract _debugRuns(): string[][];
@@ -389,15 +390,23 @@ const asStore = (value: unknown): TextEngine => {
 /** The state of the document root that holds an engine's text. */
 export function textState(engine: {
   fromJSON(json: unknown): TextEngine;
-  fromStored(stored: Json[], columns: string[], sessions: string[]): TextEngine;
+  fromStored(
+    stored: Json[],
+    columns: string[],
+    sessions: string[],
+    root: string,
+  ): TextEngine;
+  /** How many columns `toStored` writes. */
+  readonly columns: number;
 }): InternalStateDefinition {
   return {
     fromJSON: (json) => engine.fromJSON(json),
     toJSON: (store) => asStore(store).toJSON(),
-    toStored: (store, sessions, columns) =>
-      asStore(store).toStored(sessions, columns),
-    fromStored: (stored, columns, sessions) =>
-      engine.fromStored(stored, columns, sessions),
+    toStored: (store, sessions, columns, root) =>
+      asStore(store).toStored(sessions, columns, root),
+    storedColumns: engine.columns,
+    fromStored: (stored, columns, sessions, root) =>
+      engine.fromStored(stored, columns, sessions, root),
     applyEdit: (_store, doc, operation) => storeOf(doc).apply(doc, operation),
     prepareUndo: (undo, doc) => storeOf(doc).prepareUndo(doc, undo),
   };

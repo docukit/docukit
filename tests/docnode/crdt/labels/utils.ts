@@ -138,8 +138,8 @@ const isList = (value: Json | undefined): value is readonly Json[] =>
 
 /** The sections of the labels a document stores (see `StoredLabels`). */
 export function storedLabels(doc: Doc) {
-  const stored = doc.toJSON()[9];
-  const [, , , extras, deleted, limbo, aliases, rootStamps, pending] = isList(
+  const stored = doc.toJSON()[7];
+  const [, , deleted, rootStamps, , extras, limbo, aliases, pending] = isList(
     stored,
   )
     ? stored

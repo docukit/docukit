@@ -47,10 +47,14 @@ const MISSING = "~";
 const LETTER_MODE = "~textConflicts";
 
 /** Whether a stored document is already a `"letter"` one. */
-const storesLetters = (json: JsonDoc | JsonTree) =>
-  typeof json[0] === "string"
-    ? json[2][LETTER_MODE] === JSON.stringify("letter")
-    : json[2][LETTER_MODE] === "letter";
+const storesLetters = (json: JsonDoc | JsonTree) => {
+  const state = json[2];
+  // A stored document's empty state is `0`.
+  if (state === 0) return false;
+  return typeof json[0] === "string"
+    ? state[LETTER_MODE] === JSON.stringify("letter")
+    : state[LETTER_MODE] === "letter";
+};
 
 const isWholeNode = (json: unknown): json is StoredNode =>
   typeof json === "object" && json !== null && "version" in json;

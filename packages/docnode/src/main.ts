@@ -1,9 +1,8 @@
-import { readJsonDoc, withText, writeJsonDoc } from "./jsonDoc.js";
+import { readJsonDoc, writeJsonDoc } from "./jsonDoc.js";
 import {
   type DocConfig,
   type IntersectionOf,
   type JsonDoc,
-  type JsonDocWithoutText,
   type JsonDocNode,
   type JsonTree,
   type NodeDefinition,
@@ -1150,10 +1149,12 @@ export class Doc {
    * immediately afterward to be batched with it. A document stored by
    * `toJSON` takes its id from `config.id`, which is then required.
    */
-  static fromJSON(
-    config: DocConfig,
-    storedDoc: JsonDoc | JsonDocWithoutText | JsonTree,
-  ): Doc {
+  static fromJSON(config: DocConfig, storedDoc: JsonDoc | JsonTree): Doc {
+    // Unreleased versions wrote a number first.
+    if (!isTree(storedDoc) && !Array.isArray(storedDoc[0]))
+      throw new Error(
+        `Stored by an unreleased version: ${JSON.stringify(storedDoc[0])}`,
+      );
     const id = isTree(storedDoc) ? storedDoc[0] : config.id;
     if (!id)
       throw new Error(
@@ -1164,10 +1165,9 @@ export class Doc {
         `Attempted to create a document with id '${config.id}' that does not match the root node id '${id}'.`,
       );
     }
-    // Format 13 reads as today's: extensions only see that one.
     const json = config.extensions.reduce(
       (json, extension) => extension.load?.(json, id) ?? json,
-      isTree(storedDoc) ? storedDoc : withText(storedDoc),
+      storedDoc,
     );
     const doc = new Doc({ ...config, id });
     withTransaction(doc, () => {
@@ -1289,9 +1289,8 @@ export class Doc {
   }
 }
 
-const isTree = (
-  json: JsonDoc | JsonDocWithoutText | JsonTree,
-): json is JsonTree => typeof json[0] === "string";
+const isTree = (json: JsonDoc | JsonTree): json is JsonTree =>
+  typeof json[0] === "string";
 
 /**
  * The methods of one state key, chosen once per node definition. Reading
