@@ -221,7 +221,9 @@ describe("throw errors and abort", () => {
     doc.onChange(() => {
       throw new Error("error in change event");
     });
-    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const logged = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
     // A commit inside the update fails in the change event, which leaves the
     // document there: rolling the update back fails too.
     expect(() =>
