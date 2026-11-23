@@ -94,33 +94,21 @@ const countChildren = (node: DocNode) => {
   return count;
 };
 
-/** `doc` as it is stored (see `JsonDoc`), without its id. */
-export function writeJsonDoc(doc: Doc): JsonDoc {
+/**
+ * The tree of `doc` in `columns` (from `COLUMN.SESSION` on), its sessions in
+ * `sessions`, and its types, keys and values, each once in order.
+ */
+function writeTree(
+  doc: Doc,
+  sessions: SessionTable,
+  columns: ColumnWriter[],
+  typeNames: string[],
+  keyNames: string[],
+  values: Json[],
+): void {
   const root = doc.root;
   const definitions = doc["_resolvedNodeDefs"];
-  const textKey = doc["_editStateKey"];
-  const rootValues: Record<string, unknown> = root["_state"];
-  const rootState: Record<string, Json> = {};
   const rootDefinition = definitions.get(root.type)!;
-  // In the order of the definition, the same in every replica.
-  for (const key in rootDefinition.state) {
-    // The text goes apart.
-    if (key === textKey || !(key in rootValues)) continue;
-    const value = storedValue(root, rootDefinition, rootValues, key);
-    if (value !== undefined) rootState[key] = value;
-  }
-  const json: JsonDoc = [FORMAT, root.type, rootState];
-  const sessions = new SessionTable();
-  const textColumns: { encode(): string }[] = [];
-  const text =
-    textKey !== undefined && textKey in rootValues
-      ? textDefinition(doc, root.type, textKey).toStored!(
-          rootValues[textKey],
-          sessions,
-          textColumns,
-        )
-      : 0;
-  if (!root.first && text === 0) return json;
   const size = doc["_nodeMap"].size;
   const sessionColumn = new ColumnWriter(size);
   const clockColumn = new ColumnWriter(size);
@@ -152,7 +140,6 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
     return (last = type);
   };
   const keys = new Map<string, number>();
-  const values: Json[] = [];
   /** The last clock of each session, which the next one is written after. */
   const clocks: number[] = [];
   // The session of the node before, and the highest one so far (see
@@ -199,6 +186,56 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
       next = up.next;
     node = next;
   }
+  columns.push(
+    sessionColumn,
+    clockColumn,
+    typeColumn,
+    childrenColumn,
+    stateColumn,
+    keyColumn,
+    numberColumn,
+  );
+  typeNames.push(...types.keys());
+  keyNames.push(...keys.keys());
+}
+
+/** `doc` as it is stored (see `JsonDoc`), without its id. */
+export function writeJsonDoc(doc: Doc): JsonDoc {
+  const root = doc.root;
+  const definitions = doc["_resolvedNodeDefs"];
+  const textKey = doc["_editStateKey"];
+  const rootValues: Record<string, unknown> = root["_state"];
+  const rootState: Record<string, Json> = {};
+  const rootDefinition = definitions.get(root.type)!;
+  // In the order of the definition, the same in every replica.
+  for (const key in rootDefinition.state) {
+    // The text goes apart.
+    if (key === textKey || !(key in rootValues)) continue;
+    const value = storedValue(root, rootDefinition, rootValues, key);
+    if (value !== undefined) rootState[key] = value;
+  }
+  const json: JsonDoc = [FORMAT, root.type, rootState];
+  const sessions = new SessionTable();
+  const textColumns: { encode(): string }[] = [];
+  const text =
+    textKey !== undefined && textKey in rootValues
+      ? textDefinition(doc, root.type, textKey).toStored!(
+          rootValues[textKey],
+          sessions,
+          textColumns,
+        )
+      : 0;
+  if (!root.first && text === 0) return json;
+  const columns: ColumnWriter[] = [];
+  const types: string[] = [];
+  const keys: string[] = [];
+  const values: Json[] = [];
+  // Only text: the columns of the tree are empty, and its code is not
+  // compiled (a save runs once, mostly cold).
+  if (root.first) writeTree(doc, sessions, columns, types, keys, values);
+  else
+    for (let column = 1; column < COLUMNS; column++)
+      columns.push(new ColumnWriter());
   // Sessions mostly share their start with the one before, the first with
   // the document's id.
   const sharedColumn = new ColumnWriter();
@@ -207,21 +244,11 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
   // they come first. Only `values` can be empty at the end.
   json.push(
     table,
-    [...types.keys()],
-    [...keys.keys()],
+    types,
+    keys,
     text,
     // In the order of `COLUMN`, then the text's.
-    joinColumns([
-      sharedColumn,
-      sessionColumn,
-      clockColumn,
-      typeColumn,
-      childrenColumn,
-      stateColumn,
-      keyColumn,
-      numberColumn,
-      ...textColumns,
-    ]),
+    joinColumns([sharedColumn, ...columns, ...textColumns]),
   );
   if (values.length > 0) json.push(values);
   return json;

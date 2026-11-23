@@ -1301,7 +1301,10 @@ export class BaseText extends TextEngine {
       }
       return index;
     };
-    const ghostWriter = new GhostWriter(sessions, ghosts, stateIndex);
+    // Without ghosts, none of its code runs: a cold save compiles less.
+    const ghostWriter = ghosts.empty
+      ? undefined
+      : new GhostWriter(sessions, ghosts, stateIndex);
     const flowFlags = new ColumnWriter(flows.length, false, true);
     const flowRuns = new ColumnWriter(flows.length);
     const shapeColumn = new ColumnWriter(1024);
@@ -1323,9 +1326,7 @@ export class BaseText extends TextEngine {
         nodeClocks.push(sessions.clock);
       }
       expectedKey = nextId(flow.node);
-      if (!ghosts.empty) {
-        ghostWriter.place(flow.node, -1, -1, 1);
-      }
+      ghostWriter?.place(flow.node, -1, -1, 1);
       let hasState = false;
       for (let run = flow.head.next; run; run = run.next)
         if (run.state) hasState = true;
@@ -1346,7 +1347,7 @@ export class BaseText extends TextEngine {
           last = last.next;
           text += last.text;
         }
-        if (!ghosts.empty)
+        if (ghostWriter)
           for (let piece = run; ; piece = piece.next!) {
             ghostWriter.place(
               piece.s,
@@ -1420,7 +1421,8 @@ export class BaseText extends TextEngine {
       nodeSessions,
       nodeClocks,
       stateRuns,
-      ...ghostWriter.columns,
+      // Without ghosts, empty columns at the end, which are not written.
+      ...(ghostWriter?.columns ?? []),
     );
     const stored: Json[] = [texts.join("")];
     if (states.length > 0) stored.push(states);
