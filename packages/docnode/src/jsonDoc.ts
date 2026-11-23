@@ -4,6 +4,8 @@ import type {
   Json,
   JsonDoc,
   ResolvedNodeDefinition,
+  StoredRest,
+  StoredState,
 } from "./types.js";
 import {
   ColumnReader,
@@ -17,6 +19,7 @@ import {
 } from "./columns.js";
 import { numberToBase64 } from "./idGenerator.js";
 import { jsonCopy, jsonEqual } from "./utils.js";
+import { isRecord } from "./text/common.js";
 
 /**
  * The columns of a stored document's tree (see `JsonDoc`), after the one of
@@ -29,12 +32,6 @@ const COLUMN_CHILDREN = 3;
 const COLUMN_STATE = 4;
 const COLUMN_KEY = 5;
 const COLUMN_NUMBER = 6;
-
-/** Where each element of a stored document is (see `JsonDoc`). */
-const AT_SESSIONS = 0;
-const AT_TEXT = 3;
-const AT_COLUMNS = 4;
-const AT_CRDT = 7;
 
 /** A value that goes in the column of numbers: a whole one, not negative. */
 const inColumn = (value: Json): value is number =>
@@ -215,8 +212,6 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
     stateful = true;
   }
   const sessions = new SessionTable();
-  // An empty state is `0`.
-  const json: JsonDoc = [sessions.table, root.type, stateful ? rootState : 0];
   const textColumns: { encode(): string }[] = [];
   const text =
     textKey !== undefined && textKey in rootValues
@@ -227,7 +222,6 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
           root.id,
         )
       : 0;
-  if (!root.first && text === 0) return json;
   const columns: ColumnWriter[] = [];
   const names = new Map<string, number>();
   const values: Json[] = [];
@@ -237,24 +231,52 @@ export function writeJsonDoc(doc: Doc): JsonDoc {
   // Sessions mostly share their start with the one before, the first with
   // the document's id.
   const shared = new ColumnWriter();
-  json[AT_SESSIONS] = frontCode(sessions.table, root.id, shared);
-  json.push(
+  const table = frontCode(sessions.table, root.id, shared);
+  // An empty element is `0`.
+  return storedDoc(table, root.type, [
+    stateful ? rootState : 0,
     // Letters without state are stored as their string alone. The text
     // goes before the columns: gzip compresses the letters better first.
-    text !== 0 && text.length === 1 ? text[0]! : text,
+    text !== 0 && text.length === 1 ? text[0] : text,
     // How much each session shares, the text's, then the tree's (see
     // `COLUMN_*`): a document of text alone ends with the text's.
-    // An empty element is `0`, and those at the end are left out.
-    joinColumns([
-      ...sharedColumn(json[AT_SESSIONS], shared),
-      ...textColumns,
-      ...columns,
-    ]) || 0,
+    joinColumns([...sharedColumn(table, shared), ...textColumns, ...columns]) ||
+      0,
     names.size ? [...names.keys()] : 0,
     values.length ? values : 0,
-  );
-  while (json.length > AT_TEXT && json.at(-1) === 0) json.pop();
+  ]);
+}
+
+/**
+ * A stored document of its sessions, its type and its elements (see
+ * `elementsOf`): without its state when it is `0`, and without the empty
+ * elements, `0`, at its end.
+ */
+export function storedDoc(
+  table: string[],
+  type: string,
+  [state, ...rest]: [StoredState | 0, ...StoredRest],
+): JsonDoc {
+  const json: JsonDoc = state
+    ? [table, type, state, ...rest]
+    : [table, type, ...rest];
+  while (json.at(-1) === 0) json.pop();
   return json;
+}
+
+/** Whether a stored document has its state, the only object after its type. */
+const hasState = (
+  json: JsonDoc,
+): json is [string[], string, StoredState, ...StoredRest] => isRecord(json[2]);
+
+/** The elements of a stored document after its type, its state first (`0` when empty). */
+export function elementsOf(json: JsonDoc): [StoredState | 0, ...StoredRest] {
+  if (hasState(json)) {
+    const [, , ...elements] = json;
+    return elements;
+  }
+  const [, , ...rest] = json;
+  return [0, ...rest];
 }
 
 /**
@@ -267,10 +289,7 @@ export const sharedColumn = (
 ): ColumnWriter[] => (table.length > 1 ? [shared] : []);
 
 /** The columns of a stored `json`: an element left out, or `0`, has none. */
-export const columnsOf = (json: JsonDoc) => {
-  const columns = json[AT_COLUMNS];
-  return typeof columns === "string" ? columns : "";
-};
+export const columnsOf = (json: JsonDoc) => elementsOf(json)[2] || "";
 
 /**
  * The sessions of the table of a stored `json` (see `JsonDoc`), `id` the
@@ -279,45 +298,27 @@ export const columnsOf = (json: JsonDoc) => {
 export const storedSessions = (json: JsonDoc, id: string): string[] =>
   readSessions(
     frontDecode(
-      json[AT_SESSIONS],
+      json[0],
       id,
       new ColumnReader(
-        json[AT_SESSIONS].length > 1
-          ? splitColumns(columnsOf(json), 1)[0]!
-          : "",
+        json[0].length > 1 ? splitColumns(columnsOf(json), 1)[0]! : "",
       ),
     ),
   );
-
-/**
- * `json` with what a CRDT engine stores besides the tree (see
- * `DocConfig.crdt`), and every element before it.
- */
-export function withCrdt(json: JsonDoc, crdt: Json): JsonDoc {
-  json[AT_TEXT] ??= 0;
-  // An empty element is `0`, as a missing one is.
-  for (let at = AT_COLUMNS; at < AT_CRDT; at++) {
-    const element = json[at];
-    if (!element || (Array.isArray(element) && !element.length)) json[at] = 0;
-  }
-  json[AT_CRDT] = crdt;
-  return json;
-}
 
 /**
  * Builds the nodes of a stored `json` in `doc`, in place of its root. The
  * document's id is the one `Doc.fromJSON` gave it.
  */
 export function readJsonDoc(doc: Doc, json: JsonDoc): void {
+  const [table, type] = json;
   const [
-    table,
-    type,
     rootState,
     text = 0,
-    ,
+    storedColumns = 0,
     storedNames = 0,
     storedValues = 0,
-  ] = json;
+  ] = elementsOf(json);
   // An element left out, or `0`, is empty.
   const names = storedNames || [];
   const values = storedValues || [];
@@ -328,7 +329,7 @@ export function readJsonDoc(doc: Doc, json: JsonDoc): void {
   if (rootState)
     for (const key in rootState)
       state[key] = doc["_storedValue"](rootDefinition, key, rootState[key]!);
-  const columns = splitColumns(columnsOf(json));
+  const columns = splitColumns(storedColumns || "");
   const sessions = readSessions(
     frontDecode(
       table,
@@ -346,9 +347,10 @@ export function readJsonDoc(doc: Doc, json: JsonDoc): void {
         "The stored document has text, but no node type defines it (see `defineText`).",
       );
     const definition = textDefinition(doc, type, textKey);
-    first += definition.storedColumns!;
+    const stored = typeof text === "object" ? text : [text];
+    first += definition.storedColumns!(stored);
     state[textKey] = definition.fromStored!(
-      typeof text === "string" ? [text] : text,
+      stored,
       columns.slice(start, first),
       sessions,
       id,

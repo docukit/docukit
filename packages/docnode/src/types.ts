@@ -83,9 +83,9 @@ export type InternalStateDefinition<
     sessions: SessionTable,
     columns: { encode(): string }[],
     root: string,
-  ): Json[] | 0;
-  /** How many columns `toStored` writes. */
-  storedColumns?: number;
+  ): StoredLetters | 0;
+  /** How many columns `toStored` wrote, by what it returned. */
+  storedColumns?(stored: Json[]): number;
   /**
    * Reads what `toStored` wrote, with its columns (missing ones at the end
    * are empty), the document's sessions and its root's id.
@@ -172,7 +172,8 @@ export type JsonDocNode<T extends NodeDefinition = NodeDefinition> = [
  * empty are left out.
  *
  * It starts with its sessions, a list: a `JsonTree` starts with its id. The
- * root is plain: its type and its state (each value as JSON). The
+ * root is plain: its type and its state (each value as JSON), left out when
+ * it is empty (the state is the only object there, see `elementsOf`). The
  * document's id is not stored: whoever stores the document keeps it next to
  * it, and `Doc.fromJSON` takes it from `config.id`.
  * The type comes second, at the same place as in a `JsonTree`: a binding that
@@ -198,13 +199,27 @@ export type JsonDocNode<T extends NodeDefinition = NodeDefinition> = [
  *   its sessions to `sessions`. With one, every element before it is
  *   written, `0` when empty.
  */
-export type JsonDoc = [
-  sessions: string[],
-  type: string,
-  /** `0` when it is empty. */
-  state: { [key: string]: Json } | 0,
-  /** `0` when there is no text but more follows. */
-  text?: string | Json[] | 0,
+export type JsonDoc =
+  | [sessions: string[], type: string, state: StoredState, ...StoredRest]
+  /** Without state: the root's is empty. */
+  | [sessions: string[], type: string, ...StoredRest];
+
+/**
+ * What a text stores besides its columns: its letters first, or `1` for
+ * none (see `BaseText.toStored`).
+ */
+export type StoredLetters = [letters: string | 1, ...rest: Json[]];
+
+/** The state of a stored root, each value as JSON: an object. */
+export type StoredState = { [key: string]: Json };
+
+/** The elements of a stored document after its state (see `JsonDoc`). */
+export type StoredRest = [
+  /**
+   * `0` when there is no text but more follows, `1` for a text without
+   * letters (see `BaseText.toStored`).
+   */
+  text?: string | Json[] | 0 | 1,
   columns?: string | 0,
   /** The types of nodes and the keys of their state, each once. */
   names?: string[] | 0,

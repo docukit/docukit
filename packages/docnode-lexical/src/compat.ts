@@ -49,8 +49,8 @@ const LETTER_MODE = "~textConflicts";
 /** Whether a stored document is already a `"letter"` one. */
 const storesLetters = (json: JsonDoc | JsonTree) => {
   const state = json[2];
-  // A stored document's empty state is `0`.
-  if (state === 0) return false;
+  // A stored document leaves out an empty state, the only object there.
+  if (typeof state !== "object" || Array.isArray(state)) return false;
   return typeof json[0] === "string"
     ? state[LETTER_MODE] === JSON.stringify("letter")
     : state[LETTER_MODE] === "letter";

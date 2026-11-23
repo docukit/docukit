@@ -331,7 +331,7 @@ describe("stored documents", () => {
     doc.forceCommit();
     // Its one run needs nothing but its session, and the engine no labels.
     const json = doc.toJSON();
-    expect(json.slice(1)).toStrictEqual(["root", 0, letters]);
+    expect(json.slice(1)).toStrictEqual(["root", letters]);
     const copy = Doc.fromJSON(config, json);
     expect(copy.root.is(Root) && copy.root.state.t.get()).toBe(letters);
   });

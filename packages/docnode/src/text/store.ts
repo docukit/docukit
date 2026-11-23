@@ -249,12 +249,12 @@ type StoredColumns =
   | [keys: string[], values: Json[], states: number[][]]
   | [keys: string[], values: Json[], states: number[][], pending: string[]];
 /** `[text, keys?, values?, states?, pending?]` (see `toStored`). */
-export type StoredText = [text: string, ...columns: StoredColumns];
+export type StoredText = [text: string | 1, ...columns: StoredColumns];
 /** `[11, sessions, text, columns, ...rest]` (see `toJSON`). */
 export type TextJson = [
   format: number,
   table: string[],
-  text: string,
+  text: string | 1,
   columns: string,
   ...rest: StoredColumns,
 ];
@@ -1931,7 +1931,8 @@ export class TextStore extends TextEngine {
     // In the order of `STORED`: those a text of one list leaves empty last.
     out.push(...STORED.map((field) => (field === -1 ? fields : column(field))));
     // Keys and values come with the states that use them.
-    const text = texts.join("");
+    // No letters (only tombstones): `1`.
+    const text = texts.join("") || 1;
     const keyList = [...keys.keys()];
     if (pending.length > 0) return [text, keyList, values, states, pending];
     return states.length > 0 ? [text, keyList, values, states] : [text];
@@ -1975,7 +1976,9 @@ export class TextStore extends TextEngine {
   }
 
   /** How many columns `toStored` writes. */
-  static readonly columns = 8;
+  static columns(): number {
+    return 8;
+  }
 
   static fromStored(
     stored: StoredText,
@@ -1992,7 +1995,8 @@ export class TextStore extends TextEngine {
     columns: string[],
     root: string,
   ): TextStore {
-    const [text, keys = [], values = [], states = [], pending = []] = stored;
+    const [letters, keys = [], values = [], states = [], pending = []] = stored;
+    const text = letters === 1 ? "" : letters;
     const sessionIndex = new Map(
       sessions.map((session, index) => [session, index]),
     );

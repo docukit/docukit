@@ -1,5 +1,5 @@
 import type { Doc } from "../main.js";
-import type { Json } from "../types.js";
+import type { Json, StoredLetters } from "../types.js";
 import type { EditOperation } from "../operations.js";
 import { lastDot, numberToBase64 } from "../idGenerator.js";
 import {
@@ -1291,7 +1291,7 @@ export class BaseText extends TextEngine {
     sessions: SessionTable,
     out: { encode(): string }[],
     root: string,
-  ): Json[] | 0 {
+  ): StoredLetters | 0 {
     const ghosts = this.#ghosts;
     const flows = this.#sortedFlows().filter(
       (flow) => flow.head.next !== undefined || ghosts.hasStart(flow.node),
@@ -1440,9 +1440,8 @@ export class BaseText extends TextEngine {
     );
     // In the order of `COLUMN_*`: those a text of one list leaves empty last.
     out.push(
-      shapeColumn,
-      fields,
-      shapes,
+      // Without letters (only ghosts), the runs' are left out.
+      ...(texts.length ? [shapeColumn, fields, shapes] : []),
       // Without ghosts, their columns are empty.
       ...(ghostWriter?.columns ??
         Array<ColumnWriter>(5).fill(new ColumnWriter())),
@@ -1452,7 +1451,8 @@ export class BaseText extends TextEngine {
       nodeSessions,
       nodeClocks,
     );
-    const stored: Json[] = [texts.join("")];
+    // No letters: `1`, and the runs' columns are left out.
+    const stored: StoredLetters = [texts.join("") || 1];
     if (states.length > 0) stored.push(states);
     return stored;
   }
@@ -1470,8 +1470,10 @@ export class BaseText extends TextEngine {
     );
   }
 
-  /** How many columns `toStored` writes. */
-  static readonly columns = 13;
+  /** How many columns `toStored` wrote: the runs' three, only with letters. */
+  static columns(stored: Json[]): number {
+    return stored[0] === 1 ? 10 : 13;
+  }
 
   static fromStored(
     stored: Json[],
@@ -1482,20 +1484,22 @@ export class BaseText extends TextEngine {
     const store = new BaseText();
     const [text, states] = stored;
     const letters = stringOf(text);
+    // Without letters, the runs' columns were left out.
+    const all = text === 1 ? ["", "", "", ...columns] : columns;
     const table = (listOf(states) ?? [])
       .filter(isState)
       .map((state) => store.#intern(state));
-    const column = (field: number) => new ColumnReader(columns[field] ?? "");
+    const column = (field: number) => new ColumnReader(all[field] ?? "");
     const flowFlags = column(COLUMN_FLOW_FLAGS);
     const flowRuns = column(COLUMN_FLOW_RUNS);
     const shapeColumn = column(COLUMN_SHAPE);
     const shapes = column(COLUMN_SHAPES);
-    const fields = new FieldReader(columns[COLUMN_FIELDS] ?? "");
+    const fields = new FieldReader(all[COLUMN_FIELDS] ?? "");
     const nodeSessions = column(COLUMN_NODE_SESSION);
     const nodeClocks = column(COLUMN_NODE_CLOCK);
     const stateRuns = column(COLUMN_STATE_RUNS);
     const ghosts = new GhostReader(
-      columns.slice(COLUMN_GHOST_PLACES, COLUMN_FLOW_FLAGS),
+      all.slice(COLUMN_GHOST_PLACES, COLUMN_FLOW_FLAGS),
       sessions,
       table,
       store.#ghosts,
@@ -1736,13 +1740,14 @@ class GhostWriter {
     this.#stateIndex = stateIndex;
   }
 
+  /** In the order that stores them smallest, measured on every document. */
   get columns(): ColumnWriter[] {
     return [
-      this.#places,
-      this.#sessions,
       this.#counters,
-      this.#lengths,
+      this.#places,
       this.#states,
+      this.#lengths,
+      this.#sessions,
     ];
   }
 
@@ -1836,11 +1841,11 @@ class GhostReader {
     this.#stateTable = stateTable;
     this.#ghosts = ghosts;
     const column = (field: number) => new ColumnReader(columns[field] ?? "");
-    this.#places = column(0);
-    this.#sessions = column(1);
-    this.#counters = column(2);
+    this.#counters = column(0);
+    this.#places = column(1);
+    this.#states = column(2);
     this.#lengths = column(3);
-    this.#states = column(4);
+    this.#sessions = column(4);
     this.#anchor = this.#places.done ? Infinity : this.#places.next() - 1;
   }
 

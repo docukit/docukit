@@ -1,6 +1,6 @@
 import type { Doc } from "../main.js";
 import type { EditOperation } from "../operations.js";
-import type { InternalStateDefinition, Json } from "../types.js";
+import type { InternalStateDefinition, Json, StoredLetters } from "../types.js";
 import type { SessionTable } from "../columns.js";
 import {
   base64ToNumber,
@@ -377,7 +377,7 @@ export abstract class TextEngine {
     sessions: SessionTable,
     out: { encode(): string }[],
     root: string,
-  ): Json[] | 0;
+  ): StoredLetters | 0;
   /** The runs of each list, in order (a tombstone is a `-` per letter). */
   protected abstract _debugRuns(): string[][];
 }
@@ -396,15 +396,15 @@ export function textState(engine: {
     sessions: string[],
     root: string,
   ): TextEngine;
-  /** How many columns `toStored` writes. */
-  readonly columns: number;
+  /** How many columns `toStored` wrote, by what it returned. */
+  columns(stored: Json[]): number;
 }): InternalStateDefinition {
   return {
     fromJSON: (json) => engine.fromJSON(json),
     toJSON: (store) => asStore(store).toJSON(),
     toStored: (store, sessions, columns, root) =>
       asStore(store).toStored(sessions, columns, root),
-    storedColumns: engine.columns,
+    storedColumns: (stored) => engine.columns(stored),
     fromStored: (stored, columns, sessions, root) =>
       engine.fromStored(stored, columns, sessions, root),
     applyEdit: (_store, doc, operation) => storeOf(doc).apply(doc, operation),

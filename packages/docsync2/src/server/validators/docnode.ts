@@ -62,14 +62,23 @@ const operationsSchema = v.union([
 ]);
 
 /** See `JsonDoc` in `@docukit/docnode`. */
-const jsonDocShape = v.strictTuple([
-  v.array(v.string()),
-  v.string(),
-  v.union([v.record(v.string(), jsonSchema), v.literal(0)]),
-  v.optional(v.union([v.string(), v.array(jsonSchema), v.literal(0)])),
+const storedRest = [
+  v.optional(
+    v.union([v.string(), v.array(jsonSchema), v.literal(0), v.literal(1)]),
+  ),
   v.optional(v.union([v.string(), v.literal(0)])),
   v.optional(v.union([v.array(v.string()), v.literal(0)])),
   v.optional(v.union([v.array(jsonSchema), v.literal(0)])),
+];
+// The root's state is left out when it is empty.
+const jsonDocShape = v.union([
+  v.strictTuple([
+    v.array(v.string()),
+    v.string(),
+    v.record(v.string(), jsonSchema),
+    ...storedRest,
+  ]),
+  v.strictTuple([v.array(v.string()), v.string(), ...storedRest]),
 ]);
 // Its elements at the end are left out, not undefined.
 const jsonDocSchema = v.custom<JsonDoc>((input) => v.is(jsonDocShape, input));

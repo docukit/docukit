@@ -44,9 +44,10 @@ import {
 } from "../columns.js";
 import {
   columnsOf,
+  elementsOf,
   sharedColumn,
+  storedDoc,
   storedSessions,
-  withCrdt,
 } from "../jsonDoc.js";
 import { IdRanges } from "../idRanges.js";
 import { isRecord, storeOf, textState } from "../text/common.js";
@@ -1889,9 +1890,17 @@ class Engine implements CrdtEngine {
     }));
     if (json[0].length > 1) columns.shift();
     const shared = new ColumnWriter();
-    json[0] = frontCode(sessions.table, rootId, shared);
-    json[4] = joinColumns([...sharedColumn(json[0], shared), ...columns]);
-    return withCrdt(json, stored);
+    const table = frontCode(sessions.table, rootId, shared);
+    // Every element before the labels is written, `0` when empty.
+    const [state, text = 0, , typeNames = 0, values = 0] = elementsOf(json);
+    return storedDoc(table, json[1], [
+      state,
+      text,
+      joinColumns([...sharedColumn(table, shared), ...columns]) || 0,
+      typeNames,
+      values,
+      stored,
+    ]);
   }
 
   /** What a label has that its columns leave out, or nothing. */
@@ -1971,7 +1980,7 @@ class Engine implements CrdtEngine {
     root.node = doc.root;
     const fugue = this.#newFugue();
     this.#fugue = fugue;
-    const stored = isTree(json) ? undefined : json[7];
+    const stored = isTree(json) ? undefined : elementsOf(json)[5];
     if (isTree(json) || !isList(stored)) {
       // A document without labels: deterministic labels, same on every replica.
       const walk = (node: DocNode) => {
@@ -2066,10 +2075,12 @@ class Engine implements CrdtEngine {
   }
 
   #mergeSnapshot(stored: Json | undefined) {
-    if (!isJsonDoc(stored) || !isList(stored[7])) return;
+    if (!isJsonDoc(stored)) return;
+    const crdt = elementsOf(stored)[5];
+    if (!isList(crdt)) return;
     // A snapshot is one of this document, which has its id.
     const id = this.#doc.root.id;
-    const labels = new StoredLabels(stored[7], storedSessions(stored, id));
+    const labels = new StoredLabels(crdt, storedSessions(stored, id));
     this.#clock = Math.max(this.#clock, labels.clock);
     labels.deleted((session, from, to, life) =>
       this.#mergeDelete([session, from, to, life]),
@@ -2184,7 +2195,7 @@ const sessionWriter = (table: SessionTable) => {
 };
 
 /**
- * The labels of a stored document, `json[7]`:
+ * The labels of a stored document, its last element (see `elementsOf`):
  *
  * `[clock, columns, deleted, rootStamps, places, extras, limbo, aliases,
  * pending, lists]` (see `LABELS_*`), without the empty ones at the end.
@@ -2372,6 +2383,7 @@ export const labelsEngine = (options?: CrdtOptions): CrdtEngineFactory =>
  * crash) sends this instead. Merging it twice changes nothing.
  */
 export const labelsSnapshot = (json: JsonDoc): Operations => {
-  const stored = json.filter((element) => element !== undefined);
+  const stored: Json[] = [];
+  for (const element of json) if (element !== undefined) stored.push(element);
   return ["", [SNAPSHOT, stored]];
 };

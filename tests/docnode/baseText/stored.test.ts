@@ -111,12 +111,30 @@ describe("the stored text", () => {
     expect(stored(doc)).toBe(stored(flat("abcdef").doc));
   });
 
+  test("a text whose letters were all deleted stores `1`, and no run columns", () => {
+    const { doc, text } = flat("deleted");
+    text.delete(0, 7);
+    doc.forceCommit();
+    // Only its ghost: no root state (empty), `1` for no letters, and the
+    // ghost's columns.
+    const json = doc.toJSON();
+    expect(json.slice(1, 3)).toStrictEqual(["root", 1]);
+    expect(json).toHaveLength(4);
+    const copy = reload(doc);
+    expect(rootText(copy).get()).toBe("");
+    expect(stored(copy)).toBe(stored(doc));
+    rootText(copy).insert(0, "back");
+    copy.forceCommit();
+    expect(rootText(reload(copy)).get()).toBe("back");
+  });
+
   test("an empty text is not stored", () => {
     const { doc } = nodes([""]);
     expect(doc.root.toJSON()[2]).toStrictEqual({});
-    // Without text: `0` in its place, before the columns.
-    expect(doc.toJSON()).toHaveLength(6);
-    expect(doc.toJSON()[3]).toBe(0);
+    // Without text: `0` in its place, before the columns (no root state:
+    // it is empty).
+    expect(doc.toJSON()).toHaveLength(5);
+    expect(doc.toJSON()[2]).toBe(0);
   });
 
   test("the document keeps its text before its columns, with the sessions of its tree", () => {
@@ -126,7 +144,7 @@ describe("the stored text", () => {
     doc.root.append(node);
     node.state.t.insert(0, "Hello");
     doc.forceCommit();
-    const [sessions, , , text] = doc.toJSON();
+    const [sessions, , text] = doc.toJSON();
     expect(sessions).toStrictEqual(["a"]);
     expect(text).toBe("Hello");
     expect(reload(doc).root.first).toBeDefined();
@@ -169,7 +187,7 @@ describe("the stored text", () => {
     for (const session of ["a", "b", "c", "d"])
       network.edit(session, (text) => text.insert(0, session.repeat(3)));
     network.exchange();
-    const [, , , text, columns] = network.server.toJSON();
+    const [, , text, columns] = network.server.toJSON();
     expect(text).toBe("dddcccbbbaaa");
     expect(String(columns).length).toBeLessThan(30);
   });

@@ -481,7 +481,7 @@ describe("more hidden structure", () => {
     // Late copies of everything change nothing once removed.
     deliver(a, ops);
     deliver(b, ops);
-    expect(JSON.stringify(a.doc.toJSON()[7])).not.toContain("orphan");
+    expect(JSON.stringify(a.doc.toJSON().at(-1))).not.toContain("orphan");
     expectSameTree(a, b);
   });
 });
@@ -499,7 +499,7 @@ describe("values without a node", () => {
     deliver(b, take(a));
     deliver(b, [insertX!]);
     expect(tree(b)).toBe("root");
-    expect(JSON.stringify(b.doc.toJSON()[7])).not.toContain("x2");
+    expect(JSON.stringify(b.doc.toJSON().at(-1))).not.toContain("x2");
   });
 });
 

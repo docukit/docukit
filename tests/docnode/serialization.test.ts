@@ -492,7 +492,8 @@ describe("stored document", () => {
     expect(loaded.is(Root) ? loaded.state.title.get() : "").toBe("Draft");
     root.state.title.set("");
     doc.forceCommit();
-    expect(doc.toJSON()).toStrictEqual([[], "root", 0]);
+    // An empty state is left out.
+    expect(doc.toJSON()).toStrictEqual([[], "root"]);
   });
 
   test("whole numbers go in a column and load back as they were", () => {
@@ -527,7 +528,7 @@ describe("stored document", () => {
     doc.forceCommit();
     const json = doc.toJSON();
     // Only what is not a whole number of at least 0 stays in `values`.
-    expect(json[6]).toStrictEqual([-3, 1.5, "12", 2 ** 60]);
+    expect(json.at(-1)).toStrictEqual([-3, 1.5, "12", 2 ** 60]);
     const loaded: unknown[] = [];
     Doc.fromJSON({ ...config, id: doc.root.id }, json)
       .root.children()
@@ -567,7 +568,7 @@ describe("stored document", () => {
     }
     doc.forceCommit();
     const roundTrip: unknown = JSON.parse(JSON.stringify(values));
-    expect(doc.toJSON()[6]).toStrictEqual(roundTrip);
+    expect(doc.toJSON().at(-1)).toStrictEqual(roundTrip);
     const loaded: unknown[] = [];
     Doc.fromJSON({ ...config, id: doc.root.id }, doc.toJSON())
       .root.children()
@@ -606,7 +607,7 @@ describe("stored document", () => {
     }
     doc.forceCommit();
     // The first one is the default; the rest only look like it.
-    expect(doc.toJSON()[6]).toStrictEqual(values.slice(1));
+    expect(doc.toJSON().at(-1)).toStrictEqual(values.slice(1));
   });
 
   test.each([13, 14])(
@@ -648,11 +649,11 @@ describe("stored document", () => {
     const doc = Doc.fromJSON(config, tree);
     doc.forceCommit();
     const json = doc.toJSON();
-    // Sessions, type, an empty root state, no text, the columns, the names
+    // Sessions, type, no root state (empty), no text, the columns, the names
     // and the values that are not whole numbers.
-    expect(json).toHaveLength(7);
-    expect(json.slice(0, 4)).toStrictEqual([["a", "b"], "root", 0, 0]);
-    expect(json.slice(5)).toStrictEqual([
+    expect(json).toHaveLength(6);
+    expect(json.slice(0, 3)).toStrictEqual([["a", "b"], "root", 0]);
+    expect(json.slice(4)).toStrictEqual([
       ["text", "value", "test", "string", "number", "boolean"],
       ["one", "two", "x", -1.5],
     ]);
