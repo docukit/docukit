@@ -75,6 +75,11 @@ export class ColumnWriter {
     this.push(value < 0 ? -2 * value - 1 : 2 * value);
   }
 
+  /** Writes `map[value]` in place of each value, one value per entry. */
+  remap(map: Int32Array): void {
+    this.#values = this.#values.map((value) => map[value]!);
+  }
+
   encode(): string {
     let values = this.#values;
     let count = this.#count;

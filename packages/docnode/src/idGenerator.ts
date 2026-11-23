@@ -96,9 +96,9 @@ function randomStringBase64(len: number): string {
 export function incrementStringInBase64(str: string): string {
   const n = str.length;
   for (let i = n - 1; i >= 0; i--) {
+    // A digit outside base 64 (in a custom node id) counts as one before the
+    // first: the text only needs every replica to get the same id.
     const idx = IDX[str.charCodeAt(i)]!;
-    /* v8 ignore next -- @preserve */
-    if (idx < 0) throw new Error("Invalid base64 digit");
     if (idx !== ALPH_LEN - 1) {
       const tailLen = n - i - 1;
       // bump current digit, reset the tail to the first alphabet char

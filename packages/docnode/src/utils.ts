@@ -228,7 +228,6 @@ export function withTransaction(
     try {
       doc.abort();
     } catch (errorInRevert) {
-      /* v8 ignore next -- @preserve */
       console.error("Error applying inverse operations: ", errorInRevert);
     }
     if (!isApplyOperations) throw errorInUpdate;

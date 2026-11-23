@@ -1706,8 +1706,8 @@ export class TextStore extends TextEngine {
       return index;
     };
     const texts: string[] = [];
-    /** Each run's shape and length (see `LONG`), before shapes are ranked. */
-    const shapeCodes: number[] = [];
+    /** How many runs have each shape and length (see `LONG`). */
+    let counts = new Int32Array(0);
     const shapeBits: number[] = [];
     const bitsIndex = new Int32Array(BITS_KEPT * 2).fill(-1);
     let curSession = 0;
@@ -1862,8 +1862,13 @@ export class TextStore extends TextEngine {
           if (shape === -1) {
             shape = bitsIndex[bits] = shapeBits.length;
             shapeBits.push(bits);
+            const grown = new Int32Array(shapeBits.length * (LONG + 1));
+            grown.set(counts);
+            counts = grown;
           }
-          shapeCodes.push(shape * (LONG + 1) + (length < LONG ? length : LONG));
+          const code = shape * (LONG + 1) + (length < LONG ? length : LONG);
+          shapeColumn.push(code);
+          counts[code]!++;
           if (hasState) {
             const index = stateIndex(run.state);
             if (index === lastState) stateCount++;
@@ -1902,8 +1907,6 @@ export class TextStore extends TextEngine {
       .sort();
     if (!any && pending.length === 0) return 0;
     // Shapes are numbered by how many runs have them: the most common is 0.
-    const counts = new Int32Array(shapeBits.length * (LONG + 1));
-    for (const code of shapeCodes) counts[code]!++;
     const ranked: number[] = [];
     for (let shape = 0; shape < counts.length; shape++)
       if (counts[shape]) ranked.push(shape);
@@ -1915,7 +1918,7 @@ export class TextStore extends TextEngine {
       shapes.push(shape % (LONG + 1));
       shapes.push(shapeBits[Math.floor(shape / (LONG + 1))]!);
     }
-    for (const code of shapeCodes) shapeColumn.push(rank[code]!);
+    shapeColumn.remap(rank);
     out.push(
       ...columns.slice(0, COLUMN_FIELDS),
       fields,

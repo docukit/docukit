@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   defineNode,
   Doc,
@@ -212,6 +212,26 @@ describe("throw errors and abort", () => {
     node.state.value.set("1");
     expect(() => doc.forceCommit()).toThrowError("error in change event");
     expect(1).toBe(1);
+  });
+
+  test("an error while rolling back is logged, and the update's error thrown", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const node = doc.createNode(Text);
+    doc.root.append(node);
+    doc.onChange(() => {
+      throw new Error("error in change event");
+    });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    // A commit inside the update fails in the change event, which leaves the
+    // document there: rolling the update back fails too.
+    expect(() =>
+      node.state.value.set(() => {
+        doc.forceCommit();
+        return "1";
+      }),
+    ).toThrowError("error in change event");
+    expect(logged).toHaveBeenCalledOnce();
+    logged.mockRestore();
   });
 });
 

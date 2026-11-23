@@ -81,6 +81,27 @@ describe("the stored text", () => {
     }
   });
 
+  test("of nodes whose id ends with a character outside base 64", () => {
+    let clock = 0;
+    const doc = new Doc({
+      ...config(),
+      id: ROOT_ID,
+      nodeIdGenerator: {
+        generate: () => `p.${clock++}!`,
+        validate: () => true,
+      },
+    });
+    for (const value of ["one", "two"]) {
+      const node = doc.createNode(Paragraph);
+      doc.root.append(node);
+      node.state.t.insert(0, value);
+    }
+    doc.forceCommit();
+    const loaded = reload(doc);
+    expect(everything(loaded)).toStrictEqual(everything(doc));
+    expect(stored(loaded)).toBe(stored(doc));
+  });
+
   test("is the same however its runs were cut", () => {
     const { doc, text } = flat("abcdef");
     text.format(1, 4, "bold", true);
