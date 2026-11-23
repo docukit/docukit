@@ -322,15 +322,12 @@ export function readJsonDoc(doc: Doc, json: JsonDoc): void {
     for (const key in rootState)
       state[key] = doc["_storedValue"](rootDefinition, key, rootState[key]!);
   const columns = splitColumns(storedColumns || "");
+  // Of more than one session, how much each shares is the first column.
+  const start = table.length > 1 ? 1 : 0;
   const sessions = readSessions(
-    frontDecode(
-      table,
-      id,
-      new ColumnReader(table.length > 1 ? (columns[0] ?? "") : ""),
-    ),
+    frontDecode(table, id, new ColumnReader(columns.slice(0, start).join(""))),
   );
   // The tree's columns come after the text's.
-  const start = table.length > 1 ? 1 : 0;
   let first = start;
   if (text !== 0) {
     const textKey = doc["_editStateKey"];
