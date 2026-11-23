@@ -832,14 +832,14 @@ export class BaseText extends TextEngine {
     let own: Record<string, Json> | undefined;
     const cut = rules ? cutIn(text, rules.opaque) : 0;
     const inherited: State =
-      (cut > 0 &&
-        this.#stateFor(
-          undefined,
-          left.run.c === -1 ? undefined : left.run.state,
-          right?.run.state,
-          rules,
-        )) ||
-      {};
+      (cut > 0
+        ? this.#stateFor(
+            undefined,
+            left.run.c === -1 ? undefined : left.run.state,
+            right?.run.state,
+            rules,
+          )
+        : undefined) ?? {};
     for (const key in attrs) {
       const value = attrs[key]!;
       if (value === null) continue;
