@@ -19,6 +19,7 @@ import {
   type TextSpan,
 } from "./common.js";
 import { BaseText } from "./baseText.js";
+import { useTextRows } from "./wire.js";
 
 /** True when `index` falls between the two halves of a surrogate pair. */
 const splitsPair = (text: string, index: number) =>
@@ -260,8 +261,11 @@ function slicesOf(spans: TextSpan[], from: number, to: number) {
   return out;
 }
 
-/** Base's text: a list per node in the server's order (see `BaseText`). */
-const rootDefinition = textState(BaseText);
+/**
+ * Base's text: a list per node in the server's order (see `BaseText`). Made
+ * by the first `defineText`: an app without text does not bundle it.
+ */
+let rootDefinition: InternalStateDefinition | undefined;
 
 /**
  * Opt-in collaborative text: a list of letters per node, and a state per
@@ -281,6 +285,8 @@ export function defineText(options?: {
     inherit && Object.keys(inherit).length > 0
       ? rulesOf(inherit, options?.opaque)
       : undefined;
+  useTextRows();
+  rootDefinition ??= textState(BaseText);
   const definition: InternalStateDefinition<number, Json, TextHandle> = {
     fromJSON: () => 0,
     docState: { key: TEXT_KEY, definition: rootDefinition },

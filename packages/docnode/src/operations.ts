@@ -6,8 +6,8 @@ import {
   parseJson,
   stringifyJson,
 } from "./utils.js";
-import { fuseTextInserts } from "./text/merge.js";
-import { decodeOperations, encodeOperations } from "./wire.js";
+import { decodeOperations, encodeOperations, fuseEdits } from "./wire.js";
+import { useTextRows } from "./text/wire.js";
 
 export function stringifyStateKey(node: DocNode, key: string): string {
   const resolvedNodeDef = node.doc["_resolvedNodeDefs"].get(node.type)!;
@@ -645,7 +645,7 @@ export function mergeDrafts(...drafts: DraftOperations[]): DraftOperations {
       Object.assign(statePatch[nodeId], patch[nodeId]);
     }
   }
-  return [fuseTextInserts(orderedOperations), statePatch];
+  return [fuseEdits(orderedOperations), statePatch];
 }
 
 /**
@@ -653,6 +653,7 @@ export function mergeDrafts(...drafts: DraftOperations[]): DraftOperations {
  * the other are fused into a single insertion.
  */
 export function mergeOperations(...operationsList: Operations[]): Operations {
+  useTextRows();
   return compactOperations(
     mergeDrafts(...operationsList.map(decodeOperations)),
   );
@@ -678,6 +679,7 @@ function isTextOnly(batch: Operations): boolean {
  * other batch is kept as it is.
  */
 export function mergeBatches(batches: readonly Operations[]): Operations[] {
+  useTextRows();
   const merged: Operations[] = [];
   let run: Operations[] = [];
   const flush = () => {

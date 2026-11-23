@@ -1,8 +1,6 @@
 import type { EditOperation, OrderedOperation } from "../operations.js";
 import type { Json } from "../types.js";
-
-const listOf = (value: Json | undefined): readonly Json[] | undefined =>
-  Array.isArray(value) ? value : undefined;
+import { listOf } from "./common.js";
 
 /** The letters of an insert's content: `text` or `[text, ...state]`. */
 const lettersOf = (content: Json | undefined) =>

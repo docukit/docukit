@@ -4,6 +4,7 @@
   "license": "MIT",
   "description": "Type-safe documents with conflict resolution. Faster than any CRDT.",
   "type": "module",
+  "sideEffects": false,
   "homepage": "https://docukit.dev",
   "repository": {
     "type": "git",
