@@ -44,10 +44,8 @@ import {
 } from "../columns.js";
 import { FORMAT, storedSessions, withCrdt } from "../jsonDoc.js";
 import { IdRanges } from "../idRanges.js";
-import { applyLocal } from "./local.js";
 import { isRecord, storeOf, textState } from "../text/common.js";
 import { TextStore } from "../text/store.js";
-import { childIds, FugueSiblings, type Place } from "./fugue.js";
 import {
   engineRow,
   readId,
@@ -58,6 +56,8 @@ import {
   writeId,
   type EngineRow,
 } from "./wire.js";
+import { applyLocal } from "./local.js";
+import { childIds, FugueSiblings, type Place } from "./fugue.js";
 
 export type CrdtOptions = {
   /** How the undo of a delete brings a node back. */

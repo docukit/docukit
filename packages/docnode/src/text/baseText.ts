@@ -35,8 +35,8 @@ import {
   type Rules,
   type TextSpan,
 } from "./common.js";
-import { TreePositions, type Item, type Leaf } from "./positions.js";
 import { Ghosts, type Ghost } from "./ghosts.js";
+import { TreePositions, type Item, type Leaf } from "./positions.js";
 
 /**
  * Base's text: it relies on the server's order, as the tree does. Every

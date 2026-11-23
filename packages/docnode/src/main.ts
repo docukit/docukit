@@ -1,3 +1,4 @@
+import { readJsonDoc, withText, writeJsonDoc } from "./jsonDoc.js";
 import {
   type DocConfig,
   type IntersectionOf,
@@ -29,10 +30,9 @@ import {
   jsonCopy,
   parseJson,
 } from "./utils.js";
-import * as ops from "./operations.js";
 import { NodeIds } from "./idGenerator.js";
 import { decodeOperations } from "./wire.js";
-import { readJsonDoc, withText, writeJsonDoc } from "./jsonDoc.js";
+import * as ops from "./operations.js";
 import { decodeTime, ulid } from "ulid";
 import { UndoManager } from "./undoManager.js";
 
