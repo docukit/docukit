@@ -96,7 +96,7 @@ describe("rebase", () => {
   test("a document with a CRDT engine keeps nothing to undo", () => {
     const doc = new Doc({ ...config(), crdt: labelsEngine() });
     doc.forceCommit();
-    rebase(doc);
+    expect(rebase(doc)).toBe(false);
     doc.root.append(...text(doc, "a"));
     doc.forceCommit();
     expect(rebase(doc, [])).toBe(false);

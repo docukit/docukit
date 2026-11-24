@@ -6,7 +6,8 @@ import { onApplyOperations, type Operations } from "./operations.js";
  * DocSync does, without loading the document again.
  *
  * - `rebase(doc)`: `doc` is the server's document. From then on it keeps
- *   what undoes, exactly, each of its transactions.
+ *   what undoes, exactly, each of its transactions. False when it keeps
+ *   nothing, because it has a CRDT engine.
  * - `rebase(doc, confirmed)`: undoes them all, as one transaction, applies
  *   `confirmed` (the server's batches, in its order) as the server did, and
  *   keeps what undoes the next ones, such as its pending batches applied
@@ -40,6 +41,7 @@ export function rebase(doc: Doc, confirmed?: Operations[]): boolean {
       doc.applyOperations(batch, { skipUndo: true });
   }
   doc.forceCommit();
-  if (!doc["_crdt"]) doc["_journal"] = [];
+  if (doc["_crdt"]) return false;
+  doc["_journal"] = [];
   return true;
 }
