@@ -2383,7 +2383,7 @@ export const labelsEngine = (options?: CrdtOptions): CrdtEngineFactory =>
  * crash) sends this instead. Merging it twice changes nothing.
  */
 export const labelsSnapshot = (json: JsonDoc): Operations => {
-  const stored: Json[] = [];
-  for (const element of json) if (element !== undefined) stored.push(element);
+  const elements: readonly (Json | undefined)[] = json;
+  const stored = elements.filter((element) => element !== undefined);
   return ["", [SNAPSHOT, stored]];
 };
