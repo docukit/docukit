@@ -1780,8 +1780,11 @@ class Engine implements CrdtEngine {
 
   /**
    * `doc.toJSON` of a document without labels, which stores none (see
-   * `#toJSON`): no node, no deleted one, no root value nor place. Checked
-   * apart, so a document of only text does not compile the rest.
+   * `#toJSON`): no node, no deleted one, no root value nor place. Labels of
+   * no node, with clock 0, are also those of a document stored without them
+   * (see `load`). Checked apart, so a document of only text does not compile
+   * the rest. A shown node has a place and a hidden one is in limbo: any
+   * other document has labels to store.
    */
   #labeled(json: JsonDoc): JsonDoc {
     const root = this.#entries.get(this.#doc.root.id);
@@ -1909,9 +1912,6 @@ class Engine implements CrdtEngine {
       ),
     ];
     while (stored.length > 1 && unwritten(stored.at(-1))) stored.pop();
-    // Labels of no node, with clock 0, are those of a document stored
-    // without them (see `load`): they are left out.
-    if (stored.length === 1 && stored[0] === 0) return json;
     // The document's table again, with the labels' sessions after its own,
     // and its first column, how much each shares with the one before.
     const columns = splitColumns(columnsOf(json)).map((column) => ({
