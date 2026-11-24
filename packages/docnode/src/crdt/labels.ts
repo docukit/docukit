@@ -1813,13 +1813,19 @@ class Engine implements CrdtEngine {
     };
     walk(this.#doc.root);
     const hidden: Entry[] = [];
-    for (const [id, value] of this.#entries) {
-      if (id === rootId) continue;
-      const node =
-        typeof value === "number" ? this.#loaded!.nodes[value] : value.node;
+    const map = this.#doc["_nodeMap"];
+    for (const value of this.#entries.values()) {
+      if (typeof value === "number") {
+        // Untouched since it loaded, unless an ancestor left with it.
+        const node = this.#loaded!.nodes[value]!;
+        if (map.get(node.id) !== node) hidden.push(this.#view(node.id, value));
+        continue;
+      }
+      if (value.id === rootId) continue;
+      const node = value.node;
       // Shown: linked under a node of the document.
-      if (node && this.#doc["_nodeMap"].get(node.id) === node) continue;
-      hidden.push(this.#peek(id)!);
+      if (node && map.get(node.id) === node) continue;
+      hidden.push(value);
     }
     hidden.sort((a, b) => Number(a.id > b.id) - Number(a.id < b.id));
     const limbo = hidden.map((entry): Json[] => {
