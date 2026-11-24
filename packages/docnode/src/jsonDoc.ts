@@ -33,10 +33,6 @@ const COLUMN_STATE = 4;
 const COLUMN_KEY = 5;
 const COLUMN_NUMBER = 6;
 
-/** A value that goes in the column of numbers: a whole one, not negative. */
-const inColumn = (value: Json): value is number =>
-  typeof value === "number" && value >= 0 && Number.isSafeInteger(value);
-
 /**
  * The value of `key` in `state` as JSON, or `undefined` when it is the
  * default one, which is not stored.
@@ -78,16 +74,6 @@ export function storedDoc(
   while (json.at(-1) === 0) json.pop();
   return json;
 }
-
-/**
- * How a node's session is written: 0 when it is that of the node before
- * (session 0 for the first node), 1 when it is the one after the highest so
- * far, else its index plus 2. Nodes in a row mostly share a session, and the
- * table gets sessions as nodes come: a node of each of many sessions (each
- * user inserting one) is written 1, 1, 1… and not 0, 1, 2…
- */
-const sessionCode = (index: number, before: number, highest: number) =>
-  index === before ? 0 : index === highest + 1 ? 1 : index + 2;
 
 const countChildren = (node: DocNode) => {
   let count = 0;
@@ -159,8 +145,7 @@ function writeTree(
   };
   /** The last clock of each session, which the next one is written after. */
   const clocks: number[] = [];
-  // The session of the node before, and the highest one so far (see
-  // `sessionCode`).
+  // The session of the node before, and the highest one so far.
   let before = 0;
   let highest = -1;
   // A session's first clock is mostly 0 (its id alone), written as 0.
@@ -169,24 +154,40 @@ function writeTree(
   while (node) {
     const index = sessions.node(node.id);
     const clock = sessions.clock;
-    sessionColumn.push(sessionCode(index, before, highest));
+    // How its session is written: 0 when it is that of the node before
+    // (session 0 for the first node), 1 when it is the one after the highest
+    // so far, else its index plus 2. Nodes in a row mostly share a session,
+    // and the table gets sessions as nodes come: a node of each of many
+    // sessions (each user inserting one) is written 1, 1, 1… and not 0, 1, 2…
+    sessionColumn.push(
+      index === before ? 0 : index === highest + 1 ? 1 : index + 2,
+    );
     before = index;
     if (index > highest) highest = index;
     clockColumn.pushSigned(clock - (clocks[index] ?? -1) - 1);
     clocks[index] = clock;
     const type = typeOf(node.type);
     typeColumn.push(type.index);
-    childrenColumn.push(countChildren(node));
+    childrenColumn.push(node.first ? countChildren(node) : 0);
     let count = 0;
     const state: Record<string, unknown> = node["_state"];
     const definition = type.definition;
-    for (const key of type.keys) {
+    const keys = type.keys;
+    // A save runs mostly cold, where a `for…of` makes an iterator per node.
+    // eslint-disable-next-line @typescript-eslint/prefer-for-of
+    for (let at = 0; at < keys.length; at++) {
+      const key = keys[at]!;
       if (!(key in state)) continue;
       const value = storedValue(node, definition, state, key);
       if (value === undefined) continue;
       const index = nameIndex(key);
-      // Its key says where it is: in the column of numbers or in `values`.
-      if (inColumn(value)) {
+      // Its key says where it is: in the column of numbers (a whole one,
+      // not negative) or in `values`.
+      if (
+        typeof value === "number" &&
+        value >= 0 &&
+        Number.isSafeInteger(value)
+      ) {
         keyColumn.push(index * 2 + 1);
         numberColumn.push(value);
       } else {
