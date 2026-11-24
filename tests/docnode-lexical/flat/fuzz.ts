@@ -1,4 +1,4 @@
-import { Doc, type JsonDoc, type Operations } from "@docukit/docnode";
+import { Doc, rebase, type JsonDoc, type Operations } from "@docukit/docnode";
 import { labelsEngine } from "@docukit/docnode/crdt";
 import {
   createLexicalDocNodeConfig,
@@ -145,6 +145,8 @@ function createPeer(json: JsonDoc, session: string) {
         stored,
       );
       next.forceCommit();
+      // From now on it rebases in place, with the editor bound (`rebase`).
+      rebase(next);
       receiving = true;
       for (const operations of outbox)
         next.applyOperations(operations, { skipUndo: true });
@@ -153,6 +155,21 @@ function createPeer(json: JsonDoc, session: string) {
       next.undoManager.importHistory(old.undoManager.exportHistory());
       peer.doc = bind(next);
       old.dispose();
+    },
+    /**
+     * DocSync's rebase in place, once the peer was replaced: what the server
+     * ordered since it last synced, then what it did that the server has not
+     * seen yet. False when it was never replaced.
+     */
+    rebase(batches: Operations[]) {
+      receiving = true;
+      const rebased = rebase(peer.doc, batches);
+      if (rebased)
+        for (const operations of outbox)
+          peer.doc.applyOperations(operations, { skipUndo: true });
+      peer.doc.forceCommit();
+      receiving = false;
+      return rebased;
     },
   };
   return peer;
@@ -368,6 +385,13 @@ export function createCluster(count: number, texts: string[]) {
   };
   const receive = (peer: Peer) => {
     const fresh = log.slice(peer.received);
+    if (
+      fresh.length > 0 &&
+      peer.rebase(fresh.map((entry) => entry.operations))
+    ) {
+      peer.received = log.length;
+      return;
+    }
     if (
       REPLACES &&
       fresh.some((entry) => entry.from !== peer) &&
