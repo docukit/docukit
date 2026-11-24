@@ -37,7 +37,7 @@ export type Positions<R> = {
 };
 
 /** Runs per leaf, at most twice this many before a leaf is cut in two. */
-const LEAF = 64;
+const LEAF = 32;
 
 /** Children per inner node, at most, before it is cut in two. */
 const FANOUT = 32;
