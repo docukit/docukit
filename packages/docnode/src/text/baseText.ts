@@ -375,6 +375,36 @@ export class BaseText extends TextEngine {
     }
   }
 
+  /**
+   * What undoes a change of letters (see `#undo`). Made apart: an edit that
+   * logs none allocates nothing for it.
+   */
+  #undoing(
+    s: string,
+    c: number,
+    len: number,
+    state: State | undefined | false,
+  ) {
+    return () => this.#undo(s, c, len, state);
+  }
+
+  /**
+   * What puts the letters of `run` back right after `(as, ac)`, or the
+   * start of its list (`ac` -1, `before` its root): see `#undoing`.
+   */
+  #putting(doc: Doc, run: Run, before: Run, as: string, ac: number) {
+    return () => {
+      this.#place(
+        ac === -1 ? { run: before, off: 0 } : this.#find(as, ac)!,
+        run.s,
+        run.c,
+        run.text,
+        run.state,
+      ).run.anchors = true;
+      this.#report(doc, run.flow.node);
+    };
+  }
+
   #unlink(run: Run): void {
     this.#positions.removed(run);
     run.prev!.next = run.next;
@@ -675,8 +705,9 @@ export class BaseText extends TextEngine {
     if (sameValue(was, value)) return;
     const piece = from > 0 ? this.#split(run, from) : run;
     if (to - from < piece.len) this.#split(piece, to - from);
-    const { s, c, len, state: before } = piece;
-    this.#doc!["_journal"]?.push(() => this.#undo(s, c, len, before));
+    this.#doc!["_journal"]?.push(
+      this.#undoing(piece.s, piece.c, piece.len, piece.state),
+    );
     const index = JSON.stringify(was);
     let entry = old.get(index);
     if (!entry) old.set(index, (entry = [was, []]));
@@ -894,7 +925,7 @@ export class BaseText extends TextEngine {
     if (cut < text.length)
       this.#place(at, s, c + cut, text.slice(cut), this.#stateFor(own));
     this.#report(doc, flow.node);
-    doc["_journal"]?.push(() => this.#undo(s, c, text.length, false));
+    doc["_journal"]?.push(this.#undoing(s, c, text.length, false));
     return [3, TAG_DELETE, s, c, encodeRange(s, s, c, text.length)];
   }
 
@@ -1296,16 +1327,7 @@ export class BaseText extends TextEngine {
       const ac = before.c === -1 ? -1 : before.c + before.len - 1;
       const journal = doc["_journal"];
       // Its letters go back right after the one before them, or the start.
-      journal?.push(() => {
-        this.#place(
-          ac === -1 ? { run: before, off: 0 } : this.#find(as, ac)!,
-          run.s,
-          run.c,
-          run.text,
-          run.state,
-        ).run.anchors = true;
-        this.#report(doc, run.flow.node);
-      });
+      journal?.push(this.#putting(doc, run, before, as, ac));
       this.#ghosts.add(
         run.s,
         run.c,
@@ -1480,7 +1502,7 @@ export class BaseText extends TextEngine {
     if (back.length === 0) return undefined;
     const journal = doc["_journal"];
     for (const [rs, rc, length] of back) {
-      journal?.push(() => this.#undo(rs, rc, length, false));
+      journal?.push(this.#undoing(rs, rc, length, false));
       this.#ghosts.drop(rs, rc, length, journal);
     }
     // Back with their ids, they may go on the run after them again.

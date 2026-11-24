@@ -56,22 +56,32 @@ export class Ghosts {
    */
   #log: Log | undefined;
 
-  /**
-   * Before `ghost` changes: what puts it back as it is. Undoing logs
-   * nothing.
-   */
+  /** Before `ghost` changes: what puts it back as it is. */
   #keep(ghost: Ghost): void {
-    const { c, len, as, ac } = ghost;
-    this.#log?.push(() => {
+    this.#log?.push(
+      this.#undoing(ghost, ghost.c, ghost.len, ghost.as, ghost.ac),
+    );
+  }
+
+  /**
+   * What gives `ghost` back `c, len, as, ac`, or takes it away (`len` 0).
+   * Undoing logs nothing. Made apart: a change that logs none allocates
+   * nothing for it.
+   */
+  #undoing(ghost: Ghost, c: number, len: number, as: string, ac: number) {
+    return () => {
       this.#log = undefined;
       if (ghost.len) this.#remove(ghost);
-      ghost.c = c;
-      ghost.len = len;
-      ghost.as = as;
-      ghost.ac = ac;
-      this.#put(ghost);
-    });
+      if (len) {
+        ghost.c = c;
+        ghost.len = len;
+        ghost.as = as;
+        ghost.ac = ac;
+        this.#put(ghost);
+      }
+    };
   }
+
   /** By session, sorted by counter (see `SessionRuns`). */
   #ids = new Map<string, SessionRuns<Ghost>>();
   /** By the session of their anchor (the node, for a start), then its counter. */
@@ -258,10 +268,7 @@ export class Ghosts {
     if (!runs) this.#ids.set(ghost.s, (runs = new SessionRuns<Ghost>()));
     runs.add(ghost);
     this.#anchor(ghost);
-    this.#log?.push(() => {
-      this.#log = undefined;
-      this.#remove(ghost);
-    });
+    this.#log?.push(this.#undoing(ghost, 0, 0, "", 0));
   }
 
   /** The ghosts anchored at `(as, ac)`, in the order they are stored. */
