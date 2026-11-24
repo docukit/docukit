@@ -31,6 +31,9 @@ export type Ghost = {
   readonly state: Readonly<Record<string, Json>> | undefined;
 };
 
+/** Where a change of the ghosts leaves what undoes it (see `Ghosts.#log`). */
+type Log = { push(undo: () => void): unknown };
+
 /** Up to how many ghosts of one anchor are looked at one by one (see `add`). */
 const SCAN = 16;
 
@@ -47,6 +50,28 @@ const byId = (a: Ghost, b: Ghost) =>
   a.s < b.s ? -1 : a.s > b.s ? 1 : a.c - b.c;
 
 export class Ghosts {
+  /**
+   * While a document keeps a journal (see `rebase`), each change of the
+   * ghosts adds what undoes it there.
+   */
+  #log: Log | undefined;
+
+  /**
+   * Before `ghost` changes: what puts it back as it is. Undoing logs
+   * nothing.
+   */
+  #keep(ghost: Ghost): void {
+    const { c, len, as, ac } = ghost;
+    this.#log?.push(() => {
+      this.#log = undefined;
+      if (ghost.len) this.#remove(ghost);
+      ghost.c = c;
+      ghost.len = len;
+      ghost.as = as;
+      ghost.ac = ac;
+      this.#put(ghost);
+    });
+  }
   /** By session, sorted by counter (see `SessionRuns`). */
   #ids = new Map<string, SessionRuns<Ghost>>();
   /** By the session of their anchor (the node, for a start), then its counter. */
@@ -75,12 +100,14 @@ export class Ghosts {
           ghost.state,
         );
         if (prev) {
+          this.#keep(prev);
           prev.len += ghost.len;
           this.#remove(ghost);
           ghost = prev;
           joined = true;
         }
         if (next) {
+          this.#keep(ghost);
           ghost.len += next.len;
           this.#remove(next);
           joined = true;
@@ -119,7 +146,8 @@ export class Ghosts {
   }
 
   /** Ids `[c, c + len)` of `s` are live again. */
-  drop(s: string, c: number, len: number): void {
+  drop(s: string, c: number, len: number, log?: Log): void {
+    this.#log = log;
     const end = c + len;
     for (let at = c; at < end; at++) {
       const ghost = this.find(s, at);
@@ -157,9 +185,12 @@ export class Ghosts {
     ac: number,
     anchors: boolean,
     state: Ghost["state"],
+    log?: Log,
   ): void {
+    this.#log = log;
     const moved = anchors ? this.#takeAnchored(s, c, len) : [];
     for (const other of moved) {
+      this.#keep(other);
       other.as = as;
       other.ac = ac;
       this.#anchor(other);
@@ -173,15 +204,19 @@ export class Ghosts {
       : [undefined, undefined];
     if (next) {
       if (prev) {
+        this.#keep(prev);
         prev.len += len + next.len;
         this.#remove(next);
       } else {
         // No ghost has the ids in between: the order by counter stays.
+        this.#keep(next);
         next.c = c;
         next.len += len;
       }
-    } else if (prev) prev.len += len;
-    else this.#put({ s, c, len, as, ac, state });
+    } else if (prev) {
+      this.#keep(prev);
+      prev.len += len;
+    } else this.#put({ s, c, len, as, ac, state });
     if (moved.length > 0) this.#join(this.#anchors.get(as)!.get(ac)!, moved);
   }
 
@@ -223,6 +258,10 @@ export class Ghosts {
     if (!runs) this.#ids.set(ghost.s, (runs = new SessionRuns<Ghost>()));
     runs.add(ghost);
     this.#anchor(ghost);
+    this.#log?.push(() => {
+      this.#log = undefined;
+      this.#remove(ghost);
+    });
   }
 
   /** The ghosts anchored at `(as, ac)`, in the order they are stored. */
@@ -240,6 +279,7 @@ export class Ghosts {
 
   /** Takes `ghost` out of both indexes. */
   #remove(ghost: Ghost): void {
+    this.#keep(ghost);
     const runs = this.#ids.get(ghost.s)!;
     runs.remove(ghost);
     if (runs.empty) this.#ids.delete(ghost.s);

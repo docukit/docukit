@@ -26,6 +26,7 @@ export {
   type OperationsRow,
 } from "../operations.js";
 export { _INTERNAL_decodeOperations } from "../wire.js";
+export { rebase } from "../rebase.js";
 export type { UndoHistory } from "../undoManager.js";
 export { TextHandle, _INTERNAL_textStore } from "../text/defineText.js";
 export { defineText } from "../text/base.js";

@@ -359,6 +359,22 @@ export class BaseText extends TextEngine {
     this.#doc = doc;
   }
 
+  /**
+   * Undoes a change of letters `[c, c + len)` of `s` (see `rebase`): they
+   * get `state` back, or leave the list (`false`). They are here, one after
+   * the other, as when it changed them.
+   */
+  #undo(s: string, c: number, len: number, state: State | undefined | false) {
+    for (const end = c + len; c < end; ) {
+      const run = this.#startingAt(this.#find(s, c)!);
+      if (run.len > end - c) this.#split(run, end - c);
+      c += run.len;
+      this.#report(this.#doc!, run.flow.node);
+      if (state === false) this.#unlink(run);
+      else run.state = state;
+    }
+  }
+
   #unlink(run: Run): void {
     this.#positions.removed(run);
     run.prev!.next = run.next;
@@ -659,6 +675,8 @@ export class BaseText extends TextEngine {
     if (sameValue(was, value)) return;
     const piece = from > 0 ? this.#split(run, from) : run;
     if (to - from < piece.len) this.#split(piece, to - from);
+    const { s, c, len, state: before } = piece;
+    this.#doc!["_journal"]?.push(() => this.#undo(s, c, len, before));
     const index = JSON.stringify(was);
     let entry = old.get(index);
     if (!entry) old.set(index, (entry = [was, []]));
@@ -876,6 +894,7 @@ export class BaseText extends TextEngine {
     if (cut < text.length)
       this.#place(at, s, c + cut, text.slice(cut), this.#stateFor(own));
     this.#report(doc, flow.node);
+    doc["_journal"]?.push(() => this.#undo(s, c, text.length, false));
     return [3, TAG_DELETE, s, c, encodeRange(s, s, c, text.length)];
   }
 
@@ -1273,14 +1292,29 @@ export class BaseText extends TextEngine {
       // Its ghost: after the letter before it, which stays (a list's start
       // is its node's id at -1, and nothing reads whether it anchors).
       const before = run.prev!;
+      const as = before.s;
+      const ac = before.c === -1 ? -1 : before.c + before.len - 1;
+      const journal = doc["_journal"];
+      // Its letters go back right after the one before them, or the start.
+      journal?.push(() => {
+        this.#place(
+          ac === -1 ? { run: before, off: 0 } : this.#find(as, ac)!,
+          run.s,
+          run.c,
+          run.text,
+          run.state,
+        ).run.anchors = true;
+        this.#report(doc, run.flow.node);
+      });
       this.#ghosts.add(
         run.s,
         run.c,
         run.len,
-        before.s,
-        before.c === -1 ? -1 : before.c + before.len - 1,
+        as,
+        ac,
         run.anchors,
         this.#inheritable(run.state, rules),
+        journal,
       );
       before.anchors = true;
       this.#unlink(run);
@@ -1444,7 +1478,11 @@ export class BaseText extends TextEngine {
       }
     }
     if (back.length === 0) return undefined;
-    for (const [rs, rc, length] of back) this.#ghosts.drop(rs, rc, length);
+    const journal = doc["_journal"];
+    for (const [rs, rc, length] of back) {
+      journal?.push(() => this.#undo(rs, rc, length, false));
+      this.#ghosts.drop(rs, rc, length, journal);
+    }
     // Back with their ids, they may go on the run after them again.
     this.#join(at.run);
     this.#report(doc, at.run.flow.node);

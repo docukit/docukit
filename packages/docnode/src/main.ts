@@ -622,6 +622,12 @@ export class Doc {
   protected _commitScheduled = false;
   /** How many transactions ended: the number of the one being written. */
   protected _commits = 0;
+  /**
+   * What undoes, exactly, each transaction since the last `rebase`, in the
+   * order they happened: their inverses and, in between, what undoes each
+   * change of Base's text (its letters and ghosts). Only after a `rebase`.
+   */
+  protected _journal: (ops.DraftOperations | (() => void))[] | undefined;
   protected _diff: Diff = {
     deleted: new Map(),
     inserted: new Set(),
@@ -767,6 +773,7 @@ export class Doc {
       throw new Error("You can't trigger an update inside a change event");
     // push + reverse is more performant than unshift at insertion time
     this._inverseOperations[0].reverse();
+    this._journal?.push(this._inverseOperations);
     // End update stage before normalization
     this._lifeCycleStage = "idle";
     ops.maybeTriggerListeners(this, ignoreEmptyDiff);

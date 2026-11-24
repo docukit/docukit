@@ -9,6 +9,7 @@ import {
   type JsonDoc,
   type NodeIdGenerator,
   type Operations,
+  rebase,
   type TextSpan,
 } from "@docukit/docnode";
 
@@ -130,7 +131,8 @@ type Replica = {
  * applies its own edits at once; the server orders batches as they reach it.
  * A replica that receives batches while its own ones are pending takes the
  * server's document and applies its pending ones again (`replaceDoc`), with
- * its undo history.
+ * its undo history. From then on it rebases in place instead (`rebase`),
+ * into the same document a replacement would be, until it reloads.
  */
 export class Network {
   readonly server: Doc;
@@ -225,6 +227,12 @@ export class Network {
     const fresh = this.log.slice(replica.seen);
     if (fresh.length === 0) {
       // Nothing new.
+    } else if (rebase(replica.doc, fresh)) {
+      receive(replica.doc, ...replica.pending);
+      const replacement = this._load("check", this.server.toJSON());
+      receive(replacement, ...replica.pending);
+      if (stored(replica.doc) !== stored(replacement))
+        throw new Error(`${replica.session} rebased into another document`);
     } else if (replica.sent.size === 0 && replica.pending.length === 0) {
       receive(replica.doc, ...fresh);
     } else {
@@ -235,6 +243,7 @@ export class Network {
         `${replica.session}${++replica.generation}`,
         this.server.toJSON(),
       );
+      rebase(next);
       receive(next, ...replica.pending);
       next.undoManager.importHistory(history);
       replica.doc.dispose();
