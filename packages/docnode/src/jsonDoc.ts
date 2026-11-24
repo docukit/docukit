@@ -373,7 +373,10 @@ export const sharedColumn = (
 ): ColumnWriter[] => (table.length > 1 ? [shared] : []);
 
 /** The columns of a stored `json`: an element left out, or `0`, has none. */
-export const columnsOf = (json: JsonDoc) => elementsOf(json)[2] || "";
+export const columnsOf = (json: JsonDoc) => {
+  const columns = elementsOf(json)[2];
+  return typeof columns === "string" ? columns : "";
+};
 
 /**
  * The sessions of the table of a stored `json` (see `JsonDoc`), `id` the

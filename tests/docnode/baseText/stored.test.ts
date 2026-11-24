@@ -189,7 +189,8 @@ describe("the stored text", () => {
     network.exchange();
     const [, , text, columns] = network.server.toJSON();
     expect(text).toBe("dddcccbbbaaa");
-    expect(String(columns).length).toBeLessThan(30);
+    expect(typeof columns).toBe("string");
+    expect(JSON.stringify(columns).length).toBeLessThan(32);
   });
 });
 
