@@ -98,7 +98,12 @@ function compareIds(as: string, ac: number, bs: string, bc: number): number {
   return ac - bc;
 }
 
-/** A run of elements with consecutive ids chained as right children. */
+/**
+ * A run of elements with consecutive ids chained as right children. Its
+ * fields are what most runs need (V8 keeps each in 8 bytes): what only an
+ * insert between concurrent ones reads is computed then, as in Yjs, whose
+ * `Item` keeps no position either.
+ */
 export class Run {
   /**
    * A tombstone's length, 0 while it is visible. Like Yjs' `ContentDeleted`,
@@ -109,7 +114,6 @@ export class Run {
   prev: Run | undefined;
   next: Run | undefined;
   flow!: Flow;
-  seq = 0;
   /** The same for every letter of the run. */
   state: LetterState | undefined;
   /** What reading its attributes found out, once read (see `Derived`). */
@@ -124,10 +128,19 @@ export class Run {
     public text: string,
     public ps: string | undefined,
     public pc: number,
-    public side: 0 | 1,
     public rs: string | undefined,
     public rc: number,
   ) {}
+
+  /**
+   * 0 for a left child, 1 for a right one. Not a field: a left child's
+   * right origin is its parent (Fugue), and a right child's is after it.
+   */
+  get side(): 0 | 1 {
+    return this.rc === this.pc && this.rs === this.ps && this.rs !== undefined
+      ? 0
+      : 1;
+  }
 
   get len(): number {
     return this.gone || this.text.length;
@@ -180,7 +193,7 @@ const derived = (run: Run) => (run.d ??= new Derived());
 const COMPUTING = -2;
 
 /** Stands for the root, or no run (see `Derived.lo`). */
-const NO_RUN = new Run("", -1, "", undefined, 0, 1, undefined, 0);
+const NO_RUN = new Run("", -1, "", undefined, 0, undefined, 0);
 
 const holds = (run: Run, c: number) => c >= run.c && c < run.c + run.len;
 
@@ -188,7 +201,11 @@ const holds = (run: Run, c: number) => c >= run.c && c < run.c + run.len;
 export class Flow {
   head: Run;
   tail: Run;
-  dirty = true;
+  /**
+   * Where each run starts, counting tombstones, once an insert between
+   * concurrent ones needed it (see `#position`). Forgotten on a change.
+   */
+  seqs: Map<Run, number> | undefined;
   /** The id right after the id of its node, once a save needed it. */
   nextKey: string | undefined;
   /** Its node's inherit rules, once found (see `known`). */
@@ -393,7 +410,6 @@ function cutAt(run: Run, offset: number): Run {
     run.text.slice(offset),
     run.s,
     run.c + offset - 1,
-    1,
     run.rs,
     run.rc,
   );
@@ -545,7 +561,7 @@ export class TextStore extends TextEngine {
   #rootOf(node: string): Run {
     const existing = this.#roots.get(node);
     if (existing) return existing;
-    const run = new Run(node, -1, "", undefined, 0, 1, undefined, 0);
+    const run = new Run(node, -1, "", undefined, 0, undefined, 0);
     const flow = new Flow(run, run);
     run.flow = flow;
     this._flows.push(flow);
@@ -558,23 +574,22 @@ export class TextStore extends TextEngine {
 
   // ----- list order --------------------------------------------------------
 
-  #ensureSeq(flow: Flow): void {
-    if (!flow.dirty) return;
-    let seq = 0;
-    for (let run: Run | undefined = flow.head; run; run = run.next) {
-      run.seq = seq;
-      seq += run.len;
-    }
-    flow.dirty = false;
-  }
-
   /** The position of a right origin, `Infinity` for none. */
   #position(s: string | undefined, c: number): number {
     if (s === undefined) return Infinity;
     // A right origin is known before the letter it is the right origin of.
     const run = this.#runAt(s, c)!;
-    this.#ensureSeq(run.flow);
-    return run.seq + c - run.c;
+    const flow = run.flow;
+    let seqs = flow.seqs;
+    if (!seqs) {
+      seqs = flow.seqs = new Map();
+      let seq = 0;
+      for (let at: Run | undefined = flow.head; at; at = at.next) {
+        seqs.set(at, seq);
+        seq += at.len;
+      }
+    }
+    return seqs.get(run)! + c - run.c;
   }
 
   /** FugueMax: right siblings in the reverse order of their right origins, then by id. */
@@ -676,7 +691,6 @@ export class TextStore extends TextEngine {
       run.text.slice(offset),
       run.s,
       run.c + offset - 1,
-      1,
       run.rs,
       run.rc,
     );
@@ -702,7 +716,7 @@ export class TextStore extends TextEngine {
     this.#indexRun(tail);
     this.#linkAfter(run, tail);
     this.#addKid(tail);
-    run.flow.dirty = true;
+    run.flow.seqs = undefined;
     // Both: a later cut of `run` puts a run between them, which only the
     // tail sees again (see `#settle`).
     this.#cut.push(run, tail);
@@ -718,7 +732,7 @@ export class TextStore extends TextEngine {
     run.next = next;
     if (next) next.prev = run;
     else flow.tail = run;
-    flow.dirty = true;
+    flow.seqs = undefined;
   }
 
   #linkBefore(target: Run, run: Run): void {
@@ -730,7 +744,7 @@ export class TextStore extends TextEngine {
     run.prev = prev;
     // A node's root is always first: nothing goes before it.
     prev!.next = run;
-    flow.dirty = true;
+    flow.seqs = undefined;
   }
 
   #addKid(run: Run): void {
@@ -1130,7 +1144,6 @@ export class TextStore extends TextEngine {
       text,
       parent.run.s,
       parent.run.c + parent.off,
-      side,
       next?.run.s,
       next ? next.run.c + next.off : 0,
     );
@@ -1562,12 +1575,11 @@ export class TextStore extends TextEngine {
     }
     let ps = s;
     let pc = c - 1;
-    let side: 0 | 1 = 1;
     parent = known > 0 ? undefined : leftOfRight ? 0 : parent;
+    // A left child of its right origin (see `Run.side`).
     if (parent === 0) {
       ps = rs!;
       pc = rc;
-      side = 0;
     } else if (parent !== undefined) {
       const ref = decodeRef(s, parent);
       // `^`: the start of the root's text.
@@ -1577,7 +1589,7 @@ export class TextStore extends TextEngine {
     const parentElement = this.#locate(ps, pc);
     if (!parentElement) return PENDING;
     if (rs !== undefined && !this.#locate(rs, rc)) return PENDING;
-    const run = new Run(s, c, text, ps, pc, side, rs, rc);
+    const run = new Run(s, c, text, ps, pc, rs, rc);
     run.state = state;
     return this.#insertRun(run, parentElement, touched);
   }
@@ -1590,7 +1602,7 @@ export class TextStore extends TextEngine {
     if (this.#canExtend(parent, run)) {
       placed = parent.run;
       placed.text += run.text;
-      placed.flow.dirty = true;
+      placed.flow.seqs = undefined;
       this._positions.changed(placed);
     } else {
       this.#indexRun(run);
@@ -1953,7 +1965,8 @@ export class TextStore extends TextEngine {
           const next = last.next;
           const ps = run.ps;
           const pc = run.pc;
-          const side = run.side;
+          // `run.side`, from the fields read here: saving reads it cold.
+          const side = rc === pc && rs === ps && rs !== undefined ? 0 : 1;
           const deleted = run.deleted;
           let bits = 0;
           longAt = -1;
@@ -2137,7 +2150,7 @@ export class TextStore extends TextEngine {
       run.c % RUN_CAP !== 0 &&
       run.ps === run.s &&
       run.pc === left.c + left.len - 1 &&
-      run.side === 1 &&
+      // A right child, then: a left one's right origin is its parent.
       left.rs === run.rs &&
       left.rc === run.rc &&
       left.deleted === run.deleted &&
@@ -2246,21 +2259,24 @@ export class TextStore extends TextEngine {
       let back: Run | undefined;
       let waiting: Run | undefined;
       let waits = 0;
+      // Whether `waiting` is a left child: its origins say so once known.
+      let waitingLeft = false;
       let stateLeft = 0;
       let state: LetterState | undefined;
-      const push = (run: Run, runWaits: number) => {
+      const push = (run: Run, runWaits: number, left: boolean) => {
         if (waiting) {
           if (waits & 1) {
             waiting.ps = run.s;
             waiting.pc = run.c;
           }
           if (waits & 2) {
-            waiting.rs = waiting.side === 0 ? waiting.ps : run.s;
-            waiting.rc = waiting.side === 0 ? waiting.pc : run.c;
+            waiting.rs = waitingLeft ? waiting.ps : run.s;
+            waiting.rc = waitingLeft ? waiting.pc : run.c;
           }
         }
         waiting = run;
         waits = runWaits;
+        waitingLeft = left;
         run.flow = flow;
         run.prev = prev;
         prev.next = run;
@@ -2333,7 +2349,7 @@ export class TextStore extends TextEngine {
           rs = ps;
           rc = pc;
         }
-        const run = new Run(s, c, "", ps, pc, side, rs, rc);
+        const run = new Run(s, c, "", ps, pc, rs, rc);
         if (bits & BITS_DELS) run.gone = length;
         if (bits & BITS_KEPT) {
           let letters = "";
@@ -2366,6 +2382,7 @@ export class TextStore extends TextEngine {
           run,
           parentWaits |
             (defaultRight && !resumed && (side === 1 || parentWaits) ? 2 : 0),
+          side === 0,
         );
       }
       flow.tail = prev;
@@ -2428,7 +2445,7 @@ const continues = (left: Run, run: Run) =>
   run.c === left.c + left.len &&
   run.ps === run.s &&
   run.pc === run.c - 1 &&
-  run.side === 1 &&
+  // A right child, then (see `#mergeable`).
   run.rs === left.rs &&
   run.rc === left.rc &&
   run.deleted === left.deleted &&
