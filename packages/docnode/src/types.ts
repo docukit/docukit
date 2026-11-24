@@ -162,6 +162,8 @@ export type ResolvedNodeDefinition = UnsafeDefinition & {
   /** Each default as JSON, which a stored document compares values with. */
   defaultJson: Record<string, Json>;
   methods: (node: DocNode) => NodeState.Methods<UnsafeDefinition>;
+  /** How the letters of its text inherit state (see `defineText`). */
+  rules?: Rules | undefined;
 };
 
 export type JsonDocNode<T extends NodeDefinition = NodeDefinition> = [

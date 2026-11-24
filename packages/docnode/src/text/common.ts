@@ -286,13 +286,7 @@ export function rulesOfNode(
   node: string,
 ): Rules | undefined | false {
   const found = doc?.getNodeById(node);
-  if (!found) return false;
-  const definition = doc!["_resolvedNodeDefs"].get(found.type);
-  for (const key in definition?.state) {
-    const state: InternalStateDefinition = definition.state[key]!;
-    if (state.rules) return state.rules;
-  }
-  return undefined;
+  return found ? doc!["_resolvedNodeDefs"].get(found.type)!.rules : false;
 }
 
 /**

@@ -1338,7 +1338,9 @@ function resolve(config: DocConfig): Resolved {
     };
 
     for (const key in nodeDef.state) {
-      const state = nodeDef.state[key]!;
+      const state: InternalStateDefinition = nodeDef.state[key]!;
+      // The rules of its first text that has them (see `rulesOfNode`).
+      resolvedNodeDef.rules ??= state.rules;
       if (resolvedNodeDef.state[key] !== undefined) {
         throw new Error(
           `Collision error: attempt to register 2 node definitions of type ` +
