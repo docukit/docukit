@@ -100,7 +100,12 @@ function compareIds(as: string, ac: number, bs: string, bc: number): number {
 
 /** A run of elements with consecutive ids chained as right children. */
 export class Run {
-  deleted = false;
+  /**
+   * A tombstone's length, 0 while it is visible. Like Yjs' `ContentDeleted`,
+   * a tombstone keeps no letters: its `text` is empty, or as long as it is
+   * with its opaque letters among placeholders (see `keptForm`).
+   */
+  gone = 0;
   prev: Run | undefined;
   next: Run | undefined;
   flow!: Flow;
@@ -125,11 +130,15 @@ export class Run {
   ) {}
 
   get len(): number {
-    return this.text.length;
+    return this.gone || this.text.length;
+  }
+
+  get deleted(): boolean {
+    return this.gone > 0;
   }
 
   get visible(): boolean {
-    return this.c !== -1 && !this.deleted;
+    return this.c !== -1 && !this.gone;
   }
 }
 
@@ -173,8 +182,7 @@ const COMPUTING = -2;
 /** Stands for the root, or no run (see `Derived.lo`). */
 const NO_RUN = new Run("", -1, "", undefined, 0, 1, undefined, 0);
 
-const holds = (run: Run, c: number) =>
-  c >= run.c && c < run.c + run.text.length;
+const holds = (run: Run, c: number) => c >= run.c && c < run.c + run.len;
 
 /** The list of one node: its root, then its letters in order. */
 export class Flow {
@@ -369,6 +377,14 @@ function encodeInsert(
   return payload;
 }
 
+/** Splits the length of a tombstone cut at `offset` with its new `tail`. */
+function cutGone(run: Run, tail: Run, offset: number): void {
+  if (run.gone) {
+    tail.gone = run.gone - offset;
+    run.gone = offset;
+  }
+}
+
 /** Cuts a run of a list being loaded at `offset`. Returns the new one. */
 function cutAt(run: Run, offset: number): Run {
   const tail = new Run(
@@ -382,7 +398,7 @@ function cutAt(run: Run, offset: number): Run {
     run.rc,
   );
   run.text = run.text.slice(0, offset);
-  tail.deleted = run.deleted;
+  cutGone(run, tail, offset);
   tail.state = run.state;
   tail.flow = run.flow;
   tail.prev = run;
@@ -639,13 +655,16 @@ export class TextStore extends TextEngine {
       run.rc,
     );
     run.text = run.text.slice(0, offset);
+    cutGone(run, tail, offset);
     this._positions.changed(run);
-    tail.deleted = run.deleted;
     tail.state = run.state;
     // The tail has the attributes of the run, unless an opaque letter of
     // the run is before it or starts it (see `Run.cut`).
     const opaque = run.flow.rules ? run.flow.rules.opaque : "";
-    if (cutIn(run.text, opaque) === offset && !opaque.includes(tail.text[0]!)) {
+    if (
+      !run.text ||
+      (cutIn(run.text, opaque) === offset && !opaque.includes(tail.text[0]!))
+    ) {
       const from = run.d;
       if (from?.effAt === this.#epoch) {
         const to = derived(tail);
@@ -772,6 +791,8 @@ export class TextStore extends TextEngine {
 
   /** Where the first opaque letter of `run` is (see `Run.cut`). */
   #cutOf(run: Run, rules: Rules): number {
+    // A tombstone without letters has no opaque one.
+    if (!run.text) return run.len;
     const d = derived(run);
     if (d.cutFor !== run.text) {
       d.cut = cutIn(run.text, rules.opaque);
@@ -1139,10 +1160,10 @@ export class TextStore extends TextEngine {
       if (!run.visible) continue;
       if (off > 0) run = this.#split(run, off);
       if (run.len > remaining) this.#split(run, remaining);
-      this.#setDeleted(run, true, lamport);
+      letters += run.text;
+      this.#setDeleted(run, lamport);
       touched.push(run);
       pushRange(ranges, run.s, run.c, run.len);
-      letters += run.text;
       remaining -= run.len;
       off = 0;
     }
@@ -1154,20 +1175,29 @@ export class TextStore extends TextEngine {
   }
 
   /**
-   * Writes `DELETED` on `run`, where it wins: `deleted`, at `lamport`.
-   * Returns 2 if the letters were visible and are not, or the other way, 1
-   * if only the stamp changed, else 0.
+   * Writes `DELETED` on `run` at `lamport`, where it wins: deletes it, or
+   * with `letters`, its letters, brings it back. Returns 2 if the letters
+   * were visible and are not, or the other way, 1 if only the stamp
+   * changed, else 0.
    */
-  #setDeleted(run: Run, deleted: boolean, lamport: number): number {
+  #setDeleted(run: Run, lamport: number, letters?: string): number {
+    const deleted = letters === undefined;
     const current = run.state?.[DELETED];
-    const was = current ? current[1] : run.deleted ? 0 : -1;
+    const was = current ? current[1] : run.gone ? 0 : -1;
     if (deleted ? lamport < was : lamport <= was) return 0;
     // Deleted at lamport 0 says nothing more (see `DELETED`): it is the
     // first write, there was no stamp before.
     if (!deleted || lamport > 0)
       run.state = { ...run.state, [DELETED]: [deleted, lamport, ""] };
     if (run.deleted === deleted) return 1;
-    run.deleted = deleted;
+    if (deleted) {
+      // Undoing the delete takes the letters from the history (see `delete`).
+      run.gone = run.text.length;
+      run.text = keptForm(run.text, this.#opaqueOf(run.flow));
+    } else {
+      run.text = letters;
+      run.gone = 0;
+    }
     this._positions.changed(run);
     return 2;
   }
@@ -1356,7 +1386,12 @@ export class TextStore extends TextEngine {
   }
 
   #absorb(left: Run, run: Run): void {
-    left.text += run.text;
+    if (!left.gone) left.text += run.text;
+    else {
+      // Two tombstones: letters if either kept some (see `Run.gone`).
+      if (left.text || run.text) left.text = padded(left) + padded(run);
+      left.gone += run.gone;
+    }
     const next = run.next;
     left.next = next;
     if (next) next.prev = left;
@@ -1367,6 +1402,7 @@ export class TextStore extends TextEngine {
     this._positions.changed(left);
     // Its letters are `left`'s now: a lookup kept on it misses (see `holds`).
     run.text = "";
+    run.gone = 0;
   }
 
   #drainPending(doc: Doc, touched: Run[]): void {
@@ -1563,15 +1599,19 @@ export class TextStore extends TextEngine {
     let at = 0;
     for (const range of ranges) {
       this.#forRange(range[0], range[1], range[2], (run) => {
-        // A replica that loaded the tombstones has no letters for them.
-        if (revive) run.text = letters.slice(at, at + run.len);
+        const was = run.text;
+        // Tombstones keep no letters: the operation brings them.
+        const result = this.#setDeleted(
+          run,
+          lamport,
+          letters?.slice(at, at + run.len),
+        );
         at += run.len;
-        const result = this.#setDeleted(run, !revive, lamport);
         if (result === 0) return;
         touched.push(run);
         if (result === 1 || !undo) return;
         pushRange(changed, run.s, run.c, run.len);
-        if (!revive) text += run.text;
+        if (!revive) text += was;
       });
     }
     if (touched.length === 0) return undefined;
@@ -1809,14 +1849,17 @@ export class TextStore extends TextEngine {
         // cut again when loaded.
         let last: Run = run;
         let text = run.text;
+        let length = run.len;
         if (run !== head)
           while (last.next && continues(last, last.next)) {
             last = last.next;
-            text += last.text;
+            // Tombstones: letters if either kept some (see `Run.gone`).
+            if (text || last.text)
+              text = padded(run, text, length) + padded(last);
+            length += last.len;
           }
         const s = run.s;
         const c = run.c;
-        const length = text.length;
         const rs = run.rs;
         const rc = run.rc;
         if (run !== head) {
@@ -2004,10 +2047,10 @@ export class TextStore extends TextEngine {
     return (
       left.c !== -1 &&
       left.s === run.s &&
-      left.c + left.text.length === run.c &&
+      left.c + left.len === run.c &&
       run.c % RUN_CAP !== 0 &&
       run.ps === run.s &&
-      run.pc === left.c + left.text.length - 1 &&
+      run.pc === left.c + left.len - 1 &&
       run.side === 1 &&
       left.rs === run.rs &&
       left.rc === run.rc &&
@@ -2152,7 +2195,7 @@ export class TextStore extends TextEngine {
         let c: number;
         if (resumed) {
           s = resumed.s;
-          c = resumed.c + resumed.text.length;
+          c = resumed.c + resumed.len;
           curSession = sessionIndex.get(s)!;
           curCounter = c + length;
         } else if (bits & BITS_BEFORE) {
@@ -2168,7 +2211,7 @@ export class TextStore extends TextEngine {
           curCounter += length;
         }
         let ps: string | undefined = prev.s;
-        let pc = prev.c === -1 ? -1 : prev.c + prev.text.length - 1;
+        let pc = prev.c === -1 ? -1 : prev.c + prev.len - 1;
         let side: 0 | 1 = 1;
         if (resumed) {
           ps = s;
@@ -2205,7 +2248,7 @@ export class TextStore extends TextEngine {
           rc = pc;
         }
         const run = new Run(s, c, "", ps, pc, side, rs, rc);
-        run.deleted = (bits & BITS_DELS) !== 0;
+        if (bits & BITS_DELS) run.gone = length;
         if (bits & BITS_KEPT) {
           let letters = "";
           let at = 0;
@@ -2217,8 +2260,7 @@ export class TextStore extends TextEngine {
             at = offset;
           }
           run.text = letters + DELETED_LETTER.repeat(length - letters.length);
-        } else if (run.deleted) run.text = DELETED_LETTER.repeat(length);
-        else {
+        } else if (!run.gone) {
           run.text = text.slice(position, position + length);
           position += length;
         }
@@ -2245,7 +2287,7 @@ export class TextStore extends TextEngine {
       for (let run = root.next; run; run = run.next)
         for (
           let boundary = (Math.floor(run.c / RUN_CAP) + 1) * RUN_CAP;
-          boundary < run.c + run.text.length;
+          boundary < run.c + run.len;
           boundary += RUN_CAP
         ) {
           run = cutAt(run, boundary - run.c);
@@ -2295,7 +2337,7 @@ export class TextStore extends TextEngine {
 const continues = (left: Run, run: Run) =>
   run.c % RUN_CAP === 0 &&
   run.s === left.s &&
-  run.c === left.c + left.text.length &&
+  run.c === left.c + left.len &&
   run.ps === run.s &&
   run.pc === run.c - 1 &&
   run.side === 1 &&
@@ -2377,6 +2419,29 @@ const RUN_CAP = 4096;
 const FORMAT = 11;
 /** Stands for a deleted letter of a stored text. */
 const DELETED_LETTER = "�";
+
+/**
+ * The letters of a run, a tombstone's that kept none as placeholders (see
+ * `Run.gone`); `text` and `length`, those of a run it continues.
+ */
+const padded = (run: Run, text = run.text, length = run.len) =>
+  text || DELETED_LETTER.repeat(length);
+
+/**
+ * What a tombstone keeps of its letters `text`: its opaque ones among
+ * placeholders, or none (see `Run.gone`). All while its rules are not known
+ * (`opaque` undefined): a save keeps them (see `keptLetters`).
+ */
+function keptForm(text: string, opaque: string | undefined): string {
+  if (opaque === undefined) return text;
+  if (!hasAny(text, opaque)) return "";
+  let kept = "";
+  for (const letter of text)
+    kept += opaque.includes(letter)
+      ? letter
+      : DELETED_LETTER.repeat(letter.length);
+  return kept;
+}
 function canonOf(state: LetterState): string {
   let canon = canonCache.get(state);
   if (canon === undefined) {
