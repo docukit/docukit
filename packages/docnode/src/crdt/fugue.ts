@@ -359,33 +359,72 @@ export class FugueSiblings {
     shows: (owner: string, place: string) => boolean,
     sessions: SessionTable,
   ): Json {
-    this.#ready();
     // A document without places writes nothing for them.
-    if (this.#elements.size + (this.#pending?.size ?? 0) === 0) return 0;
-    const columns = Array.from({ length: COLUMNS }, () => new ColumnWriter());
-    const column = (field: number) => columns[field]!;
+    if (this.isEmpty()) return 0;
+    // In the order of `COLUMN_*`.
+    const listSessions = new ColumnWriter();
+    const listClocks = new ColumnWriter();
+    const counts = new ColumnWriter();
+    const codes = new ColumnWriter();
+    const placeSessions = new ColumnWriter();
+    const placeClocks = new ColumnWriter();
+    const parentColumn = new ColumnWriter();
+    const rsColumn = new ColumnWriter();
+    const ownerSessions = new ColumnWriter();
+    const ownerClocks = new ColumnWriter();
+    const columns = [
+      listSessions,
+      listClocks,
+      counts,
+      codes,
+      placeSessions,
+      placeClocks,
+      parentColumn,
+      rsColumn,
+      ownerSessions,
+      ownerClocks,
+    ];
     let lastClock = 0;
     const writeId = (
       id: string,
-      sessionColumn: number,
-      clockColumn: number,
+      sessionColumn: ColumnWriter,
+      clockColumn: ColumnWriter,
     ) => {
-      column(sessionColumn).push(sessions.node(id));
-      column(clockColumn).pushSigned(sessions.clock - lastClock);
+      sessionColumn.push(sessions.node(id));
+      clockColumn.pushSigned(sessions.clock - lastClock);
       lastClock = sessions.clock;
+    };
+    let kids: readonly string[] = NO_IDS;
+    let kid = 0;
+    /** The rest of a place, once its kind is written (see `KIND`). */
+    const write = (kind: number, id: string, owner: string) => {
+      const shown = kids[kid] === owner && shows(owner, id) ? 1 : 0;
+      kid += shown;
+      const other = owner === id ? 0 : 2;
+      codes.push(kind * 4 + other + shown);
+      if (shown && !other) return;
+      writeId(id, placeSessions, placeClocks);
+      if (shown || !other) return;
+      const clock = lastClock;
+      writeId(owner, ownerSessions, ownerClocks);
+      lastClock = clock;
+    };
+    /** A list's id and count, and where its kids start. */
+    const start = (id: string, count: number) => {
+      const listClock = lastClock;
+      writeId(id, listSessions, listClocks);
+      lastClock = listClock;
+      counts.push(count);
+      kids = children(id) ?? NO_IDS;
+      kid = 0;
     };
     // A list is made with its first place: none is empty.
     for (const list of this.#lists?.values() ?? []) {
       this.#seq(list.root);
-      const listClock = lastClock;
-      writeId(list.id, COLUMN_LIST_SESSION, COLUMN_LIST_CLOCK);
-      lastClock = listClock;
       let count = 0;
       for (let at: Element | undefined = list.root.next; at; at = at.next)
         count++;
-      column(COLUMN_COUNT).push(count);
-      const kids = children(list.id) ?? NO_IDS;
-      let kid = 0;
+      start(list.id, count);
       for (let at: Element | undefined = list.root.next; at; at = at.next) {
         const prev = at.prev!;
         const parent = at.parent!;
@@ -394,7 +433,7 @@ export class FugueSiblings {
           if (at.rs === prev.rs) kind = KIND_CHAIN;
           else {
             kind = KIND_AFTER;
-            column(COLUMN_RS).pushSigned(rsOffset(at));
+            rsColumn.pushSigned(rsOffset(at));
           }
         } else if (at.side === 0 && parent === at.next) kind = KIND_BEFORE;
         else if (
@@ -405,19 +444,46 @@ export class FugueSiblings {
           kind = KIND_SIBLING;
         else {
           kind = at.side === 1 ? KIND_RIGHT : KIND_LEFT;
-          column(COLUMN_PARENT).pushSigned(parent.seq - at.seq);
-          if (at.side === 1) column(COLUMN_RS).pushSigned(rsOffset(at));
+          parentColumn.pushSigned(parent.seq - at.seq);
+          if (at.side === 1) rsColumn.pushSigned(rsOffset(at));
         }
-        const shown = kids[kid] === at.owner && shows(at.owner, at.id) ? 1 : 0;
-        kid += shown;
-        const other = at.owner === at.id ? 0 : 2;
-        column(COLUMN_CODE).push(kind * 4 + other + shown);
-        if (shown && !other) continue;
-        writeId(at.id, COLUMN_SESSION, COLUMN_CLOCK);
-        if (shown || !other) continue;
-        const clock = lastClock;
-        writeId(at.owner, COLUMN_OWNER_SESSION, COLUMN_OWNER_CLOCK);
-        lastClock = clock;
+        write(kind, at.id, at.owner);
+      }
+    }
+    // Then the lists `load` read and nothing asked for since, as they were
+    // read: building them first would give the same, at the cost of a
+    // `Element` per place (a document that loads and saves).
+    for (const [id, { ids, owners = ids, sides, parents, rss }] of this
+      .#deferred) {
+      const count = ids.length;
+      start(id, count);
+      // By position, from 1 (0 is the root): see `Stored`.
+      for (let seq = 1; seq <= count; seq++) {
+        const side = sides[seq]!;
+        const parent = parents[seq]!;
+        const rs = rss[seq]!;
+        let kind: number;
+        if (side === 1 && parent === seq - 1) {
+          if (rs === rss[seq - 1]) kind = KIND_CHAIN;
+          else {
+            kind = KIND_AFTER;
+            rsColumn.pushSigned(rs && rs - seq);
+          }
+        } else if (side === 0 && parent === seq + 1) kind = KIND_BEFORE;
+        else if (
+          // The root has no parent: the first place has no sibling before.
+          seq > 1 &&
+          parent === parents[seq - 1] &&
+          side === sides[seq - 1] &&
+          (side === 0 || rs === rss[seq - 1])
+        )
+          kind = KIND_SIBLING;
+        else {
+          kind = side === 1 ? KIND_RIGHT : KIND_LEFT;
+          parentColumn.pushSigned(parent - seq);
+          if (side === 1) rsColumn.pushSigned(rs && rs - seq);
+        }
+        write(kind, ids[seq - 1]!, owners[seq - 1]!);
       }
     }
     const pending: Json[] = [];
