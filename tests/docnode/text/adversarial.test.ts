@@ -4,10 +4,12 @@ import { describe, expect, test } from "vitest";
 import {
   assertWellFormed,
   Cluster,
+  orderedCluster,
   Paragraph,
   paragraphs,
   permutations,
   randomizer,
+  runsOf,
   type Entry,
 } from "./utils.js";
 
@@ -145,6 +147,26 @@ describe("the Attiya abc example", () => {
       expect(result.docs[0]!.getNodeById(id)!.is(Paragraph)).toBe(true);
       expect(result.texts(0)[0]).toBe("qpbc");
     });
+  });
+});
+
+describe("an insert whose origins are no longer neighbours", () => {
+  test("a letter typed after one a peer typed on from goes among its kids", () => {
+    // On replica 0, "a" and the "b" typed after it are one run. Replica 1
+    // typed X after "a" before it had "b": X's right origin is the end, not
+    // "b", so X does not simply go between them.
+    const cluster = orderedCluster([""], 2);
+    const id = cluster.ids[0]!;
+    const text = (replica: number) => cluster.node(replica, id).state.t;
+    cluster.edit(0, () => text(0).insert(0, "a"));
+    cluster.deliverAll();
+    cluster.edit(0, () => text(0).insert(1, "b"));
+    cluster.edit(1, () => text(1).insert(1, "X"));
+    expect(runsOf(cluster.docs[0]!)).toStrictEqual([["ab"]]);
+    cluster.deliverAll();
+    cluster.assertConverged();
+    // Two right children of "a" with the same right origin: by session.
+    expect(cluster.text(0, id)).toBe("abX");
   });
 });
 

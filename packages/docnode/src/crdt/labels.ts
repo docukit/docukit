@@ -1218,7 +1218,6 @@ class Engine implements CrdtEngine {
       entry.stamps = { ...stamps, [key]: stamp };
       return;
     }
-    if (stamps[key] === BORN) return;
     // Its keys, in their order: that of the stored stamps (see `#extra`).
     let keys = "";
     for (const name in stamps) keys += `${name}\0`;
@@ -1232,21 +1231,6 @@ class Engine implements CrdtEngine {
       bornStamps.set(keys, shared);
     }
     entry.stamps = shared;
-  }
-
-  /**
-   * Gives back the stamps of `entry` the insert's stamp (`BORN`) stands for,
-   * before it forgets that stamp.
-   */
-  #unborn(entry: Entry) {
-    const born = entry.born!;
-    const stamps: Record<string, Stamp> = {};
-    for (const key in entry.stamps) {
-      const at = entry.stamps[key]!;
-      stamps[key] = at === BORN ? born : at;
-    }
-    entry.stamps = stamps;
-    entry.born = undefined;
   }
 
   #writeState(entry: Entry, key: string, value: string) {
@@ -1901,8 +1885,14 @@ class Engine implements CrdtEngine {
     const extra = label.extra;
     const stamp = (clock: Json | undefined, session: Json | undefined) =>
       newStamp(num(clock), names.session(session));
+    // Without a type, its insert has not arrived: it is not born yet, and the
+    // insert, older than the move or write that made it known, still applies.
     entry.born =
-      isRecord(extra) && isList(extra.o) ? stamp(extra.o[0], extra.o[1]) : at;
+      entry.type === undefined
+        ? undefined
+        : isRecord(extra) && isList(extra.o)
+          ? stamp(extra.o[0], extra.o[1])
+          : at;
     // A stamp equal to the label's is not written: every key has it.
     for (const key in state) this.#setStamp(entry, key, at);
     if (!isRecord(extra)) return;
@@ -1982,12 +1972,8 @@ class Engine implements CrdtEngine {
       this.#entries.set(id, entry);
       if (type !== undefined) {
         entry.node = doc["_nodeFromTree"]([id, type, state]);
-      } else {
-        // Its insert has not arrived: it is not born yet, and the insert,
-        // older than the move or write that made it known, still applies.
-        this.#unborn(entry);
-        if (!isObjectEmpty(state))
-          (this.#early ??= new WeakMap()).set(entry, state);
+      } else if (!isObjectEmpty(state)) {
+        (this.#early ??= new WeakMap()).set(entry, state);
       }
       entry.key = entry.pos;
     });

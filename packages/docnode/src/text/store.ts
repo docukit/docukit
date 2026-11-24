@@ -806,13 +806,9 @@ export class TextStore extends TextEngine {
     const parentRun = parent.run;
     const off = parent.off;
     if (run.side === 1) {
-      // A right child: its left origin is its parent.
-      if (off < parentRun.len - 1) {
-        if (run.rs !== parentRun.s || run.rc !== parentRun.c + off + 1)
-          return false;
-        this.#linkBefore(this.#split(parentRun, off + 1), run);
-        return true;
-      }
+      // A right child: its left origin is its parent. Inside a run, the
+      // parent has a right child already, the next letter: a sibling.
+      if (off < parentRun.len - 1) return false;
       const next = parentRun.next;
       if (next ? run.rs !== next.s || run.rc !== next.c : run.rs !== undefined)
         return false;
