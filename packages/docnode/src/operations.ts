@@ -283,7 +283,7 @@ export const onApplyOperations = (doc: Doc, operations: DraftOperations) => {
         for (const [id, type] of operation[1]) {
           if (doc.getNodeById(id)) continue;
           doc["_checkSession"](id);
-          nodes.push(doc["_newStoredNode"](id, type));
+          nodes.push(doc["_nodeFromTree"]([id, type, {}]));
         }
         if (nodes.length === 0) break;
         // A sibling anchor counts while it is still in the parent the author

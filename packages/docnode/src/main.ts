@@ -1095,15 +1095,6 @@ export class Doc {
     return this._storedNode(id, type, state);
   }
 
-  /** A node another replica inserted, before its state arrives. */
-  private _newStoredNode(id: string, type: string): DocNode {
-    return this._storedNode(
-      id,
-      type,
-      new (this._storedDefinition(type).Values)(),
-    );
-  }
-
   /** Internal utility used for all the high level insert methods. */
   private _insertRange(
     target: DocNode,
@@ -1319,6 +1310,11 @@ type ResolvedCache = {
   byType?: Map<string, Resolved>;
 };
 const resolvedCache: ResolvedCache = {};
+/**
+ * The values class of each node type (see `ResolvedNodeDefinition.Values`),
+ * shared by every document: one per document would cost each a few maps.
+ */
+const valuesClasses = new Map<string, new () => Record<string, string>>();
 
 /**
  * The node definitions of `config`, resolved once for every document with the
@@ -1344,9 +1340,12 @@ function resolve(config: DocConfig): Resolved {
   const RootNode = defineNode({ type: config.type });
   nodeDefs.unshift(RootNode);
   nodeDefs.forEach((nodeDef) => {
-    const Values = class {
-      [key: string]: string;
-    };
+    const Values =
+      valuesClasses.get(nodeDef.type) ??
+      class {
+        [key: string]: string;
+      };
+    valuesClasses.set(nodeDef.type, Values);
     const resolvedNodeDef: ResolvedNodeDefinition = resolvedDefs.get(
       nodeDef.type,
     ) ?? {
