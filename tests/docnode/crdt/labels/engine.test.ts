@@ -1112,6 +1112,17 @@ describe("snapshots", () => {
     expect(tree(a)).not.toContain("x2");
   });
 
+  test("a loaded node deleted in the open transaction is stored as a live one", () => {
+    const { a } = pair();
+    insert(a, insert(a, a.doc.root, "x"), "y");
+    const b = restoreReplica(a, "b");
+    for (const { doc } of [a, b]) doc.root.first!.delete();
+    // Before the commit, the labels still hold both nodes, hidden.
+    expect(b.doc.toJSON({ unsafe: true })).toStrictEqual(
+      a.doc.toJSON({ unsafe: true }),
+    );
+  });
+
   test("hydrating then editing in the same transaction labels only the new node", () => {
     const { a } = pair();
     insert(a, a.doc.root, "x");
