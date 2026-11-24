@@ -151,10 +151,6 @@ class FlowIndex<R extends Item<R>> {
     this.#adopt(leaf, fresh);
   }
 
-  #add(node: TreeNode<R> | undefined, vis: number): void {
-    for (; node; node = node.parent) node.vis += vis;
-  }
-
   /** Puts `fresh` right after `node` under the same parent, splitting upwards. */
   #adopt(node: TreeNode<R>, fresh: TreeNode<R>): void {
     let parent = node.parent;
@@ -174,17 +170,6 @@ class FlowIndex<R extends Item<R>> {
     this.#adopt(parent, sibling);
   }
 
-  /** The offset in its run of the character `findVisible` last found. */
-  offset = 0;
-
-  /** Inner nodes over `nodes`, `FANOUT` at a time. */
-  #group(nodes: TreeNode<R>[]): Inner<R>[] {
-    const out: Inner<R>[] = [];
-    for (let i = 0; i < nodes.length; i += FANOUT)
-      out.push(innerOf(nodes.slice(i, i + FANOUT)));
-    return out;
-  }
-
   /** The visible length of the runs before `run`: its leaf's, then up. */
   before(run: R): number {
     let node: TreeNode<R> = run.leaf!;
@@ -201,6 +186,21 @@ class FlowIndex<R extends Item<R>> {
       node = parent;
     }
     return before;
+  }
+
+  /** The offset in its run of the character `findVisible` last found. */
+  offset = 0;
+
+  /** Inner nodes over `nodes`, `FANOUT` at a time. */
+  #group(nodes: TreeNode<R>[]): Inner<R>[] {
+    const out: Inner<R>[] = [];
+    for (let i = 0; i < nodes.length; i += FANOUT)
+      out.push(innerOf(nodes.slice(i, i + FANOUT)));
+    return out;
+  }
+
+  #add(node: TreeNode<R> | undefined, vis: number): void {
+    for (; node; node = node.parent) node.vis += vis;
   }
 }
 

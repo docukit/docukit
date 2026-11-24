@@ -73,14 +73,14 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     this.id = id ?? doc["_createNodeId"]();
   }
 
-  get doc() {
-    return this[DOC];
-  }
-
   get state(): NodeState.Methods<T> {
     return this.doc["_resolvedNodeDefs"]
       .get(this.type)!
       .methods(this) as NodeState.Methods<T>;
+  }
+
+  get doc() {
+    return this[DOC];
   }
 
   /**
@@ -833,9 +833,23 @@ export class Doc {
     }
   }
 
-  /** A node another replica inserted (see `_renewSession`). */
-  private _checkSession(id: string) {
-    if (this.#nodeIds?.collides(id)) this._renewSession();
+  /** The id of a new node: a CRDT engine can choose it (see `DocConfig.crdt`). */
+  private _createNodeId() {
+    return this._nodeIdGenerator(this);
+  }
+
+  /** A stored state value, from its JSON. */
+  private _storedValue(
+    definition: ResolvedNodeDefinition,
+    key: string,
+    json: Json,
+  ): unknown {
+    const state = definition.state[key];
+    if (!state)
+      throw new Error(
+        `Attempted to create a node of type '${definition.type}' with a state that is not registered: ${key}`,
+      );
+    return state.fromJSON(json);
   }
 
   #forceCommit(ignoreEmptyDiff = false) {
@@ -864,38 +878,20 @@ export class Doc {
     this._lifeCycleStage = "idle";
   }
 
-  /** The id of a new node: a CRDT engine can choose it (see `DocConfig.crdt`). */
-  private _createNodeId() {
-    return this._nodeIdGenerator(this);
+  /** A node another replica inserted (see `_renewSession`). */
+  private _checkSession(id: string) {
+    if (this.#nodeIds?.collides(id)) this._renewSession();
   }
 
-  /** A stored state value, from its JSON. */
-  private _storedValue(
-    definition: ResolvedNodeDefinition,
-    key: string,
-    json: Json,
-  ): unknown {
-    const state = definition.state[key];
-    if (!state)
-      throw new Error(
-        `Attempted to create a node of type '${definition.type}' with a state that is not registered: ${key}`,
-      );
-    return state.fromJSON(json);
-  }
-
-  /** Throws unless `node` and its descendants can be inserted in this document. */
-  #checkInsertable(node: DocNode) {
-    if (this !== node.doc) throw new Error("Node is from a different doc");
-    if (this._nodeMap.has(node.id))
-      // TODO: replace node.id with ${JSON.stringify(this.toJSON())). But for that,
-      // I should probably setState in onApplyOperations, otherwise the state will not appear yet.
-      throw new Error(
-        `Node '${node.id}' cannot be inserted because it already exists in the doc.`,
-      );
-    if (node.type === this.root.type)
-      throw new Error("You cannot insert nodes of type 'root'");
-    for (let child = node.first; child; child = child.next)
-      this.#checkInsertable(child);
+  /**
+   * After an id or a letter of this document's session that it did not make
+   * yet: another replica has the same session, so this one takes a new one
+   * (see `NodeIds`).
+   */
+  private _renewSession() {
+    if (!this.#nodeIds) return;
+    this.#nodeIds.renew();
+    this._sessionRenewals++;
   }
 
   /**
@@ -942,15 +938,28 @@ export class Doc {
     };
   };
 
+  /** Puts a stored root in place of the one the constructor created. */
+  private _setStoredRoot(root: DocNode): void {
+    // Nodes a normalize listener created for the replaced root are gone.
+    this._nodeMap.clear();
+    // @ts-expect-error - read-only property
+    this.root = root;
+    this._nodeMap.set(root.id, root);
+  }
+
   /**
-   * After an id or a letter of this document's session that it did not make
-   * yet: another replica has the same session, so this one takes a new one
-   * (see `NodeIds`).
+   * This method unregisters all event listeners so the instance can be garbage-collected.
+   *
+   * After calling this method, the document can no longer be modified.
    */
-  private _renewSession() {
-    if (!this.#nodeIds) return;
-    this.#nodeIds.renew();
-    this._sessionRenewals++;
+  dispose() {
+    if (this._lifeCycleStage !== "idle")
+      throw new Error(
+        `You can't dispose a document during the ${this._lifeCycleStage} stage`,
+      );
+    this._changeListeners.clear();
+    this._normalizeListeners.clear();
+    this._lifeCycleStage = "disposed";
   }
 
   /**
@@ -1000,6 +1009,8 @@ export class Doc {
     this._normalizeListeners.add(callback);
   }
 
+  /** Whether a transaction of this document inserted nodes. */
+  #insertsNodes = false;
   /**
    * Terminates the transaction early and synchronously, triggering events.
    * Using forceCommit is uncommon and can hurt your app's performance.
@@ -1025,31 +1036,19 @@ export class Doc {
     }
   }
 
-  /** Whether a transaction of this document inserted nodes. */
-  #insertsNodes = false;
-
-  /** Puts a stored root in place of the one the constructor created. */
-  private _setStoredRoot(root: DocNode): void {
-    // Nodes a normalize listener created for the replaced root are gone.
-    this._nodeMap.clear();
-    // @ts-expect-error - read-only property
-    this.root = root;
-    this._nodeMap.set(root.id, root);
-  }
-
-  /**
-   * This method unregisters all event listeners so the instance can be garbage-collected.
-   *
-   * After calling this method, the document can no longer be modified.
-   */
-  dispose() {
-    if (this._lifeCycleStage !== "idle")
+  /** Throws unless `node` and its descendants can be inserted in this document. */
+  #checkInsertable(node: DocNode) {
+    if (this !== node.doc) throw new Error("Node is from a different doc");
+    if (this._nodeMap.has(node.id))
+      // TODO: replace node.id with ${JSON.stringify(this.toJSON())). But for that,
+      // I should probably setState in onApplyOperations, otherwise the state will not appear yet.
       throw new Error(
-        `You can't dispose a document during the ${this._lifeCycleStage} stage`,
+        `Node '${node.id}' cannot be inserted because it already exists in the doc.`,
       );
-    this._changeListeners.clear();
-    this._normalizeListeners.clear();
-    this._lifeCycleStage = "disposed";
+    if (node.type === this.root.type)
+      throw new Error("You cannot insert nodes of type 'root'");
+    for (let child = node.first; child; child = child.next)
+      this.#checkInsertable(child);
   }
 
   /**
@@ -1086,6 +1085,19 @@ export class Doc {
     return definition;
   }
 
+  /** The children of a `JsonTree` node, linked under `parent`. */
+  #attachTree(parent: DocNode, children: JsonTree[] | undefined) {
+    if (!children) return;
+    let prev: DocNode | undefined;
+    for (const json of children) {
+      const node = this._nodeFromTree(json);
+      this._linkStored(parent, prev, node);
+      prev = node;
+      this.#attachTree(node, json[3]);
+    }
+    parent["_set"]("last", prev);
+  }
+
   // TODO: Subdocs. This is not implemented yet
   // getTopLevelDoc() {
   //   let current: Doc = this;
@@ -1105,19 +1117,6 @@ export class Doc {
     // @ts-expect-error - private constructor
     const node = new DocNode(this, type) as DocNode<T>;
     return node;
-  }
-
-  /** The children of a `JsonTree` node, linked under `parent`. */
-  #attachTree(parent: DocNode, children: JsonTree[] | undefined) {
-    if (!children) return;
-    let prev: DocNode | undefined;
-    for (const json of children) {
-      const node = this._nodeFromTree(json);
-      this._linkStored(parent, prev, node);
-      prev = node;
-      this.#attachTree(node, json[3]);
-    }
-    parent["_set"]("last", prev);
   }
 
   /** A node of a stored document, with its state already read. */

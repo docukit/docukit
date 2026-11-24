@@ -137,36 +137,33 @@ export class ColumnWriter {
   }
 }
 
-/**
- * Each entry without the start it shares with the one before (`first` for
- * the first entry), whose length goes in `shared`: an entry alone is whole,
- * with no column. Among more, an entry equal to `first` (the document's id,
- * which no session is) is `""` sharing nothing.
- */
-export function frontCode(
-  entries: readonly string[],
-  first: string,
-  shared: ColumnWriter,
-): string[] {
-  if (entries.length < 2) return [...entries];
-  let before = first;
-  return entries.map((entry) => {
-    if (entry === first) {
-      shared.push(0);
-      before = entry;
-      return "";
-    }
-    const end = Math.min(entry.length, before.length);
-    let length = 0;
-    while (
-      length < end &&
-      entry.charCodeAt(length) === before.charCodeAt(length)
-    )
-      length++;
-    shared.push(length);
-    before = entry;
-    return length === 0 ? entry : entry.slice(length);
-  });
+/** Writes a number with `cut` at `at`, and returns where it ends. */
+function writeNumber(
+  bytes: Uint8Array,
+  at: number,
+  value: number,
+  cut: number,
+): number {
+  if (value < cut) {
+    bytes[at] = DIGITS[value]!;
+    return at + 1;
+  }
+  const scale = BASE - cut;
+  // Above 31 bits, `| 0` would cut the quotient.
+  while (value > 0x7fffffff) {
+    const rest = value - cut;
+    const next = Math.floor(rest / scale);
+    bytes[at++] = DIGITS[cut + rest - next * scale]!;
+    value = next;
+  }
+  while (value >= cut) {
+    const rest = value - cut;
+    const next = (rest / scale) | 0;
+    bytes[at++] = DIGITS[cut + rest - next * scale]!;
+    value = next;
+  }
+  bytes[at++] = DIGITS[value]!;
+  return at;
 }
 
 /** Fields of different kinds, one after the other, each with its own cut. */
@@ -294,33 +291,18 @@ export class ColumnReader {
 /** The cut of the lengths that `joinColumns` writes before each column. */
 const LENGTH_CUT = 64;
 
-/** Writes a number with `cut` at `at`, and returns where it ends. */
-function writeNumber(
-  bytes: Uint8Array,
-  at: number,
-  value: number,
-  cut: number,
-): number {
-  if (value < cut) {
-    bytes[at] = DIGITS[value]!;
-    return at + 1;
-  }
-  const scale = BASE - cut;
-  // Above 31 bits, `| 0` would cut the quotient.
-  while (value > 0x7fffffff) {
-    const rest = value - cut;
-    const next = Math.floor(rest / scale);
-    bytes[at++] = DIGITS[cut + rest - next * scale]!;
-    value = next;
-  }
-  while (value >= cut) {
-    const rest = value - cut;
-    const next = (rest / scale) | 0;
-    bytes[at++] = DIGITS[cut + rest - next * scale]!;
-    value = next;
-  }
-  bytes[at++] = DIGITS[value]!;
-  return at;
+/** The entries `frontCode` wrote. */
+export function frontDecode(
+  entries: readonly string[],
+  first: string,
+  shared: ColumnReader,
+): string[] {
+  let before = first;
+  return entries.map((entry) => {
+    const length = shared.next();
+    return (before =
+      entry === "" && length === 0 ? first : before.slice(0, length) + entry);
+  });
 }
 
 /**
@@ -360,17 +342,35 @@ export function splitColumns(text: string, count = Infinity): string[] {
   return columns;
 }
 
-/** The entries `frontCode` wrote. */
-export function frontDecode(
+/**
+ * Each entry without the start it shares with the one before (`first` for
+ * the first entry), whose length goes in `shared`: an entry alone is whole,
+ * with no column. Among more, an entry equal to `first` (the document's id,
+ * which no session is) is `""` sharing nothing.
+ */
+export function frontCode(
   entries: readonly string[],
   first: string,
-  shared: ColumnReader,
+  shared: ColumnWriter,
 ): string[] {
+  if (entries.length < 2) return [...entries];
   let before = first;
   return entries.map((entry) => {
-    const length = shared.next();
-    return (before =
-      entry === "" && length === 0 ? first : before.slice(0, length) + entry);
+    if (entry === first) {
+      shared.push(0);
+      before = entry;
+      return "";
+    }
+    const end = Math.min(entry.length, before.length);
+    let length = 0;
+    while (
+      length < end &&
+      entry.charCodeAt(length) === before.charCodeAt(length)
+    )
+      length++;
+    shared.push(length);
+    before = entry;
+    return length === 0 ? entry : entry.slice(length);
   });
 }
 

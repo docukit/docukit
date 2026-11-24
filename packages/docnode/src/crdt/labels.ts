@@ -51,6 +51,9 @@ import {
 } from "../jsonDoc.js";
 import { IdRanges } from "../idRanges.js";
 import { isRecord, storeOf, textState } from "../text/common.js";
+import { applyLocal } from "./local.js";
+import { TextStore } from "../text/store.js";
+import { childIds, FugueSiblings, type Place } from "./fugue.js";
 import {
   engineRow,
   readId,
@@ -61,9 +64,6 @@ import {
   writeId,
   type EngineRow,
 } from "./wire.js";
-import { applyLocal } from "./local.js";
-import { TextStore } from "../text/store.js";
-import { childIds, FugueSiblings, type Place } from "./fugue.js";
 
 export type CrdtOptions = {
   /** How the undo of a delete brings a node back. */
@@ -174,13 +174,6 @@ type LabelRecord = {
   pending: PendingRecord[];
 };
 
-/** A stored state: each value as a JSON string. A label without one has `0`. */
-function stateOf(value: Json | undefined) {
-  const state: Record<string, string> = {};
-  if (isRecord(value)) for (const key in value) state[key] = text(value[key]);
-  return state;
-}
-
 /** The id right after `id` in its session (see `encodeRecord`), if it has a clock. */
 function nextId(id: string): string | undefined {
   const dot = lastDot(id);
@@ -189,48 +182,6 @@ function nextId(id: string): string | undefined {
     ? undefined
     : id.slice(0, dot + 1) + numberToBase64(clock + 1);
 }
-
-/**
- * What a move writes after its position, `life, backParent, backPos`,
- * without the defaults at the end: life 0, the move's own parent as the back
- * parent (`""` when only the back place is not the default) and the node's
- * id as the back place. A move without a back (an affirmed cut) writes
- * `false` as its back parent.
- */
-function moveTail(
-  id: string,
-  parent: string | 0,
-  backParent: string | 0 | Nil,
-  backPos: string | Nil,
-  life: number,
-  ref: (id: string | 0) => Json,
-  write: (id: string) => Json,
-): Json[] {
-  if (backParent === null) return [life, false];
-  const tail: Json[] = [
-    life,
-    backParent === parent ? "" : ref(backParent),
-    backPos === id ? "" : write(backPos!),
-  ];
-  while (tail.at(-1) === "") tail.pop();
-  return tail.length === 1 && life === 0 ? [] : tail;
-}
-
-/** `[session, clock]`. An id that is not `session.clock` is its own session. */
-function parseId(id: string): [string, number] {
-  const dot = lastDot(id);
-  const clock = dot > 0 ? clockAt(id, dot) : -1;
-  return clock < 0 ? [id, 0] : [id.slice(0, dot), clock];
-}
-
-/**
- * The clock of the first node a record inserts, which its Lamport clock is
- * written after: an author that only types keeps the two close.
- */
-const firstClock = (inserts: InsertGroup[]) => {
-  const first = inserts[0]?.[1];
-  return first ? parseId(first[0])[1] : 0;
-};
 
 /**
  * The only place that writes the labels layout. Siblings are ordered by
@@ -318,6 +269,60 @@ function encodeRecord(
     sessions.index(record.session),
   ];
   return recordRow(fields);
+}
+
+/**
+ * What a move writes after its position, `life, backParent, backPos`,
+ * without the defaults at the end: life 0, the move's own parent as the back
+ * parent (`""` when only the back place is not the default) and the node's
+ * id as the back place. A move without a back (an affirmed cut) writes
+ * `false` as its back parent.
+ */
+function moveTail(
+  id: string,
+  parent: string | 0,
+  backParent: string | 0 | Nil,
+  backPos: string | Nil,
+  life: number,
+  ref: (id: string | 0) => Json,
+  write: (id: string) => Json,
+): Json[] {
+  if (backParent === null) return [life, false];
+  const tail: Json[] = [
+    life,
+    backParent === parent ? "" : ref(backParent),
+    backPos === id ? "" : write(backPos!),
+  ];
+  while (tail.at(-1) === "") tail.pop();
+  return tail.length === 1 && life === 0 ? [] : tail;
+}
+
+/** Ascending runs of consecutive numbers. */
+function runsOf(numbers: number[]): [number, number][] {
+  const sorted = [...numbers].sort((a, b) => a - b);
+  const runs: [number, number][] = [];
+  for (const n of sorted) {
+    const last = runs.at(-1);
+    if (last?.[1] === n - 1) last[1] = n;
+    else runs.push([n, n]);
+  }
+  return runs;
+}
+
+/**
+ * The clock of the first node a record inserts, which its Lamport clock is
+ * written after: an author that only types keeps the two close.
+ */
+const firstClock = (inserts: InsertGroup[]) => {
+  const first = inserts[0]?.[1];
+  return first ? parseId(first[0])[1] : 0;
+};
+
+/** `[session, clock]`. An id that is not `session.clock` is its own session. */
+function parseId(id: string): [string, number] {
+  const dot = lastDot(id);
+  const clock = dot > 0 ? clockAt(id, dot) : -1;
+  return clock < 0 ? [id, 0] : [id.slice(0, dot), clock];
 }
 
 /** Where each part of the stored labels is (see `StoredLabels`). */
@@ -1999,16 +2004,11 @@ class Engine implements CrdtEngine {
   }
 }
 
-/** Ascending runs of consecutive numbers. */
-function runsOf(numbers: number[]): [number, number][] {
-  const sorted = [...numbers].sort((a, b) => a - b);
-  const runs: [number, number][] = [];
-  for (const n of sorted) {
-    const last = runs.at(-1);
-    if (last?.[1] === n - 1) last[1] = n;
-    else runs.push([n, n]);
-  }
-  return runs;
+/** A stored state: each value as a JSON string. A label without one has `0`. */
+function stateOf(value: Json | undefined) {
+  const state: Record<string, string> = {};
+  if (isRecord(value)) for (const key in value) state[key] = text(value[key]);
+  return state;
 }
 
 const ZERO: Stamp = [0, ""];

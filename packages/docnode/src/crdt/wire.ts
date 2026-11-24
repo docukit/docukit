@@ -51,6 +51,26 @@ const isEngineThenFlat = (rest: Rest): rest is EngineThenFlat =>
   isEngine(rest[0]) &&
   (typeof rest[1] === "string" || typeof rest[1] === "number");
 
+/**
+ * The rows of a batch, with the brackets of a batch of one row put back, also
+ * after an engine row (see `joinRows`).
+ */
+function rowsOf(batch: Operations): OperationsRow[] {
+  const [, ...rest] = batch;
+  if (isFlat(rest)) return [rest];
+  if (isEngineThenFlat(rest)) {
+    const [engine, ...row] = rest;
+    return [engine, row];
+  }
+  return rest;
+}
+
+const isTextInsert = (row: OperationsRow): row is FlatText =>
+  isList(row) && typeof row[0] === "string";
+
+const isFlatRow = (row: OperationsRow): row is FlatRow =>
+  isList(row) && typeof row[0] === "number";
+
 /** The engine row of a batch with the tag `tag`, if it has one. */
 export function engineRow(
   batch: Operations,
@@ -59,12 +79,6 @@ export function engineRow(
   const row = batch[1];
   return isList(row) && row[0] === tag ? row : undefined;
 }
-
-const isTextInsert = (row: OperationsRow): row is FlatText =>
-  isList(row) && typeof row[0] === "string";
-
-const isFlatRow = (row: OperationsRow): row is FlatRow =>
-  isList(row) && typeof row[0] === "number";
 
 /** `batch` without its engine row. */
 export function withoutEngineRow(batch: Operations): Operations {
@@ -118,20 +132,6 @@ function joinRows(
     if (isFlatRow(only)) return [head, row, ...only];
   }
   return [head, row, ...rows];
-}
-
-/**
- * The rows of a batch, with the brackets of a batch of one row put back, also
- * after an engine row (see `joinRows`).
- */
-function rowsOf(batch: Operations): OperationsRow[] {
-  const [, ...rest] = batch;
-  if (isFlat(rest)) return [rest];
-  if (isEngineThenFlat(rest)) {
-    const [engine, ...row] = rest;
-    return [engine, row];
-  }
-  return rest;
 }
 
 /**

@@ -52,6 +52,11 @@ export class Ghosts {
   /** By the session of their anchor (the node, for a start), then its counter. */
   #anchors = new Map<string, Map<number, Ghost[]>>();
 
+  /** Whether any of the `length` ids of `s` from `c` is a ghost. */
+  overlaps(s: string, c: number, length: number): boolean {
+    return this.#ids.get(s)?.overlaps(c, length) ?? false;
+  }
+
   /**
    * Joins the ghosts of one anchor whose ids follow each other, after
    * `moved` came to it.
@@ -84,11 +89,6 @@ export class Ghosts {
     }
   }
 
-  /** Whether any of the `length` ids of `s` from `c` is a ghost. */
-  overlaps(s: string, c: number, length: number): boolean {
-    return this.#ids.get(s)?.overlaps(c, length) ?? false;
-  }
-
   /**
    * The ghosts of `s` right before and after ids `[c, c + len)` among those
    * of one anchor, `list`, with `state`: they can take these ids.
@@ -118,11 +118,6 @@ export class Ghosts {
     return [prev, next];
   }
 
-  /** The counter after the last ghost of `s`, or 0. */
-  end(s: string): number {
-    return this.#ids.get(s)?.end() ?? 0;
-  }
-
   /** Ids `[c, c + len)` of `s` are live again. */
   drop(s: string, c: number, len: number): void {
     const end = c + len;
@@ -137,6 +132,11 @@ export class Ghosts {
         this.#put({ s, c: end, len: from + length - end, as, ac, state });
       at = from + length - 1;
     }
+  }
+
+  /** The counter after the last ghost of `s`, or 0. */
+  end(s: string): number {
+    return this.#ids.get(s)?.end() ?? 0;
   }
 
   /** Whether a ghost is anchored at the start of `node`'s text. */

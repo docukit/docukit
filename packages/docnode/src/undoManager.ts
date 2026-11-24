@@ -215,6 +215,13 @@ export class UndoManager {
   }
 }
 
+/** The definition of the root state that receives edit operations, if any. */
+function editDefinition(doc: Doc): InternalStateDefinition | undefined {
+  const key = doc["_editStateKey"];
+  if (key === undefined) return undefined;
+  return doc["_resolvedNodeDefs"].get(doc.root.type)?.state[key];
+}
+
 function importStack(items: UndoHistoryItem[], maxSteps: number) {
   const retainedItems = maxSteps === 0 ? [] : items.slice(-maxSteps);
   return retainedItems.map((item) => ({
@@ -223,8 +230,14 @@ function importStack(items: UndoHistoryItem[], maxSteps: number) {
   }));
 }
 
-function isString(value: unknown): value is string {
-  return typeof value === "string";
+function exportStackItem(item: UndoStackItem): UndoHistoryItem {
+  return {
+    operations: compactOperations(item.operations),
+    // Intentionally shallow: history handoff normally disposes the source doc,
+    // while persistence owns serialization of its opaque metadata values. A
+    // deep clone would reject valid non-serializable editor metadata.
+    meta: Object.fromEntries(item.meta),
+  };
 }
 
 function isUndoHistory(value: unknown): value is UndoHistory {
@@ -240,6 +253,16 @@ function isUndoHistory(value: unknown): value is UndoHistory {
       (typeof value.lastUpdate === "number" &&
         Number.isFinite(value.lastUpdate)))
   );
+}
+
+function isHistoryItem(value: unknown): value is UndoHistoryItem {
+  return (
+    isRecord(value) && isOperations(value.operations) && isRecord(value.meta)
+  );
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
 }
 
 /**
@@ -264,13 +287,6 @@ function isPatchRow([, ...entries]: unknown[]): boolean {
 /** A node of a tree row: a string, a number (its distance), or `0`, none. */
 function isNodeReference(value: unknown): boolean {
   return Number.isInteger(value) || typeof value === "string";
-}
-
-/** The definition of the root state that receives edit operations, if any. */
-function editDefinition(doc: Doc): InternalStateDefinition | undefined {
-  const key = doc["_editStateKey"];
-  if (key === undefined) return undefined;
-  return doc["_resolvedNodeDefs"].get(doc.root.type)?.state[key];
 }
 
 /** `[text | [node] | 5 | -tag, ...]` (see `wire.ts`). */
@@ -304,22 +320,6 @@ function isRow(value: unknown, last: boolean): boolean {
   return typeof row[0] === "number" && row[0] >= 0 && row[0] !== 5
     ? isTreeRow(row)
     : isTextRow(row);
-}
-
-function exportStackItem(item: UndoStackItem): UndoHistoryItem {
-  return {
-    operations: compactOperations(item.operations),
-    // Intentionally shallow: history handoff normally disposes the source doc,
-    // while persistence owns serialization of its opaque metadata values. A
-    // deep clone would reject valid non-serializable editor metadata.
-    meta: Object.fromEntries(item.meta),
-  };
-}
-
-function isHistoryItem(value: unknown): value is UndoHistoryItem {
-  return (
-    isRecord(value) && isOperations(value.operations) && isRecord(value.meta)
-  );
 }
 
 function isOperations(value: unknown): value is Operations {

@@ -34,6 +34,16 @@ function randomStringBase64(len: number): string {
   return out.join("");
 }
 
+/**
+ * Where the last dot of `id` is, or -1. A loop: `lastIndexOf` is a call into
+ * the engine, and ids are split on every save and load.
+ */
+export function lastDot(id: string): number {
+  let at = id.length - 1;
+  while (at >= 0 && id.charCodeAt(at) !== 46) at--;
+  return at;
+}
+
 export function numberToBase64(num: number): string {
   // Most clocks and counters have up to three digits.
   if (num < 64) return DIGITS[num]!;
@@ -46,16 +56,6 @@ export function numberToBase64(num: number): string {
     num = Math.floor(num / 64);
   }
   return result;
-}
-
-/**
- * Where the last dot of `id` is, or -1. A loop: `lastIndexOf` is a call into
- * the engine, and ids are split on every save and load.
- */
-export function lastDot(id: string): number {
-  let at = id.length - 1;
-  while (at >= 0 && id.charCodeAt(at) !== 46) at--;
-  return at;
 }
 
 /**

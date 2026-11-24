@@ -149,6 +149,23 @@ export class BaseText extends TextEngine {
   /** Where deleted letters were (see `Ghosts`). */
   #ghosts = new Ghosts();
 
+  /** The first and the last letter of `ranges` still here. */
+  #ends(
+    ranges: [string, number, number][],
+  ): [Element | undefined, Element | undefined] {
+    let first: Element | undefined;
+    let last: Element | undefined;
+    for (const [rs, rc, len] of ranges) {
+      for (let k = 0; k < len && !first; k++) first = this.#find(rs, rc + k);
+      if (first) break;
+    }
+    for (let at = ranges.length - 1; at >= 0 && !last; at--) {
+      const [rs, rc, len] = ranges[at]!;
+      for (let k = len - 1; k >= 0 && !last; k--) last = this.#find(rs, rc + k);
+    }
+    return [first, last];
+  }
+
   /** Cuts `run` at `offset`: the new run after it. */
   #split(run: Run, offset: number): Run {
     const tail = new Run(
@@ -164,6 +181,11 @@ export class BaseText extends TextEngine {
     this.#indexRun(tail);
     this.#linkAfter(run, tail);
     return tail;
+  }
+
+  /** What an undo of the history applies: the operation as it is. */
+  prepareUndo(_doc: Doc, undo: EditOperation): EditOperation {
+    return undo;
   }
 
   /** The letter right before boundary `index`; the node's root for 0. */
@@ -192,28 +214,6 @@ export class BaseText extends TextEngine {
     });
     // Two ids with one whole hash (30 bits) name the first of them.
     return `#${hash.slice(0, shared + 1)}`;
-  }
-
-  /** The anchor of the ghost of deleted letter `(s, c)`, if it is one. */
-  #anchorOf(s: string, c: number): Element | undefined {
-    const ghost = this.#ghosts.find(s, c);
-    if (!ghost) return undefined;
-    return ghost.ac === -1
-      ? { run: this.#flow(ghost.as).head, off: 0 }
-      : this.#find(ghost.as, ghost.ac);
-  }
-
-  /** One object per distinct state, with sorted keys; none for `{}`. */
-  #intern(values: State | undefined): State | undefined {
-    if (!values) return undefined;
-    const keys = Object.keys(values).sort();
-    if (keys.length === 0) return undefined;
-    const sorted: Record<string, Json> = {};
-    for (const key of keys) sorted[key] = values[key]!;
-    const json = JSON.stringify(sorted);
-    let state = this.#states.get(json);
-    if (!state) this.#states.set(json, (state = sorted));
-    return state;
   }
 
   /**
@@ -259,11 +259,6 @@ export class BaseText extends TextEngine {
     return flow ? this.#positions.length(flow.head) : 0;
   }
 
-  /** What an undo of the history applies: the operation as it is. */
-  prepareUndo(_doc: Doc, undo: EditOperation): EditOperation {
-    return undo;
-  }
-
   spansOf(node: string): TextSpan[] {
     const out: TextSpan[] = [];
     const flow = this.#flows.get(node);
@@ -280,9 +275,27 @@ export class BaseText extends TextEngine {
     return out;
   }
 
+  #flow(node: string): Flow {
+    let flow = this.#flows.get(node);
+    if (!flow) this.#flows.set(node, (flow = new Flow(node)));
+    return flow;
+  }
+
   /** The lists by node id: the same order in every replica. */
   #sortedFlows(): Flow[] {
     return [...this.#flows.keys()].sort().map((node) => this.#flows.get(node)!);
+  }
+
+  // ----- serialization -----------------------------------------------------
+
+  /** `[20, sessions, text, columns, states?]` (see `toStored`). */
+  toJSON(): Json {
+    const sessions = new SessionTable();
+    const columns: { encode(): string }[] = [];
+    // Without a root, every list's node is written.
+    const stored = this.toStored(sessions, columns, "");
+    if (stored === 0) return 0;
+    return [FORMAT, sessions.table, joinColumns(columns), ...stored];
   }
 
   // ----- reading ---------------------------------------------------------
@@ -295,27 +308,9 @@ export class BaseText extends TextEngine {
     return text;
   }
 
-  /** The first and the last letter of `ranges` still here. */
-  #ends(
-    ranges: [string, number, number][],
-  ): [Element | undefined, Element | undefined] {
-    let first: Element | undefined;
-    let last: Element | undefined;
-    for (const [rs, rc, len] of ranges) {
-      for (let k = 0; k < len && !first; k++) first = this.#find(rs, rc + k);
-      if (first) break;
-    }
-    for (let at = ranges.length - 1; at >= 0 && !last; at--) {
-      const [rs, rc, len] = ranges[at]!;
-      for (let k = len - 1; k >= 0 && !last; k--) last = this.#find(rs, rc + k);
-    }
-    return [first, last];
-  }
-
-  #indexRun(run: Run): void {
-    let runs = this.#index.get(run.s);
-    if (!runs) this.#index.set(run.s, (runs = new SessionRuns<Run>()));
-    runs.add(run);
+  /** The run that starts at `element`, cut from its run if needed. */
+  #startingAt({ run, off }: Element): Run {
+    return off === 0 ? run : this.#split(run, off);
   }
 
   /**
@@ -336,12 +331,6 @@ export class BaseText extends TextEngine {
     return hash;
   }
 
-  #flow(node: string): Flow {
-    let flow = this.#flows.get(node);
-    if (!flow) this.#flows.set(node, (flow = new Flow(node)));
-    return flow;
-  }
-
   // ----- change reporting --------------------------------------------------
 
   #report(doc: Doc, node: string): void {
@@ -350,16 +339,10 @@ export class BaseText extends TextEngine {
       diff.updated.add(node);
   }
 
-  // ----- serialization -----------------------------------------------------
-
-  /** `[20, sessions, text, columns, states?]` (see `toStored`). */
-  toJSON(): Json {
-    const sessions = new SessionTable();
-    const columns: { encode(): string }[] = [];
-    // Without a root, every list's node is written.
-    const stored = this.toStored(sessions, columns, "");
-    if (stored === 0) return 0;
-    return [FORMAT, sessions.table, joinColumns(columns), ...stored];
+  #indexRun(run: Run): void {
+    let runs = this.#index.get(run.s);
+    if (!runs) this.#index.set(run.s, (runs = new SessionRuns<Run>()));
+    runs.add(run);
   }
 
   /** The rules of a node's type while it is in the document. */
@@ -382,11 +365,6 @@ export class BaseText extends TextEngine {
     if (runs.empty) this.#index.delete(run.s);
   }
 
-  /** Letters of this replica's session it did not write: a copy's (see `NodeIds`). */
-  #checkSession(doc: Doc, s: string, end: number): void {
-    if (s === this.#session && end > this.#counter) doc["_renewSession"]();
-  }
-
   /** Joins `run` with the runs around it it only differs from by being apart. */
   #join(run: Run): void {
     while (run.prev && joins(run.prev, run)) run = run.prev;
@@ -399,20 +377,6 @@ export class BaseText extends TextEngine {
     }
   }
 
-  #linkAfter(target: Run, run: Run): void {
-    this.#positions.linked(target, run, true);
-    const next = target.next;
-    target.next = run;
-    run.prev = target;
-    run.next = next;
-    if (next) next.prev = run;
-  }
-
-  /** The run that starts at `element`, cut from its run if needed. */
-  #startingAt({ run, off }: Element): Run {
-    return off === 0 ? run : this.#split(run, off);
-  }
-
   // ----- local operations ---------------------------------------------------
 
   #record(doc: Doc, operation: EditOperation, inverse: EditOperation): void {
@@ -421,44 +385,13 @@ export class BaseText extends TextEngine {
     doc["_hasEdits"] = true;
   }
 
-  /**
-   * The state of letters with `own` state typed between letters with `left`
-   * and `right` state: what they inherit (see `Inherit`) and their own
-   * (`null`: a key they do not take). Without `left`, their own only.
-   */
-  #stateFor(
-    own: Record<string, Json> | undefined,
-    left?: State,
-    right?: State,
-    rules?: Rules,
-  ): State | undefined {
-    let state: Record<string, Json> | undefined;
-    // While every key of `left` goes on and there is no own state, it is
-    // `left` itself.
-    let same = !own;
-    for (const key in left) {
-      const value = left[key]!;
-      // Letters with state to inherit have rules (see `#insert`).
-      const rule = rules!.get(key);
-      if (
-        rule === undefined ||
-        (own && Object.hasOwn(own, key)) ||
-        (rule === "both" &&
-          !(
-            right &&
-            Object.hasOwn(right, key) &&
-            sameValue(value, right[key]!)
-          ))
-      ) {
-        same = false;
-        continue;
-      }
-      (state ??= {})[key] = value;
-    }
-    // `same` means no own state: the loop adds nothing.
-    for (const key in own)
-      if (own[key] !== null) (state ??= {})[key] = own[key]!;
-    return same ? left : this.#intern(state);
+  #linkAfter(target: Run, run: Run): void {
+    this.#positions.linked(target, run, true);
+    const next = target.next;
+    target.next = run;
+    run.prev = target;
+    run.next = next;
+    if (next) next.prev = run;
   }
 
   letterAt(node: string, index: number): string | undefined {
@@ -489,6 +422,19 @@ export class BaseText extends TextEngine {
       cache.set(state, kept);
     }
     return kept === false ? undefined : kept;
+  }
+
+  /** One object per distinct state, with sorted keys; none for `{}`. */
+  #intern(values: State | undefined): State | undefined {
+    if (!values) return undefined;
+    const keys = Object.keys(values).sort();
+    if (keys.length === 0) return undefined;
+    const sorted: Record<string, Json> = {};
+    for (const key of keys) sorted[key] = values[key]!;
+    const json = JSON.stringify(sorted);
+    let state = this.#states.get(json);
+    if (!state) this.#states.set(json, (state = sorted));
+    return state;
   }
 
   // ----- identity --------------------------------------------------------
@@ -537,6 +483,11 @@ export class BaseText extends TextEngine {
     );
   }
 
+  /** Letters of this replica's session it did not write: a copy's (see `NodeIds`). */
+  #checkSession(doc: Doc, s: string, end: number): void {
+    if (s === this.#session && end > this.#counter) doc["_renewSession"]();
+  }
+
   /** The letter (or start) right before `element`. */
   #before({ run, off }: Element): Element {
     if (off > 0) return { run, off: off - 1 };
@@ -547,6 +498,15 @@ export class BaseText extends TextEngine {
   #find(s: string, c: number): Element | undefined {
     const run = this.#index.get(s)?.find(c);
     return run && { run, off: c - run.c };
+  }
+
+  /** The anchor of the ghost of deleted letter `(s, c)`, if it is one. */
+  #anchorOf(s: string, c: number): Element | undefined {
+    const ghost = this.#ghosts.find(s, c);
+    if (!ghost) return undefined;
+    return ghost.ac === -1
+      ? { run: this.#flow(ghost.as).head, off: 0 }
+      : this.#find(ghost.as, ghost.ac);
   }
 
   #applyInsert(
@@ -668,6 +628,11 @@ export class BaseText extends TextEngine {
     return this.#find(s, c) ? index : index + 1;
   }
 
+  #commit(doc: Doc, payload: EditOperation): void {
+    const inverse = this.apply(doc, payload);
+    if (inverse) this.#record(doc, payload, inverse);
+  }
+
   /**
    * `key` is `value` on letters `[from, to)` of `run`, cut from it if
    * needed; what they had goes to `old`.
@@ -696,11 +661,6 @@ export class BaseText extends TextEngine {
     if (value !== null) next[key] = value;
     piece.state = this.#intern(next);
     touched.push(piece);
-  }
-
-  #commit(doc: Doc, payload: EditOperation): void {
-    const inverse = this.apply(doc, payload);
-    if (inverse) this.#record(doc, payload, inverse);
   }
 
   /**
@@ -918,6 +878,46 @@ export class BaseText extends TextEngine {
     if (cut < text.length) place(cut, text.length, this.#stateFor(own));
     this.#report(doc, flow.node);
     return [3, TAG_DELETE, s, c, encodeRange(s, s, c, text.length)];
+  }
+
+  /**
+   * The state of letters with `own` state typed between letters with `left`
+   * and `right` state: what they inherit (see `Inherit`) and their own
+   * (`null`: a key they do not take). Without `left`, their own only.
+   */
+  #stateFor(
+    own: Record<string, Json> | undefined,
+    left?: State,
+    right?: State,
+    rules?: Rules,
+  ): State | undefined {
+    let state: Record<string, Json> | undefined;
+    // While every key of `left` goes on and there is no own state, it is
+    // `left` itself.
+    let same = !own;
+    for (const key in left) {
+      const value = left[key]!;
+      // Letters with state to inherit have rules (see `#insert`).
+      const rule = rules!.get(key);
+      if (
+        rule === undefined ||
+        (own && Object.hasOwn(own, key)) ||
+        (rule === "both" &&
+          !(
+            right &&
+            Object.hasOwn(right, key) &&
+            sameValue(value, right[key]!)
+          ))
+      ) {
+        same = false;
+        continue;
+      }
+      (state ??= {})[key] = value;
+    }
+    // `same` means no own state: the loop adds nothing.
+    for (const key in own)
+      if (own[key] !== null) (state ??= {})[key] = own[key]!;
+    return same ? left : this.#intern(state);
   }
 
   /**
@@ -1174,6 +1174,60 @@ export class BaseText extends TextEngine {
     return stored;
   }
 
+  /**
+   * `insertLetters`, at a visible index. `attrs`: the state the letters
+   * have, else what they inherit (see `Inherit`).
+   */
+  insert(
+    doc: Doc,
+    node: string,
+    index: number,
+    text: string,
+    attrs?: Record<string, Json>,
+  ): void {
+    if (text.length === 0) return;
+    const flow = this.#flow(node);
+    const left = this.#leftOf(flow, this.#boundary(flow, index));
+    const right = this.#after(left);
+    const rules = this.#rules(flow);
+    const own = attrs && this.#ownFor(rules, text, left, right, attrs);
+    const [s, c] = this.#mint(doc, text.length);
+    const payload: EditOperation = [3, s, c, contentOf(text, own)];
+    if (left.run.c === -1) payload.push(this.#startRef(doc, node));
+    else this.#neighbours(doc, payload, s, c, left, right);
+    const inverse = this.#insert(doc, s, c, text, own, rules, left, right);
+    this.#record(doc, payload, inverse);
+  }
+
+  /**
+   * `[3, 5, s, c, key, ranges, value?, ...]`: a value for each list of
+   * ranges, the last one `null` if left out. The last one applied wins.
+   *
+   * A range is all that is between its first and its last letter still
+   * here: its letters were together when it was written, so what others
+   * typed inside it since is in it too, like the text a peer types in a
+   * word that gets bold or a link.
+   */
+  #applyState(
+    doc: Doc,
+    payload: EditOperation,
+    s: string,
+    c: number,
+  ): EditOperation | undefined {
+    const key = stringOf(payload[4]);
+    const old: OldValues = new Map();
+    const touched: Run[] = [];
+    for (let at = 5; at < payload.length; at += 2) {
+      const value = at + 1 < payload.length ? payload[at + 1]! : null;
+      for (const range of decodeRanges(s, payload[at]!)) {
+        const [first, last] = this.#ends([range]);
+        if (first && last)
+          this.#setBetween(first, last, key, value, old, touched);
+      }
+    }
+    return this.#stateDone(doc, s, c, key, old, touched);
+  }
+
   /** `[3, 1, s, c, ranges]`: the letters leave their list. */
   #applyDelete(
     doc: Doc,
@@ -1268,60 +1322,6 @@ export class BaseText extends TextEngine {
       }
     }
     return inverse;
-  }
-
-  /**
-   * `insertLetters`, at a visible index. `attrs`: the state the letters
-   * have, else what they inherit (see `Inherit`).
-   */
-  insert(
-    doc: Doc,
-    node: string,
-    index: number,
-    text: string,
-    attrs?: Record<string, Json>,
-  ): void {
-    if (text.length === 0) return;
-    const flow = this.#flow(node);
-    const left = this.#leftOf(flow, this.#boundary(flow, index));
-    const right = this.#after(left);
-    const rules = this.#rules(flow);
-    const own = attrs && this.#ownFor(rules, text, left, right, attrs);
-    const [s, c] = this.#mint(doc, text.length);
-    const payload: EditOperation = [3, s, c, contentOf(text, own)];
-    if (left.run.c === -1) payload.push(this.#startRef(doc, node));
-    else this.#neighbours(doc, payload, s, c, left, right);
-    const inverse = this.#insert(doc, s, c, text, own, rules, left, right);
-    this.#record(doc, payload, inverse);
-  }
-
-  /**
-   * `[3, 5, s, c, key, ranges, value?, ...]`: a value for each list of
-   * ranges, the last one `null` if left out. The last one applied wins.
-   *
-   * A range is all that is between its first and its last letter still
-   * here: its letters were together when it was written, so what others
-   * typed inside it since is in it too, like the text a peer types in a
-   * word that gets bold or a link.
-   */
-  #applyState(
-    doc: Doc,
-    payload: EditOperation,
-    s: string,
-    c: number,
-  ): EditOperation | undefined {
-    const key = stringOf(payload[4]);
-    const old: OldValues = new Map();
-    const touched: Run[] = [];
-    for (let at = 5; at < payload.length; at += 2) {
-      const value = at + 1 < payload.length ? payload[at + 1]! : null;
-      for (const range of decodeRanges(s, payload[at]!)) {
-        const [first, last] = this.#ends([range]);
-        if (first && last)
-          this.#setBetween(first, last, key, value, old, touched);
-      }
-    }
-    return this.#stateDone(doc, s, c, key, old, touched);
   }
 
   /**

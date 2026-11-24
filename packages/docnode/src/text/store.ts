@@ -263,6 +263,16 @@ type StoredEdit = TextEdit extends [3, ...infer Payload] ? Payload : never;
 type EditResult = TextInverse | undefined;
 const PENDING = Symbol("pending");
 
+/** Sets the kids at counter `c` + 1 of a session's blocks. */
+function setKidsAt(blocks: KidBlocks, c: number, list: Run[]): void {
+  const at = (c + 1) >> KID_SHIFT;
+  const block = (blocks[at] ??= new Array<Run[] | undefined>(KID_BLOCK));
+  block[(c + 1) & (KID_BLOCK - 1)] = list;
+}
+
+/** An element, possibly in the middle of a run. */
+type Element = { run: Run; off: number };
+
 /**
  * The attributes of a letter with `own` state whose left origin has `left`
  * and right origin `right` (see `Inherit`).
@@ -294,8 +304,25 @@ function withInherited(
   return { attrs, key: JSON.stringify(attrs) };
 }
 
-/** An element, possibly in the middle of a run. */
-type Element = { run: Run; off: number };
+/** Whether a write stamped `(lamport, session)` beats `current`. */
+const wins = (lamport: number, session: string, current: Stamped) =>
+  compareStamps(lamport, session, current[1], current[2]) > 0;
+
+/** A state as one string, cached per state object (see `toStored`). */
+const canonCache = new WeakMap<LetterState, string>();
+
+/** The first state of inserted letters (see `stateOfContent`), at lamport 0. */
+function initialState(content: Json | undefined): LetterState | undefined {
+  const plain = stateOfContent(content);
+  if (!plain) return undefined;
+  const state: Record<string, Stamped> = {};
+  for (const key in plain) state[key] = [plain[key]!, 0, ""];
+  return state;
+}
+
+/** The visible attributes of a state, cached per state object. */
+const attrsCache = new WeakMap<LetterState, Attrs>();
+const NO_ATTRS: Attrs = { attrs: {}, key: "{}" };
 
 function sameState(
   a: LetterState | undefined,
@@ -314,24 +341,6 @@ function sameState(
   for (const _ in b) count--;
   return count === 0;
 }
-
-/** Whether a write stamped `(lamport, session)` beats `current`. */
-const wins = (lamport: number, session: string, current: Stamped) =>
-  compareStamps(lamport, session, current[1], current[2]) > 0;
-
-/** A state as one string, cached per state object (see `toStored`). */
-const canonCache = new WeakMap<LetterState, string>();
-
-/** Sets the kids at counter `c` + 1 of a session's blocks. */
-function setKidsAt(blocks: KidBlocks, c: number, list: Run[]): void {
-  const at = (c + 1) >> KID_SHIFT;
-  const block = (blocks[at] ??= new Array<Run[] | undefined>(KID_BLOCK));
-  block[(c + 1) & (KID_BLOCK - 1)] = list;
-}
-
-/** The visible attributes of a state, cached per state object. */
-const attrsCache = new WeakMap<LetterState, Attrs>();
-const NO_ATTRS: Attrs = { attrs: {}, key: "{}" };
 
 function encodeInsert(
   s: string,
@@ -354,15 +363,6 @@ function encodeInsert(
     payload.push(nextRef, parentRef);
   }
   return payload;
-}
-
-/** The first state of inserted letters (see `stateOfContent`), at lamport 0. */
-function initialState(content: Json | undefined): LetterState | undefined {
-  const plain = stateOfContent(content);
-  if (!plain) return undefined;
-  const state: Record<string, Stamped> = {};
-  for (const key in plain) state[key] = [plain[key]!, 0, ""];
-  return state;
 }
 
 /** Cuts a run of a list being loaded at `offset`. Returns the new one. */

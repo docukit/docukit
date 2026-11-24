@@ -133,6 +133,19 @@ class Run {
 const run = new Run();
 
 /**
+ * A tree row without the zeros at the end of its nodes: the first node, and
+ * the type of a node inserted alone, are never `0`.
+ */
+function trimmed<Row extends unknown[]>(row: Row): Row {
+  while (row.length > 2 && row[row.length - 1] === 0) row.pop();
+  return row;
+}
+
+/** The clock a distance from `base` stands for (see the format). */
+export const clockOf = (distance: number, base: number) =>
+  distance > 0 ? base + distance - 1 : base + distance;
+
+/**
  * The distance a node id is written as (see the format), or 0 when it is
  * not one of `session` or its distance from `base` is longer than its clock.
  */
@@ -148,20 +161,6 @@ export function distanceTo(id: string, session: string, base: number) {
   return Math.abs(distance) < 10 ** (id.length - dot - 1) ? distance : 0;
 }
 
-/** The clock a distance from `base` stands for (see the format). */
-export const clockOf = (distance: number, base: number) =>
-  distance > 0 ? base + distance - 1 : base + distance;
-
-/** The `count` nodes from `id` on (see `Run`). */
-function nodesFrom(id: string, count: number): string[] {
-  const dot = lastDot(id);
-  const prefix = id.slice(0, dot + 1);
-  const clock = clockAt(id, dot);
-  const ids: string[] = [];
-  for (let i = 0; i < count; i++) ids.push(prefix + numberToBase64(clock + i));
-  return ids;
-}
-
 /** An id as it is written whole: with a `!` if it could be misread. */
 export const literal = (id: string) =>
   id.charCodeAt(0) === 33 || isDistance(id) ? `!${id}` : id;
@@ -171,12 +170,20 @@ const withSession = (id: string | 0) =>
   id !== 0 && lastDot(id) !== -1 ? id : undefined;
 
 /**
- * A tree row without the zeros at the end of its nodes: the first node, and
- * the type of a node inserted alone, are never `0`.
+ * The session before the dot at `dot` of a head, as `JSON.parse` returns a
+ * short string of a batch: internalized. The text store compares sessions
+ * many times to order concurrent letters, and two internalized strings
+ * compare by identity. Batches come from a few sessions in turn: the last
+ * ones are kept.
  */
-function trimmed<Row extends unknown[]>(row: Row): Row {
-  while (row.length > 2 && row[row.length - 1] === 0) row.pop();
-  return row;
+function sessionOf(named: string, dot: number): string {
+  // Cut and compared, a short session is found faster than with `startsWith`.
+  const cut = named.slice(0, dot);
+  for (const session of recentSessions) if (cut === session) return session;
+  const session = String(JSON.parse(JSON.stringify(cut)));
+  recentSessions[nextRecent] = session;
+  nextRecent = (nextRecent + 1) % recentSessions.length;
+  return session;
 }
 
 /** Whether a batch of only `row` leaves out its brackets: not `[[text, ...state]]`. */
@@ -355,28 +362,21 @@ function indexBefore(written: string, dot: number): number {
   return index;
 }
 
+/** The `count` nodes from `id` on (see `Run`). */
+function nodesFrom(id: string, count: number): string[] {
+  const dot = lastDot(id);
+  const prefix = id.slice(0, dot + 1);
+  const clock = clockAt(id, dot);
+  const ids: string[] = [];
+  for (let i = 0; i < count; i++) ids.push(prefix + numberToBase64(clock + i));
+  return ids;
+}
+
 /** Whether `state` has `keys`, in that order, and no other. */
 function hasKeys(state: Record<string, string>, keys: readonly string[]) {
   let index = 0;
   for (const key in state) if (keys[index++] !== key) return false;
   return index === keys.length;
-}
-
-/**
- * The session before the dot at `dot` of a head, as `JSON.parse` returns a
- * short string of a batch: internalized. The text store compares sessions
- * many times to order concurrent letters, and two internalized strings
- * compare by identity. Batches come from a few sessions in turn: the last
- * ones are kept.
- */
-function sessionOf(named: string, dot: number): string {
-  // Cut and compared, a short session is found faster than with `startsWith`.
-  const cut = named.slice(0, dot);
-  for (const session of recentSessions) if (cut === session) return session;
-  const session = String(JSON.parse(JSON.stringify(cut)));
-  recentSessions[nextRecent] = session;
-  nextRecent = (nextRecent + 1) % recentSessions.length;
-  return session;
 }
 
 /** The batch of a transaction as `Operations`. */

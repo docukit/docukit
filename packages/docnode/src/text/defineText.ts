@@ -42,6 +42,16 @@ export class TextHandle {
     );
   }
 
+  /**
+   * `insertLetters`: `attrs` is the state of the new letters (`{}`: none).
+   * Without it, they have what they inherit (see `defineText`).
+   */
+  insert(index: number, text: string, attrs?: Record<string, Json>): void {
+    withTransaction(this.#doc, () =>
+      this.#store.insert(this.#doc, this.#node.id, index, text, attrs),
+    );
+  }
+
   /** The visible length. */
   get length(): number {
     return this.#store.lengthOf(this.#node.id);
@@ -114,16 +124,6 @@ export class TextHandle {
       if (current !== next) this.#replaceDiff(current, next, caret, target);
       this.#applyFormatDiff(target);
     });
-  }
-
-  /**
-   * `insertLetters`: `attrs` is the state of the new letters (`{}`: none).
-   * Without it, they have what they inherit (see `defineText`).
-   */
-  insert(index: number, text: string, attrs?: Record<string, Json>): void {
-    withTransaction(this.#doc, () =>
-      this.#store.insert(this.#doc, this.#node.id, index, text, attrs),
-    );
   }
 
   #applyFormatDiff(target: TextSpan[]): void {
