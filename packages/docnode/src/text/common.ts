@@ -37,6 +37,14 @@ export type Rules = {
   readonly opaque: string;
 };
 
+/** Where the first opaque letter of `text` is, or its length. */
+export function cutIn(text: string, opaque: string): number {
+  if (opaque === "") return text.length;
+  for (let index = 0; index < text.length; index++)
+    if (opaque.includes(text[index]!)) return index;
+  return text.length;
+}
+
 function lowerBound(runs: { readonly c: number }[], c: number): number {
   let low = 0;
   let high = runs.length;
@@ -48,16 +56,8 @@ function lowerBound(runs: { readonly c: number }[], c: number): number {
   return low;
 }
 
-export function isLowSurrogate(code: number): boolean {
-  return code >= 0xdc00 && code <= 0xdfff;
-}
-
 /** The rules of each `defineText` definition that has them. */
 export const inheritRules = new WeakMap<object, Rules>();
-
-export function isHighSurrogate(code: number): boolean {
-  return code >= 0xd800 && code <= 0xdbff;
-}
 
 export function decodeRef(own: string, ref: Json): [string, number] {
   if (typeof ref === "number") return [own, ref - 1];
@@ -67,28 +67,12 @@ export function decodeRef(own: string, ref: Json): [string, number] {
   return [text.slice(0, dot), base64ToNumber(text, dot + 1)];
 }
 
-/**
- * The rules of `inherit` (see `InheritRules`), and the opaque letters; none
- * without a key.
- */
-export function rulesOf(
-  inherit: InheritRules = {},
-  opaque = "",
-): Rules | undefined {
-  const exact = new Map<string, Inherit>();
-  const prefixes: [string, Inherit][] = [];
-  for (const [key, rule] of Object.entries(inherit))
-    if (key.endsWith("*")) prefixes.push([key.slice(0, -1), rule]);
-    else exact.set(key, rule);
-  if (exact.size + prefixes.length === 0) return undefined;
-  return {
-    get: (key) =>
-      exact.get(key) ??
-      (prefixes.length === 0
-        ? undefined
-        : prefixes.find(([prefix]) => key.startsWith(prefix))?.[1]),
-    opaque,
-  };
+export function isLowSurrogate(code: number): boolean {
+  return code >= 0xdc00 && code <= 0xdfff;
+}
+
+export function isHighSurrogate(code: number): boolean {
+  return code >= 0xd800 && code <= 0xdbff;
 }
 
 export const sameValue = (a: Json, b: Json) =>
@@ -113,6 +97,30 @@ export const isRecord = (
   value: Json | undefined,
 ): value is { readonly [key: string]: Json | undefined } =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * The rules of `inherit` (see `InheritRules`), and the opaque letters; none
+ * without a key.
+ */
+export function rulesOf(
+  inherit: InheritRules = {},
+  opaque = "",
+): Rules | undefined {
+  const exact = new Map<string, Inherit>();
+  const prefixes: [string, Inherit][] = [];
+  for (const [key, rule] of Object.entries(inherit))
+    if (key.endsWith("*")) prefixes.push([key.slice(0, -1), rule]);
+    else exact.set(key, rule);
+  if (exact.size + prefixes.length === 0) return undefined;
+  return {
+    get: (key) =>
+      exact.get(key) ??
+      (prefixes.length === 0
+        ? undefined
+        : prefixes.find(([prefix]) => key.startsWith(prefix))?.[1]),
+    opaque,
+  };
+}
 
 /**
  * The first state an insert's content gives its letters: the content after
@@ -140,14 +148,6 @@ export function stateOfContent(
       }
   }
   return any ? state : undefined;
-}
-
-/** Where the first opaque letter of `text` is, or its length. */
-export function cutIn(text: string, opaque: string): number {
-  if (opaque === "") return text.length;
-  for (let index = 0; index < text.length; index++)
-    if (opaque.includes(text[index]!)) return index;
-  return text.length;
 }
 
 /**

@@ -85,14 +85,6 @@ export function clockAt(id: string, dot: number, digits = 8): number {
 /** The value of a base 64 digit's character code, or -1. */
 const digitOf = (code: number): number => IDX[code] ?? -1;
 
-/** The number a `numberToBase64` string stands for, from `from` to its end. */
-export function base64ToNumber(text: string, from = 0): number {
-  let num = 0;
-  for (let i = from; i < text.length; i++)
-    num = num * ALPH_LEN + IDX[text.charCodeAt(i)]!;
-  return num;
-}
-
 export function incrementStringInBase64(str: string): string {
   const n = str.length;
   for (let i = n - 1; i >= 0; i--) {
@@ -112,6 +104,14 @@ export function incrementStringInBase64(str: string): string {
   }
   // all digits were max, prepend next and reset the rest
   return base64Alphabet[1] + FIRST_CHAR.repeat(n);
+}
+
+/** The number a `numberToBase64` string stands for, from `from` to its end. */
+export function base64ToNumber(text: string, from = 0): number {
+  let num = 0;
+  for (let i = from; i < text.length; i++)
+    num = num * ALPH_LEN + IDX[text.charCodeAt(i)]!;
+  return num;
 }
 
 /**

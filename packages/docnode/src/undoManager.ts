@@ -215,13 +215,6 @@ export class UndoManager {
   }
 }
 
-/** The definition of the root state that receives edit operations, if any. */
-function editDefinition(doc: Doc): InternalStateDefinition | undefined {
-  const key = doc["_editStateKey"];
-  if (key === undefined) return undefined;
-  return doc["_resolvedNodeDefs"].get(doc.root.type)?.state[key];
-}
-
 function importStack(items: UndoHistoryItem[], maxSteps: number) {
   const retainedItems = maxSteps === 0 ? [] : items.slice(-maxSteps);
   return retainedItems.map((item) => ({
@@ -282,6 +275,13 @@ function isPatchRow([, ...entries]: unknown[]): boolean {
       return false;
   }
   return true;
+}
+
+/** The definition of the root state that receives edit operations, if any. */
+function editDefinition(doc: Doc): InternalStateDefinition | undefined {
+  const key = doc["_editStateKey"];
+  if (key === undefined) return undefined;
+  return doc["_resolvedNodeDefs"].get(doc.root.type)?.state[key];
 }
 
 /** A node of a tree row: a string, a number (its distance), or `0`, none. */

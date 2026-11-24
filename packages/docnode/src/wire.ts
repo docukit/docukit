@@ -169,21 +169,14 @@ export const literal = (id: string) =>
 const withSession = (id: string | 0) =>
   id !== 0 && lastDot(id) !== -1 ? id : undefined;
 
-/**
- * The session before the dot at `dot` of a head, as `JSON.parse` returns a
- * short string of a batch: internalized. The text store compares sessions
- * many times to order concurrent letters, and two internalized strings
- * compare by identity. Batches come from a few sessions in turn: the last
- * ones are kept.
- */
-function sessionOf(named: string, dot: number): string {
-  // Cut and compared, a short session is found faster than with `startsWith`.
-  const cut = named.slice(0, dot);
-  for (const session of recentSessions) if (cut === session) return session;
-  const session = String(JSON.parse(JSON.stringify(cut)));
-  recentSessions[nextRecent] = session;
-  nextRecent = (nextRecent + 1) % recentSessions.length;
-  return session;
+/** The `count` nodes from `id` on (see `Run`). */
+function nodesFrom(id: string, count: number): string[] {
+  const dot = lastDot(id);
+  const prefix = id.slice(0, dot + 1);
+  const clock = clockAt(id, dot);
+  const ids: string[] = [];
+  for (let i = 0; i < count; i++) ids.push(prefix + numberToBase64(clock + i));
+  return ids;
 }
 
 /** Whether a batch of only `row` leaves out its brackets: not `[[text, ...state]]`. */
@@ -324,6 +317,44 @@ export class Encoder {
 }
 
 /**
+ * How many patch entries from `at` on are nodes one right after the other
+ * (see `Run`) with the same keys.
+ */
+function runLength(
+  ids: readonly string[],
+  states: readonly Record<string, string>[],
+  at: number,
+) {
+  const keys = Object.keys(states[at]!);
+  let length = 1;
+  run.start(ids[at]!);
+  while (
+    at + length < ids.length &&
+    run.follows(ids[at + length]!) &&
+    hasKeys(states[at + length]!, keys)
+  )
+    length++;
+  return length;
+}
+
+/**
+ * The session before the dot at `dot` of a head, as `JSON.parse` returns a
+ * short string of a batch: internalized. The text store compares sessions
+ * many times to order concurrent letters, and two internalized strings
+ * compare by identity. Batches come from a few sessions in turn: the last
+ * ones are kept.
+ */
+function sessionOf(named: string, dot: number): string {
+  // Cut and compared, a short session is found faster than with `startsWith`.
+  const cut = named.slice(0, dot);
+  for (const session of recentSessions) if (cut === session) return session;
+  const session = String(JSON.parse(JSON.stringify(cut)));
+  recentSessions[nextRecent] = session;
+  nextRecent = (nextRecent + 1) % recentSessions.length;
+  return session;
+}
+
+/**
  * The state patch row: `[PATCH, node, key, value, ...]`, and for nodes one
  * after the other with the same keys (see `runLength`), `[node, count], key,
  * column` per key (see the format).
@@ -362,22 +393,19 @@ function indexBefore(written: string, dot: number): number {
   return index;
 }
 
-/** The `count` nodes from `id` on (see `Run`). */
-function nodesFrom(id: string, count: number): string[] {
-  const dot = lastDot(id);
-  const prefix = id.slice(0, dot + 1);
-  const clock = clockAt(id, dot);
-  const ids: string[] = [];
-  for (let i = 0; i < count; i++) ids.push(prefix + numberToBase64(clock + i));
-  return ids;
-}
-
 /** Whether `state` has `keys`, in that order, and no other. */
 function hasKeys(state: Record<string, string>, keys: readonly string[]) {
   let index = 0;
   for (const key in state) if (keys[index++] !== key) return false;
   return index === keys.length;
 }
+
+const NO_SESSIONS: readonly string[] = [];
+
+/** The sessions of the last heads decoded, internalized. */
+const recentSessions = ["", "", "", ""];
+/** Where the next new session goes, in turn: kept in place, none moves. */
+let nextRecent = 0;
 
 /** The batch of a transaction as `Operations`. */
 export function encodeOperations(
@@ -475,34 +503,6 @@ export function encodeOperations(
   if (rows.length === 2 && isFlat(row)) return [head, ...row];
   rows[0] = head;
   return rows;
-}
-
-const NO_SESSIONS: readonly string[] = [];
-
-/** The sessions of the last heads decoded, internalized. */
-const recentSessions = ["", "", "", ""];
-/** Where the next new session goes, in turn: kept in place, none moves. */
-let nextRecent = 0;
-
-/**
- * How many patch entries from `at` on are nodes one right after the other
- * (see `Run`) with the same keys.
- */
-function runLength(
-  ids: readonly string[],
-  states: readonly Record<string, string>[],
-  at: number,
-) {
-  const keys = Object.keys(states[at]!);
-  let length = 1;
-  run.start(ids[at]!);
-  while (
-    at + length < ids.length &&
-    run.follows(ids[at + length]!) &&
-    hasKeys(states[at + length]!, keys)
-  )
-    length++;
-  return length;
 }
 
 /** Reads a batch: its head, tree rows and state patch (see `TextDecoder`). */

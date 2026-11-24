@@ -79,6 +79,58 @@ export function stringifyJson(value: unknown): string {
 }
 
 /**
+ * - Starts the tx if it's idle,
+ * - Executes the callback,
+ * - Rolls back if it fails,
+ * - Schedules the commit at the end of the microtask.
+ */
+export function withTransaction(
+  doc: Doc,
+  fn: () => void,
+  isApplyOperations = false,
+): void {
+  if (
+    doc["_lifeCycleStage"] === "change" ||
+    doc["_lifeCycleStage"] === "disposed"
+  )
+    throw new Error(
+      `You can't trigger an update inside a ${doc["_lifeCycleStage"]} stage`,
+    );
+
+  if (doc["_lifeCycleStage"] === "normalize2") {
+    throw new Error(
+      "Strict mode has caught an error: normalize listeners are not idempotent. I.e, they should not mutate the document on the second pass.",
+    );
+  }
+
+  const isNewTx = doc["_lifeCycleStage"] === "idle";
+  if (isNewTx) {
+    doc["_lifeCycleStage"] = "update";
+    // One commit pending at a time: a transaction committed early (forceCommit)
+    // leaves its microtask to the next one.
+    if (!doc["_commitScheduled"]) {
+      doc["_commitScheduled"] = true;
+      queueMicrotask(() => {
+        doc["_commitScheduled"] = false;
+        // A forceCommit can put the stage into idle mode and there is no need to commit again.
+        if (doc["_lifeCycleStage"] === "update") doc.forceCommit();
+      });
+    }
+  }
+
+  try {
+    return fn();
+  } catch (errorInUpdate) {
+    try {
+      doc.abort();
+    } catch (errorInRevert) {
+      console.error("Error applying inverse operations: ", errorInRevert);
+    }
+    if (!isApplyOperations) throw errorInUpdate;
+  }
+}
+
+/**
  * What `JSON.parse(JSON.stringify(value))` gives, without the text in
  * between, or `undefined` where `JSON.stringify` writes nothing. `key` is
  * what a `toJSON` method receives. A stored document is made of these, and
@@ -136,58 +188,6 @@ export function jsonCopy(value: unknown, key = ""): Json | undefined {
     else out[name] = item;
   }
   return out;
-}
-
-/**
- * - Starts the tx if it's idle,
- * - Executes the callback,
- * - Rolls back if it fails,
- * - Schedules the commit at the end of the microtask.
- */
-export function withTransaction(
-  doc: Doc,
-  fn: () => void,
-  isApplyOperations = false,
-): void {
-  if (
-    doc["_lifeCycleStage"] === "change" ||
-    doc["_lifeCycleStage"] === "disposed"
-  )
-    throw new Error(
-      `You can't trigger an update inside a ${doc["_lifeCycleStage"]} stage`,
-    );
-
-  if (doc["_lifeCycleStage"] === "normalize2") {
-    throw new Error(
-      "Strict mode has caught an error: normalize listeners are not idempotent. I.e, they should not mutate the document on the second pass.",
-    );
-  }
-
-  const isNewTx = doc["_lifeCycleStage"] === "idle";
-  if (isNewTx) {
-    doc["_lifeCycleStage"] = "update";
-    // One commit pending at a time: a transaction committed early (forceCommit)
-    // leaves its microtask to the next one.
-    if (!doc["_commitScheduled"]) {
-      doc["_commitScheduled"] = true;
-      queueMicrotask(() => {
-        doc["_commitScheduled"] = false;
-        // A forceCommit can put the stage into idle mode and there is no need to commit again.
-        if (doc["_lifeCycleStage"] === "update") doc.forceCommit();
-      });
-    }
-  }
-
-  try {
-    return fn();
-  } catch (errorInUpdate) {
-    try {
-      doc.abort();
-    } catch (errorInRevert) {
-      console.error("Error applying inverse operations: ", errorInRevert);
-    }
-    if (!isApplyOperations) throw errorInUpdate;
-  }
 }
 
 const isJsonList = (json: Json): json is readonly Json[] => Array.isArray(json);
