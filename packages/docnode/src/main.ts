@@ -1084,7 +1084,7 @@ export class Doc {
 
   private _nodeFromTree([id, type, stored]: JsonTree): DocNode {
     const definition = this._storedDefinition(type);
-    const state: Record<string, unknown> = {};
+    const state = new definition.Values();
     for (const key in stored) {
       const value = stored[key]!;
       // A text value is JSON, any other a JSON string.
@@ -1340,13 +1340,22 @@ function resolve(config: DocConfig): Resolved {
   const RootNode = defineNode({ type: config.type });
   nodeDefs.unshift(RootNode);
   nodeDefs.forEach((nodeDef) => {
-    const resolvedNodeDef = resolvedDefs.get(nodeDef.type) ?? {
+    const Values = class {
+      [key: string]: string;
+    };
+    const resolvedNodeDef: ResolvedNodeDefinition = resolvedDefs.get(
+      nodeDef.type,
+    ) ?? {
       type: nodeDef.type,
       state: {},
       defaultState: {},
-      defaultStrings: {},
+      // An instance with every key of the type, each a string first: V8
+      // gives the values of stored nodes a slot per key, and lets a slot hold
+      // a number without a box of its own.
+      defaultStrings: new Values(),
       defaultJson: {},
       methods: undefined as unknown as ResolvedNodeDefinition["methods"],
+      Values,
     };
 
     for (const key in nodeDef.state) {

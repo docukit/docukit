@@ -350,7 +350,7 @@ export function readJsonDoc(doc: Doc, json: JsonDoc): void {
       const type = names[index]!;
       const definition = (definitions[index] ??=
         doc["_storedDefinition"](type));
-      const state: Record<string, unknown> = {};
+      const state = new definition.Values();
       for (let count = stateColumn.next(); count > 0; count--) {
         const code = keyColumn.next();
         const key = names[code >> 1]!;

@@ -162,6 +162,11 @@ export type ResolvedNodeDefinition = UnsafeDefinition & {
   /** Each default as JSON, which a stored document compares values with. */
   defaultJson: Record<string, Json>;
   methods: (node: DocNode) => NodeState.Methods<UnsafeDefinition>;
+  /**
+   * Makes the values of a stored node: a class per type, which V8 sizes to
+   * the keys of the type (see `resolve`), where an object literal takes 4.
+   */
+  Values: new () => Record<string, unknown>;
   /** How the letters of its text inherit state (see `defineText`). */
   rules?: Rules | undefined;
 };
