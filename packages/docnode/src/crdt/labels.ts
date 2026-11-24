@@ -92,6 +92,12 @@ type Entry = {
   at: Stamp | undefined;
   /** Only if it was ever moved: where its author saw it before moving. */
   back: Back | undefined;
+  /**
+   * The stamp of each key written in this life. The values its insert wrote
+   * have `BORN`, its stamp: shared, like Yjs, where the id of the `Item` is
+   * the stamp of its value, or Loro's `MapValue`. Frozen, and shared by every
+   * entry with the same keys, while it holds `BORN` only (see `#setStamp`).
+   */
   stamps: Record<string, Stamp>;
   /** Stamp of the insert of this life: older state writes do not apply. */
   born: Stamp | undefined;
@@ -540,7 +546,7 @@ class Engine implements CrdtEngine {
       pos: "",
       at: undefined,
       back: undefined,
-      stamps: {},
+      stamps: NO_STAMPS,
       born: undefined,
       pending: undefined,
       node: undefined,
@@ -671,10 +677,9 @@ class Engine implements CrdtEngine {
     const states = classic[1];
     for (const id in states) {
       const entry = this.#entries.get(id)!;
-      const stamps = entry.stamps;
       // The values an insert writes share its stamp (see `#birthStamp`).
       const at = fresh.has(id) ? entry.born! : stamp;
-      for (const key in states[id]) stamps[key] = at;
+      for (const key in states[id]) this.#setStamp(entry, key, at);
       if (entry.life > 0) lives[id] = entry.life;
     }
     // What the core encoded, without the tree rows: the labels say it. A
@@ -1158,23 +1163,73 @@ class Engine implements CrdtEngine {
     if (entry.born && compare(stamp, entry.born) <= 0) return;
     entry.born = stamp;
     const defaults = this.#doc["_resolvedNodeDefs"].get(entry.type!)!;
-    for (const key in entry.stamps) {
-      if (compare(entry.stamps[key]!, stamp) >= 0) continue;
-      delete entry.stamps[key];
-      this.#writeState(entry, key, defaults.defaultStrings[key]!);
+    const stamps = entry.stamps;
+    let kept: Record<string, Stamp> | undefined;
+    for (const key in stamps) {
+      // What the older insert wrote (`BORN`) is older too.
+      const at = stamps[key]!;
+      if (at !== BORN && compare(at, stamp) >= 0) (kept ??= {})[key] = at;
+      else this.#writeState(entry, key, defaults.defaultStrings[key]!);
     }
+    entry.stamps = kept ?? NO_STAMPS;
   }
 
   #mergeState(entry: Entry, key: string, value: string, stamp: Stamp) {
-    const current = entry.stamps[key];
+    const current = stampOf(entry, key);
     if (current && compare(stamp, current) <= 0) return;
     // The insert's own values share its stamp.
     // A key the newer insert left at its default.
     /* v8 ignore next -- @preserve */
     if (entry.born && compare(stamp, entry.born) < 0) return;
-    entry.stamps[key] = stamp;
+    this.#setStamp(entry, key, stamp);
     if (entry.node) this.#writeState(entry, key, value);
     else (entry.pending ??= {})[key] = value;
+  }
+
+  /**
+   * Sets the stamp of `key`: `BORN` if it is the insert's. Stamps of
+   * inserts alone stay shared (see `Entry.stamps`): copied on a later write.
+   */
+  #setStamp(entry: Entry, key: string, stamp: Stamp) {
+    const stamps = entry.stamps;
+    const born = entry.born !== undefined && compare(stamp, entry.born) === 0;
+    if (!Object.isFrozen(stamps)) {
+      stamps[key] = born ? BORN : stamp;
+      return;
+    }
+    if (!born) {
+      entry.stamps = { ...stamps, [key]: stamp };
+      return;
+    }
+    if (stamps[key] === BORN) return;
+    // Its keys, in their order: that of the stored stamps (see `#extra`).
+    let keys = "";
+    for (const name in stamps) keys += `${name}\0`;
+    keys += key;
+    let shared = bornStamps.get(keys);
+    if (!shared) {
+      // Key orders of node types are few: a full cache is only a bug's.
+      /* v8 ignore next -- @preserve */
+      if (bornStamps.size >= BORN_STAMPS) bornStamps.clear();
+      shared = Object.freeze({ ...stamps, [key]: BORN });
+      bornStamps.set(keys, shared);
+    }
+    entry.stamps = shared;
+  }
+
+  /**
+   * Gives back the stamps of `entry` the insert's stamp (`BORN`) stands for,
+   * before it forgets that stamp.
+   */
+  #unborn(entry: Entry) {
+    const born = entry.born!;
+    const stamps: Record<string, Stamp> = {};
+    for (const key in entry.stamps) {
+      const at = entry.stamps[key]!;
+      stamps[key] = at === BORN ? born : at;
+    }
+    entry.stamps = stamps;
+    entry.born = undefined;
   }
 
   #writeState(entry: Entry, key: string, value: string) {
@@ -1798,7 +1853,7 @@ class Engine implements CrdtEngine {
     const written = entry.node?.["_stateToJson"]() ?? {};
     const stamps: Json[] = [];
     for (const key in entry.stamps) {
-      const stamp = entry.stamps[key]!;
+      const stamp = stampOf(entry, key)!;
       if (key in written && compare(stamp, at) === 0) continue;
       stamps.push(key, stamp[0], names.index(stamp[1]));
     }
@@ -1817,17 +1872,17 @@ class Engine implements CrdtEngine {
     entry.pos = pos;
     entry.key = pos;
     entry.at = at;
-    // A stamp equal to the label's is not written: every key has it.
-    for (const key in state) entry.stamps[key] = at;
-    entry.born = at;
     const extra = label.extra;
-    if (!isRecord(extra)) return;
     const stamp = (
       clock: Json | undefined,
       session: Json | undefined,
     ): Stamp => [num(clock), names.session(session)];
+    entry.born =
+      isRecord(extra) && isList(extra.o) ? stamp(extra.o[0], extra.o[1]) : at;
+    // A stamp equal to the label's is not written: every key has it.
+    for (const key in state) this.#setStamp(entry, key, at);
+    if (!isRecord(extra)) return;
     if (extra.l !== undefined) entry.life = num(extra.l);
-    if (isList(extra.o)) entry.born = stamp(extra.o[0], extra.o[1]);
     if (extra.b !== undefined)
       entry.back = { parent: names.read(extra.b), pos: text(extra.p) };
     if (extra.u !== undefined) {
@@ -1840,7 +1895,11 @@ class Engine implements CrdtEngine {
     }
     const stamps = list(extra.s);
     for (let at = 0; at < stamps.length; at += 3)
-      entry.stamps[text(stamps[at])] = stamp(stamps[at + 1], stamps[at + 2]);
+      this.#setStamp(
+        entry,
+        text(stamps[at]),
+        stamp(stamps[at + 1], stamps[at + 2]),
+      );
   }
 
   /** Rebuilds the labels once `Doc.fromJSON` built the tree. */
@@ -1862,7 +1921,7 @@ class Engine implements CrdtEngine {
           fugue.create(child.id, child.id, node.id, child.prev?.id);
           entry.pos = entry.key = child.id;
           entry.at = ZERO;
-          for (const key in child["_state"]) entry.stamps[key] = ZERO;
+          for (const key in child["_state"]) this.#setStamp(entry, key, ZERO);
           this.#entries.set(child.id, entry);
           walk(child);
         }
@@ -1891,7 +1950,7 @@ class Engine implements CrdtEngine {
       if (entry.away) this.#waitForPlace(entry.key, entry);
       this.#entries.set(child.id, entry);
     });
-    labels.rootStamps((key, stamp) => (root.stamps[key] = stamp));
+    labels.rootStamps((key, stamp) => this.#setStamp(root, key, stamp));
     labels.limbo((id, type, label, state) => {
       this.#offTree = true;
       const entry = this.#newEntry(id, 0, type);
@@ -1902,7 +1961,7 @@ class Engine implements CrdtEngine {
       } else {
         // Its insert has not arrived: it is not born yet, and the insert,
         // older than the move or write that made it known, still applies.
-        entry.born = undefined;
+        this.#unborn(entry);
         if (!isObjectEmpty(state)) entry.pending = state;
       }
       entry.key = entry.pos;
@@ -1984,14 +2043,14 @@ class Engine implements CrdtEngine {
       // As its insert would: state written before this life began is reset.
       if (type !== undefined) this.#mergeBirth(entry, scratch.born!);
       for (const key in state) {
-        this.#mergeState(entry, key, state[key]!, scratch.stamps[key]!);
+        this.#mergeState(entry, key, state[key]!, stampOf(scratch, key)!);
       }
       for (const key in scratch.stamps) {
         if (key in state) continue;
         // Only a typed node leaves a written value out: its key's default.
         const defaults = this.#doc["_resolvedNodeDefs"].get(entry.type!)!;
         const value = defaults.defaultStrings[key]!;
-        this.#mergeState(entry, key, value, scratch.stamps[key]!);
+        this.#mergeState(entry, key, value, stampOf(scratch, key)!);
       }
     };
     // The stored tree, read by a document of the same node types.
@@ -2024,6 +2083,21 @@ function stateOf(value: Json | undefined) {
 }
 
 const ZERO: Stamp = [0, ""];
+/** Stands for `Entry.born` in `Entry.stamps`. */
+const BORN: Stamp = [-1, ""];
+const NO_STAMPS: Record<string, Stamp> = Object.freeze({});
+/**
+ * The shared stamps of inserts, by their keys (see `#setStamp`). One for all
+ * engines: a `Map` per engine made crdt-benchmarks B3.1 (1,540 documents)
+ * 40 % slower.
+ */
+const bornStamps = new Map<string, Record<string, Stamp>>();
+const BORN_STAMPS = 1024;
+/** The stamp of `key` on `entry`, if it was written in this life. */
+const stampOf = (entry: Entry, key: string) => {
+  const stamp = entry.stamps[key];
+  return stamp === BORN ? entry.born : stamp;
+};
 
 /** A label as stored: its key, its stamp, and what else it has. */
 type Label = {
