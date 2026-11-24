@@ -664,6 +664,22 @@ function readPatch(row: readonly Json[], from: number): StatePatch {
   return patch ?? {};
 }
 
+/**
+ * Whether a batch has only text rows: no tree row and no state patch. Read
+ * as `decodeOperations` reads it, without decoding it.
+ */
+export function isTextBatch(batch: Operations): boolean {
+  const isText = (tag: Json | undefined) =>
+    tag !== 0 && tag !== 1 && tag !== 2 && tag !== PATCH;
+  const only = batch[1];
+  if (typeof only === "string" || typeof only === "number") return isText(only);
+  for (let index = 1; index < batch.length; index++) {
+    const row = batch[index];
+    if (isList(row) && !isText(row[0])) return false;
+  }
+  return true;
+}
+
 /** The ordered operations and state patch that `Operations` stands for. */
 export function decodeOperations(operations: Operations): DraftOperations {
   decoder.reset(operations[0]);

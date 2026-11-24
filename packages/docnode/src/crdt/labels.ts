@@ -30,6 +30,7 @@ import {
 import {
   decodeOperations,
   encodeOperations,
+  isTextBatch,
   list,
   num,
   text,
@@ -963,6 +964,9 @@ class Engine implements CrdtEngine {
     const record = engineRow(operations, RECORD);
     const snapshot = engineRow(operations, SNAPSHOT);
     if (!record && !snapshot) {
+      // Only text, as another replica's typing, names no node: it applies
+      // as it came, decoded once.
+      if (isTextBatch(operations)) return this.#apply(operations, flags);
       // An undo, which may name nodes that changed since.
       return applyLocal(this.#apply, operations, flags, (draft) =>
         this.#prepareClassic(draft),
@@ -1651,9 +1655,6 @@ class Engine implements CrdtEngine {
     };
     const mapId = (id: string | 0) => (id === 0 ? 0 : name(id));
     const [ordered, patch] = operations;
-    // Only text, as a batch of another replica's typing: no node to name.
-    if (isObjectEmpty(patch) && ordered.every((op) => op[0] === 3))
-      return operations;
     const out: OrderedOperation[] = ordered.flatMap(
       (op): OrderedOperation[] => {
         if (op[0] === 0) {
