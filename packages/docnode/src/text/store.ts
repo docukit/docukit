@@ -420,9 +420,13 @@ export class TextStore extends TextEngine {
   #roots = new Map<string, Run>();
   protected _flows: Flow[] = [];
   #sorted: Flow[] | undefined;
-  /** Each side's, made with its first kid. */
+  /**
+   * Each side's, once built (see `#ensureKids`). Only an insert whose
+   * origins are no longer neighbours needs them (see `#placeAtOrigins`):
+   * until one comes, nothing keeps them.
+   */
   #kids: [Kids?, Kids?] = [];
-  #kidsReady = true;
+  #kidsReady = false;
   #pending: TextEdit[] = [];
   /** Runs that may now join the run after them (see `#settle`). */
   #cut: Run[] = [];
@@ -606,11 +610,33 @@ export class TextStore extends TextEngine {
     return index < kids.length ? { run: kids[index]!, off: 0 } : undefined;
   }
 
+  /**
+   * Whether the element has a right child: the element right after it, with
+   * tombstones, has it as left origin. The first of a right subtree is right
+   * after its parent, and anything else after it has an earlier origin.
+   */
   #hasRightChild(run: Run, off: number): boolean {
-    return (
-      off < run.len - 1 ||
-      (this.#kidsOf(1, run.s, run.c + off)?.length ?? 0) > 0
-    );
+    if (off < run.len - 1) return true;
+    const next = run.next;
+    return next !== undefined && this.#originIs(next, run.s, run.c + off);
+  }
+
+  /**
+   * Whether the left origin of the first letter of `run` is letter `c` of
+   * session `s` (`-1`: the root of node `s`). Without allocating, unlike
+   * `#findOrigin`.
+   */
+  #originIs(run: Run, s: string, c: number): boolean {
+    // Fugue paper, Lemma 8(a): a left child has its parent's left origin. Its
+    // parent starts a run, most often the next one: found without a lookup.
+    while (run.side === 0) {
+      const next = run.next;
+      run =
+        next?.c === run.pc && next.s === run.ps
+          ? next
+          : this.#runAt(run.ps!, run.pc)!;
+    }
+    return run.pc === c && run.ps === s;
   }
 
   #leftmost(element: Element): Element {
@@ -708,7 +734,7 @@ export class TextStore extends TextEngine {
   }
 
   #addKid(run: Run): void {
-    this.#ensureKids();
+    if (!this.#kidsReady) return;
     const bySession = this.#kidsIn(run.side, run.ps!);
     const list = kidsAt(bySession, run.pc);
     if (!list) {
@@ -724,14 +750,21 @@ export class TextStore extends TextEngine {
   }
 
   #removeKid(run: Run): void {
+    if (!this.#kidsReady) return;
     const list = this.#kidsOf(run.side, run.ps!, run.pc)!;
     list.splice(list.indexOf(run), 1);
   }
 
   /** Places a new run where its parent, side and right origin say. */
   #place(run: Run, parent: Element): void {
+    run.flow = parent.run.flow;
+    if (!this.#placeAtOrigins(run, parent)) this.#placeAmongKids(run, parent);
+    this.#addKid(run);
+  }
+
+  /** `#place` where the kids of `parent` decide (FugueMax). */
+  #placeAmongKids(run: Run, parent: Element): void {
     const { run: parentRun, off } = parent;
-    run.flow = parentRun.flow;
     if (run.side === 1) {
       const next = this.#nextSibling(parentRun, off, run);
       if (next) this.#linkBefore(this.#startingAt(this.#leftmost(next)), run);
@@ -745,7 +778,41 @@ export class TextStore extends TextEngine {
           : parent;
       this.#linkBefore(this.#startingAt(target), run);
     }
-    this.#addKid(run);
+  }
+
+  /**
+   * Places `run` right after its left origin when the element there is its
+   * right origin (or the end, for none): the only place it can go, so no
+   * kids are needed. As in Yjs (`Item.integrate`, `left.right === right`)
+   * and diamond-types (`merge.rs`, "almost always true"). Always so for
+   * letters typed here; for those of another replica, unless something
+   * was inserted between their origins since. Returns whether it did.
+   */
+  #placeAtOrigins(run: Run, parent: Element): boolean {
+    const parentRun = parent.run;
+    const off = parent.off;
+    if (run.side === 1) {
+      // A right child: its left origin is its parent.
+      if (off < parentRun.len - 1) {
+        if (run.rs !== parentRun.s || run.rc !== parentRun.c + off + 1)
+          return false;
+        this.#linkBefore(this.#split(parentRun, off + 1), run);
+        return true;
+      }
+      const next = parentRun.next;
+      if (next ? run.rs !== next.s || run.rc !== next.c : run.rs !== undefined)
+        return false;
+      this.#linkAfter(parentRun, run);
+      return true;
+    }
+    // A left child, before its parent: its left origin is its parent's.
+    if (off === 0) {
+      const prev = parentRun.prev!;
+      const end = prev.c === -1 ? -1 : prev.c + prev.len - 1;
+      if (!this.#originIs(parentRun, prev.s, end)) return false;
+    }
+    this.#linkBefore(this.#startingAt(parent), run);
+    return true;
   }
 
   // ----- inherited state ----------------------------------------------------
@@ -1068,7 +1135,6 @@ export class TextStore extends TextEngine {
       next ? next.run.c + next.off : 0,
     );
     run.state = state;
-    this.#ensureKids();
     const touched: Run[] = [];
     const inverse = this.#insertRun(run, parent, touched);
     this.#settle(doc, touched);
@@ -1170,7 +1236,6 @@ export class TextStore extends TextEngine {
     const root = this.#rootOf(node);
     const first = this._positions.seek(root, from);
     const [s, c] = this.#mint(doc, 0);
-    this.#ensureKids();
     // Deleting needs no new lamport: it wins over the undos it saw at theirs.
     const lamport = this.#deletes;
     const touched: Run[] = [];
@@ -1376,7 +1441,6 @@ export class TextStore extends TextEngine {
   // ----- applying operations ---------------------------------------------
 
   apply(doc: Doc, payload: TextEdit): EditResult {
-    this.#ensureKids();
     const touched: Run[] = [];
     const result = this.#applyRaw(doc, payload, touched);
     if (result === PENDING) {
@@ -2318,7 +2382,6 @@ export class TextStore extends TextEngine {
     }
     for (const [session, runs] of bySession)
       this.#index.set(session, SessionRuns.from(runs));
-    this.#kidsReady = false;
     // Each one as `toStored` wrote it: its payload after the kind.
     // TODO: to be decided. The cast trusts the stored document, like the rest
     // of `Doc.fromJSON`. Storing pending edits as arrays instead of JSON
@@ -2328,7 +2391,10 @@ export class TextStore extends TextEngine {
     return this;
   }
 
-  /** Builds the kid lists of a loaded store from its lists. */
+  /**
+   * Builds the kid lists from the lists, the first time an insert needs
+   * them: kids in list order are in sibling order. Kept from then on.
+   */
   #ensureKids(): void {
     if (this.#kidsReady) return;
     this.#kidsReady = true;
