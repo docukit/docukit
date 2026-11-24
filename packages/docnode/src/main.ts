@@ -95,10 +95,13 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     next: DocNode | undefined,
     attached: boolean,
   ) {
-    if (attached) this.#register(this.doc["_nodeMap"]);
-    this._set("parent", parent);
-    this._set("prev", prev);
-    this._set("next", next);
+    if (attached) DocNode.#register(this, this.doc["_nodeMap"]);
+    // @ts-expect-error - read-only property
+    this.parent = parent;
+    // @ts-expect-error - read-only property
+    this.prev = prev;
+    // @ts-expect-error - read-only property
+    this.next = next;
   }
 
   /**
@@ -281,16 +284,23 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
           // PART 3: Insert the range
           ops.onMoveRange(doc, this, laterSibling, newParent, newPrev, newNext);
 
-          this["_set"]("prev", newPrev);
-          if (newPrev) newPrev["_set"]("next", this);
-          else newParent["_set"]("first", this);
-          laterSibling["_set"]("next", newNext);
-          if (newNext) newNext["_set"]("prev", laterSibling);
-          else newParent["_set"]("last", laterSibling);
+          // @ts-expect-error - read-only property
+          this.prev = newPrev;
+          // @ts-expect-error - read-only property
+          if (newPrev) newPrev.next = this;
+          // @ts-expect-error - read-only property
+          else newParent.first = this;
+          // @ts-expect-error - read-only property
+          laterSibling.next = newNext;
+          // @ts-expect-error - read-only property
+          if (newNext) newNext.prev = laterSibling;
+          // @ts-expect-error - read-only property
+          else newParent.last = laterSibling;
 
           if (this.parent !== newParent) {
             this.to(laterSibling).forEach((node) => {
-              node["_set"]("parent", newParent);
+              // @ts-expect-error - read-only property
+              node.parent = newParent;
             });
           }
         }),
@@ -557,19 +567,15 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     return jsonState as NodeState.Stringified<T>;
   }
 
-  /** Puts the node and its descendants in `map`, without an iterator. */
-  #register(map: Map<string, DocNode>) {
-    map.set(this.id, this);
-    for (let child = this.first; child; child = child.next)
-      child.#register(map);
-  }
-
-  private _set(
-    prop: "parent" | "prev" | "next" | "first" | "last",
-    node: DocNode | undefined,
-  ) {
-    // @ts-expect-error - read-only property
-    this[prop] = node;
+  /**
+   * Puts `node` and its descendants in `map`, without an iterator. Static:
+   * a private method of the instances would cost each node a slot (the
+   * class brand).
+   */
+  static #register(node: DocNode, map: Map<string, DocNode>) {
+    map.set(node.id, node);
+    for (let child = node.first; child; child = child.next)
+      DocNode.#register(child, map);
   }
 }
 
@@ -997,7 +1003,8 @@ export class Doc {
       prev = node;
       this.#attachTree(node, json[3]);
     }
-    parent["_set"]("last", prev);
+    // @ts-expect-error - read-only property
+    parent.last = prev;
   }
 
   // TODO: Subdocs. This is not implemented yet
@@ -1116,11 +1123,14 @@ export class Doc {
           let current = target.last;
           for (const node of nodes) {
             node["_attachNode"](target, current, undefined, attached);
-            if (current) current["_set"]("next", node);
-            else target["_set"]("first", node);
+            // @ts-expect-error - read-only property
+            if (current) current.next = node;
+            // @ts-expect-error - read-only property
+            else target.first = node;
             current = node;
           }
-          target["_set"]("last", current);
+          // @ts-expect-error - read-only property
+          target.last = current;
           break;
         }
         case "prepend": {
@@ -1136,11 +1146,14 @@ export class Doc {
           for (let i = nodes.length - 1; i >= 0; i--) {
             const node = nodes[i]!;
             node["_attachNode"](parent, current.prev, current, attached);
-            if (current.prev) current.prev["_set"]("next", node);
-            current["_set"]("prev", node);
+            // @ts-expect-error - read-only property
+            if (current.prev) current.prev.next = node;
+            // @ts-expect-error - read-only property
+            current.prev = node;
             current = node;
           }
-          if (parent.first === target) parent["_set"]("first", nodes[0]);
+          // @ts-expect-error - read-only property
+          if (parent.first === target) parent.first = nodes[0];
           break;
         }
         case "after": {
@@ -1172,7 +1185,6 @@ export class Doc {
       throw new Error(
         `Node '${node.id}' cannot be inserted because it already exists in the doc.`,
       );
-    // Each link set by name: `_set` writes a property named at run time.
     // @ts-expect-error - read-only property
     node.parent = parent;
     // @ts-expect-error - read-only property

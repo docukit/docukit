@@ -9,10 +9,14 @@ export function detachRange(startNode: DocNode, endNode: DocNode) {
   const oldPrev = startNode.prev;
   const oldNext = endNode.next;
   const oldParent = startNode.parent!;
-  if (oldPrev) oldPrev["_set"]("next", oldNext);
-  else oldParent["_set"]("first", endNode.next);
-  if (oldNext) oldNext["_set"]("prev", oldPrev);
-  else oldParent["_set"]("last", startNode.prev);
+  // @ts-expect-error - read-only property
+  if (oldPrev) oldPrev.next = oldNext;
+  // @ts-expect-error - read-only property
+  else oldParent.first = endNode.next;
+  // @ts-expect-error - read-only property
+  if (oldNext) oldNext.prev = oldPrev;
+  // @ts-expect-error - read-only property
+  else oldParent.last = startNode.prev;
 }
 
 /**

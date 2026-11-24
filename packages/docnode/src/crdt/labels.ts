@@ -1426,9 +1426,12 @@ class Engine implements CrdtEngine {
   }
 
   #clearLinks(node: DocNode) {
-    node["_set"]("parent", undefined);
-    node["_set"]("prev", undefined);
-    node["_set"]("next", undefined);
+    // @ts-expect-error - read-only property
+    node.parent = undefined;
+    // @ts-expect-error - read-only property
+    node.prev = undefined;
+    // @ts-expect-error - read-only property
+    node.next = undefined;
   }
 
   #unlink(node: DocNode) {

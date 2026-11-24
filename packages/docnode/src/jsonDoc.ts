@@ -369,7 +369,8 @@ export function readJsonDoc(doc: Doc, json: JsonDoc): void {
       prev = node;
       attach(node);
     }
-    parent["_set"]("last", prev);
+    // @ts-expect-error - read-only property
+    parent.last = prev;
   };
   attach(root);
 }
