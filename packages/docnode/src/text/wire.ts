@@ -63,20 +63,19 @@ const isInherited = (key: Json | undefined) =>
 const keyInherited = (written: Json | undefined) =>
   typeof written === "number" ? String(-written - 1) : keyOf(list(written)[0]);
 
-/** Whether an insert row can take the next insert: its references are numbers. */
-const isJoinable = (row: readonly Json[]): row is Json[] => {
-  if (typeof row[0] !== "string") return false;
-  for (let at = 1; at < row.length; at++)
-    if (typeof row[at] !== "number") return false;
-  return true;
-};
-
 /**
  * A string after an insert's letters that reads as one of its letters
  * (`"'"`, `"<"`, `"^node"`, `"#hash"` or `"index.counter"`, its counter in
  * base 64): any other is the letters of the next insert of the row.
  */
 const LETTER = /^(?:'|<|[#^].*|\d*\.[-\w]+)$/s;
+
+/**
+ * Whether `written` reads as a letter (see `LETTER`). Each one starts with a
+ * character no further than `^`: typed letters, past it, skip the regex.
+ */
+const readsAsLetter = (written: string) =>
+  written.charCodeAt(0) <= 94 && LETTER.test(written);
 
 /** A state key as written: a number when it reads as one (`"0"` is `0`). */
 const numericKey = (key: string): Json =>
@@ -273,24 +272,29 @@ class TextRowEncoder extends Encoder {
     this._session = index;
     if (insert) {
       const content = op[3]!;
-      const row: [string | readonly Json[], ...LetterRef[]] = [
-        isList(content) ? content : text(content),
-      ];
-      this.#insertRefs(op, c, row);
+      const length = op.length;
+      // Written straight into the row it joins: no row of its own to copy.
+      const right = length > 4 ? this.ref(op[4]!, c, ABSOLUTE_RIGHT) : 0;
+      const parent = length > 5 ? this.#left(op[5]!, c) : 0;
       this._next = c + lettersOf(content).length;
-      if (!isJoinable(row)) {
-        rows.push(row);
-        return;
-      }
       // Inserts one after the other go in one row, without a pair of
-      // brackets each, unless the letters read as a reference.
-      if (last === undefined || LETTER.test(text(row[0]))) {
-        rows.push(row);
-        this._joinable = row;
-      } else {
-        last.push(...row);
-        this._joinable = last;
-      }
+      // brackets each, when their references are numbers, unless the
+      // letters read as a reference.
+      const joinable =
+        typeof content === "string" &&
+        typeof right === "number" &&
+        typeof parent === "number";
+      let row = last;
+      if (!joinable || row === undefined || readsAsLetter(content)) {
+        const own: [string | readonly Json[], ...LetterRef[]] = [
+          isList(content) ? content : text(content),
+        ];
+        rows.push(own);
+        row = own;
+      } else row.push(content);
+      if (length > 4) row.push(right);
+      if (length > 5) row.push(parent);
+      if (joinable) this._joinable = row;
       return;
     }
     const tag = Number(op[1]);
@@ -352,7 +356,7 @@ class TextRowDecoder extends Decoder {
       let end = start + 1;
       for (; end < row.length; end++) {
         const next = row[end];
-        if (typeof next === "string" && !LETTER.test(next)) break;
+        if (typeof next === "string" && !readsAsLetter(next)) break;
       }
       ordered.push(this.edit(row, start, end));
       start = end;
