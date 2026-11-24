@@ -152,3 +152,16 @@ describe("undo, after a peer added paragraphs above", () => {
     ]);
   });
 });
+
+describe("the caret, when a peer edits around it", () => {
+  test("stays in its paragraph when one change edits the ones above and below", () => {
+    const { a, b, sync } = createTwoPeers(["Hello", "World", "Again"]);
+    a.select(1, 2);
+    b.update(() => {
+      $typeAt(0, 0, "X");
+      $typeAt(2, 0, "Y");
+    });
+    sync();
+    expect(a.textsWithCaret()).toStrictEqual(["XHello", "Wo|rld", "YAgain"]);
+  });
+});

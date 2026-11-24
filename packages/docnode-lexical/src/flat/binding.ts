@@ -547,41 +547,64 @@ function $isPlainBlock(node: LexicalNode): boolean {
  * lines `[first, oldLast)` with `newCount` lines. A point in them moves with
  * the text around it, as if the region's text changed by one replacement
  * (see `mapOffset`): a remote edit next to the selection or inside it moves
- * it with the letters.
+ * it with the letters. When the region keeps its lines, only the point's own
+ * line counts: edits in other lines, even on both sides of it, leave it.
  */
 function mapSelection(
-  { anchor, focus }: LineSelection,
+  selection: LineSelection,
   old: Line[],
   next: Line[],
   first: number,
   oldLast: number,
   newCount: number,
 ) {
+  const sameLines = newCount === oldLast - first;
+  const move = (role: "anchor" | "focus") => {
+    const { line } = selection[role];
+    return sameLines && line >= first && line < oldLast
+      ? movePoint(selection, role, old, next, line, line + 1, 1)
+      : movePoint(selection, role, old, next, first, oldLast, newCount);
+  };
+  return { anchor: move("anchor"), focus: move("focus") };
+}
+
+/** Where one end of the selection goes: see `mapSelection`. */
+function movePoint(
+  selection: LineSelection,
+  role: "anchor" | "focus",
+  old: Line[],
+  next: Line[],
+  first: number,
+  oldLast: number,
+  newCount: number,
+) {
+  const point = selection[role];
+  if (point.line < first) return point;
+  if (point.line >= oldLast)
+    return {
+      line: point.line - oldLast + first + newCount,
+      offset: point.offset,
+    };
   const replacement = replacementOf(
     regionText(old, first, oldLast),
     regionText(next, first, first + newCount),
   );
   // Where a point is in the region's text: before or after it, it is before
   // or after the replacement too.
-  const at = (point: LinePoint) =>
-    point.line < first
+  const at = (each: LinePoint) =>
+    each.line < first
       ? -1
-      : point.line >= oldLast
+      : each.line >= oldLast
         ? Infinity
-        : offsetIn(old, first, point);
+        : offsetIn(old, first, each);
+  const { anchor, focus } = selection;
   const start = Math.min(at(anchor), at(focus));
   const end = Math.max(at(anchor), at(focus));
-  const move = (point: LinePoint, role: "anchor" | "focus") => {
-    if (point.line < first) return point;
-    if (point.line >= oldLast)
-      return {
-        line: point.line - oldLast + first + newCount,
-        offset: point.offset,
-      };
-    const offset = mapOffset(at(point), role, start, end, replacement);
-    return pointIn(next, first, offset);
-  };
-  return { anchor: move(anchor, "anchor"), focus: move(focus, "focus") };
+  return pointIn(
+    next,
+    first,
+    mapOffset(at(point), role, start, end, replacement),
+  );
 }
 
 /** The text of the lines `[from, to)`, their paragraph letters included. */
