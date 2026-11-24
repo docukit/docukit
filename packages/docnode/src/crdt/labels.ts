@@ -1651,6 +1651,9 @@ class Engine implements CrdtEngine {
     };
     const mapId = (id: string | 0) => (id === 0 ? 0 : name(id));
     const [ordered, patch] = operations;
+    // Only text, as a batch of another replica's typing: no node to name.
+    if (isObjectEmpty(patch) && ordered.every((op) => op[0] === 3))
+      return operations;
     const out: OrderedOperation[] = ordered.flatMap(
       (op): OrderedOperation[] => {
         if (op[0] === 0) {
