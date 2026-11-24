@@ -1,7 +1,7 @@
 import { Doc, type DocNode } from "../main.js";
 import { clockAt, lastDot, numberToBase64 } from "../idGenerator.js";
 import {
-  compactOperations,
+  Change,
   onApplyOperations,
   parseStateKey,
   stringifyStateKey,
@@ -364,17 +364,6 @@ const CYCLE_STEPS = 32;
 /** What a remote change runs instead of the normalize listeners: nothing. */
 const NO_LISTENERS: Doc["_normalizeListeners"] = new Set();
 
-/**
- * The change event of a batch the engine merged: it sends that batch on. A
- * merge is never undone, so its inverse is empty.
- */
-const mergeEvent = (doc: Doc, operations: Operations): ChangeEvent => ({
-  operations,
-  inverseOperations: compactOperations(doc["_inverseOperations"]),
-  diff: doc["_diff"],
-  flags: doc["_transactionFlags"],
-});
-
 class Engine implements CrdtEngine {
   #entries = new Map<string, Entry>();
   #deleted = new IdRanges();
@@ -640,15 +629,13 @@ class Engine implements CrdtEngine {
     const doc = this.#doc;
     this.#rootEntry();
     if (this.#remoteDiff === doc["_diff"]) {
-      // The event sends on the batch that came (see `mergeEvent`).
+      // The event sends on the batch that came (see `#applyOperations`).
       this.#remoteDiff = undefined;
       return;
     }
     const classic = doc["_operations"];
     const classicBatch = event.operations;
-    const inverse = doc["_inverseOperations"];
     const opsLength = classic[0].length;
-    const inverseLength = inverse[0].length;
     const diff = doc["_diff"];
     // A stored node is linked as it was: only new nodes are inserted.
     const fresh = diff.inserted;
@@ -710,8 +697,6 @@ class Engine implements CrdtEngine {
       this.#reconcile();
       doc["_lifeCycleStage"] = "change";
     }
-    if (inverse[0].length !== inverseLength)
-      event.inverseOperations = compactOperations(inverse);
     event.operations = this.#batch(
       { lamport, session, inserts, moves, deletes, lives, pending },
       textAndState,
@@ -1004,7 +989,8 @@ class Engine implements CrdtEngine {
         if (text.length > 0) onApplyOperations(doc, [text, {}]);
         // A merge is never undone: no inverse to encode for it.
         doc["_inverseOperations"] = [[], {}];
-        doc["_event"] = mergeEvent(doc, operations);
+        // Its change event sends that batch on.
+        doc["_event"] = new Change(doc, operations);
       },
       true,
     );

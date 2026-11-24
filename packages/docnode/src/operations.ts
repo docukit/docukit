@@ -1,5 +1,10 @@
 import { type Doc, type DocNode } from "./main.js";
-import { type Json, type UnsafeDefinition } from "./types.js";
+import {
+  type Diff,
+  type Json,
+  type TransactionFlags,
+  type UnsafeDefinition,
+} from "./types.js";
 import {
   detachRange,
   isObjectEmpty,
@@ -409,14 +414,35 @@ export const maybeTriggerListeners = (doc: Doc, ignoreEmptyDiff = false) => {
   const listeners = doc["_changeListeners"];
   if (listeners.size === 0) return;
   // Encoded once, for every listener.
-  const event = doc["_event"] ?? {
-    operations: receivedAsIs(doc) ?? compactOperations(doc["_operations"]),
-    inverseOperations: compactOperations(doc["_inverseOperations"]),
-    diff: doc["_diff"],
-    flags: doc["_transactionFlags"],
-  };
+  const event = doc["_event"] ?? new Change(doc);
   listeners.forEach((listener) => listener(event));
 };
+
+/**
+ * A transaction's change event. As Yjs's `YEvent` does with its `changes`,
+ * the inverse is encoded only when a listener reads it, and then once: a
+ * replica that receives a batch, or keeps no undo history, never pays for
+ * it. It reads what the transaction built, which no one changes after.
+ */
+export class Change {
+  declare operations: Operations;
+  declare diff: Diff;
+  declare flags: TransactionFlags;
+  #inverse: DraftOperations;
+  #encoded: Operations | undefined;
+  constructor(
+    doc: Doc,
+    operations = receivedAsIs(doc) ?? compactOperations(doc["_operations"]),
+  ) {
+    this.operations = operations;
+    this.diff = doc["_diff"];
+    this.flags = doc["_transactionFlags"];
+    this.#inverse = doc["_inverseOperations"];
+  }
+  get inverseOperations() {
+    return (this.#encoded ??= compactOperations(this.#inverse));
+  }
+}
 
 export function parseStateKey(
   node: DocNode,

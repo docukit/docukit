@@ -746,23 +746,29 @@ describe("applyOperations", () => {
 });
 
 describe("the change event", () => {
-  test("is plain data, with both batches already written", () => {
+  test("encodes its inverse when it is read, once", () => {
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
     const events: ChangeEvent[] = [];
     doc.onChange((event) => events.push(event));
     doc.root.append(doc.createNode(Text));
     doc.forceCommit();
-    const [event] = events;
-    expect(Object.keys({ ...event })).toStrictEqual([
+    const { id } = doc.root.first!;
+    doc.root.first!.delete();
+    doc.forceCommit();
+    const [, deleted] = events;
+    expect(Object.keys({ ...deleted })).toStrictEqual([
       "operations",
-      "inverseOperations",
       "diff",
       "flags",
     ]);
-    expect(JSON.parse(JSON.stringify(event))).toMatchObject({
-      operations: event!.operations,
-      inverseOperations: event!.inverseOperations,
-    });
+    // Read after the next transaction: it is still the delete's inverse.
+    doc.root.append(doc.createNode(Text));
+    doc.forceCommit();
+    const inverse = deleted!.inverseOperations;
+    expect(inverse).toBe(deleted!.inverseOperations);
+    expect(JSON.parse(JSON.stringify(inverse))).toStrictEqual(inverse);
+    doc.applyOperations(inverse);
+    expect(doc.getNodeById(id)?.parent).toBe(doc.root);
   });
 });
 
