@@ -75,8 +75,11 @@ export class ColumnWriter {
   encode(): string {
     let values = this.#values;
     let count = this.#count;
-    // A reader past the end reads zeros.
-    if (!this.#keepZeros) while (count > 0 && values[count - 1] === 0) count--;
+    // A reader past the end reads zeros: a column of only zeros is empty.
+    if (!this.#keepZeros) {
+      if (!this.#max) return "";
+      while (values[count - 1] === 0) count--;
+    }
     if (count === 0) return "";
     // Runs of one value, as `value, times`, when they take fewer numbers.
     const runs = this.#changes * 2 < count;
@@ -87,7 +90,8 @@ export class ColumnWriter {
       let at = 0;
       for (let index = 0; index < count; ) {
         const value = values[index]!;
-        let end = index + 1;
+        // One value all along is one run, not walked.
+        let end = this.#changes === 1 ? count : index + 1;
         while (end < count && values[end] === value) end++;
         pairs[at++] = value;
         pairs[at++] = end - index;
