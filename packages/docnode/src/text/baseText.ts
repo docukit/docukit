@@ -242,16 +242,20 @@ export class BaseText extends TextEngine {
   #boundary(flow: Flow, index: number): [number, Element] {
     // Before the index of positions is needed: typing at the start of every
     // text of many documents builds none.
-    if (index <= 0) return [0, { run: flow.head, off: 0 }];
-    const length = this.#positions.length(flow.head);
-    if (index > length) index = length;
-    const left = this.#positions.seek(flow.head, index - 1);
-    const right = this.#after(left)!;
-    return index < length &&
-      isHighSurrogate(left.run.text.charCodeAt(left.off)) &&
-      isLowSurrogate(right.run.text.charCodeAt(right.off))
-      ? [index + 1, right]
-      : [index, left];
+    if (index > 0) {
+      const length = this.#positions.length(flow.head);
+      if (index > length) index = length;
+      if (index > 0) {
+        const left = this.#positions.seek(flow.head, index - 1);
+        const right = this.#after(left)!;
+        return index < length &&
+          isHighSurrogate(left.run.text.charCodeAt(left.off)) &&
+          isLowSurrogate(right.run.text.charCodeAt(right.off))
+          ? [index + 1, right]
+          : [index, left];
+      }
+    }
+    return [0, { run: flow.head, off: 0 }];
   }
 
   lengthOf(node: string): number {
