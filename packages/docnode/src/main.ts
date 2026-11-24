@@ -1397,9 +1397,10 @@ function resolve(config: DocConfig): Resolved {
       resolved[2] = docState.key;
       resolved[3] = shared;
       rootDef.state[docState.key] = shared;
-      rootDef.defaultState[docState.key] = shared.fromJSON(undefined);
+      // Not kept: the default text would be an engine's state, and shared.
+      const empty = shared.fromJSON(undefined);
       rootDef.defaultStrings[docState.key] = JSON.stringify(
-        shared.toJSON?.(rootDef.defaultState[docState.key]),
+        shared.toJSON?.(empty),
       );
     }
     if (!nodeDef.type) throw new Error(`Node does not have a type property`);
