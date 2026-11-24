@@ -617,10 +617,9 @@ describe("stored document", () => {
       const doc = new Doc(config);
       const stored = doc.toJSON();
       Reflect.set(stored, 0, format);
-      // Its sessions are not a list.
       expect(() =>
         Doc.fromJSON({ ...config, id: doc.root.id }, stored),
-      ).toThrowError();
+      ).toThrowError(`Unsupported format: ${format}`);
     },
   );
 
