@@ -612,6 +612,8 @@ export class Doc {
   private _isForceCommitCallback = false;
   /** Whether a microtask will commit the transaction (see `withTransaction`). */
   protected _commitScheduled = false;
+  /** How many transactions ended: the number of the one being written. */
+  protected _commits = 0;
   protected _diff: Diff = {
     deleted: new Map(),
     inserted: new Set(),
@@ -709,6 +711,7 @@ export class Doc {
       updated: new Set(),
     };
     this["_lifeCycleStage"] = "idle";
+    this._commits++;
   }
 
   applyOperations(operations: ops.Operations, flags?: TransactionFlags) {
@@ -789,6 +792,7 @@ export class Doc {
       updated: new Set(),
     };
     this._lifeCycleStage = "idle";
+    this._commits++;
   }
 
   /** A node another replica inserted (see `_renewSession`). */

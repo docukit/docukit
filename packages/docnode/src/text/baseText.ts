@@ -140,10 +140,10 @@ export class BaseText extends TextEngine {
   /** Each distinct state, by its JSON (see `#intern`). */
   #states = new Map<string, State>();
   /**
-   * The operations of the transaction being written, and the first counter
+   * The transaction being written (see `Doc._commits`), and the first counter
    * it minted: letters of this session from it on came in the same batch.
    */
-  #txOps: unknown;
+  #tx = -1;
   #txStart = 0;
   #positions = new TreePositions<Run>();
   /** Where deleted letters were (see `Ghosts`). */
@@ -456,8 +456,8 @@ export class BaseText extends TextEngine {
       );
     }
     const counter = this.#counter;
-    if (this.#txOps !== doc["_operations"]) {
-      this.#txOps = doc["_operations"];
+    if (this.#tx !== doc["_commits"]) {
+      this.#tx = doc["_commits"];
       this.#txStart = counter;
     }
     this.#counter += length;
@@ -479,7 +479,7 @@ export class BaseText extends TextEngine {
     return (
       run.s === this.#session &&
       run.c + off >= this.#txStart &&
-      this.#txOps === doc["_operations"]
+      this.#tx === doc["_commits"]
     );
   }
 
