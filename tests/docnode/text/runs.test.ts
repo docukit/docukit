@@ -1,4 +1,5 @@
-import { Doc } from "@docukit/docnode";
+import { defineNode, defineText, Doc, type Operations } from "@docukit/docnode";
+import { labelsEngine } from "@docukit/docnode/crdt";
 import { describe, expect, test } from "vitest";
 
 import {
@@ -84,5 +85,71 @@ describe("runs are joined again", () => {
     doc.forceCommit();
     expect(runsOf(doc)).toStrictEqual([["-".repeat(600)]]);
     expect(runsOf(reload(doc))).toStrictEqual(runsOf(doc));
+  });
+
+  test("letters typed right after a backspace go after what it deleted, unless they inherit", () => {
+    const Plain = defineNode({ type: "plain", state: { t: defineText() } });
+    const both = {
+      type: "root",
+      extensions: [{ nodes: [Plain, Paragraph] }],
+      crdt: labelsEngine(),
+    };
+    const doc = new Doc(both);
+    const plain = doc.createNode(Plain);
+    const rich = doc.createNode(Paragraph);
+    doc.root.append(plain, rich);
+    const edit = (change: () => void) => {
+      change();
+      doc.forceCommit();
+    };
+    const backspaceAndType = (text: typeof plain.state.t) => {
+      edit(() => text.insert(0, "abc"));
+      edit(() => text.delete(1, 2));
+      edit(() => text.insert(1, "de"));
+    };
+    backspaceAndType(plain.state.t);
+    expect(runsOf(doc)[0]).toStrictEqual(["a", "--", "de"]);
+    // As in Yjs: deleting the new letters too joins them, one run.
+    edit(() => plain.state.t.delete(1, 2));
+    expect(runsOf(doc)[0]).toStrictEqual(["a", "----"]);
+    // Once letters are typed after them, they keep what is typed before.
+    edit(() => plain.state.t.insert(1, "g"));
+    edit(() => plain.state.t.insert(1, "f"));
+    expect(runsOf(doc)[0]).toStrictEqual(["a", "f", "----", "g"]);
+    // Letters that inherit go before: they would from a deleted one.
+    backspaceAndType(rich.state.t);
+    expect(runsOf(doc)[1]).toStrictEqual(["a", "de", "--"]);
+    const reloaded = Doc.fromJSON({ ...both, id: doc.root.id }, doc.toJSON());
+    expect(runsOf(reloaded)).toStrictEqual(runsOf(doc));
+  });
+
+  test("letters typed after a backspace stay before a letter of another session", () => {
+    const Plain = defineNode({ type: "plain", state: { t: defineText() } });
+    const config = {
+      type: "root",
+      extensions: [{ nodes: [Plain] }],
+      crdt: labelsEngine(),
+    };
+    const a = new Doc(config);
+    const node = a.createNode(Plain);
+    a.root.append(node);
+    node.state.t.insert(0, "abc");
+    a.forceCommit();
+    const b = Doc.fromJSON({ ...config, id: a.root.id }, a.toJSON());
+    b.forceCommit();
+    const sent: Operations[] = [];
+    b.onChange((event) => sent.push(event.operations));
+    const other = b.getNodeById(node.id);
+    if (other?.is(Plain)) other.state.t.insert(3, "x");
+    b.forceCommit();
+    a.applyOperations(sent[0]!, { skipUndo: true });
+    a.forceCommit();
+    node.state.t.delete(2, 1);
+    a.forceCommit();
+    node.state.t.insert(2, "d");
+    a.forceCommit();
+    // After the deleted letter, the new one would need the other session's
+    // id as its right origin: more bytes on every update that types on.
+    expect(runsOf(a)).toStrictEqual([["ab", "d", "-", "x"]]);
   });
 });

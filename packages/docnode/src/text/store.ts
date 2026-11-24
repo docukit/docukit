@@ -1088,7 +1088,29 @@ export class TextStore extends TextEngine {
   ): void {
     if (attrs && Object.hasOwn(attrs, DELETED)) throw deletedKey();
     if (text.length === 0) return;
-    const left = this.#leftOf(node, index);
+    let left: Element = this.#leftOf(node, index);
+    // As in Yjs, after the letters just deleted when they are right after
+    // (backspace, then typing): theirs are the ids before the new ones, so
+    // deleting those too joins them in one run (see `#mergeable`). Not
+    // where letters inherit: they would from a deleted one. Nor before a
+    // letter of another session: as its right origin, every insert typed
+    // on would name it.
+    if (!this.#rulesOf(left.run.flow)) {
+      const id = this.#mint(doc, 0);
+      for (
+        let run = left.run.next;
+        left.off >= left.run.len - 1 && run?.deleted;
+        run = run.next
+      )
+        if (
+          run.s === id[0] &&
+          run.c + run.len === id[1] &&
+          (run.next?.s ?? id[0]) === id[0]
+        ) {
+          left = { run, off: run.len - 1 };
+          break;
+        }
+    }
     const found = this.#parentFor(left);
     const parent = found[0];
     const side = found[1];
