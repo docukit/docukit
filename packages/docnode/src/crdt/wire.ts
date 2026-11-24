@@ -9,7 +9,8 @@ import type {
 } from "../operations.js";
 import type { Json } from "../types.js";
 import { base64ToNumber, lastDot, numberToBase64 } from "../idGenerator.js";
-import { clockOf, distanceTo, isList, literal } from "../wire.js";
+import { clockOf, distanceTo, literal } from "../wire.js";
+import { isList } from "../utils.js";
 
 /**
  * What the CRDT engines add to a batch of `wire.ts`. An engine's own row goes

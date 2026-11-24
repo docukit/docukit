@@ -1,7 +1,7 @@
 import type { Doc } from "../main.js";
 import type { Json } from "../types.js";
-import { kidIndex } from "../utils.js";
-import { isList, list, text } from "../wire.js";
+import { isList, kidIndex } from "../utils.js";
+import { list, text } from "../wire.js";
 import {
   ColumnReader,
   ColumnWriter,

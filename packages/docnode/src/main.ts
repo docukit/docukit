@@ -23,6 +23,7 @@ import {
 import {
   detachRange,
   withTransaction,
+  checkUpdate,
   ULID_REGEX,
   defineNode,
   idRecord,
@@ -715,21 +716,7 @@ export class Doc {
   }
 
   applyOperations(operations: ops.Operations, flags?: TransactionFlags) {
-    if (operations.length < 2) {
-      if (
-        this._lifeCycleStage === "change" ||
-        this._lifeCycleStage === "disposed"
-      )
-        throw new Error(
-          `You can't trigger an update inside a ${this._lifeCycleStage} stage`,
-        );
-      if (this._lifeCycleStage === "normalize2") {
-        throw new Error(
-          "Strict mode has caught an error: normalize listeners are not idempotent. I.e, they should not mutate the document on the second pass.",
-        );
-      }
-      return;
-    }
+    if (operations.length < 2) return checkUpdate(this);
     if (this._lifeCycleStage === "update") this.forceCommit();
     let didApplyOperations = false;
     if (flags) this._transactionFlags = flags;

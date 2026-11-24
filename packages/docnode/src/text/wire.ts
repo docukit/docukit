@@ -8,7 +8,8 @@ import type {
   OrderedOperation,
 } from "../operations.js";
 import type { Json } from "../types.js";
-import { Decoder, Encoder, isList, list, setTextRows, text } from "../wire.js";
+import { Decoder, Encoder, list, setTextRows, text } from "../wire.js";
+import { isList } from "../utils.js";
 import { numberToBase64 } from "../idGenerator.js";
 import { fuseTextInserts } from "./merge.js";
 import { lettersOf } from "./common.js";

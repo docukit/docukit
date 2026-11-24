@@ -23,13 +23,13 @@ import type {
 import {
   compareStamps,
   detachRange,
+  isList,
   isObjectEmpty,
   withTransaction,
 } from "../utils.js";
 import {
   decodeOperations,
   encodeOperations,
-  isList,
   list,
   num,
   text,

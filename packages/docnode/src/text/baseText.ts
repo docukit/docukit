@@ -2,6 +2,7 @@ import type { Doc } from "../main.js";
 import type { Json, StoredLetters } from "../types.js";
 import type { EditOperation } from "../operations.js";
 import { lastDot, numberToBase64 } from "../idGenerator.js";
+import { isList } from "../utils.js";
 import {
   ColumnReader,
   ColumnWriter,
@@ -1654,8 +1655,6 @@ function idHash(id: string): string {
   hash ^= hash >>> 13;
   return numberToBase64((hash >>> 2) + 0x40000000).slice(1);
 }
-
-const isList = (value: unknown): value is Json[] => Array.isArray(value);
 
 /** Flags of a stored list. */
 /** Its node id is not the one right after the previous list's. */

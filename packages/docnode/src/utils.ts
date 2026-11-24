@@ -78,6 +78,17 @@ export function stringifyJson(value: unknown): string {
     : JSON.stringify(value);
 }
 
+/** Throws where the document cannot be updated: what stage it is in says. */
+export function checkUpdate(doc: Doc): void {
+  const stage = doc["_lifeCycleStage"];
+  if (stage === "change" || stage === "disposed")
+    throw new Error(`You can't trigger an update inside a ${stage} stage`);
+  if (stage === "normalize2")
+    throw new Error(
+      "Strict mode has caught an error: normalize listeners are not idempotent. I.e, they should not mutate the document on the second pass.",
+    );
+}
+
 /**
  * - Starts the tx if it's idle,
  * - Executes the callback,
@@ -89,20 +100,7 @@ export function withTransaction(
   fn: () => void,
   isApplyOperations = false,
 ): void {
-  if (
-    doc["_lifeCycleStage"] === "change" ||
-    doc["_lifeCycleStage"] === "disposed"
-  )
-    throw new Error(
-      `You can't trigger an update inside a ${doc["_lifeCycleStage"]} stage`,
-    );
-
-  if (doc["_lifeCycleStage"] === "normalize2") {
-    throw new Error(
-      "Strict mode has caught an error: normalize listeners are not idempotent. I.e, they should not mutate the document on the second pass.",
-    );
-  }
-
+  checkUpdate(doc);
   const isNewTx = doc["_lifeCycleStage"] === "idle";
   if (isNewTx) {
     doc["_lifeCycleStage"] = "update";
@@ -190,19 +188,20 @@ export function jsonCopy(value: unknown, key = ""): Json | undefined {
   return out;
 }
 
-const isJsonList = (json: Json): json is readonly Json[] => Array.isArray(json);
+export const isList = (value: unknown): value is readonly Json[] =>
+  Array.isArray(value);
 
 /** Whether two JSON values are written the same by `JSON.stringify`. */
 export function jsonEqual(a: Json, b: Json): boolean {
   if (a === b) return true;
   if (typeof a !== "object" || typeof b !== "object" || !a || !b) return false;
-  if (isJsonList(a))
+  if (isList(a))
     return (
-      isJsonList(b) &&
+      isList(b) &&
       a.length === b.length &&
       a.every((item, index) => jsonEqual(item, b[index]!))
     );
-  if (isJsonList(b)) return false;
+  if (isList(b)) return false;
   const keys = Object.keys(a);
   const others = Object.keys(b);
   return (

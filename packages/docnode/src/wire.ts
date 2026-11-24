@@ -12,7 +12,13 @@ import type {
   StatePatchRow,
 } from "./operations.js";
 import type { Json } from "./types.js";
-import { idRecord, isObjectEmpty, parseJson, stringifyJson } from "./utils.js";
+import {
+  idRecord,
+  isList,
+  isObjectEmpty,
+  parseJson,
+  stringifyJson,
+} from "./utils.js";
 import {
   base64ToNumber,
   clockAt,
@@ -77,9 +83,6 @@ import {
 //   head changes.
 // - A batch of one row is written without the row's brackets, unless the
 //   row starts with an array (an insert with a first state).
-
-export const isList = (value: Json | undefined): value is readonly Json[] =>
-  Array.isArray(value);
 
 export const list = (value: Json | undefined): readonly Json[] =>
   isList(value) ? value : [];
