@@ -76,8 +76,15 @@ export type CrdtOptions = {
   gcDelay?: number;
 };
 
-/** `[lamport, session]`. Sorted by lamport, then session. */
-type Stamp = readonly [number, string];
+/**
+ * Sorted by lamport, then session. An object of two fields, like the `ID` of
+ * Yjs: half the memory of a `[lamport, session]` array.
+ */
+type Stamp = { readonly lamport: number; readonly session: string };
+const newStamp = (lamport: number, session: string): Stamp => ({
+  lamport,
+  session,
+});
 
 type Back = { parent: string; pos: string };
 
@@ -101,13 +108,9 @@ type Entry = {
   stamps: Record<string, Stamp>;
   /** Stamp of the insert of this life: older state writes do not apply. */
   born: Stamp | undefined;
-  /** Values that arrived before the insert. */
-  pending: Record<string, string> | undefined;
   node: DocNode | undefined;
   /** The place where it is shown. */
   key: string;
-  /** Whether others could point at it the last time it was placed. */
-  alive: boolean;
   /**
    * Whether it is shown away from its place, after the nodes
    * placed in its parent (see `#prevSibling`).
@@ -119,7 +122,8 @@ type Entry = {
 // eslint-disable-next-line @typescript-eslint/no-restricted-types
 type Nil = null;
 
-const compare = (a: Stamp, b: Stamp) => compareStamps(a[0], a[1], b[0], b[1]);
+const compare = (a: Stamp, b: Stamp) =>
+  compareStamps(a.lamport, a.session, b.lamport, b.session);
 
 /** The engine row of a record's fields, without the empty ones at the end. */
 function recordRow(fields: Json[]): EngineRow {
@@ -408,6 +412,13 @@ class Engine implements CrdtEngine {
   #ownPlaces: string | undefined;
   /** Entries waiting for a place to be shown there, by the place. */
   #placeWaiters: Map<string, Set<Entry>> | undefined;
+  /**
+   * Entries others could not point at the last time they were placed, kept
+   * out of `Entry`: most can.
+   */
+  #dead: WeakSet<Entry> | undefined;
+  /** Values that arrived before the insert of their entry (see `#earlyOf`). */
+  #early: WeakMap<Entry, Record<string, string>> | undefined;
 
   constructor(doc: Doc, options: CrdtOptions = {}) {
     this.#doc = doc;
@@ -530,7 +541,7 @@ class Engine implements CrdtEngine {
     if (!entry) {
       entry = this.#newEntry(root.id, 0, root.type);
       entry.node = root;
-      entry.at = [0, ""];
+      entry.at = newStamp(0, "");
       entry.key = ROOT_POS;
       this.#entries.set(root.id, entry);
     }
@@ -548,10 +559,8 @@ class Engine implements CrdtEngine {
       back: undefined,
       stamps: NO_STAMPS,
       born: undefined,
-      pending: undefined,
       node: undefined,
       key: "",
-      alive: true,
       away: false,
     };
   }
@@ -660,7 +669,7 @@ class Engine implements CrdtEngine {
     }
     const session = this.#repairing ? "" : this.#sessionId(fresh);
     const lamport = this.#repairing ? this.#repairing.lamport : ++this.#clock;
-    const stamp: Stamp = [lamport, session];
+    const stamp = newStamp(lamport, session);
 
     const moved = new Map<string, Back>();
     for (const id of diff.moved) {
@@ -818,8 +827,8 @@ class Engine implements CrdtEngine {
     // inserts) and a clock of its own, the stamp's and then new ones.
     const mint = () =>
       this.#repairing
-        ? `~${minted++ || ""}.${numberToBase64(stamp[0])}`
-        : `${this.#placeSession()}~.${numberToBase64(minted++ === 0 ? stamp[0] : ++this.#clock)}`;
+        ? `~${minted++ || ""}.${numberToBase64(stamp.lamport)}`
+        : `${this.#placeSession()}~.${numberToBase64(minted++ === 0 ? stamp.lamport : ++this.#clock)}`;
     const process = (start: DocNode) => {
       let first = start;
       while (first.prev && dirty(first.prev.id)) first = first.prev;
@@ -877,7 +886,7 @@ class Engine implements CrdtEngine {
         // Placed again so it waits for its parent: an undo may bring it back.
         this.#dirty.add(entry);
         const [owner, clock] = parseId(id);
-        const key = `${seen[0]} ${seen[1]} ${owner} ${entry.life}`;
+        const key = `${seen.lamport} ${seen.session} ${owner} ${entry.life}`;
         const group = pending.get(key) ?? [seen, owner, entry.life, []];
         group[3].push(clock);
         pending.set(key, group);
@@ -890,7 +899,7 @@ class Engine implements CrdtEngine {
     const records: PendingRecord[] = [];
     for (const [seen, owner, life, clocks] of pending.values()) {
       for (const [from, to] of runsOf(clocks)) {
-        records.push([seen[0], seen[1], owner, from, to, life]);
+        records.push([seen.lamport, seen.session, owner, from, to, life]);
       }
     }
     return [this.#deadRanges(dead), records];
@@ -1024,14 +1033,15 @@ class Engine implements CrdtEngine {
     const { lamport, session, inserts, moves, deletes, lives, pending } =
       record;
     this.#clock = Math.max(this.#clock, lamport);
-    const stamp: Stamp = [lamport, session];
+    const stamp = newStamp(lamport, session);
     deletes.forEach((del) => this.#mergeDelete(del));
     pending.forEach(([seenLamport, seenSession, owner, from, to, life]) => {
       for (let clock = from; clock <= to; clock++) {
-        this.#mergePending(this.#idOf(owner, clock), life, [
-          seenLamport,
-          seenSession,
-        ]);
+        this.#mergePending(
+          this.#idOf(owner, clock),
+          life,
+          newStamp(seenLamport, seenSession),
+        );
       }
     });
     // Inserts without a stamp, and the values written with them.
@@ -1134,10 +1144,9 @@ class Engine implements CrdtEngine {
     const doc = this.#doc;
     const node = doc["_nodeFromTree"]([entry.id, entry.type!, {}]);
     entry.node = node;
-    for (const key in entry.pending) {
-      this.#writeState(entry, key, entry.pending[key]!);
-    }
-    entry.pending = undefined;
+    const early = this.#early?.get(entry);
+    for (const key in early) this.#writeState(entry, key, early[key]!);
+    this.#early?.delete(entry);
     this.#waiting?.get(entry.id)?.forEach((waiter) => this.#dirty.add(waiter));
     this.#dirty.add(entry);
   }
@@ -1174,6 +1183,14 @@ class Engine implements CrdtEngine {
     entry.stamps = kept ?? NO_STAMPS;
   }
 
+  /** The values that arrived before the insert of `entry`. */
+  #earlyOf(entry: Entry) {
+    const early = (this.#early ??= new WeakMap());
+    let values = early.get(entry);
+    if (!values) early.set(entry, (values = {}));
+    return values;
+  }
+
   #mergeState(entry: Entry, key: string, value: string, stamp: Stamp) {
     const current = stampOf(entry, key);
     if (current && compare(stamp, current) <= 0) return;
@@ -1183,7 +1200,7 @@ class Engine implements CrdtEngine {
     if (entry.born && compare(stamp, entry.born) < 0) return;
     this.#setStamp(entry, key, stamp);
     if (entry.node) this.#writeState(entry, key, value);
-    else (entry.pending ??= {})[key] = value;
+    else this.#earlyOf(entry)[key] = value;
   }
 
   /**
@@ -1471,8 +1488,9 @@ class Engine implements CrdtEngine {
     const node = entry.node;
     if (!node) return;
     const alive = this.#isAlive(entry.id);
-    if (alive !== entry.alive) {
-      entry.alive = alive;
+    if (alive === (this.#dead?.has(entry) ?? false)) {
+      if (alive) this.#dead!.delete(entry);
+      else (this.#dead ??= new WeakSet()).add(entry);
       this.#wake(entry);
     }
     const doc = this.#doc;
@@ -1739,7 +1757,7 @@ class Engine implements CrdtEngine {
     const walk = (parent: DocNode) => {
       for (let child = parent.first; child; child = child.next) {
         const entry = this.#entries.get(child.id)!;
-        const [clock, session] = entry.at!;
+        const { lamport: clock, session } = entry.at!;
         sessionColumn.push(names.index(session));
         lamportColumn.pushSigned(clock - lamport);
         lamport = clock;
@@ -1762,11 +1780,13 @@ class Engine implements CrdtEngine {
     }
     hidden.sort((a, b) => Number(a.id > b.id) - Number(a.id < b.id));
     const limbo = hidden.map((entry): Json[] => {
-      const [clock, session] = entry.at ?? ZERO;
+      const { lamport: clock, session } = entry.at ?? ZERO;
       // A hidden label always says where its pointer is.
       const extra = this.#extra(entry, names, true)!;
       const label: Json[] = [entry.pos, clock, names.index(session), extra];
-      const state = entry.node ? entry.node["_stateToJson"]() : entry.pending;
+      const state = entry.node
+        ? entry.node["_stateToJson"]()
+        : this.#early?.get(entry);
       return [names.write(entry.id), entry.type ?? 0, label, state ?? 0];
     });
     const aliases: Json[] = [];
@@ -1775,14 +1795,20 @@ class Engine implements CrdtEngine {
     const rootStamps: Json[] = [];
     const root = this.#entries.get(rootId)!;
     for (const key in root.stamps) {
-      const [clock, session] = root.stamps[key]!;
+      const { lamport: clock, session } = root.stamps[key]!;
       rootStamps.push(key, clock, names.index(session));
     }
     const pending: Json[] = [];
     for (const [id, { life, seen, own }] of [...(this.#pending ?? [])].sort(
       (a, b) => Number(a[0] > b[0]) - Number(a[0] < b[0]),
     ))
-      pending.push(names.write(id), life, seen[0], names.index(seen[1]), +own);
+      pending.push(
+        names.write(id),
+        life,
+        seen.lamport,
+        names.index(seen.session),
+        +own,
+      );
     const deleted: Json[] = [];
     this.#deleted.forEach((session, runs) =>
       deleted.push([names.index(session), ...runs]),
@@ -1838,7 +1864,7 @@ class Engine implements CrdtEngine {
     const extra: Record<string, Json> = {};
     if (entry.life > 0) extra.l = entry.life;
     if (entry.born && compare(entry.born, at) !== 0)
-      extra.o = [entry.born[0], names.index(entry.born[1])];
+      extra.o = [entry.born.lamport, names.index(entry.born.session)];
     if (entry.back) {
       extra.b = names.write(entry.back.parent);
       extra.p = entry.back.pos;
@@ -1855,7 +1881,7 @@ class Engine implements CrdtEngine {
     for (const key in entry.stamps) {
       const stamp = stampOf(entry, key)!;
       if (key in written && compare(stamp, at) === 0) continue;
-      stamps.push(key, stamp[0], names.index(stamp[1]));
+      stamps.push(key, stamp.lamport, names.index(stamp.session));
     }
     if (stamps.length > 0) extra.s = stamps;
     return isObjectEmpty(extra) ? undefined : extra;
@@ -1873,10 +1899,8 @@ class Engine implements CrdtEngine {
     entry.key = pos;
     entry.at = at;
     const extra = label.extra;
-    const stamp = (
-      clock: Json | undefined,
-      session: Json | undefined,
-    ): Stamp => [num(clock), names.session(session)];
+    const stamp = (clock: Json | undefined, session: Json | undefined) =>
+      newStamp(num(clock), names.session(session));
     entry.born =
       isRecord(extra) && isList(extra.o) ? stamp(extra.o[0], extra.o[1]) : at;
     // A stamp equal to the label's is not written: every key has it.
@@ -1962,7 +1986,8 @@ class Engine implements CrdtEngine {
         // Its insert has not arrived: it is not born yet, and the insert,
         // older than the move or write that made it known, still applies.
         this.#unborn(entry);
-        if (!isObjectEmpty(state)) entry.pending = state;
+        if (!isObjectEmpty(state))
+          (this.#early ??= new WeakMap()).set(entry, state);
       }
       entry.key = entry.pos;
     });
@@ -2082,9 +2107,9 @@ function stateOf(value: Json | undefined) {
   return state;
 }
 
-const ZERO: Stamp = [0, ""];
+const ZERO = newStamp(0, "");
 /** Stands for `Entry.born` in `Entry.stamps`. */
-const BORN: Stamp = [-1, ""];
+const BORN = newStamp(-1, "");
 const NO_STAMPS: Record<string, Stamp> = Object.freeze({});
 /**
  * The shared stamps of inserts, by their keys (see `#setStamp`). One for all
@@ -2190,7 +2215,7 @@ class StoredLabels {
     const label = list(value);
     return {
       pos: text(label[0]),
-      at: [num(label[1]), this.session(label[2])],
+      at: newStamp(num(label[1]), this.session(label[2])),
       extra: label[3],
     };
   }
@@ -2220,7 +2245,7 @@ class StoredLabels {
         const kind = kinds!.next();
         visit(child, parent, {
           pos: kind & 1 ? places[place++]! : child.id,
-          at: [clock, session],
+          at: newStamp(clock, session),
           extra: extras.get(index),
           away: kind > 1,
         });
@@ -2274,10 +2299,10 @@ class StoredLabels {
   rootStamps(visit: (key: string, stamp: Stamp) => void) {
     const stamps = list(this.#stored[LABELS_ROOT_STAMPS]);
     for (let at = 0; at < stamps.length; at += 3)
-      visit(text(stamps[at]), [
-        num(stamps[at + 1]),
-        this.session(stamps[at + 2]),
-      ]);
+      visit(
+        text(stamps[at]),
+        newStamp(num(stamps[at + 1]), this.session(stamps[at + 2])),
+      );
   }
 
   pending(
@@ -2288,7 +2313,7 @@ class StoredLabels {
       visit(
         this.read(pending[at]),
         num(pending[at + 1]),
-        [num(pending[at + 2]), this.session(pending[at + 3])],
+        newStamp(num(pending[at + 2]), this.session(pending[at + 3])),
         pending[at + 4] === 1,
       );
   }
