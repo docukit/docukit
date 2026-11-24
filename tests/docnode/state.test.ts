@@ -72,6 +72,34 @@ describe("state", () => {
     });
   });
 
+  test("documents with the same definitions share them, unless a default can change", () => {
+    const docOf = () => new Doc({ type: "root", extensions: [TextExtension] });
+    expect(docOf()["_resolvedNodeDefs"]).toBe(docOf()["_resolvedNodeDefs"]);
+
+    // A default that can change: every document gets its own.
+    const defaults: string[][] = [];
+    const List = defineNode({
+      type: "list",
+      state: {
+        items: defineState({
+          fromJSON: () => {
+            const items: string[] = [];
+            defaults.push(items);
+            return items;
+          },
+        }),
+      },
+    });
+    const listDocOf = () =>
+      new Doc({ type: "root", extensions: [{ nodes: [List] }] });
+    const [a, b] = [listDocOf(), listDocOf()];
+    expect(a["_resolvedNodeDefs"]).not.toBe(b["_resolvedNodeDefs"]);
+    const [nodeA, nodeB] = [a.createNode(List), b.createNode(List)];
+    expect(nodeA.state.items.get()).toBe(defaults[0]);
+    defaults[0]!.push("changed in place");
+    expect(nodeB.state.items.get()).toStrictEqual([]);
+  });
+
   test("default value is not JSON serializable", () => {
     const MyNode = defineNode({
       type: "myNode",

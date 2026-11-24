@@ -576,7 +576,7 @@ export class Doc {
   // private readonly _subDocs = new Map<string, Doc>();
   // private readonly _parentDoc?: Doc;
   protected _nodeDefs: Set<NodeDefinition>;
-  private _resolvedNodeDefs: Map<string, ResolvedNodeDefinition>;
+  protected _resolvedNodeDefs: Map<string, ResolvedNodeDefinition>;
   private _strictMode: boolean;
   protected _nodeMap = new Map<string, DocNode>();
   protected _changeListeners = new Set<(ev: ChangeEvent) => void>();
@@ -633,100 +633,13 @@ export class Doc {
   readonly undoManager: UndoManager;
 
   constructor(config: DocConfig) {
-    this._nodeDefs = new Set();
-    this._resolvedNodeDefs = new Map();
-    const RootNode = defineNode({ type: config.type });
-    const nodeDefs: UnsafeDefinition[] = [
-      RootNode,
-      ...config.extensions.flatMap((extension) => extension.nodes ?? []),
-    ];
     this._strictMode = config.strictMode ?? true;
-
-    nodeDefs.forEach((nodeDef) => {
-      const resolvedNodeDef = this._resolvedNodeDefs.get(nodeDef.type) ?? {
-        type: nodeDef.type,
-        state: {},
-        defaultState: {},
-        defaultStrings: {},
-        defaultJson: {},
-        methods: undefined as unknown as ResolvedNodeDefinition["methods"],
-      };
-
-      for (const key in nodeDef.state) {
-        const state = nodeDef.state[key]!;
-        if (resolvedNodeDef.state[key] !== undefined) {
-          throw new Error(
-            [
-              `Collision error: attempt to register 2 node definitions of type`,
-              `'${nodeDef.type}' that share the state property ${key}. Remove`,
-              `that and any other repeated states in either of the two node definitions.`,
-            ].join(" "),
-          );
-        } else {
-          resolvedNodeDef.state[key] = state;
-          const defaultState = state.fromJSON(undefined);
-          resolvedNodeDef.defaultState[key] = defaultState;
-          const defaultJson = state.toJSON
-            ? state.toJSON(defaultState)
-            : defaultState;
-          const stringified = JSON.stringify(defaultJson);
-          const copy = jsonCopy(defaultJson);
-          if (copy === undefined) {
-            throw new Error(
-              `JSON serialization of the default value for state '${key}' of node type '${nodeDef.type}' is 'undefined', which is not allowed.`,
-            );
-          }
-          resolvedNodeDef.defaultStrings[key] = stringified;
-          resolvedNodeDef.defaultJson[key] = copy;
-        }
-      }
-
-      this._resolvedNodeDefs.set(nodeDef.type, resolvedNodeDef);
-      this._nodeDefs.add(nodeDef);
-      for (const key in nodeDef.state) {
-        const definition: InternalStateDefinition = nodeDef.state[key]!;
-        const docState = definition.docState;
-        const rootDef = this._resolvedNodeDefs.get(config.type);
-        if (!docState || !rootDef || rootDef.state[docState.key]) continue;
-        // A CRDT engine brings its own text: the server orders Base's.
-        const shared = config.crdt?.text ?? docState.definition;
-        this._editStateKey = docState.key;
-        this._editDefinition = shared;
-        rootDef.state[docState.key] = shared;
-        rootDef.defaultState[docState.key] = shared.fromJSON(undefined);
-        rootDef.defaultStrings[docState.key] = JSON.stringify(
-          shared.toJSON?.(rootDef.defaultState[docState.key]),
-        );
-      }
-      if (!nodeDef.type) throw new Error(`Node does not have a type property`);
-    });
-
-    this._resolvedNodeDefs.forEach((resolvedNodeDef) => {
-      // `node.state` binds the methods of a key when that key is read: a
-      // node has several keys, and most reads use one.
-      class State {
-        [key: string]: StateKeyMethods;
-        readonly [STATE_NODE]: DocNode<UnsafeDefinition>;
-        constructor(node: DocNode<UnsafeDefinition>) {
-          this[STATE_NODE] = node;
-        }
-      }
-      for (const key in resolvedNodeDef.state) {
-        const methodsOf = stateKeyMethods(
-          key,
-          resolvedNodeDef.state[key]!,
-          resolvedNodeDef.defaultState[key],
-        );
-        Object.defineProperty(State.prototype, key, {
-          enumerable: true,
-          get(this: State) {
-            return methodsOf(this[STATE_NODE]);
-          },
-        });
-      }
-      resolvedNodeDef.methods = (node: DocNode<UnsafeDefinition>) =>
-        new State(node);
-    });
+    [
+      this._nodeDefs,
+      this._resolvedNodeDefs,
+      this._editStateKey,
+      this._editDefinition,
+    ] = resolve(config);
 
     const idGen: NodeIdGenerator = config.nodeIdGenerator ?? {
       generate: () => ulid().toLowerCase(),
@@ -1285,6 +1198,134 @@ export class Doc {
 
 const isTree = (json: JsonDoc | JsonTree): json is JsonTree =>
   typeof json[0] === "string";
+
+/** What a document makes of its definitions (see `resolve`). */
+type Resolved = [
+  defs: Set<NodeDefinition>,
+  resolvedDefs: Map<string, ResolvedNodeDefinition>,
+  editStateKey?: string,
+  editDefinition?: InternalStateDefinition,
+];
+/** The resolved definitions, by the definitions they come from (see `resolve`). */
+type ResolvedCache = {
+  next?: WeakMap<object, ResolvedCache>;
+  byType?: Map<string, Resolved>;
+};
+const resolvedCache: ResolvedCache = {};
+
+/**
+ * The node definitions of `config`, resolved once for every document with the
+ * same ones when their defaults cannot change: documents only read them, and
+ * a replica need not keep a copy.
+ */
+function resolve(config: DocConfig): Resolved {
+  const nodeDefs: UnsafeDefinition[] = config.extensions.flatMap(
+    (extension) => extension.nodes ?? [],
+  );
+  let cache = resolvedCache;
+  for (const key of [config.crdt?.text ?? resolvedCache, ...nodeDefs]) {
+    const next = (cache.next ??= new WeakMap());
+    cache = next.get(key) ?? next.set(key, {}).get(key)!;
+  }
+  const byType = (cache.byType ??= new Map());
+  let resolved = byType.get(config.type);
+  if (resolved) return resolved;
+  const defs = new Set<NodeDefinition>();
+  const resolvedDefs = new Map<string, ResolvedNodeDefinition>();
+  resolved = [defs, resolvedDefs];
+  let mutable = false;
+  const RootNode = defineNode({ type: config.type });
+  nodeDefs.unshift(RootNode);
+  nodeDefs.forEach((nodeDef) => {
+    const resolvedNodeDef = resolvedDefs.get(nodeDef.type) ?? {
+      type: nodeDef.type,
+      state: {},
+      defaultState: {},
+      defaultStrings: {},
+      defaultJson: {},
+      methods: undefined as unknown as ResolvedNodeDefinition["methods"],
+    };
+
+    for (const key in nodeDef.state) {
+      const state = nodeDef.state[key]!;
+      if (resolvedNodeDef.state[key] !== undefined) {
+        throw new Error(
+          [
+            `Collision error: attempt to register 2 node definitions of type`,
+            `'${nodeDef.type}' that share the state property ${key}. Remove`,
+            `that and any other repeated states in either of the two node definitions.`,
+          ].join(" "),
+        );
+      } else {
+        resolvedNodeDef.state[key] = state;
+        const defaultState = state.fromJSON(undefined);
+        resolvedNodeDef.defaultState[key] = defaultState;
+        // An object can change: each document gets its own.
+        if (Object(defaultState) === defaultState) mutable = true;
+        const defaultJson = state.toJSON
+          ? state.toJSON(defaultState)
+          : defaultState;
+        const stringified = JSON.stringify(defaultJson);
+        const copy = jsonCopy(defaultJson);
+        if (copy === undefined) {
+          throw new Error(
+            `JSON serialization of the default value for state '${key}' of node type '${nodeDef.type}' is 'undefined', which is not allowed.`,
+          );
+        }
+        resolvedNodeDef.defaultStrings[key] = stringified;
+        resolvedNodeDef.defaultJson[key] = copy;
+      }
+    }
+
+    resolvedDefs.set(nodeDef.type, resolvedNodeDef);
+    defs.add(nodeDef);
+    for (const key in nodeDef.state) {
+      const definition: InternalStateDefinition = nodeDef.state[key]!;
+      const docState = definition.docState;
+      const rootDef = resolvedDefs.get(config.type);
+      if (!docState || !rootDef || rootDef.state[docState.key]) continue;
+      // A CRDT engine brings its own text: the server orders Base's.
+      const shared = config.crdt?.text ?? docState.definition;
+      resolved[2] = docState.key;
+      resolved[3] = shared;
+      rootDef.state[docState.key] = shared;
+      rootDef.defaultState[docState.key] = shared.fromJSON(undefined);
+      rootDef.defaultStrings[docState.key] = JSON.stringify(
+        shared.toJSON?.(rootDef.defaultState[docState.key]),
+      );
+    }
+    if (!nodeDef.type) throw new Error(`Node does not have a type property`);
+  });
+
+  resolvedDefs.forEach((resolvedNodeDef) => {
+    // `node.state` binds the methods of a key when that key is read: a
+    // node has several keys, and most reads use one.
+    class State {
+      [key: string]: StateKeyMethods;
+      readonly [STATE_NODE]: DocNode<UnsafeDefinition>;
+      constructor(node: DocNode<UnsafeDefinition>) {
+        this[STATE_NODE] = node;
+      }
+    }
+    for (const key in resolvedNodeDef.state) {
+      const methodsOf = stateKeyMethods(
+        key,
+        resolvedNodeDef.state[key]!,
+        resolvedNodeDef.defaultState[key],
+      );
+      Object.defineProperty(State.prototype, key, {
+        enumerable: true,
+        get(this: State) {
+          return methodsOf(this[STATE_NODE]);
+        },
+      });
+    }
+    resolvedNodeDef.methods = (node: DocNode<UnsafeDefinition>) =>
+      new State(node);
+  });
+  if (!mutable) byType.set(config.type, resolved);
+  return resolved;
+}
 
 /**
  * The methods of one state key, chosen once per node definition. Reading
