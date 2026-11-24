@@ -558,9 +558,11 @@ export class BaseText extends TextEngine {
         right = -right;
         left = 0;
       }
-      const [rs, rc] =
+      const r: [string, number] =
         right === undefined || right === 0 ? ["", -1] : decodeRef(s, right);
-      const [ls, lc] =
+      const rs = r[0];
+      const rc = r[1];
+      const l: [string, number] =
         left === undefined
           ? [s, c - 1]
           : left === 0
@@ -568,6 +570,8 @@ export class BaseText extends TextEngine {
             : left === -1
               ? ["", -1]
               : decodeRef(s, left);
+      const ls = l[0];
+      const lc = l[1];
       at = this.#find(ls, lc);
       next = at ? this.#after(at) : this.#find(rs, rc);
       // Right before `next`: after the letter before it.
@@ -1178,11 +1182,13 @@ export class BaseText extends TextEngine {
   ): void {
     if (text.length === 0) return;
     const flow = this.#flow(node);
-    const [, left] = this.#boundary(flow, index);
+    const left = this.#boundary(flow, index)[1];
     const right = this.#after(left);
     const rules = this.#rules(flow);
     const own = attrs && this.#ownFor(rules, text, left, right, attrs);
-    const [s, c] = this.#mint(doc, text.length);
+    const id = this.#mint(doc, text.length);
+    const s = id[0];
+    const c = id[1];
     const payload: EditOperation = [3, s, c, contentOf(text, own)];
     if (left.run.c === -1) payload.push(this.#startRef(doc, node));
     else this.#neighbours(doc, payload, s, c, left, right);
