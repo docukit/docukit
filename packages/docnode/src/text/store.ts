@@ -633,18 +633,26 @@ export class TextStore extends TextEngine {
   #hasRightChild(run: Run, off: number): boolean {
     if (off < run.len - 1) return true;
     const next = run.next;
-    return next !== undefined && this.#originIs(next, run.s, run.c + off);
+    // Every letter is after the root: in its right subtree.
+    if (next === undefined || run.c === -1) return next !== undefined;
+    if (!this.#kidsReady) {
+      const is = this.#originIs(next, run.s, run.c + off);
+      if (is !== undefined) return is;
+    }
+    return (this.#kidsOf(1, run.s, run.c + off)?.length ?? 0) > 0;
   }
 
   /**
    * Whether the left origin of the first letter of `run` is letter `c` of
-   * session `s` (`-1`: the root of node `s`). Without allocating, unlike
-   * `#findOrigin`.
+   * session `s`. Without allocating, unlike `#findOrigin`. Undefined after
+   * `CHAIN` left children: typing backwards makes chains as long as what
+   * was typed, which the kids answer at once.
    */
-  #originIs(run: Run, s: string, c: number): boolean {
+  #originIs(run: Run, s: string, c: number): boolean | undefined {
     // Fugue paper, Lemma 8(a): a left child has its parent's left origin. Its
     // parent starts a run, most often the next one: found without a lookup.
-    while (run.side === 0) {
+    for (let steps = 0; run.side === 0; steps++) {
+      if (steps === CHAIN) return undefined;
       const next = run.next;
       run =
         next?.c === run.pc && next.s === run.ps
@@ -816,11 +824,14 @@ export class TextStore extends TextEngine {
       return true;
     }
     // A left child, before its parent: its left origin is its parent's.
-    if (off === 0) {
-      const prev = parentRun.prev!;
-      const end = prev.c === -1 ? -1 : prev.c + prev.len - 1;
-      if (!this.#originIs(parentRun, prev.s, end)) return false;
-    }
+    // Right after the root, that is its left origin: nothing else is before.
+    const prev = parentRun.prev!;
+    if (
+      off === 0 &&
+      prev.c !== -1 &&
+      this.#originIs(parentRun, prev.s, prev.c + prev.len - 1) !== true
+    )
+      return false;
     this.#linkBefore(this.#startingAt(parent), run);
     return true;
   }
@@ -2516,6 +2527,8 @@ const CUT_RIGHT = 43;
 const LONG = 16;
 /** Runs end at counters that are multiples of it (see `#insertRun`). */
 const RUN_CAP = 4096;
+/** Left children `#originIs` climbs before the kids answer instead. */
+const CHAIN = 16;
 /** The stored format this version writes (see `toJSON`). */
 const FORMAT = 11;
 /** Stands for a deleted letter of a stored text. */

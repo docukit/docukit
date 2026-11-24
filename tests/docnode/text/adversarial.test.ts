@@ -168,6 +168,19 @@ describe("an insert whose origins are no longer neighbours", () => {
     // Two right children of "a" with the same right origin: by session.
     expect(cluster.text(0, id)).toBe("abX");
   });
+
+  test("letters typed backwards, far more than a short climb, stay in order", () => {
+    // Each letter is a left child of the one typed before: a long chain.
+    const cluster = orderedCluster(["ab"], 2);
+    const id = cluster.ids[0]!;
+    const word = "abcdefghijklmnopqrstuvwxyz0123456789";
+    for (const letter of [...word].reverse())
+      cluster.edit(0, () => cluster.node(0, id).state.t.insert(1, letter));
+    cluster.edit(1, () => cluster.node(1, id).state.t.insert(1, "X"));
+    cluster.deliverAll();
+    cluster.assertConverged();
+    expect(cluster.text(0, id)).toBe(`a${word}Xb`);
+  });
 });
 
 describe("identical repeated rows", () => {
