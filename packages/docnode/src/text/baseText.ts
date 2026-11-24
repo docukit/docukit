@@ -806,27 +806,27 @@ export class BaseText extends TextEngine {
   }
 
   /**
-   * Puts letter `(s, c)` right after `at`, on the run of `at` when it goes
-   * on it. Returns where it is.
+   * Puts `letters` (ids from `(s, c)`) right after `at`, on the run of `at`
+   * when they go on it (typing). Returns where the last one is.
    */
   #place(
     at: Element,
     s: string,
     c: number,
-    letter: string,
+    letters: string,
     state: State | undefined,
   ): Element {
     const target = at.run;
     if (at.off < target.len - 1) this.#split(target, at.off + 1);
-    if (target.c !== -1 && joins(target, { s, c, state })) {
-      target.text += letter;
+    if (joins(target, { s, c, state })) {
+      target.text += letters;
       this.#positions.changed(target);
       return { run: target, off: target.len - 1 };
     }
-    const run = new Run(s, c, letter, state, target.flow);
+    const run = new Run(s, c, letters, state, target.flow);
     this.#indexRun(run);
     this.#linkAfter(target, run);
-    return { run, off: 0 };
+    return { run, off: run.len - 1 };
   }
 
   /**
@@ -847,34 +847,23 @@ export class BaseText extends TextEngine {
   ): EditOperation {
     const flow = left.run.flow;
     const cut = rules ? cutIn(text, rules.opaque) : 0;
-    let target = left.run;
-    if (left.off < target.len - 1) this.#split(target, left.off + 1);
-    const place = (from: number, to: number, state: State | undefined) => {
-      if (
-        target.c !== -1 &&
-        target.s === s &&
-        target.c + target.len === c + from &&
-        target.state === state
-      ) {
-        // Typing: the letters go on the run before them.
-        target.text += text.slice(from, to);
-        this.#positions.changed(target);
-        return;
-      }
-      const run = new Run(s, c + from, text.slice(from, to), state, flow);
-      this.#indexRun(run);
-      this.#linkAfter(target, run);
-      target = run;
-    };
+    let at = left;
     // `cut` is 0 without rules: nothing to inherit.
     if (cut > 0) {
       const [before, after] = around ?? [
         left.run.c === -1 ? undefined : left.run.state,
         right?.run.state,
       ];
-      place(0, cut, this.#stateFor(own, before, after, rules));
+      at = this.#place(
+        at,
+        s,
+        c,
+        text.slice(0, cut),
+        this.#stateFor(own, before, after, rules),
+      );
     }
-    if (cut < text.length) place(cut, text.length, this.#stateFor(own));
+    if (cut < text.length)
+      this.#place(at, s, c + cut, text.slice(cut), this.#stateFor(own));
     this.#report(doc, flow.node);
     return [3, TAG_DELETE, s, c, encodeRange(s, s, c, text.length)];
   }
