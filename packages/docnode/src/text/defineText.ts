@@ -6,7 +6,6 @@ import type {
 } from "../types.js";
 import { withTransaction } from "../utils.js";
 import {
-  inheritRules,
   rulesOf,
   isHighSurrogate,
   type Rules,
@@ -251,6 +250,7 @@ export function textDefinition(
     fromJSON: () => 0,
     docState: { key: TEXT_KEY, definition: root },
     methodsWithNode: (node) => new TextHandle(node, rules),
+    rules,
     onCopy: (from, to) => {
       const store = storeOf(from.doc);
       store.setRules(from.id, rules);
@@ -262,7 +262,6 @@ export function textDefinition(
       }
     },
   };
-  if (rules) inheritRules.set(definition, rules);
   return definition;
 }
 

@@ -56,9 +56,6 @@ function lowerBound(runs: { readonly c: number }[], c: number): number {
   return low;
 }
 
-/** The rules of each `defineText` definition that has them. */
-export const inheritRules = new WeakMap<object, Rules>();
-
 export function decodeRef(own: string, ref: Json): [string, number] {
   if (typeof ref === "number") return [own, ref - 1];
   const text = stringOf(ref);
@@ -291,8 +288,8 @@ export function rulesOfNode(
   if (!found) return false;
   const definition = doc!["_resolvedNodeDefs"].get(found.type);
   for (const key in definition?.state) {
-    const rules = inheritRules.get(definition.state[key]!);
-    if (rules) return rules;
+    const state: InternalStateDefinition = definition.state[key]!;
+    if (state.rules) return state.rules;
   }
   return undefined;
 }

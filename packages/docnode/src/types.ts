@@ -1,6 +1,7 @@
 import { type Doc, type DocNode } from "./main.js";
 import type { EditOperation, Operations } from "./operations.js";
 import type { SessionTable } from "./columns.js";
+import type { Rules } from "./text/common.js";
 
 // For convention, we are not goint to uppercase all letters in Json (JSON),
 // except in fromJSON and toJSON functions (for compatibility with the web standard).
@@ -71,6 +72,8 @@ export type InternalStateDefinition<
   J extends Json = Json,
   M = unknown,
 > = StateDefinition<V, J, M> & {
+  /** How letters of a `defineText` inherit state (see `InheritRules`). */
+  rules?: Rules | undefined;
   /** Registers a state on the document root that holds the shared value. */
   docState?: { key: string; definition: InternalStateDefinition };
   /**
