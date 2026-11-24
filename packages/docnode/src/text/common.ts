@@ -200,8 +200,9 @@ export class SessionRuns<
 
   #chunkFor(c: number): R[] {
     const chunks = this.#all();
-    let low = 0;
     let high = chunks.length - 1;
+    // Past the start of the last one first: where letters come in.
+    let low = high > 0 && chunks[high]![0]!.c <= c ? high : 0;
     while (low < high) {
       const mid = (low + high + 1) >> 1;
       if (chunks[mid]![0]!.c <= c) low = mid;
@@ -228,8 +229,8 @@ export class SessionRuns<
   /** The last run that starts at `c` or before it, else the first one. */
   #startingBy(c: number): R {
     const runs = this.#chunkFor(c);
-    let low = 0;
     let high = runs.length - 1;
+    let low = high > 0 && runs[high]!.c <= c ? high : 0;
     while (low < high) {
       const mid = (low + high + 1) >> 1;
       if (runs[mid]!.c <= c) low = mid;
