@@ -1145,9 +1145,6 @@ export class Doc {
    * `toJSON` takes its id from `config.id`, which is then required.
    */
   static fromJSON(config: DocConfig, storedDoc: JsonDoc | JsonTree): Doc {
-    // Unreleased versions wrote a number first.
-    if (typeof storedDoc[0] === "number")
-      throw new Error(`Unsupported format: ${JSON.stringify(storedDoc[0])}`);
     const id = isTree(storedDoc) ? storedDoc[0] : config.id;
     if (!id)
       throw new Error(
