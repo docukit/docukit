@@ -659,6 +659,27 @@ describe("pending descendants", () => {
   });
 });
 
+describe("places that wait", () => {
+  test("a replica whose only places wait for others is saved with them", () => {
+    const a = createReplica({ peer: "a" });
+    const b = createReplica({ peer: "b" });
+    const c = createReplica({ peer: "c" });
+    insert(a, a.doc.root, "x");
+    const fromA = take(a);
+    deliver(b, fromA);
+    insert(b, b.doc.root, "y");
+    const fromB = take(b);
+    deliver(a, fromB);
+    // c hears of y before x, the place it comes after.
+    deliver(c, fromB);
+    const restored = restoreReplica(c, "d");
+    deliver(restored, fromA);
+    deliver(c, fromA);
+    expectSameTree(a, b, c, restored);
+    expect(tree(restored)).toBe("root(x,y)");
+  });
+});
+
 describe("records that came broken", () => {
   test("entries that are not lists are skipped, and the rest merges", () => {
     const a = createReplica({ peer: "a" });

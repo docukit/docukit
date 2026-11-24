@@ -70,11 +70,11 @@ class List {
 /** The places of every parent of a document. */
 export class FugueSiblings {
   readonly #elements = new Map<string, Element>();
-  readonly #lists = new Map<string, List>();
+  #lists: Map<string, List> | undefined;
   /** Places whose parent or right origin has not arrived, by id. */
-  readonly #pending = new Map<string, Place>();
+  #pending: Map<string, Place> | undefined;
   /** Ids of pending places, by the id each waits for. */
-  readonly #waiting = new Map<string, string[]>();
+  #waiting: Map<string, string[]> | undefined;
   /** Lists `load` read, built when something first asks for a place. */
   #deferred: [string, Stored][] = [];
 
@@ -105,8 +105,9 @@ export class FugueSiblings {
   }
 
   #list(id: string) {
-    let list = this.#lists.get(id);
-    if (!list) this.#lists.set(id, (list = new List(id)));
+    const lists = (this.#lists ??= new Map<string, List>());
+    let list = lists.get(id);
+    if (!list) lists.set(id, (list = new List(id)));
     return list;
   }
 
@@ -131,8 +132,8 @@ export class FugueSiblings {
   /** Adds a place. Adding one again changes nothing. */
   add(place: Place): void {
     this.#ready();
-    if (this.#elements.has(place.id) || this.#pending.has(place.id)) return;
-    if (!this.#integrate(place) || this.#waiting.size === 0) return;
+    if (this.#elements.has(place.id) || this.#pending?.has(place.id)) return;
+    if (!this.#integrate(place) || !this.#waiting?.size) return;
     // Places that waited for it, and those that waited for them.
     const ready = [place.id];
     while (ready.length > 0) {
@@ -141,8 +142,8 @@ export class FugueSiblings {
       if (!waiting) continue;
       this.#waiting.delete(id);
       for (const pendingId of waiting) {
-        const pending = this.#pending.get(pendingId)!;
-        this.#pending.delete(pendingId);
+        const pending = this.#pending!.get(pendingId)!;
+        this.#pending!.delete(pendingId);
         if (this.#integrate(pending)) ready.push(pendingId);
       }
     }
@@ -158,10 +159,11 @@ export class FugueSiblings {
       place.rs === undefined ? undefined : this.#elements.get(place.rs);
     if (!parent || (place.rs !== undefined && !rs)) {
       const missing = parent ? place.rs! : place.parent!;
-      this.#pending.set(place.id, place);
-      const waiting = this.#waiting.get(missing);
+      (this.#pending ??= new Map<string, Place>()).set(place.id, place);
+      const waits = (this.#waiting ??= new Map<string, string[]>());
+      const waiting = waits.get(missing);
       if (waiting) waiting.push(place.id);
-      else this.#waiting.set(missing, [place.id]);
+      else waits.set(missing, [place.id]);
       return false;
     }
     // The list is its parent's: a place never leaves the list it was made in.
@@ -349,7 +351,7 @@ export class FugueSiblings {
   ): Json {
     this.#ready();
     // A document without places writes nothing for them.
-    if (this.#elements.size + this.#pending.size === 0) return 0;
+    if (this.#elements.size + (this.#pending?.size ?? 0) === 0) return 0;
     const columns = Array.from({ length: COLUMNS }, () => new ColumnWriter());
     const column = (field: number) => columns[field]!;
     let lastClock = 0;
@@ -363,7 +365,7 @@ export class FugueSiblings {
       lastClock = sessions.clock;
     };
     // A list is made with its first place: none is empty.
-    for (const list of this.#lists.values()) {
+    for (const list of this.#lists?.values() ?? []) {
       this.#seq(list.root);
       const listClock = lastClock;
       writeId(list.id, COLUMN_LIST_SESSION, COLUMN_LIST_CLOCK);
@@ -409,7 +411,7 @@ export class FugueSiblings {
       }
     }
     const pending: Json[] = [];
-    for (const place of this.#pending.values()) {
+    for (const place of this.#pending?.values() ?? []) {
       const [origin, right] = FugueSiblings.#writePending(place);
       pending.push([place.id, place.owner, place.list, origin, right]);
     }
@@ -498,7 +500,7 @@ export class FugueSiblings {
       }
       // A list new here is built as stored, when it is first needed: a
       // document can load and be read without it.
-      if (this.#lists.has(listId) || this.#pending.size > 0)
+      if (this.#lists?.has(listId) || this.#pending?.size)
         this.#addStored(listId, read);
       else this.#deferred.push([listId, read]);
     }

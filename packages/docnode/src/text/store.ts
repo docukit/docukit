@@ -97,7 +97,6 @@ function compareIds(as: string, ac: number, bs: string, bc: number): number {
   if (as !== bs) return as < bs ? -1 : 1;
   return ac - bc;
 }
-const newKids = (): Kids => new Map();
 
 /** A run of elements with consecutive ids chained as right children. */
 export class Run {
@@ -266,7 +265,8 @@ const PENDING = Symbol("pending");
 /** Sets the kids at counter `c` + 1 of a session's blocks. */
 function setKidsAt(blocks: KidBlocks, c: number, list: Run[]): void {
   const at = (c + 1) >> KID_SHIFT;
-  const block = (blocks[at] ??= new Array<Run[] | undefined>(KID_BLOCK));
+  // Grown as it is filled: most blocks (and most texts) have a few kids.
+  const block = (blocks[at] ??= []);
   block[(c + 1) & (KID_BLOCK - 1)] = list;
 }
 
@@ -400,7 +400,8 @@ export class TextStore extends TextEngine {
   #roots = new Map<string, Run>();
   protected _flows: Flow[] = [];
   #sorted: Flow[] | undefined;
-  #kids: [Kids, Kids] = [newKids(), newKids()];
+  /** Each side's, made with its first kid. */
+  #kids: [Kids?, Kids?] = [];
   #kidsReady = true;
   #pending: TextEdit[] = [];
   /** Runs that may now join the run after them (see `#settle`). */
@@ -500,12 +501,12 @@ export class TextStore extends TextEngine {
 
   #kidsOf(side: 0 | 1, s: string, c: number): Run[] | undefined {
     this.#ensureKids();
-    const blocks = this.#kids[side].get(s);
+    const blocks = this.#kids[side]?.get(s);
     return blocks && kidsAt(blocks, c);
   }
 
   #kidsIn(side: 0 | 1, s: string): KidBlocks {
-    const kids = this.#kids[side];
+    const kids = (this.#kids[side] ??= new Map());
     let bySession = kids.get(s);
     if (!bySession) kids.set(s, (bySession = []));
     return bySession;
