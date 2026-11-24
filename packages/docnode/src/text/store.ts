@@ -1021,7 +1021,10 @@ export class TextStore extends TextEngine {
     next: Element | undefined,
     attrs: Record<string, Json> | undefined,
   ): void {
-    const [s, c] = this.#mint(doc, text.length);
+    // Indexes, not destructuring: it is slow until optimized.
+    const id = this.#mint(doc, text.length);
+    const s = id[0];
+    const c = id[1];
     const payload = encodeInsert(
       s,
       c,
@@ -1065,7 +1068,9 @@ export class TextStore extends TextEngine {
     if (attrs && Object.hasOwn(attrs, DELETED)) throw deletedKey();
     if (text.length === 0) return;
     const left = this.#leftOf(node, index);
-    const [parent, side] = this.#parentFor(left);
+    const found = this.#parentFor(left);
+    const parent = found[0];
+    const side = found[1];
     const next = this.#nextOf(left);
     const own = this.#ownFor(left.run.flow, text, parent, side, next, attrs);
     this.#commitInsert(doc, text, parent, side, next, own);
@@ -1401,8 +1406,11 @@ export class TextStore extends TextEngine {
     payload: InsertEdit,
     touched: Run[],
   ): EditResult | typeof PENDING {
-    const [, s, , content] = payload;
-    let [, , c, , right, parent] = payload;
+    const s = payload[1];
+    const content = payload[3];
+    let c = payload[2];
+    let right = payload[4];
+    let parent = payload[5];
     let text = lettersOf(content);
     if (text === "") return undefined;
     const state = initialState(content);
@@ -1423,22 +1431,26 @@ export class TextStore extends TextEngine {
     }
     const leftOfRight = typeof right === "number" && right < 0;
     if (typeof right === "number") right = Math.abs(right);
-    const [rs, rc] =
-      right === undefined || right === 0 ? [undefined, 0] : decodeRef(s, right);
-    let ps: string;
-    let pc: number;
+    let rs: string | undefined;
+    let rc = 0;
+    if (right !== undefined && right !== 0) {
+      const ref = decodeRef(s, right);
+      rs = ref[0];
+      rc = ref[1];
+    }
+    let ps = s;
+    let pc = c - 1;
     let side: 0 | 1 = 1;
     parent = known > 0 ? undefined : leftOfRight ? 0 : parent;
-    if (parent === undefined) {
-      ps = s;
-      pc = c - 1;
-    } else if (parent === 0) {
-      [ps, pc] = [rs!, rc];
+    if (parent === 0) {
+      ps = rs!;
+      pc = rc;
       side = 0;
-    } else {
-      [ps, pc] = decodeRef(s, parent);
+    } else if (parent !== undefined) {
+      const ref = decodeRef(s, parent);
       // `^`: the start of the root's text.
-      ps ||= this.#doc!.root.id;
+      ps = ref[0] || this.#doc!.root.id;
+      pc = ref[1];
     }
     const parentElement = this.#locate(ps, pc);
     if (!parentElement) return PENDING;
@@ -1537,8 +1549,11 @@ export class TextStore extends TextEngine {
     payload: DeleteEdit,
     touched: Run[],
   ): EditResult | typeof PENDING {
-    const [, , s, c, encodedRanges, lamport = 0, letters] = payload;
-    const [ranges] = decodeRanges(s, encodedRanges);
+    const s = payload[2];
+    const c = payload[3];
+    const lamport = payload[5] ?? 0;
+    const letters = payload[6];
+    const ranges = decodeRanges(s, payload[4])[0];
     if (!this.#rangesKnown(ranges)) return PENDING;
     if (lamport > this.#deletes) this.#deletes = lamport;
     const revive = typeof letters === "string";
@@ -1546,8 +1561,8 @@ export class TextStore extends TextEngine {
     const changed: [string, number, number][] = [];
     let text = "";
     let at = 0;
-    for (const [rs, rc, len] of ranges) {
-      this.#forRange(rs, rc, len, (run) => {
+    for (const range of ranges) {
+      this.#forRange(range[0], range[1], range[2], (run) => {
         // A replica that loaded the tombstones has no letters for them.
         if (revive) run.text = letters.slice(at, at + run.len);
         at += run.len;
@@ -2460,10 +2475,13 @@ const decodeRanges = (
   let continued = false;
   const push = (ref: Json, len: Json | undefined) => {
     if (typeof len !== "number" || len <= 0) return;
-    let [s, c] = decodeRef(own, ref);
+    const decoded = decodeRef(own, ref);
+    let s = decoded[0];
+    let c = decoded[1];
     // CONTINUES: no range names the letter its own operation would mint.
     if (out.length === 0 && s === own && c === at && previous) {
-      [s, c] = [previous[0], previous[1] + previous[2]];
+      s = previous[0];
+      c = previous[1] + previous[2];
       continued = true;
     }
     if (c >= 0) out.push([s, c, len]);
@@ -2486,16 +2504,17 @@ function encodeRanges(
   continues = -1,
 ): Json {
   const ref = (index: number) => {
-    const [s, c] = ranges[index]!;
+    const range = ranges[index]!;
     return index === 0 && continues >= 0
       ? encodeRef(own, own, continues)
-      : encodeRef(own, s, c);
+      : encodeRef(own, range[0], range[1]);
   };
   if (ranges.length === 1) {
     const len = ranges[0]![2];
     return len === 1 ? ref(0) : [ref(0), len];
   }
   const out: Json[] = [];
-  for (const [index, [, , len]] of ranges.entries()) out.push(ref(index), len);
+  for (let index = 0; index < ranges.length; index++)
+    out.push(ref(index), ranges[index]![2]);
   return out;
 }
