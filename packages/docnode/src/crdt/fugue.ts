@@ -90,6 +90,16 @@ export class FugueSiblings {
     return this.#elements.has(id);
   }
 
+  /** Whether it has no place, nor one waiting or still stored. */
+  isEmpty(): boolean {
+    return (
+      this.#elements.size +
+        this.#deferred.length +
+        (this.#pending?.size ?? 0) ===
+      0
+    );
+  }
+
   /** Builds the lists `load` deferred. */
   #ready() {
     if (this.#deferred.length === 0) return;

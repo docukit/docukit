@@ -451,7 +451,7 @@ class Engine implements CrdtEngine {
     doc.applyOperations = (operations, flags) =>
       this.#applyOperations(operations, flags);
     const toJSON = doc.toJSON.bind(doc);
-    doc.toJSON = (options) => this.#toJSON(toJSON(options));
+    doc.toJSON = (options) => this.#labeled(toJSON(options));
     doc.onChange((event) => this.#commit(event));
   }
 
@@ -1778,6 +1778,28 @@ class Engine implements CrdtEngine {
   }
 
   /* --------------------------------- snapshot ---------------------------------- */
+
+  /**
+   * `doc.toJSON` of a document without labels, which stores none (see
+   * `#toJSON`): no node, no deleted one, no root value nor place. Checked
+   * apart, so a document of only text does not compile the rest.
+   */
+  #labeled(json: JsonDoc): JsonDoc {
+    const root = this.#entries.get(this.#doc.root.id);
+    // At most the root's entry, with no stamp.
+    const rootOnly =
+      typeof root === "object"
+        ? this.#entries.size === 1 && isObjectEmpty(root.stamps)
+        : this.#entries.size === 0;
+    return this.#clock === 0 &&
+      rootOnly &&
+      this.#deleted.isEmpty() &&
+      !this.#aliases?.size &&
+      !this.#pending?.size &&
+      this.#fugue.isEmpty()
+      ? json
+      : this.#toJSON(json);
+  }
 
   /**
    * `doc.toJSON`: the labels go after the tree and the text, and their
