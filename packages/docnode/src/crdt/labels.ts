@@ -89,6 +89,21 @@ const newStamp = (lamport: number, session: string): Stamp => ({
 
 type Back = { parent: string; pos: string };
 
+/**
+ * Labels `load` read of nodes shown at their own place and where they point,
+ * with nothing in them the columns leave out, by index (see `Engine.#view`).
+ */
+type Loaded = {
+  nodes: (DocNode | undefined)[];
+  parents: string[];
+  clocks: Float64Array;
+  sessions: string[];
+  /** The stamps of the values each one was stored with (see `#setStamp`). */
+  stamps: Record<string, Stamp>[];
+  /** How many have no `Entry` yet. */
+  left: number;
+};
+
 type Entry = {
   id: string;
   life: number;
@@ -366,7 +381,17 @@ const CYCLE_STEPS = 32;
 const NO_LISTENERS: Doc["_normalizeListeners"] = new Set();
 
 class Engine implements CrdtEngine {
-  #entries = new Map<string, Entry>();
+  /**
+   * The entry of each node, or for a node `load` showed where it points and
+   * that nothing touched since, its index in `#loaded` (see `#entry`).
+   */
+  #entries = new Map<string, Entry | number>();
+  /**
+   * The labels of nodes loaded as they were stored, without an `Entry` and
+   * its stamp until the engine reads them, as Loro keeps a container as bytes
+   * until it is touched: a node that only loads costs a few array slots.
+   */
+  #loaded: Loaded | undefined;
   #deleted = new IdRanges();
   #clock = 0;
   #session: string | undefined;
@@ -492,11 +517,11 @@ class Engine implements CrdtEngine {
     // Nodes shown away from their place go last (see `#prevSibling`): the
     // run goes after the last placed one, and is sorted again.
     let before = first.prev;
-    while (before && this.#entries.get(before.id)!.away) before = before.prev;
-    let left = before ? this.#keyOf(before) : undefined;
+    while (before && this.#entry(before.id)!.away) before = before.prev;
+    let left = before ? this.#keyOf(before.id) : undefined;
     const list = parent.id;
     const ids = run.map((node) => {
-      const entry = this.#entries.get(node.id);
+      const entry = this.#entry(node.id);
       const fresh =
         inserted.has(node.id) && !entry && this.#deadLife(node.id) < 0;
       const id = fresh ? node.id : mint();
@@ -527,7 +552,7 @@ class Engine implements CrdtEngine {
 
   #rootEntry() {
     const { root } = this.#doc;
-    let entry = this.#entries.get(root.id);
+    let entry = this.#entry(root.id);
     if (!entry) {
       entry = this.#newEntry(root.id, 0, root.type);
       entry.node = root;
@@ -536,6 +561,44 @@ class Engine implements CrdtEngine {
       this.#entries.set(root.id, entry);
     }
     return entry;
+  }
+
+  /** The entry of `id`, built from `#loaded` the first time it is read. */
+  #entry(id: string): Entry | undefined {
+    const value = this.#entries.get(id);
+    if (typeof value !== "number") return value;
+    const entry = this.#view(id, value);
+    this.#entries.set(id, entry);
+    const loaded = this.#loaded!;
+    // The node is the entry's now: deleted, it can go.
+    loaded.nodes[value] = undefined;
+    if (--loaded.left === 0) this.#loaded = undefined;
+    return entry;
+  }
+
+  /** The entry of `id`, as `#entry` would build it, without keeping it. */
+  #peek(id: string): Entry | undefined {
+    const value = this.#entries.get(id);
+    return typeof value === "number" ? this.#view(id, value) : value;
+  }
+
+  /** What `load` would have made of the label at `index` of `#loaded`. */
+  #view(id: string, index: number): Entry {
+    const { nodes, parents, clocks, sessions, stamps } = this.#loaded!;
+    const node = nodes[index]!;
+    const entry = this.#newEntry(id, 0, node.type);
+    entry.node = node;
+    entry.parent = parents[index];
+    entry.pos = entry.key = id;
+    entry.at = entry.born = newStamp(clocks[index]!, sessions[index]!);
+    entry.stamps = stamps[index]!;
+    return entry;
+  }
+
+  /** Every entry, each built (see `#entry`). */
+  *#allEntries() {
+    for (const [id, value] of this.#entries)
+      yield typeof value === "number" ? this.#entry(id)! : value;
   }
 
   #newEntry(id: string, life: number, type?: string): Entry {
@@ -563,7 +626,7 @@ class Engine implements CrdtEngine {
 
   #ensure(id: string, life: number): Entry | undefined {
     if (this.#deadLife(id) >= life) return undefined;
-    let entry = this.#entries.get(id);
+    let entry = this.#entry(id);
     if (entry) {
       if (entry.life > life) return undefined;
       if (entry.life === life) return entry;
@@ -598,7 +661,7 @@ class Engine implements CrdtEngine {
   /** A hidden node can still link children that were removed since. */
   #dirtyChildren(node: DocNode) {
     node.children().forEach((child) => {
-      const childEntry = this.#entries.get(child.id);
+      const childEntry = this.#entry(child.id);
       // Not one killed in the same batch (the fuzz reaches it).
       /* v8 ignore next -- @preserve */
       if (childEntry) this.#dirty.add(childEntry);
@@ -661,7 +724,7 @@ class Engine implements CrdtEngine {
 
     const moved = new Map<string, Back>();
     for (const id of diff.moved) {
-      moved.set(id, this.#shownBack(this.#entries.get(id)!));
+      moved.set(id, this.#shownBack(this.#entry(id)!));
     }
 
     const inserts: InsertGroup[] = [];
@@ -673,7 +736,7 @@ class Engine implements CrdtEngine {
 
     const states = classic[1];
     for (const id in states) {
-      const entry = this.#entries.get(id)!;
+      const entry = this.#entry(id)!;
       // The values an insert writes share its stamp (see `#birthStamp`).
       const at = fresh.has(id) ? entry.born! : stamp;
       for (const key in states[id]) this.#setStamp(entry, key, at);
@@ -725,7 +788,7 @@ class Engine implements CrdtEngine {
     const root = this.#doc.root.id;
     const wire = (id: string) => (id === root ? 0 : id);
     for (const [id, cut] of this.#cuts) {
-      const entry = this.#entries.get(id);
+      const entry = this.#entry(id);
       if (!entry || moved.has(id)) continue;
       const move: MoveBase = [id, wire(cut.parent), cut.pos, null, null];
       moves.push(entry.life > 0 ? [...move, entry.life] : move);
@@ -755,7 +818,7 @@ class Engine implements CrdtEngine {
       done.add(node.id);
       const parent = node.parent!;
       const wireParent = wire(parent.id);
-      let entry = this.#entries.get(node.id);
+      let entry = this.#entry(node.id);
       let at = stamp;
       if (inserted.has(node.id)) {
         // After its last dead life, and never before a life others already
@@ -827,7 +890,7 @@ class Engine implements CrdtEngine {
       run.forEach((node, i) => assign(node, ids[i]!));
       if (resort)
         for (const node of run)
-          (this.#forced ??= new Set<Entry>()).add(this.#entries.get(node.id)!);
+          (this.#forced ??= new Set<Entry>()).add(this.#entry(node.id)!);
     };
     for (const id of [...inserted, ...moved.keys()]) {
       if (done.has(id)) continue;
@@ -836,8 +899,10 @@ class Engine implements CrdtEngine {
     }
   }
 
-  #keyOf(node: DocNode) {
-    return this.#entries.get(node.id)!.key;
+  /** Where node `id` is shown, without building its entry. */
+  #keyOf(id: string) {
+    const value = this.#entries.get(id);
+    return typeof value === "number" ? id : value?.key;
   }
 
   /**
@@ -850,7 +915,7 @@ class Engine implements CrdtEngine {
     const dead: [string, number][] = [];
     const pending = new Map<string, [Stamp, string, number, number[]]>();
     for (const [id, node] of deleted) {
-      const entry = this.#entries.get(id)!;
+      const entry = this.#entry(id)!;
       if (node.parent && deleted.has(node.parent.id)) {
         const seen = entry.at!;
         // A remote delete of an ancestor may have seen a later pointer: the
@@ -910,7 +975,7 @@ class Engine implements CrdtEngine {
   #collectGarbage(dead: [string, number][]) {
     for (const [id, queued] of this.#garbage ?? []) {
       if (this.#clock - queued < this.#options.gcDelay) continue;
-      const entry = this.#entries.get(id);
+      const entry = this.#entry(id);
       this.#garbage!.delete(id);
       if (!entry || this.#isPlaced(entry)) continue;
       // Hidden only while its parent has not arrived: not garbage.
@@ -924,7 +989,7 @@ class Engine implements CrdtEngine {
 
   #parentGone(entry: Entry) {
     const parent = entry.parent!;
-    const parentEntry = this.#entries.get(parent);
+    const parentEntry = this.#entry(parent);
     return parentEntry
       ? this.#isDoomed(parentEntry)
       : this.#deadLife(parent) >= 0;
@@ -1088,7 +1153,7 @@ class Engine implements CrdtEngine {
     this.#deleted.add(session, from, to, life);
     for (let clock = from; clock <= to; clock++) {
       for (const id of this.#idsOf(session, clock)) {
-        const entry = this.#entries.get(id);
+        const entry = this.#entry(id);
         if (entry && entry.life <= life) this.#kill(entry);
       }
     }
@@ -1111,7 +1176,7 @@ class Engine implements CrdtEngine {
       if (this.#deadLife(candidate) >= life) continue;
       // A later life of the node replaced this one: its record, applied
       // again, is old news.
-      if ((this.#entries.get(candidate)?.life ?? life) > life) continue;
+      if ((this.#entry(candidate)?.life ?? life) > life) continue;
       const current = this.#pending?.get(candidate);
       if (
         current &&
@@ -1125,7 +1190,7 @@ class Engine implements CrdtEngine {
         seen,
         own: current?.own ?? false,
       });
-      const entry = this.#entries.get(candidate);
+      const entry = this.#entry(candidate);
       if (entry) this.#dirty.add(entry);
     }
   }
@@ -1244,7 +1309,7 @@ class Engine implements CrdtEngine {
 
   #isAlive(id: string) {
     if (id === this.#doc.root.id) return true;
-    const entry = this.#entries.get(id);
+    const entry = this.#entry(id);
     return entry?.type !== undefined && !this.#isDoomed(entry);
   }
 
@@ -1263,7 +1328,7 @@ class Engine implements CrdtEngine {
       if (pending?.life !== current.life || !current.at) return false;
       if (compare(current.at, pending.seen) > 0) return false;
       const parent = current.parent!;
-      const parentEntry = this.#entries.get(parent);
+      const parentEntry = this.#entry(parent);
       // Gone, or never arrived (the root always has its entry).
       if (parentEntry?.type === undefined) return parent !== this.#doc.root.id;
       (visited ??= new Set()).add(current);
@@ -1304,7 +1369,7 @@ class Engine implements CrdtEngine {
           if (seen.has(cur)) return true;
           seen.add(cur);
         }
-        const at = this.#entries.get(cur);
+        const at = this.#entry(cur);
         const parent = at && this.#pointerTarget(at);
         if (parent === undefined || parent === rootId) break;
         cur = parent;
@@ -1319,7 +1384,7 @@ class Engine implements CrdtEngine {
     const cuts = new Map<string, Back>();
     const stages = new Map<string, number>();
     const edge = new Map<string, string | undefined>();
-    for (const entry of this.#entries.values()) {
+    for (const entry of this.#allEntries()) {
       if (entry.id !== rootId && entry.type !== undefined && entry.at) {
         edge.set(entry.id, this.#pointerTarget(entry));
       }
@@ -1327,8 +1392,8 @@ class Engine implements CrdtEngine {
     const worst = (cycle: string[]) => {
       let best = cycle[0]!;
       for (const id of cycle) {
-        const a = this.#entries.get(id)!.at!;
-        const b = this.#entries.get(best)!.at!;
+        const a = this.#entry(id)!.at!;
+        const b = this.#entry(best)!.at!;
         if (compare(a, b) > 0) best = id;
       }
       return best;
@@ -1352,7 +1417,7 @@ class Engine implements CrdtEngine {
       if (cycles.length === 0) break;
       for (const cycle of cycles) {
         const id = worst(cycle);
-        const entry = this.#entries.get(id)!;
+        const entry = this.#entry(id)!;
         const stage = stages.get(id) ?? 0;
         let next = rootId;
         // A second cut of the same node, when its previous position closes
@@ -1391,7 +1456,7 @@ class Engine implements CrdtEngine {
       const order = this.#topDown([...this.#dirty], rootId);
       this.#dirty.clear();
       for (const entry of order) {
-        if (this.#entries.get(entry.id) !== entry) continue;
+        if (this.#entry(entry.id) !== entry) continue;
         this.#place(entry);
       }
       if (this.#dirty.size > 0) this.#updateCuts();
@@ -1403,7 +1468,7 @@ class Engine implements CrdtEngine {
     const previous = this.#cuts;
     this.#cuts = this.#resolveCuts();
     for (const id of new Set([...previous.keys(), ...this.#cuts.keys()])) {
-      const entry = this.#entries.get(id);
+      const entry = this.#entry(id);
       if (entry) this.#dirty.add(entry);
     }
   }
@@ -1449,7 +1514,7 @@ class Engine implements CrdtEngine {
       const [parent] = this.#target(entry);
       const parentEntry =
         parent !== undefined && parent !== rootId
-          ? this.#entries.get(parent)
+          ? this.#entry(parent)
           : undefined;
       const value = parentEntry ? 1 + depthOf(parentEntry) : 0;
       depth.set(entry, value);
@@ -1477,7 +1542,7 @@ class Engine implements CrdtEngine {
     if (parentId !== undefined) this.#waitForPlace(key, entry);
     const away = parentId !== undefined && this.#isAway(key, parentId);
     const parentEntry =
-      parentId === undefined ? undefined : this.#entries.get(parentId);
+      parentId === undefined ? undefined : this.#entry(parentId);
     const parent =
       parentId === undefined
         ? undefined
@@ -1542,7 +1607,7 @@ class Engine implements CrdtEngine {
         this.#dirty.add(entry);
         return true;
       }
-      between.push(this.#entries.get(up.id)!);
+      between.push(this.#entry(up.id)!);
     }
     return false;
   }
@@ -1583,7 +1648,7 @@ class Engine implements CrdtEngine {
     // A node placed again later, still away, is not one to go after.
     if (!entry.away)
       return this.#fugue.findBefore(entry.key, (owner, place) => {
-        const other = this.#entries.get(owner);
+        const other = this.#entry(owner);
         return other?.key === place &&
           other.node?.parent === parent &&
           !other.away
@@ -1594,7 +1659,7 @@ class Engine implements CrdtEngine {
     // has not arrived): after the nodes placed in this parent, by id.
     for (let prev = parent.last; prev; prev = prev.prev) {
       if (prev === entry.node) continue;
-      const other = this.#entries.get(prev.id)!;
+      const other = this.#entry(prev.id)!;
       if (!other.away || prev.id < entry.id) return prev;
     }
     return undefined;
@@ -1733,7 +1798,7 @@ class Engine implements CrdtEngine {
     let lamport = 0;
     const walk = (parent: DocNode) => {
       for (let child = parent.first; child; child = child.next) {
-        const entry = this.#entries.get(child.id)!;
+        const entry = this.#peek(child.id)!;
         const { lamport: clock, session } = entry.at!;
         sessionColumn.push(names.index(session));
         lamportColumn.pushSigned(clock - lamport);
@@ -1748,12 +1813,13 @@ class Engine implements CrdtEngine {
     };
     walk(this.#doc.root);
     const hidden: Entry[] = [];
-    for (const entry of this.#entries.values()) {
-      if (entry.id === rootId) continue;
-      const node = entry.node;
+    for (const [id, value] of this.#entries) {
+      if (id === rootId) continue;
+      const node =
+        typeof value === "number" ? this.#loaded!.nodes[value] : value.node;
       // Shown: linked under a node of the document.
       if (node && this.#doc["_nodeMap"].get(node.id) === node) continue;
-      hidden.push(entry);
+      hidden.push(this.#peek(id)!);
     }
     hidden.sort((a, b) => Number(a.id > b.id) - Number(a.id < b.id));
     const limbo = hidden.map((entry): Json[] => {
@@ -1770,7 +1836,7 @@ class Engine implements CrdtEngine {
     for (const [old, renamed] of this.#aliases ?? [])
       aliases.push(names.write(old), names.write(renamed));
     const rootStamps: Json[] = [];
-    const root = this.#entries.get(rootId)!;
+    const root = this.#entry(rootId)!;
     for (const key in root.stamps) {
       const { lamport: clock, session } = root.stamps[key]!;
       rootStamps.push(key, clock, names.index(session));
@@ -1803,7 +1869,7 @@ class Engine implements CrdtEngine {
       pending,
       this.#fugue.toJSON(
         (list) => childIds(this.#doc, list),
-        (owner, place) => this.#entries.get(owner)?.key === place,
+        (owner, place) => this.#keyOf(owner) === place,
         sessions,
       ),
     ];
@@ -1945,7 +2011,34 @@ class Engine implements CrdtEngine {
     labels.aliases((old, renamed) =>
       (this.#aliases ??= new Map<string, string>()).set(old, renamed),
     );
+    // As many as the stored tree has nodes, at most.
+    const size = doc["_nodeMap"].size;
+    const loaded: Loaded = {
+      nodes: new Array<DocNode | undefined>(size),
+      parents: new Array<string>(size),
+      clocks: new Float64Array(size),
+      sessions: new Array<string>(size),
+      stamps: new Array<Record<string, Stamp>>(size),
+      left: 0,
+    };
+    this.#loaded = loaded;
+    // The stamps of the stored values: one shared object per keys.
+    const scratch = this.#newEntry("", 0);
+    scratch.born = BORN;
     labels.visible(doc.root, (child, parent, label) => {
+      const { pos, at, extra } = label;
+      if (pos === child.id && !label.away && extra === undefined) {
+        const index = loaded.left++;
+        loaded.nodes[index] = child;
+        loaded.parents[index] = parent.id;
+        loaded.clocks[index] = at.lamport;
+        loaded.sessions[index] = at.session;
+        scratch.stamps = NO_STAMPS;
+        for (const key in child["_state"]) this.#setStamp(scratch, key, BORN);
+        loaded.stamps[index] = scratch.stamps;
+        this.#entries.set(child.id, index);
+        return;
+      }
       const entry = this.#newEntry(child.id, 0, child.type);
       entry.node = child;
       entry.parent = parent.id;
@@ -1957,6 +2050,7 @@ class Engine implements CrdtEngine {
       if (entry.away) this.#waitForPlace(entry.key, entry);
       this.#entries.set(child.id, entry);
     });
+    if (loaded.left === 0) this.#loaded = undefined;
     labels.rootStamps((key, stamp) => this.#setStamp(root, key, stamp));
     labels.limbo((id, type, label, state) => {
       this.#offTree = true;
@@ -1987,12 +2081,12 @@ class Engine implements CrdtEngine {
     // Limbo nodes are linked to the parents they already point to, and the
     // cycle cut is recomputed. Both are pure functions of the labels.
     const rootId = this.#doc.root.id;
-    for (const entry of this.#entries.values()) {
+    for (const entry of this.#allEntries()) {
       if (entry.id === rootId || !entry.node) continue;
       if (!entry.node.parent) this.#dirty.add(entry);
     }
     this.#cuts = this.#resolveCuts();
-    for (const entry of this.#entries.values()) {
+    for (const entry of this.#allEntries()) {
       if (entry.node && entry.id !== rootId) {
         const [, key] = this.#target(entry);
         entry.key = key;
