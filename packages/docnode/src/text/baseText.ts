@@ -74,6 +74,11 @@ class Run implements Item<Run> {
   vis = 0;
   /** Whether a ghost may be anchored at one of its letters (see `Ghosts`). */
   anchors = false;
+  /**
+   * `text.length`, kept with it: read on every lookup. Every letter of the
+   * list is visible (see `Item`): deleted ones are gone.
+   */
+  len: number;
 
   constructor(
     readonly s: string,
@@ -81,14 +86,9 @@ class Run implements Item<Run> {
     public text: string,
     public state: State | undefined,
     readonly flow: Flow,
-  ) {}
-
-  get len(): number {
-    return this.text.length;
+  ) {
+    this.len = text.length;
   }
-
-  /** Every letter of the list is (see `Item`): deleted ones are gone. */
-  readonly visible = true;
 }
 
 /** The list of one node: its root (a run without letters), then its letters. */
@@ -178,6 +178,7 @@ export class BaseText extends TextEngine {
     );
     tail.anchors = run.anchors;
     run.text = run.text.slice(0, offset);
+    run.len = offset;
     this.#positions.changed(run);
     this.#indexRun(tail);
     this.#linkAfter(run, tail);
@@ -371,6 +372,7 @@ export class BaseText extends TextEngine {
       const next = run.next;
       this.#unlink(next);
       run.text += next.text;
+      run.len += next.len;
       if (next.anchors) run.anchors = true;
       this.#positions.changed(run);
     }
@@ -820,6 +822,7 @@ export class BaseText extends TextEngine {
     if (at.off < target.len - 1) this.#split(target, at.off + 1);
     if (joins(target, { s, c, state })) {
       target.text += letters;
+      target.len += letters.length;
       this.#positions.changed(target);
       return { run: target, off: target.len - 1 };
     }

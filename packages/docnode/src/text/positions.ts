@@ -5,7 +5,8 @@
 /** What the index needs of a run of letters (and of a node's root). */
 export type Item<R> = {
   readonly len: number;
-  readonly visible: boolean;
+  /** Unless `false`. */
+  readonly visible?: boolean;
   /** Bookkeeping of the index. */
   leaf: Leaf<R> | undefined;
   vis: number;
@@ -51,7 +52,7 @@ type Inner<R> = {
 type TreeNode<R> = Leaf<R> | Inner<R>;
 
 const isLeaf = <R>(node: TreeNode<R>): node is Leaf<R> => "items" in node;
-const visOf = <R>(run: Item<R>) => (run.visible ? run.len : 0);
+const visOf = <R>(run: Item<R>) => (run.visible === false ? 0 : run.len);
 
 /** An inner node over `children`, which it adopts. */
 function innerOf<R>(children: TreeNode<R>[]): Inner<R> {
