@@ -980,13 +980,11 @@ export class Doc {
       this._lifeCycleStage !== "change"
     ) {
       throw new Error(
-        [
-          "Cannot serialize a document during an active transaction.",
-          "Its state may still change or be rolled back, so the output",
-          "is not reliable for persistence. Prefer calling toJSON when",
-          "the document is idle or in a change stage. Alternatively, use",
+        "Cannot serialize a document during an active transaction. " +
+          "Its state may still change or be rolled back, so the output " +
+          "is not reliable for persistence. Prefer calling toJSON when " +
+          "the document is idle or in a change stage. Alternatively, use " +
           "`toJSON({ unsafe: true })` for debugging.",
-        ].join(" "),
       );
     }
     return writeJsonDoc(this);
@@ -1283,11 +1281,9 @@ function stateKeyMethods(
       const doc = node.doc;
       if (!doc["_diff"].updated.has(node.id))
         throw new Error(
-          [
-            "getPrev cannot be used on nodes that are not attached or that",
-            "have been inserted in the current transaction. Usually, you",
+          "getPrev cannot be used on nodes that are not attached or that " +
+            "have been inserted in the current transaction. Usually, you " +
             "will want to use getPrev with nodes from diff.updated.",
-          ].join(" "),
         );
       const maybePrevState = doc["_inverseOperations"][1][node.id]?.[key];
       return maybePrevState
@@ -1358,11 +1354,9 @@ function resolve(config: DocConfig): Resolved {
       const state = nodeDef.state[key]!;
       if (resolvedNodeDef.state[key] !== undefined) {
         throw new Error(
-          [
-            `Collision error: attempt to register 2 node definitions of type`,
-            `'${nodeDef.type}' that share the state property ${key}. Remove`,
+          `Collision error: attempt to register 2 node definitions of type ` +
+            `'${nodeDef.type}' that share the state property ${key}. Remove ` +
             `that and any other repeated states in either of the two node definitions.`,
-          ].join(" "),
         );
       } else {
         resolvedNodeDef.state[key] = state;
