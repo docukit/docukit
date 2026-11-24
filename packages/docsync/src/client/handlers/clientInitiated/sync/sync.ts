@@ -19,6 +19,7 @@ import {
 import {
   finalizeSyncReconciliation,
   prepareSyncReconciliation,
+  rebaseInPlace,
 } from "./reconcileSyncResponse.js";
 
 /**
@@ -138,9 +139,20 @@ async function resolveHistorySourceForPotentialReplacement<
   },
 ): Promise<HistorySource<D> | undefined> {
   if (!args.hasServerSnapshot && !args.hasConcurrentOperations) return;
-  const docBinding = client["_docBinding"];
-  if (!docBinding.exportHistory) return;
-  const cacheEntry = client["_docsCache"].get(args.docId);
+  if (!client["_docBinding"].exportHistory) return;
+  return resolveLiveDoc(client, args.docId);
+}
+
+/** The loaded doc, if it is loaded. */
+async function resolveLiveDoc<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
+  client: DocSyncClient<D, S, O>,
+  docId: string,
+): Promise<HistorySource<D> | undefined> {
+  const cacheEntry = client["_docsCache"].get(docId);
   if (!cacheEntry) return;
   const doc = await cacheEntry.promisedDoc;
   if (!doc) return;
@@ -350,6 +362,13 @@ async function runSyncAttempt<
     },
   );
   if (!isLive()) return stale;
+  // A doc that rebases in place (see `DocBinding.rebase`) is resolved too.
+  const live =
+    historySource ??
+    (client["_docBinding"].rebase
+      ? await resolveLiveDoc(client, docId)
+      : undefined);
+  if (!isLive()) return stale;
   const preparedReconciliation = await prepareSyncReconciliation(client, {
     provider,
     docId,
@@ -358,6 +377,16 @@ async function runSyncAttempt<
     data,
     isCurrent: isLive,
   });
+  // What DocSync stored moved on: the live doc goes on rebasing in place only
+  // if it was where DocSync stored, and rebases now (below).
+  const rebasedAt = live && client["_rebasable"].get(live.doc);
+  const rebasable =
+    live !== undefined &&
+    rebasedAt !== undefined &&
+    preparedReconciliation.didConsolidate &&
+    rebasedAt === preparedReconciliation.storedClock;
+  if (live && preparedReconciliation.didConsolidate)
+    client["_rebasable"].delete(live.doc);
   if (!isLive()) return stale;
 
   // Keep this section synchronous. Exporting DocNode history force-commits a
@@ -365,6 +394,22 @@ async function runSyncAttempt<
   // and replacement imports the matching history before another user event
   // can run.
   const batchBeforeExport = client["_localOpsBatchState"].get(docId)?.data;
+  if (
+    rebasable &&
+    client["_docsCache"].get(docId)?.promisedDoc === live.promisedDoc &&
+    rebaseInPlace(client, {
+      doc: live.doc,
+      prepared: preparedReconciliation,
+      localOperations: operations,
+      requestLocalVersion,
+      docId,
+      pendingMemoryOperations: () =>
+        resolvePendingMemoryOperations(client, docId, batchBeforeExport),
+    })
+  ) {
+    broadcastServerOperations(client, { docId, operations: data.operations });
+    return { type: "synced" };
+  }
   const exportedHistory =
     preparedReconciliation.replacementDoc &&
     preparedReconciliation.shouldReplaceDoc

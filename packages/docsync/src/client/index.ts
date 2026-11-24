@@ -109,6 +109,13 @@ export class DocSyncClient<
    */
   protected _connectionFetchStatus: "fetching" | "paused";
   protected _changeOrigin: ChangeOrigin = "local";
+  /**
+   * Loaded documents that rebase in place (see `DocBinding.rebase`), with the
+   * clock of what DocSync stored when they last rebased: where they go back
+   * to. A sync that stores from another clock, or without rebasing one,
+   * takes it out.
+   */
+  protected _rebasable = new WeakMap<D, number>();
 
   // Flow control state (batching, debouncing, push queueing)
   protected _localOpsBatchState = new Map<string, LocalOpsBatchState<O>>();

@@ -13,8 +13,12 @@ export type ReconcileSyncResult<D extends object, O extends object> =
 
 type PreparedSyncReconciliation<D extends object, O extends object> = {
   didConsolidate: boolean;
+  /** The clock of what it consolidated, when that was what DocSync stored. */
+  storedClock?: number;
   shouldReplaceDoc: boolean;
   pendingProviderOperations: O[];
+  /** What DocSync stored now. */
+  clock: number;
   replacementDoc?: D;
   serverOperations: O[];
 };
@@ -61,6 +65,7 @@ export async function prepareSyncReconciliation<
   let didConsolidate = false;
   let pendingProviderOperations: O[] = [];
   let replacementDoc: D | undefined;
+  let storedClock: number | undefined;
 
   const acknowledgedIds = new Set(operationsBatches.map((batch) => batch.id));
 
@@ -123,6 +128,7 @@ export async function prepareSyncReconciliation<
     }
     replacementDoc = doc;
     didConsolidate = true;
+    if (!hasServerSnapshot) storedClock = stored?.clock;
   });
 
   return {
@@ -132,7 +138,9 @@ export async function prepareSyncReconciliation<
       (data.operations.length > 0 && localOperations.length > 0),
     pendingProviderOperations,
     ...(replacementDoc && { replacementDoc }),
+    ...(storedClock !== undefined && { storedClock }),
     serverOperations: data.operations,
+    clock: data.clock,
   };
 }
 
@@ -176,6 +184,9 @@ export function finalizeSyncReconciliation<
       return { type: "none" };
     }
 
+    // It is what DocSync stored: from here on it can rebase in place.
+    if (client["_docBinding"].rebase?.(prepared.replacementDoc))
+      client["_rebasable"].set(prepared.replacementDoc, prepared.clock);
     applyOperations(
       client,
       prepared.replacementDoc,
@@ -196,4 +207,59 @@ export function finalizeSyncReconciliation<
   }
 
   return { type: "none" };
+}
+
+/**
+ * Where a sync would replace the live doc, or apply the server's operations
+ * to it, a doc that rebases in place does that instead (see
+ * `DocBinding.rebase`): it goes back to what DocSync stored before, takes
+ * the server's operations and the ones the request sent, and then what it
+ * has not synced, as the replacement would. It keeps its identity, undo
+ * history and listeners. Synchronous, like `finalizeSyncReconciliation`.
+ */
+export function rebaseInPlace<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
+  client: DocSyncClient<D, S, O>,
+  args: {
+    doc: D;
+    prepared: PreparedSyncReconciliation<D, O>;
+    localOperations: O[];
+    requestLocalVersion: number;
+    docId: string;
+    pendingMemoryOperations: () => O[];
+  },
+): boolean {
+  const { doc, prepared, docId } = args;
+  const docBinding = client["_docBinding"];
+  // Edits no pending operation holds would be undone and not applied again:
+  // as for a replacement (`finalizeSyncReconciliation`), it does not.
+  if (
+    getLocalDocVersion(client, docId) > args.requestLocalVersion &&
+    prepared.pendingProviderOperations.length === 0 &&
+    args.pendingMemoryOperations().length === 0
+  )
+    return false;
+  client["_changeOrigin"] = "network";
+  try {
+    if (
+      !docBinding.rebase?.(doc, [
+        ...prepared.serverOperations,
+        ...args.localOperations,
+      ])
+    )
+      return false;
+    applyOperations(client, doc, prepared.pendingProviderOperations, {
+      skipUndo: true,
+    });
+    applyOperations(client, doc, args.pendingMemoryOperations(), {
+      skipUndo: true,
+    });
+  } finally {
+    client["_changeOrigin"] = "local";
+  }
+  client["_rebasable"].set(doc, prepared.clock);
+  return true;
 }

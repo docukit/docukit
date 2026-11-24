@@ -3,6 +3,7 @@ import {
   type DocConfig,
   mergeBatches,
   type Operations,
+  rebase,
 } from "@docukit/docnode";
 import { upgradeOperations } from "@docukit/docnode/compat";
 import { createDocBinding } from "./index.js";
@@ -47,6 +48,8 @@ export const DocNodeBinding = (docConfigs: DocConfig[]) => {
     // What a client queued may include batches that docnode 0.4 wrote.
     mergeOperations: (operations) =>
       mergeBatches(operations.map(upgradeOperations)),
+    rebase: (doc, operations) =>
+      rebase(doc, operations?.map(upgradeOperations)),
     exportHistory: (doc) => doc.undoManager.exportHistory(),
     importHistory: (doc, history) => {
       doc.undoManager.importHistory(history);

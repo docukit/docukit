@@ -269,6 +269,108 @@ describe("Local-First", () => {
     });
   });
 
+  test("once replaced, the doc rebases in place on concurrent operations", async () => {
+    await testWrapper(async ({ reference, otherDevice }) => {
+      await reference.loadDoc();
+      await otherDevice.loadDoc();
+      reference.doc?.forceCommit();
+      otherDevice.doc?.forceCommit();
+
+      // The first time, the doc is replaced by what DocSync stored.
+      reference.disconnect();
+      reference.addChild("Local");
+      reference.doc?.forceCommit();
+      otherDevice.addChild("Remote");
+      otherDevice.doc?.forceCommit();
+      await otherDevice.assertIDBDoc({ doc: ["Remote"], ops: [] });
+      const firstDoc = reference.doc;
+      reference.connect();
+      await reference.assertMemoryDoc(["Remote", "Local"]);
+      expect(reference.doc).not.toBe(firstDoc);
+
+      // From then on it rebases in place: the same doc, in the server's order.
+      const liveDoc = reference.doc;
+      reference.disconnect();
+      reference.addChild("Local 2");
+      reference.doc?.forceCommit();
+      otherDevice.addChild("Remote 2");
+      otherDevice.doc?.forceCommit();
+      await otherDevice.assertIDBDoc({
+        doc: ["Remote", "Local", "Remote 2"],
+        ops: [],
+      });
+      reference.connect();
+      await reference.assertMemoryDoc([
+        "Remote",
+        "Local",
+        "Local 2",
+        "Remote 2",
+      ]);
+      expect(reference.doc).toBe(liveDoc);
+      await reference.assertIDBDoc({
+        doc: ["Remote", "Local", "Local 2", "Remote 2"],
+        ops: [],
+      });
+      await otherDevice.assertMemoryDoc([
+        "Remote",
+        "Local",
+        "Local 2",
+        "Remote 2",
+      ]);
+
+      // Its undo history goes on.
+      reference.doc?.undoManager.undo();
+      await reference.assertMemoryDoc(["Remote", "Local", "Remote 2"]);
+    });
+  });
+
+  test("a doc another tab stored past is replaced, not rebased in place", async () => {
+    await testWrapper(async ({ reference, otherTab, otherDevice }) => {
+      await reference.loadDoc();
+      await otherDevice.loadDoc();
+      reference.doc?.forceCommit();
+      otherDevice.doc?.forceCommit();
+
+      // Replaced once: from then on it would rebase in place.
+      reference.disconnect();
+      reference.addChild("Local");
+      reference.doc?.forceCommit();
+      otherDevice.addChild("Remote");
+      otherDevice.doc?.forceCommit();
+      await otherDevice.assertIDBDoc({ doc: ["Remote"], ops: [] });
+      reference.connect();
+      await reference.assertMemoryDoc(["Remote", "Local"]);
+      await reference.assertIDBDoc({ doc: ["Remote", "Local"], ops: [] });
+      await otherTab.loadDoc();
+      await otherTab.assertMemoryDoc(["Remote", "Local"]);
+
+      // Offline, it gets what the other tab syncs, which stores past it.
+      reference.disconnect();
+      otherTab.addChild("Tab");
+      otherTab.doc?.forceCommit();
+      await otherTab.assertIDBDoc({ doc: ["Remote", "Local", "Tab"], ops: [] });
+      await reference.assertMemoryDoc(["Remote", "Local", "Tab"]);
+      await otherDevice.assertMemoryDoc(["Remote", "Local", "Tab"]);
+      // Only this tab sends what it does next.
+      otherTab.disconnect();
+
+      reference.addChild("Local 2");
+      reference.doc?.forceCommit();
+      otherDevice.addChild("Remote 2");
+      otherDevice.doc?.forceCommit();
+      await otherDevice.assertIDBDoc({
+        doc: ["Remote", "Local", "Tab", "Remote 2"],
+        ops: [],
+      });
+      const liveDoc = reference.doc;
+      reference.connect();
+      const all = ["Remote", "Local", "Tab", "Local 2", "Remote 2"];
+      await reference.assertMemoryDoc(all);
+      expect(reference.doc).not.toBe(liveDoc);
+      await otherDevice.assertMemoryDoc(all);
+    });
+  });
+
   test("reconnect preserves an edit made during asynchronous reconciliation", async () => {
     await testWrapper(async ({ reference, otherDevice }) => {
       await reference.loadDoc();

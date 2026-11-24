@@ -40,6 +40,18 @@ export type DocBinding<
    * this client queued; it never looks inside them.
    */
   mergeOperations?(operations: O[]): O[];
+  /**
+   * Updates a document in place, where DocSync would otherwise load it again
+   * from what it stored and apply the operations it has not synced (see
+   * `replaceDoc`). DocSync never looks inside the operations.
+   *
+   * - `rebase(doc)`: `doc` is what DocSync stored. What it does from then on,
+   *   the next call undoes.
+   * - `rebase(doc, operations)`: undoes that, applies `operations` (what the
+   *   server ordered since, in its order) and starts again. False, with
+   *   nothing changed, when `doc` cannot: DocSync loads it again.
+   */
+  rebase?(doc: D, operations?: O[]): boolean;
   dispose(doc: D): void;
 } & DocBindingHistory<D>;
 
