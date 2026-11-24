@@ -454,12 +454,12 @@ export class FugueSiblings {
       // Each place by its position (from 1; 0 is the root), in columns.
       const read: Stored = {
         ids: [],
-        owners: [],
+        owners: undefined,
         sides: new Uint8Array(count + 1),
         parents: new Int32Array(count + 1),
         rss: new Int32Array(count + 1),
       };
-      const { ids, owners, sides, parents, rss } = read;
+      const { ids, sides, parents, rss } = read;
       for (let seq = 1; seq <= count; seq++) {
         const code = column(COLUMN_CODE).next();
         const kind = code >> 2;
@@ -492,8 +492,10 @@ export class FugueSiblings {
           ownerId = readId(COLUMN_OWNER_SESSION, COLUMN_OWNER_CLOCK);
           lastClock = clock;
         }
+        // Most places are their node's first: their owners are their ids.
+        if (read.owners || ownerId !== id)
+          (read.owners ??= [...ids]).push(ownerId);
         ids.push(id);
-        owners.push(ownerId);
         sides[seq] = side;
         parents[seq] = parent;
         rss[seq] = rs;
@@ -522,7 +524,7 @@ export class FugueSiblings {
 
   /** A stored list, place by place, as places that travel. */
   #addStored(list: string, read: Stored) {
-    const { ids, owners, sides, parents, rss } = read;
+    const { ids, owners = ids, sides, parents, rss } = read;
     const idAt = (seq: number) => (seq === 0 ? undefined : ids[seq - 1]!);
     ids.forEach((id, index) => {
       const seq = index + 1;
@@ -539,7 +541,7 @@ export class FugueSiblings {
 
   /** A new list, linked in its stored order: kids are met in their order. */
   #build(id: string, read: Stored) {
-    const { ids, owners, sides, parents, rss } = read;
+    const { ids, owners = ids, sides, parents, rss } = read;
     const list = this.#list(id);
     const elements: Element[] = [list.root];
     ids.forEach((placeId, index) => {
@@ -587,7 +589,8 @@ export class FugueSiblings {
  */
 type Stored = {
   ids: string[];
-  owners: string[];
+  /** Left out while every owner is its place's id. */
+  owners: string[] | undefined;
   sides: Uint8Array;
   parents: Int32Array;
   rss: Int32Array;
