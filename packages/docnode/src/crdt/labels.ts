@@ -576,17 +576,16 @@ class Engine implements CrdtEngine {
     return entry;
   }
 
-  /** The entry of `id`, as `#entry` would build it, without keeping it. */
-  #peek(id: string): Entry | undefined {
-    const value = this.#entries.get(id);
-    return typeof value === "number" ? this.#view(id, value) : value;
-  }
-
-  /** What `load` would have made of the label at `index` of `#loaded`. */
-  #view(id: string, index: number): Entry {
+  /**
+   * What `load` would have made of the label at `index` of `#loaded`, in
+   * `entry` if given (which must have no `back` and not be `away`).
+   */
+  #view(id: string, index: number, entry?: Entry): Entry {
     const { nodes, parents, clocks, sessions, stamps } = this.#loaded!;
     const node = nodes[index]!;
-    const entry = this.#newEntry(id, 0, node.type);
+    entry ??= this.#newEntry(id, 0, node.type);
+    entry.id = id;
+    entry.type = node.type;
     entry.node = node;
     entry.parent = parents[index];
     entry.pos = entry.key = id;
@@ -1818,9 +1817,14 @@ class Engine implements CrdtEngine {
     const extras: Json[] = [];
     let index = 0;
     let lamport = 0;
+    // What `#view` makes of a loaded label, filled again for each one: a
+    // save reads it and keeps nothing.
+    const view = this.#newEntry("", 0);
     const walk = (parent: DocNode) => {
       for (let child = parent.first; child; child = child.next) {
-        const entry = this.#peek(child.id)!;
+        const value = this.#entries.get(child.id)!;
+        const entry =
+          typeof value === "number" ? this.#view(child.id, value, view) : value;
         const { lamport: clock, session } = entry.at!;
         sessionColumn.push(names.index(session));
         lamportColumn.pushSigned(clock - lamport);
@@ -1836,19 +1840,22 @@ class Engine implements CrdtEngine {
     walk(this.#doc.root);
     const hidden: Entry[] = [];
     const map = this.#doc["_nodeMap"];
-    for (const value of this.#entries.values()) {
-      if (typeof value === "number") {
-        // Untouched since it loaded, unless an ancestor left with it.
-        const node = this.#loaded!.nodes[value]!;
-        if (map.get(node.id) !== node) hidden.push(this.#view(node.id, value));
-        continue;
+    // Every entry but the root's is shown: none is hidden.
+    if (index + 1 < this.#entries.size)
+      for (const value of this.#entries.values()) {
+        if (typeof value === "number") {
+          // Untouched since it loaded, unless an ancestor left with it.
+          const node = this.#loaded!.nodes[value]!;
+          if (map.get(node.id) !== node)
+            hidden.push(this.#view(node.id, value));
+          continue;
+        }
+        if (value.id === rootId) continue;
+        const node = value.node;
+        // Shown: linked under a node of the document.
+        if (node && map.get(node.id) === node) continue;
+        hidden.push(value);
       }
-      if (value.id === rootId) continue;
-      const node = value.node;
-      // Shown: linked under a node of the document.
-      if (node && map.get(node.id) === node) continue;
-      hidden.push(value);
-    }
     hidden.sort((a, b) => Number(a.id > b.id) - Number(a.id < b.id));
     const limbo = hidden.map((entry): Json[] => {
       const { lamport: clock, session } = entry.at ?? ZERO;
@@ -1932,30 +1939,32 @@ class Engine implements CrdtEngine {
     hidden: boolean,
   ) {
     const at = entry.at ?? ZERO;
-    const extra: Record<string, Json> = {};
-    if (entry.life > 0) extra.l = entry.life;
+    // Made when it has something: most labels have nothing more.
+    let extra: Record<string, Json> | undefined;
+    if (entry.life > 0) extra = { l: entry.life };
     if (entry.born && compare(entry.born, at) !== 0)
-      extra.o = [entry.born.lamport, names.index(entry.born.session)];
+      (extra ??= {}).o = [entry.born.lamport, names.index(entry.born.session)];
     if (entry.back) {
-      extra.b = names.write(entry.back.parent);
+      (extra ??= {}).b = names.write(entry.back.parent);
       extra.p = entry.back.pos;
     }
+    const node = entry.node;
     const shownAtPointer =
-      entry.node?.parent?.id === entry.parent && entry.key === entry.pos;
+      node?.parent?.id === entry.parent && entry.key === entry.pos;
     if (hidden || !shownAtPointer) {
-      extra.u = entry.parent === undefined ? 0 : names.write(entry.parent);
+      (extra ??= {}).u =
+        entry.parent === undefined ? 0 : names.write(entry.parent);
       extra.q = entry.pos;
     }
     // The stamp of a value written with the label's own is left out.
-    const written = entry.node?.["_stateToJson"]() ?? {};
-    const stamps: Json[] = [];
+    let stamps: Json[] | undefined;
     for (const key in entry.stamps) {
       const stamp = stampOf(entry, key)!;
-      if (key in written && compare(stamp, at) === 0) continue;
-      stamps.push(key, stamp.lamport, names.index(stamp.session));
+      if (compare(stamp, at) === 0 && node && isWritten(node, key)) continue;
+      (stamps ??= []).push(key, stamp.lamport, names.index(stamp.session));
     }
-    if (stamps.length > 0) extra.s = stamps;
-    return isObjectEmpty(extra) ? undefined : extra;
+    if (stamps) (extra ??= {}).s = stamps;
+    return extra;
   }
 
   /** Sets what `label` stores on `entry` (see `#extra`). */
@@ -2219,6 +2228,15 @@ const NO_STAMPS: Record<string, Stamp> = Object.freeze({});
  */
 const bornStamps = new Map<string, Record<string, Stamp>>();
 const BORN_STAMPS = 1024;
+/**
+ * Whether `node` stores a value of `key`: one not its default (see
+ * `DocNode._stateToJson`).
+ */
+const isWritten = (node: DocNode, key: string) =>
+  key in node["_state"] &&
+  stringifyStateKey(node, key) !==
+    node.doc["_resolvedNodeDefs"].get(node.type)!.defaultStrings[key];
+
 /** The stamp of `key` on `entry`, if it was written in this life. */
 const stampOf = (entry: Entry, key: string) => {
   const stamp = entry.stamps[key];
