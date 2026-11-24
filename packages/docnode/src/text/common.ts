@@ -157,13 +157,22 @@ export function stateOfContent(
 export class SessionRuns<
   R extends { readonly c: number; readonly len: number },
 > {
-  #chunks: R[][] = [[]];
+  /**
+   * Its runs in chunks, made when a lookup needs them: until then, the one
+   * run a session was loaded with is `#last`. A document many replicas typed
+   * in has many sessions of one run.
+   */
+  #chunks: R[][] | undefined;
 
   static from<R extends { readonly c: number; readonly len: number }>(
     runs: R[],
   ): SessionRuns<R> {
     const out = new SessionRuns<R>();
     const count = runs.length;
+    if (count === 1) {
+      out.#last = runs[0];
+      return out;
+    }
     const keys = new Float64Array(count);
     let sorted = true;
     for (let index = 0; index < count; index++) {
@@ -187,8 +196,13 @@ export class SessionRuns<
 
   #last: R | undefined;
 
+  /** Its chunks, made from `#last` the first time. */
+  #all(): R[][] {
+    return (this.#chunks ??= [this.#last ? [this.#last] : []]);
+  }
+
   #chunkFor(c: number): R[] {
-    const chunks = this.#chunks;
+    const chunks = this.#all();
     let low = 0;
     let high = chunks.length - 1;
     while (low < high) {
@@ -208,7 +222,8 @@ export class SessionRuns<
 
   /** The counter after its last run. */
   end(): number {
-    const runs = this.#chunks[this.#chunks.length - 1]!;
+    const chunks = this.#all();
+    const runs = chunks[chunks.length - 1]!;
     const last = runs[runs.length - 1]!;
     return last.c + last.len;
   }
@@ -231,7 +246,7 @@ export class SessionRuns<
     if (runs.length === 0 || runs[runs.length - 1]!.c < run.c) runs.push(run);
     else runs.splice(lowerBound(runs, run.c), 0, run);
     if (runs.length < CHUNK * 2) return;
-    const chunks = this.#chunks;
+    const chunks = this.#chunks!;
     chunks.splice(chunks.indexOf(runs) + 1, 0, runs.splice(CHUNK));
   }
 
@@ -248,12 +263,12 @@ export class SessionRuns<
     if (this.#last === run) this.#last = undefined;
     const runs = this.#chunkFor(run.c);
     runs.splice(lowerBound(runs, run.c), 1);
-    if (runs.length === 0) this.#chunks.splice(this.#chunks.indexOf(runs), 1);
+    if (runs.length === 0) this.#chunks!.splice(this.#chunks!.indexOf(runs), 1);
   }
 
   /** Whether it has no run left (see `remove`). */
   get empty(): boolean {
-    return this.#chunks.length === 0;
+    return this.#chunks?.length === 0;
   }
 }
 
