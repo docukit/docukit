@@ -250,7 +250,7 @@ export function textDefinition(
   const definition: InternalStateDefinition<number, Json, TextHandle> = {
     fromJSON: () => 0,
     docState: { key: TEXT_KEY, definition: root },
-    methodsWithNode: (_methods, node) => new TextHandle(node, rules),
+    methodsWithNode: (node) => new TextHandle(node, rules),
     onCopy: (from, to) => {
       const store = storeOf(from.doc);
       store.setRules(from.id, rules);

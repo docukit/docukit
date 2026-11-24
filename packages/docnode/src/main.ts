@@ -1283,7 +1283,7 @@ function stateKeyMethods(
   // the type, the branch already checked them.
   if (definition.methodsWithNode)
     return (node: DocNode<UnsafeDefinition>): StateKeyMethods =>
-      definition.methodsWithNode?.(methods(node), node);
+      definition.methodsWithNode?.(node);
   if (definition.methods)
     return (node: DocNode<UnsafeDefinition>): StateKeyMethods =>
       definition.methods?.(methods(node));

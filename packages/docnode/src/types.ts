@@ -106,8 +106,8 @@ export type InternalStateDefinition<
   prepareUndo?(undo: EditOperation, doc: Doc): EditOperation;
   /** Called by `copy` so a state kind can duplicate its own value. */
   onCopy?(from: DocNode, to: DocNode): void;
-  /** Receives the node, unlike the public `methods` hook. */
-  methodsWithNode?(methods: DefaultStateMethods<V>, node: DocNode): M;
+  /** Receives the node instead of the default methods, unlike `methods`. */
+  methodsWithNode?(node: DocNode): M;
 };
 
 // Note: is important to use the method syntax, because It needs to be bivariant.
