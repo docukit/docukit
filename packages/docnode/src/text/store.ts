@@ -350,14 +350,18 @@ function encodeInsert(
   side: 0 | 1,
   next: Element | undefined,
   attrs: Record<string, Json> | undefined,
+  root: string,
 ): InsertEdit {
   const payload: InsertEdit = [3, s, c, contentOf(text, attrs)];
   const nextRef = next ? encodeRef(s, next.run.s, next.run.c + next.off) : 0;
-  const parentRef = encodeRef(s, parent.run.s, parent.run.c + parent.off);
+  const pc = parent.run.c + parent.off;
+  // The start of the root's text, which every replica has, is `^`.
+  const parentRef =
+    pc === -1 && parent.run.s === root ? "^" : encodeRef(s, parent.run.s, pc);
   if (side === 0) {
     if (typeof nextRef === "number") payload.push(-nextRef);
     else payload.push(nextRef, 0);
-  } else if (parent.run.s === s && parent.run.c + parent.off === c - 1) {
+  } else if (parent.run.s === s && pc === c - 1) {
     if (nextRef !== 0) payload.push(nextRef);
   } else {
     payload.push(nextRef, parentRef);
@@ -1018,7 +1022,16 @@ export class TextStore extends TextEngine {
     attrs: Record<string, Json> | undefined,
   ): void {
     const [s, c] = this.#mint(doc, text.length);
-    const payload = encodeInsert(s, c, text, parent, side, next, attrs);
+    const payload = encodeInsert(
+      s,
+      c,
+      text,
+      parent,
+      side,
+      next,
+      attrs,
+      doc.root.id,
+    );
     const state = initialState(payload[3]);
     const run = new Run(
       s,
@@ -1424,6 +1437,8 @@ export class TextStore extends TextEngine {
       side = 0;
     } else {
       [ps, pc] = decodeRef(s, parent);
+      // `^`: the start of the root's text.
+      ps ||= this.#doc!.root.id;
     }
     const parentElement = this.#locate(ps, pc);
     if (!parentElement) return PENDING;
