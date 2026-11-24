@@ -65,7 +65,8 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     doc: Doc,
     type: string,
     id?: string,
-    state: Record<string, unknown> = {},
+    // Sized to the keys of its type (see `ResolvedNodeDefinition.Values`).
+    state = new (doc["_resolvedNodeDefs"].get(type)!.Values)(),
   ) {
     this.type = type;
     // @ts-expect-error - a stored node is built with its state already read
@@ -1096,8 +1097,11 @@ export class Doc {
 
   /** A node another replica inserted, before its state arrives. */
   private _newStoredNode(id: string, type: string): DocNode {
-    this._storedDefinition(type);
-    return this._storedNode(id, type, {});
+    return this._storedNode(
+      id,
+      type,
+      new (this._storedDefinition(type).Values)(),
+    );
   }
 
   /** Internal utility used for all the high level insert methods. */
