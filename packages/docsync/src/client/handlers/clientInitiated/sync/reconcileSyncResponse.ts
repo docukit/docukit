@@ -184,7 +184,7 @@ export function finalizeSyncReconciliation<
       return { type: "none" };
     }
 
-    // It is what DocSync stored: from here on it can rebase in place.
+    // It is what DocSync stored: it can rebase in place.
     if (client["_docBinding"].rebase?.(prepared.replacementDoc))
       client["_rebasable"].set(prepared.replacementDoc, prepared.clock);
     applyOperations(
@@ -213,8 +213,8 @@ export function finalizeSyncReconciliation<
  * Where a sync would replace the live doc, or apply the server's operations
  * to it, a doc that rebases in place does that instead (see
  * `DocBinding.rebase`): it goes back to what DocSync stored before, takes
- * the server's operations and the ones the request sent, and then what it
- * has not synced, as the replacement would. It keeps its identity, undo
+ * `confirmed`, what the server ordered since, and then `pending`, what
+ * DocSync has not synced, as a replacement would. It keeps its identity, undo
  * history and listeners. Synchronous, like `finalizeSyncReconciliation`.
  */
 export function rebaseInPlace<
@@ -223,43 +223,16 @@ export function rebaseInPlace<
   O extends object,
 >(
   client: DocSyncClient<D, S, O>,
-  args: {
-    doc: D;
-    prepared: PreparedSyncReconciliation<D, O>;
-    localOperations: O[];
-    requestLocalVersion: number;
-    docId: string;
-    pendingMemoryOperations: () => O[];
-  },
+  args: { doc: D; clock: number; confirmed: O[]; pending: O[] },
 ): boolean {
-  const { doc, prepared, docId } = args;
-  const docBinding = client["_docBinding"];
-  // Edits no pending operation holds would be undone and not applied again:
-  // as for a replacement (`finalizeSyncReconciliation`), it does not.
-  if (
-    getLocalDocVersion(client, docId) > args.requestLocalVersion &&
-    prepared.pendingProviderOperations.length === 0 &&
-    args.pendingMemoryOperations().length === 0
-  )
-    return false;
+  const { doc } = args;
   client["_changeOrigin"] = "network";
   try {
-    if (
-      !docBinding.rebase?.(doc, [
-        ...prepared.serverOperations,
-        ...args.localOperations,
-      ])
-    )
-      return false;
-    applyOperations(client, doc, prepared.pendingProviderOperations, {
-      skipUndo: true,
-    });
-    applyOperations(client, doc, args.pendingMemoryOperations(), {
-      skipUndo: true,
-    });
+    if (!client["_docBinding"].rebase?.(doc, args.confirmed)) return false;
+    applyOperations(client, doc, args.pending, { skipUndo: true });
   } finally {
     client["_changeOrigin"] = "local";
   }
-  client["_rebasable"].set(doc, prepared.clock);
+  client["_rebasable"].set(doc, args.clock);
   return true;
 }

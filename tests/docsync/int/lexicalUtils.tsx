@@ -285,9 +285,9 @@ export const lexicalTestWrapper = async (
     reference: LexicalClient & { disconnect: () => void; connect: () => void };
     otherDevice: LexicalClient;
   }) => Promise<void>,
+  type = LEXICAL_DOC_TYPE,
 ) => {
   await testWrapper(async ({ docId, reference, otherDevice }) => {
-    const type = LEXICAL_DOC_TYPE;
     const referenceEditor = await lexicalClient(
       reference.client,
       docId,

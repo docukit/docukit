@@ -37,6 +37,7 @@ import {
   clearLocalIdentity as clearStoredLocalIdentity,
   readLocalMetadata,
 } from "./utils/localIdentity.js";
+import { loadStoredDoc } from "./utils/loadStoredDoc.js";
 import { setupDocChangeListener } from "./utils/setupDocChangeListener.js";
 import { pauseQueries } from "./utils/pauseQueries.js";
 import { setupLocalPromise } from "./utils/setupLocalPromise.js";
@@ -111,9 +112,10 @@ export class DocSyncClient<
   protected _changeOrigin: ChangeOrigin = "local";
   /**
    * Loaded documents that rebase in place (see `DocBinding.rebase`), with the
-   * clock of what DocSync stored when they last rebased: where they go back
-   * to. A sync that stores from another clock, or without rebasing one,
-   * takes it out.
+   * clock of what DocSync stored when they were loaded or last rebased: where
+   * they go back to. Whenever DocSync stores from another clock, by this tab
+   * or another one, such a doc is rebased in place or loaded again, so it
+   * always follows the server's order.
    */
   protected _rebasable = new WeakMap<D, number>();
 
@@ -549,15 +551,12 @@ export class DocSyncClient<
       const localOperations = await ctx.getOperations({ docId });
 
       if (stored) {
-        const doc = this._docBinding.deserialize(stored.serializedDoc, docId);
-        localOperations.forEach(({ operations: operationsBatch }) => {
-          operationsBatch.forEach((operations) => {
-            this._docBinding.applyOperations(doc, operations, {
-              skipUndo: true,
-            });
-          });
-        });
-        return doc;
+        return loadStoredDoc(
+          this,
+          docId,
+          stored,
+          localOperations.flatMap((batch) => batch.operations),
+        );
       }
 
       // Create new doc if type provided
@@ -567,6 +566,7 @@ export class DocSyncClient<
           throw new Error(
             `Doc ${docId} has operations stored locally but no serialized doc found`,
           );
+        if (this._docBinding.rebase?.(doc)) this._rebasable.set(doc, 0);
         // Save the new doc to IDB
         await ctx.saveSerializedDoc({
           serializedDoc: this._docBinding.serialize(doc),

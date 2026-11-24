@@ -46,10 +46,15 @@ export type DocBinding<
    * `replaceDoc`). DocSync never looks inside the operations.
    *
    * - `rebase(doc)`: `doc` is what DocSync stored. What it does from then on,
-   *   the next call undoes.
+   *   the next call undoes. False when it keeps nothing to undo: DocSync then
+   *   takes its operations to give the same document in any order, and
+   *   applies what other tabs and the server send on top.
    * - `rebase(doc, operations)`: undoes that, applies `operations` (what the
    *   server ordered since, in its order) and starts again. False, with
    *   nothing changed, when `doc` cannot: DocSync loads it again.
+   *
+   * Every tab of a user keeps such a doc in the server's order: each time one
+   * of them stores the doc, the others rebase theirs in place too.
    */
   rebase?(doc: D, operations?: O[]): boolean;
   dispose(doc: D): void;

@@ -1,15 +1,24 @@
 import type { DocSyncClient } from "../index.js";
+import { followStoredDoc } from "../handlers/clientInitiated/sync/sync.js";
 import { applyPresencePatch } from "./applyPresencePatch.js";
-
-type BroadcastSource = "network" | "local-broadcast";
 
 type BroadcastMessage<O> =
   | {
+      /** An edit made in another tab. */
       type: "OPERATIONS";
-      source: BroadcastSource;
       operations: O;
       docId: string;
       flags: { skipUndo?: boolean };
+      presence: Record<string, unknown>;
+    }
+  | {
+      /** Another tab stored the doc: see `followStoredDoc`. */
+      type: "STORED";
+      docId: string;
+      fromClock: number | undefined;
+      clock: number;
+      operations: O[];
+      sent: O[];
       presence: Record<string, unknown>;
     }
   | { type: "PRESENCE"; docId: string; presence: Record<string, unknown> };
@@ -27,24 +36,18 @@ export class BCHelper<
     this._channel = new BroadcastChannel(channelName);
     this._channel.onmessage = (ev: MessageEvent<BroadcastMessage<O>>) => {
       const msg = ev.data;
+      const { docId, presence } = msg;
       if (msg.type === "OPERATIONS") {
-        const { docId, flags, operations, presence, source } = msg;
         // Operations from another tab landed while a sync was in flight; that
         // sync goes again when it finishes so the server sees them too.
         const runningSync = client["_syncQueue"].get(docId);
         if (runningSync) runningSync.rerun = true;
-        void this._applyOperations(client, operations, docId, source, flags);
-        const cacheEntry = client["_docsCache"].get(docId);
-        if (cacheEntry)
-          applyPresencePatch(client["_clientId"], cacheEntry, presence);
-        return;
+        void this._applyOperations(client, msg.operations, docId, msg.flags);
       }
-      if (msg.type === "PRESENCE") {
-        const { docId, presence } = msg;
-        const cacheEntry = client["_docsCache"].get(docId);
-        if (!cacheEntry) return;
+      if (msg.type === "STORED") void followStoredDoc(client, msg);
+      const cacheEntry = client["_docsCache"].get(docId);
+      if (cacheEntry)
         applyPresencePatch(client["_clientId"], cacheEntry, presence);
-      }
     };
   }
 
@@ -52,7 +55,6 @@ export class BCHelper<
     client: DocSyncClient<D, S, O>,
     operations: O,
     docId: string,
-    source: BroadcastSource,
     flags: { skipUndo?: boolean },
   ): Promise<void> {
     const cacheEntry = client["_docsCache"].get(docId);
@@ -60,7 +62,7 @@ export class BCHelper<
     const doc = await cacheEntry.promisedDoc;
     if (!doc) return;
     client["_applyOperationsFrom"](
-      source,
+      "local-broadcast",
       doc,
       operations,
       // Incoming changes belong to another tab, even for the same user.

@@ -10,6 +10,7 @@ import { DocSyncError } from "../../../utils/DocSyncError.js";
 import { getOwnPresencePatch } from "../../../utils/getOwnPresencePatch.js";
 import { getLocalDocVersion } from "../../../utils/localDocVersion.js";
 import { request } from "../../../utils/request.js";
+import { loadStoredDoc } from "../../../utils/loadStoredDoc.js";
 import { setupDocChangeListener } from "../../../utils/setupDocChangeListener.js";
 import {
   cancelPendingSyncRetry,
@@ -213,25 +214,120 @@ function resolvePendingMemoryOperations<
   return [...batchBeforeExport, ...batchAfterExport];
 }
 
-function broadcastServerOperations<
+/**
+ * Tells the other tabs that DocSync stored the doc at `clock`: from
+ * `fromClock`, the server's `operations` and then the `sent` ones, in the
+ * server's order. See `followStoredDoc`.
+ */
+function broadcastStored<D extends object, S extends object, O extends object>(
+  client: DocSyncClient<D, S, O>,
+  args: {
+    docId: string;
+    fromClock: number | undefined;
+    clock: number;
+    operations: O[];
+    sent: O[];
+  },
+): void {
+  client["_bcHelper"]?.broadcast({
+    type: "STORED",
+    ...args,
+    presence: getOwnPresencePatch(client, args.docId),
+  });
+}
+
+/**
+ * Another tab stored the doc (see `broadcastStored`). Tabs share IndexedDB
+ * but not the doc in memory, so this one may have applied that tab's
+ * operations, and its own, in another order than the server did.
+ *
+ * A doc that rebases in place goes back to what it was built on and takes
+ * the server's order: the broadcast operations when it was built on
+ * `fromClock`, else what is stored now, loaded again. Then what is still
+ * pending, as a sync would. Any other doc takes the server's operations on
+ * top, as its operations do not depend on their order.
+ */
+export async function followStoredDoc<
   D extends object,
   S extends object,
   O extends object,
 >(
   client: DocSyncClient<D, S, O>,
-  args: { docId: string; operations: O[] },
-): void {
-  const presence = getOwnPresencePatch(client, args.docId);
-  for (const op of args.operations) {
-    client["_bcHelper"]?.broadcast({
-      type: "OPERATIONS",
-      source: "network",
-      operations: op,
-      docId: args.docId,
-      flags: {},
-      presence,
-    });
+  message: {
+    docId: string;
+    fromClock: number | undefined;
+    clock: number;
+    operations: O[];
+    sent: O[];
+  },
+): Promise<void> {
+  const { docId } = message;
+  const loaded = await resolveLiveDoc(client, docId);
+  if (!loaded) return;
+  if (!client["_rebasable"].has(loaded.doc)) {
+    for (const operations of message.operations)
+      client["_applyOperationsFrom"]("network", loaded.doc, operations, {
+        skipUndo: true,
+      });
+    return;
   }
+  // Its own sync, if one is running, stores first.
+  await client["_syncQueue"].get(docId)?.settled;
+  const live = await resolveLiveDoc(client, docId);
+  if (!live) return;
+  const { provider } = await client["_localPromise"];
+  let read;
+  do {
+    // An IndexedDB write in flight holds edits no longer in memory.
+    await client["_localWrites"].get(docId);
+    read = await provider.transaction("readonly", (ctx) =>
+      Promise.all([
+        ctx.getSerializedDoc({ docId }),
+        ctx.getOperations({ docId }),
+      ]),
+    );
+  } while (client["_localWrites"].has(docId));
+
+  // Synchronous from here on, so no edit lands in between.
+  const [stored, batches] = read;
+  const rebasedAt = client["_rebasable"].get(live.doc);
+  if (
+    !stored ||
+    client["_docsCache"].get(docId)?.promisedDoc !== live.promisedDoc ||
+    rebasedAt === undefined ||
+    rebasedAt >= stored.clock
+  )
+    return;
+  const pendingProviderOperations = batches.flatMap(
+    (batch) => batch.operations,
+  );
+  const batchBeforeExport = client["_localOpsBatchState"].get(docId)?.data;
+  if (
+    rebasedAt === message.fromClock &&
+    stored.clock === message.clock &&
+    rebaseInPlace(client, {
+      doc: live.doc,
+      clock: stored.clock,
+      confirmed: [...message.operations, ...message.sent],
+      pending: [
+        ...pendingProviderOperations,
+        ...resolvePendingMemoryOperations(client, docId, batchBeforeExport),
+      ],
+    })
+  )
+    return;
+  const exportedHistory = exportHistoryFromCurrentSource(client, docId, live);
+  const doc = loadStoredDoc(client, docId, stored, [
+    ...pendingProviderOperations,
+    ...resolvePendingMemoryOperations(client, docId, batchBeforeExport),
+  ]);
+  const replaceResult = replaceDocInCache(client, {
+    docId,
+    doc,
+    ...(exportedHistory && { exportedHistory }),
+  });
+  dispatchLocalDocFound(client, docId, { doc, docId });
+  if (replaceResult) throw replaceResult.historyImportError;
 }
 
 /**
@@ -284,15 +380,7 @@ async function runSyncAttempt<
     const liveDoc = await promisedDoc;
     if (!isLive()) return stale;
     if (!liveDoc && cacheEntry.promisedDoc === promisedDoc) {
-      const doc = client["_docBinding"].deserialize(
-        stored.serializedDoc,
-        docId,
-      );
-      for (const operation of operations) {
-        client["_docBinding"].applyOperations(doc, operation, {
-          skipUndo: true,
-        });
-      }
+      const doc = loadStoredDoc(client, docId, stored, operations);
       replaceDocInCache(client, { docId, doc });
       dispatchLocalDocFound(client, docId, { doc, docId });
       if (!isLive()) return stale;
@@ -377,16 +465,21 @@ async function runSyncAttempt<
     data,
     isCurrent: isLive,
   });
-  // What DocSync stored moved on: the live doc goes on rebasing in place only
-  // if it was where DocSync stored, and rebases now (below).
+  const { didConsolidate, storedClock } = preparedReconciliation;
+  // The other tabs follow what this tab stored, whatever happens to its doc.
+  if (didConsolidate)
+    broadcastStored(client, {
+      docId,
+      fromClock: storedClock,
+      clock: preparedReconciliation.clock,
+      operations: data.operations,
+      sent: operations,
+    });
+  // A doc that rebases in place follows what DocSync stored: rebased in place
+  // when it was built on what this sync stored over, else loaded again.
   const rebasedAt = live && client["_rebasable"].get(live.doc);
-  const rebasable =
-    live !== undefined &&
-    rebasedAt !== undefined &&
-    preparedReconciliation.didConsolidate &&
-    rebasedAt === preparedReconciliation.storedClock;
-  if (live && preparedReconciliation.didConsolidate)
-    client["_rebasable"].delete(live.doc);
+  const mustFollow =
+    live !== undefined && rebasedAt !== undefined && didConsolidate;
   if (!isLive()) return stale;
 
   // Keep this section synchronous. Exporting DocNode history force-commits a
@@ -394,36 +487,43 @@ async function runSyncAttempt<
   // and replacement imports the matching history before another user event
   // can run.
   const batchBeforeExport = client["_localOpsBatchState"].get(docId)?.data;
+  const pendingMemoryOperations = () =>
+    resolvePendingMemoryOperations(client, docId, batchBeforeExport);
   if (
-    rebasable &&
+    mustFollow &&
+    rebasedAt === storedClock &&
     client["_docsCache"].get(docId)?.promisedDoc === live.promisedDoc &&
+    // Edits no pending operation holds would be undone and not applied
+    // again: as for a replacement (`finalizeSyncReconciliation`), it does not.
+    !(
+      getLocalDocVersion(client, docId) > requestLocalVersion &&
+      preparedReconciliation.pendingProviderOperations.length === 0 &&
+      pendingMemoryOperations().length === 0
+    ) &&
     rebaseInPlace(client, {
       doc: live.doc,
-      prepared: preparedReconciliation,
-      localOperations: operations,
-      requestLocalVersion,
-      docId,
-      pendingMemoryOperations: () =>
-        resolvePendingMemoryOperations(client, docId, batchBeforeExport),
+      clock: preparedReconciliation.clock,
+      confirmed: [...data.operations, ...operations],
+      pending: [
+        ...preparedReconciliation.pendingProviderOperations,
+        ...pendingMemoryOperations(),
+      ],
     })
   ) {
-    broadcastServerOperations(client, { docId, operations: data.operations });
     return { type: "synced" };
   }
+  const prepared = mustFollow
+    ? { ...preparedReconciliation, shouldReplaceDoc: true }
+    : preparedReconciliation;
   const exportedHistory =
-    preparedReconciliation.replacementDoc &&
-    preparedReconciliation.shouldReplaceDoc
-      ? exportHistoryFromCurrentSource(client, docId, historySource)
+    prepared.replacementDoc && prepared.shouldReplaceDoc
+      ? exportHistoryFromCurrentSource(client, docId, live)
       : undefined;
   const reconcileResult = finalizeSyncReconciliation(client, {
     docId,
-    prepared: preparedReconciliation,
+    prepared,
     requestLocalVersion,
-    pendingMemoryOperations: resolvePendingMemoryOperations(
-      client,
-      docId,
-      batchBeforeExport,
-    ),
+    pendingMemoryOperations: pendingMemoryOperations(),
   });
 
   if (reconcileResult.type === "replaceDoc") {
@@ -433,7 +533,6 @@ async function runSyncAttempt<
       ...(exportedHistory && { exportedHistory }),
     });
     dispatchLocalDocFound(client, docId, { doc: reconcileResult.doc, docId });
-    broadcastServerOperations(client, { docId, operations: data.operations });
     // IndexedDB was already reconciled before the history import. Finish the
     // cache swap first so persistent and visible content cannot diverge, then
     // keep the binding failure loud for the caller.
@@ -445,10 +544,6 @@ async function runSyncAttempt<
       isLive,
     });
     if (!isLive()) return stale;
-    broadcastServerOperations(client, {
-      docId,
-      operations: reconcileResult.operations,
-    });
   }
   return { type: "synced" };
 }

@@ -46,7 +46,6 @@ export function setupDocChangeListener<
       afterSelectionUpdate(() => {
         client["_bcHelper"]?.broadcast({
           type: "OPERATIONS",
-          source: "local-broadcast",
           operations,
           docId,
           flags: flags?.skipUndo ? { skipUndo: true } : {},

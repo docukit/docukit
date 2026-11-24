@@ -3257,7 +3257,6 @@ describe("DocSyncClient", () => {
         expect(postMessageSpy).toHaveBeenCalledWith({
           type: "OPERATIONS",
           docId,
-          source: "local-broadcast",
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           operations: expect.anything(),
           flags: {},
@@ -3327,7 +3326,6 @@ describe("DocSyncClient", () => {
           data: {
             type: "OPERATIONS",
             docId,
-            source: "local-broadcast",
             operations: [[], {}],
             flags: {},
             presence: {},
@@ -3386,7 +3384,6 @@ describe("DocSyncClient", () => {
           data: {
             type: "OPERATIONS",
             docId,
-            source: "local-broadcast",
             operations: [[], {}],
             flags: {},
             presence: {},

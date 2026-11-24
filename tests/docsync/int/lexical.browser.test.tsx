@@ -1,13 +1,18 @@
 import { describe, expect, test } from "vitest";
 import { lexicalTestWrapper } from "./lexicalUtils.js";
+import { LEXICAL_CRDT_DOC_TYPE, LEXICAL_DOC_TYPE } from "./utils.js";
 
 /**
  * A device that edits offline and reconnects after another device edited
- * too gets a rebuilt document: DocSync puts the server's operations before
- * its own and swaps the live doc. The editor is then bound to the new doc.
+ * too puts the server's operations before its own. A doc that rebases in
+ * place stays the same doc; one with a CRDT engine keeps nothing to undo, so
+ * DocSync swaps the live doc for a rebuilt one and the editor is bound to it.
  */
-describe("Lexical editor on a replaced doc", () => {
-  const swapAfterConcurrentEdits = (
+describe.each([
+  { name: "rebased", type: LEXICAL_DOC_TYPE, newDocs: 0 },
+  { name: "replaced", type: LEXICAL_CRDT_DOC_TYPE, newDocs: 1 },
+])("Lexical editor on a $name doc", ({ type, newDocs }) => {
+  const reconnectAfterConcurrentEdits = (
     callback: Parameters<typeof lexicalTestWrapper>[0],
   ) =>
     lexicalTestWrapper(async (setup) => {
@@ -28,12 +33,13 @@ describe("Lexical editor on a replaced doc", () => {
       const docsBefore = reference.docs.length;
       reference.connect();
       await reference.assertTexts(["New Item one.", "Item two.!"]);
-      expect(reference.docs.length).toBeGreaterThan(docsBefore);
+      await reference.assertSynced();
+      expect(reference.docs.length).toBe(docsBefore + newDocs);
       await callback(setup);
-    });
+    }, type);
 
   test("keeps the selection", async () => {
-    await swapAfterConcurrentEdits(async ({ reference }) => {
+    await reconnectAfterConcurrentEdits(async ({ reference }) => {
       await reference.assertSelection(
         { block: 1, offset: 5 },
         { block: 1, offset: 8 },
@@ -42,7 +48,7 @@ describe("Lexical editor on a replaced doc", () => {
   });
 
   test("keeps the undo history", async () => {
-    await swapAfterConcurrentEdits(async ({ reference, otherDevice }) => {
+    await reconnectAfterConcurrentEdits(async ({ reference, otherDevice }) => {
       reference.undo();
       await reference.assertTexts(["New Item one.", "Item two."]);
       await reference.assertSelection({ block: 1, offset: 9 });

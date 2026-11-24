@@ -16,6 +16,7 @@ import {
   _INTERNAL_decodeOperations as decodeOperations,
 } from "@docukit/docnode";
 import type { LegacyOperations } from "@docukit/docnode/compat";
+import { labelsEngine } from "@docukit/docnode/crdt";
 import { createLexicalDocNodeConfig } from "@docukit/docnode-lexical";
 import { ulid } from "ulid";
 import { expect, inject, vi, type Mock } from "vitest";
@@ -121,12 +122,20 @@ export const testDocConfig = {
 /** The type of the Lexical documents. */
 export const LEXICAL_DOC_TYPE = "lexical";
 
+/** The type of the Lexical documents with a CRDT engine. */
+export const LEXICAL_CRDT_DOC_TYPE = "lexical-crdt";
+
 /** Every document type the clients and the test server know. */
 export const testDocConfigs = [
   testDocConfig,
   createLexicalDocNodeConfig({
     type: LEXICAL_DOC_TYPE,
     undoManager: testDocConfig.undoManager,
+  }),
+  createLexicalDocNodeConfig({
+    type: LEXICAL_CRDT_DOC_TYPE,
+    undoManager: testDocConfig.undoManager,
+    crdt: labelsEngine(),
   }),
 ];
 

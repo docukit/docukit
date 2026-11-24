@@ -50,6 +50,9 @@ describe("Server consolidation", () => {
   test("keeps the text of a writer who stays online while a device returns with offline edits", async () => {
     await testWrapper(async (clients) => {
       const { writer, returning } = await setupReturningDevice(clients);
+      // The writer has another tab, offline: it follows what the writer stores.
+      await clients.otherTab.loadDoc();
+      clients.otherTab.disconnect();
       commitEdits(returning, ["offline"]);
       const expected = ["first", "offline", ...edits("edit", THRESHOLD)];
       await commitAndUpload(writer, edits("edit", THRESHOLD), [
@@ -65,6 +68,7 @@ describe("Server consolidation", () => {
       commitEdits(writer, ["after"]);
       await returning.assertMemoryDoc([...expected, "after"]);
       await writer.assertMemoryDoc([...expected, "after"]);
+      await clients.otherTab.assertMemoryDoc([...expected, "after"]);
 
       const newDevice = await clients.addNewDevice();
       await newDevice.loadDoc({ createIfMissing: false });

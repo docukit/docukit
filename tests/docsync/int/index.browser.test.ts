@@ -230,7 +230,7 @@ describe("Local-First", () => {
     });
   });
 
-  test("reconnect preserves undo when concurrent operations replace the doc", async () => {
+  test("reconnect preserves undo when concurrent operations rebase the doc", async () => {
     await testWrapper(async ({ reference, otherDevice }) => {
       await reference.loadDoc();
       await otherDevice.loadDoc();
@@ -257,7 +257,7 @@ describe("Local-First", () => {
       reference.connect();
 
       await reference.assertMemoryDoc(["Earlier", "Local", "Remote"]);
-      expect(reference.doc).not.toBe(liveDoc);
+      expect(reference.doc).toBe(liveDoc);
       await reference.assertCanUndo(true);
 
       reference.doc?.undoManager.undo();
@@ -269,27 +269,26 @@ describe("Local-First", () => {
     });
   });
 
-  test("once replaced, the doc rebases in place on concurrent operations", async () => {
+  test("the doc rebases in place on concurrent operations", async () => {
     await testWrapper(async ({ reference, otherDevice }) => {
       await reference.loadDoc();
       await otherDevice.loadDoc();
       reference.doc?.forceCommit();
       otherDevice.doc?.forceCommit();
+      const liveDoc = reference.doc;
 
-      // The first time, the doc is replaced by what DocSync stored.
+      // The same doc, in the server's order.
       reference.disconnect();
       reference.addChild("Local");
       reference.doc?.forceCommit();
       otherDevice.addChild("Remote");
       otherDevice.doc?.forceCommit();
       await otherDevice.assertIDBDoc({ doc: ["Remote"], ops: [] });
-      const firstDoc = reference.doc;
       reference.connect();
       await reference.assertMemoryDoc(["Remote", "Local"]);
-      expect(reference.doc).not.toBe(firstDoc);
+      expect(reference.doc).toBe(liveDoc);
 
-      // From then on it rebases in place: the same doc, in the server's order.
-      const liveDoc = reference.doc;
+      // And again.
       reference.disconnect();
       reference.addChild("Local 2");
       reference.doc?.forceCommit();
@@ -300,23 +299,11 @@ describe("Local-First", () => {
         ops: [],
       });
       reference.connect();
-      await reference.assertMemoryDoc([
-        "Remote",
-        "Local",
-        "Local 2",
-        "Remote 2",
-      ]);
+      const all = ["Remote", "Local", "Local 2", "Remote 2"];
+      await reference.assertMemoryDoc(all);
       expect(reference.doc).toBe(liveDoc);
-      await reference.assertIDBDoc({
-        doc: ["Remote", "Local", "Local 2", "Remote 2"],
-        ops: [],
-      });
-      await otherDevice.assertMemoryDoc([
-        "Remote",
-        "Local",
-        "Local 2",
-        "Remote 2",
-      ]);
+      await reference.assertIDBDoc({ doc: all, ops: [] });
+      await otherDevice.assertMemoryDoc(all);
 
       // Its undo history goes on.
       reference.doc?.undoManager.undo();
@@ -324,14 +311,13 @@ describe("Local-First", () => {
     });
   });
 
-  test("a doc another tab stored past is replaced, not rebased in place", async () => {
+  test("a doc follows, in place, what another tab stored", async () => {
     await testWrapper(async ({ reference, otherTab, otherDevice }) => {
       await reference.loadDoc();
       await otherDevice.loadDoc();
       reference.doc?.forceCommit();
       otherDevice.doc?.forceCommit();
 
-      // Replaced once: from then on it would rebase in place.
       reference.disconnect();
       reference.addChild("Local");
       reference.doc?.forceCommit();
@@ -344,7 +330,7 @@ describe("Local-First", () => {
       await otherTab.loadDoc();
       await otherTab.assertMemoryDoc(["Remote", "Local"]);
 
-      // Offline, it gets what the other tab syncs, which stores past it.
+      // Offline, it gets what the other tab syncs and stores.
       reference.disconnect();
       otherTab.addChild("Tab");
       otherTab.doc?.forceCommit();
@@ -366,8 +352,12 @@ describe("Local-First", () => {
       reference.connect();
       const all = ["Remote", "Local", "Tab", "Local 2", "Remote 2"];
       await reference.assertMemoryDoc(all);
-      expect(reference.doc).not.toBe(liveDoc);
+      expect(reference.doc).toBe(liveDoc);
       await otherDevice.assertMemoryDoc(all);
+      // The other tab, offline, got "Local 2" first, but follows the server.
+      await otherTab.assertMemoryDoc(all);
+      otherTab.connect();
+      await otherTab.assertMemoryDoc(all);
     });
   });
 
@@ -415,7 +405,7 @@ describe("Local-First", () => {
           "Local",
           "During reconciliation",
         ]);
-        expect(reference.doc).not.toBe(liveDoc);
+        expect(reference.doc).toBe(liveDoc);
 
         reference.doc?.undoManager.undo();
         await reference.assertMemoryDoc(["Remote", "Local"]);
@@ -457,8 +447,10 @@ describe("Local-First", () => {
       await reference.assertMemoryDoc(["Other tab"]);
       expect(reference.doc?.undoManager.canRedo()).toBe(true);
 
+      // The server puts the redone "Hello" first, and so does every tab.
       reference.doc?.undoManager.redo();
-      await otherTab.assertMemoryDoc(["Other tab", "Hello"]);
+      await otherTab.assertMemoryDoc(["Hello", "Other tab"]);
+      await reference.assertMemoryDoc(["Hello", "Other tab"]);
       otherTab.doc?.undoManager.undo();
       await reference.assertMemoryDoc(["Hello"]);
       await reference.assertCanUndo(true);
@@ -603,8 +595,9 @@ describe("Local-First", () => {
       reference.connect();
       otherTab.connect();
       otherDevice.connect();
+      // Each tab put its sibling's child after its own, but follows the server.
       await reference.assertMemoryDoc(["A", "B", "C"]);
-      await otherTab.assertMemoryDoc(["B", "A", "C"]);
+      await otherTab.assertMemoryDoc(["A", "B", "C"]);
       await otherDevice.assertMemoryDoc(["A", "B", "C"]);
 
       await reference.assertIDBDoc({ doc: ["A", "B", "C"], ops: [] });
