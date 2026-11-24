@@ -189,12 +189,6 @@ export class BaseText extends TextEngine {
     return undo;
   }
 
-  /** The letter right before boundary `index`; the node's root for 0. */
-  #leftOf(flow: Flow, index: number): Element {
-    if (index === 0) return { run: flow.head, off: 0 };
-    return this.#positions.seek(flow.head, index - 1);
-  }
-
   /**
    * The start of a node's text: `^` for the root's, which every replica has,
    * `#` and the shortest prefix of the hash of its id that no other node
@@ -240,19 +234,23 @@ export class BaseText extends TextEngine {
       : { run: this.#flow(node).head, off: 0 };
   }
 
-  /** `index` clamped to the text and moved off the middle of a surrogate pair. */
-  #boundary(flow: Flow, index: number): number {
+  /**
+   * `index` clamped to the text and moved off the middle of a surrogate pair,
+   * and the letter right before it (the node's root for 0).
+   */
+  #boundary(flow: Flow, index: number): [number, Element] {
     // Before the index of positions is needed: typing at the start of every
     // text of many documents builds none.
-    if (index <= 0) return 0;
+    if (index <= 0) return [0, { run: flow.head, off: 0 }];
     const length = this.#positions.length(flow.head);
-    if (index >= length) return length;
+    if (index > length) index = length;
     const left = this.#positions.seek(flow.head, index - 1);
     const right = this.#after(left)!;
-    return isHighSurrogate(left.run.text.charCodeAt(left.off)) &&
+    return index < length &&
+      isHighSurrogate(left.run.text.charCodeAt(left.off)) &&
       isLowSurrogate(right.run.text.charCodeAt(right.off))
-      ? index + 1
-      : index;
+      ? [index + 1, right]
+      : [index, left];
   }
 
   lengthOf(node: string): number {
@@ -750,7 +748,7 @@ export class BaseText extends TextEngine {
       // A key letters inherit from the one before: the letter after the
       // range too, so that what others type right after it goes with it.
       payload.push(value);
-      const end = this.#boundary(flow, to);
+      const [end] = this.#boundary(flow, to);
       const [ls, lc, len] = ranges.at(-1)!;
       if (end >= this.#positions.length(flow.head)) payload.push(0);
       else {
@@ -773,8 +771,8 @@ export class BaseText extends TextEngine {
   /** The letters from `from` to `to` (visible indexes), as id ranges. */
   #ranges(flow: Flow, from: number, to: number) {
     const ranges: [string, number, number][] = [];
-    from = this.#boundary(flow, from);
-    to = this.#boundary(flow, to);
+    [from] = this.#boundary(flow, from);
+    [to] = this.#boundary(flow, to);
     if (to <= from) return ranges;
     let { run, off } = this.#positions.seek(flow.head, from);
     for (let left = to - from; left > 0; run = run.next!, off = 0) {
@@ -1188,7 +1186,7 @@ export class BaseText extends TextEngine {
   ): void {
     if (text.length === 0) return;
     const flow = this.#flow(node);
-    const left = this.#leftOf(flow, this.#boundary(flow, index));
+    const [, left] = this.#boundary(flow, index);
     const right = this.#after(left);
     const rules = this.#rules(flow);
     const own = attrs && this.#ownFor(rules, text, left, right, attrs);
