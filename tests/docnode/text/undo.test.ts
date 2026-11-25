@@ -181,3 +181,14 @@ describe("undo of a delete, with no delete ids in the document", () => {
     expect(stored(reloaded)).toBe(stored(cluster.docs[1]!));
   });
 });
+
+describe("undo of a format", () => {
+  test("gives a letter between two it changed its own value back", () => {
+    const { doc, nodes } = paragraphs(["ab"], true);
+    const text = nodes[0]!.state.t;
+    checkTextUndo(doc, [
+      () => text.insert(1, "X", { bold: true }),
+      () => text.format(0, 3, "bold", 3),
+    ]);
+  });
+});
