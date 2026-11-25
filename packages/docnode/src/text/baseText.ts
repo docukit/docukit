@@ -711,7 +711,12 @@ export class BaseText extends TextEngine {
     const index = JSON.stringify(was);
     let entry = old.get(index);
     if (!entry) old.set(index, (entry = [was, []]));
-    pushRange(entry[1], piece.s, piece.c, piece.len);
+    // A range of the inverse is all that is between its ends (see
+    // `#applyState`): it goes on only from the letter right before.
+    const prev = piece.prev!;
+    if (prev.s === piece.s && prev.c + prev.len === piece.c)
+      pushRange(entry[1], piece.s, piece.c, piece.len);
+    else entry[1].push([piece.s, piece.c, piece.len]);
     const next: Record<string, Json> = {};
     const state = piece.state;
     if (state)

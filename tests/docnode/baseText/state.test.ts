@@ -237,6 +237,39 @@ describe("setLetterState: the last one applied wins", () => {
     });
   });
 
+  test.each(["bold", "link"])(
+    "its undo gives a letter between two it changed its own %s back",
+    (key) => {
+      const doc = new Doc(defaultConfig());
+      doc.forceCommit();
+      const text = rootText(doc);
+      checkUndoManager(3, doc, () => {
+        text.insert(0, "ab");
+        doc.forceCommit();
+        // `X` is not between `a` and `b` in ids: `b` is `a`'s next id.
+        text.insert(1, "X", { [key]: true });
+        doc.forceCommit();
+        text.format(0, 3, key, 3);
+        doc.forceCommit();
+      });
+    },
+  );
+
+  test("its undo gives a peer's letter between two it changed its own value back", () => {
+    const network = new Network("ab", ["mine", "peer"]);
+    network.edit("peer", (text) => text.insert(1, "X", { bold: true }));
+    network.exchange();
+    network.edit("mine", (text) => text.format(0, 3, "bold", 3));
+    network.exchange();
+    network.undo("mine");
+    network.exchange();
+    expect(styled(network.converged())).toStrictEqual([
+      "a",
+      'X:{"bold":true}',
+      "b",
+    ]);
+  });
+
   test("a format that changes nothing sends nothing", () => {
     const { doc, text } = flat("abc");
     expect(sent(doc, () => text.format(0, 3, "bold", null))).toStrictEqual([]);
