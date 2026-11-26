@@ -110,12 +110,37 @@ type JsonWithoutId = [
   children?: [JsonWithoutId, ...JsonWithoutId[]],
 ];
 
+/**
+ * A stored document without ids, with each state value as its JSON text,
+ * which is easier to read in assertions.
+ */
 export function prettifyJson(doc: JsonDoc): JsonWithoutId {
+  const state = Object.fromEntries(
+    Object.entries(doc[2]).map(([key, value]) => [key, JSON.stringify(value)]),
+  );
   const children = doc[3]?.map(prettifyJson) as
     | [JsonWithoutId, ...JsonWithoutId[]]
     | undefined;
-  return children ? [doc[1], doc[2], children] : [doc[1], doc[2]];
+  return children ? [doc[1], state, children] : [doc[1], state];
 }
+
+export const textDocConfig: DocConfig = {
+  type: "root",
+  extensions: [TextExtension],
+};
+
+/** An empty document of text nodes. */
+export const textDoc = () => new Doc(textDocConfig);
+
+/** `doc` stored, loaded in a new document with its nodes, and stored again. */
+export const loadAndSave = (doc: Doc) => {
+  const loaded = Doc.fromJSON(
+    { type: doc.root.type, extensions: [{ nodes: [...doc["_nodeDefs"]] }] },
+    doc.toJSON(),
+  );
+  loaded.forceCommit();
+  return loaded.toJSON();
+};
 
 export function assertJson(doc: Doc, expected: JsonWithoutId) {
   const json = prettifyJson(doc.toJSON({ unsafe: true }));
@@ -156,7 +181,7 @@ export function humanReadableOperations(doc: Doc, changeEvent: ChangeEvent) {
       if (jsonState) {
         const { value } = jsonState as { value: string };
         if (!value) return "❌UNDEFINED";
-        return JSON.parse(value) as string;
+        return value;
       }
       return `❌${id.slice(-4)}`;
     } else if ((node as DocNode<typeof Text>).state.value) {

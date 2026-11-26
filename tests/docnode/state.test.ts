@@ -731,13 +731,13 @@ describe("setState", () => {
               deleted: {},
               inserted: new Set(),
               moved: new Set(),
-              updated: new Set(['{"string":"\\"bar\\""}']),
+              updated: new Set(['{"string":"bar"}']),
             },
             inverseOperations: [
-              'UPDATE: {"{\\"string\\":\\"\\\\\\"bar\\\\\\"\\"}":{"string":""}}',
+              'UPDATE: {"{\\"string\\":\\"bar\\"}":{"string":""}}',
             ],
             operations: [
-              'UPDATE: {"{\\"string\\":\\"\\\\\\"bar\\\\\\"\\"}":{"string":"bar"}}',
+              'UPDATE: {"{\\"string\\":\\"bar\\"}":{"string":"bar"}}',
             ],
           });
         },

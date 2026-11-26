@@ -647,10 +647,10 @@ describe("undoManager", () => {
           ],
           diff: {
             deleted: {
-              "2": ["text", { value: '"2"' }],
-              "2.1": ["text", { value: '"2.1"' }],
-              "2.2": ["text", { value: '"2.2"' }],
-              "3": ["text", { value: '"3"' }],
+              "2": ["text", { value: "2" }],
+              "2.1": ["text", { value: "2.1" }],
+              "2.2": ["text", { value: "2.2" }],
+              "3": ["text", { value: "3" }],
             },
             inserted: new Set(["5.1", "5.2", "5.3"]),
             moved: new Set(),
@@ -700,7 +700,7 @@ describe("undoManager", () => {
             'UPDATE: {"1 CHANGED":{"value":"1"}}',
           ],
           diff: {
-            deleted: { "1 CHANGED": ["text", { value: '"1 CHANGED"' }] },
+            deleted: { "1 CHANGED": ["text", { value: "1 CHANGED" }] },
             inserted: new Set(),
             moved: new Set(),
             updated: new Set(),
