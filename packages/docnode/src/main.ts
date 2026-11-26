@@ -627,6 +627,8 @@ export class Doc {
   private readonly _commitTask = () => {
     if (this._lifeCycleStage === "update") this.forceCommit();
   };
+  /** Whether `fromJSON` loaded nodes that `_recordLoad` did not record yet. */
+  protected _unrecordedLoad = false;
   protected _diff: Diff = {
     deleted: new Map(),
     inserted: new Set(),
@@ -1035,6 +1037,12 @@ export class Doc {
   private _forceCommit(ignoreEmptyDiff = false) {
     if (this._lifeCycleStage === "change")
       throw new Error("You can't trigger an update inside a change event");
+    if (this._unrecordedLoad) {
+      // An enabled undo manager is a change listener.
+      if (this._normalizeListeners.size > 0 || this._changeListeners.size > 0)
+        this._recordLoad();
+      else this._unrecordedLoad = false;
+    }
     // push + reverse is more performant than unshift at insertion time
     this._inverseOperations[0].reverse();
     // End update stage before normalization
@@ -1232,7 +1240,8 @@ export class Doc {
    *
    * The initial JSON import starts a transaction, allowing updates made
    * immediately afterward to be batched with it. The transaction inserts the
-   * stored nodes: its normalize and change events see them.
+   * stored nodes: its normalize and change events see them. That record is
+   * made only when someone will use it (see `_recordLoad`).
    *
    * State values are not copied: the document keeps the values of `jsonDoc`
    * (each through its definition's `fromJSON`), so do not change them in
@@ -1251,9 +1260,9 @@ export class Doc {
   }
 
   /**
-   * Builds the stored nodes of `json` (see `JsonDoc`) into this document,
-   * recording them as inserts while it goes: what `ops.onInsertRange` records
-   * when a tree is appended to the root, without walking it again.
+   * Builds the stored nodes of `json` (see `JsonDoc`) into this document. It
+   * does not record them as inserts yet: `_recordLoad` does, if someone will
+   * use the record.
    *
    * The new root and node map replace the document's only at the end, so a
    * load that throws halfway leaves the document as it was.
@@ -1322,27 +1331,19 @@ export class Doc {
     let runLeft = 0;
     let runStep = 1;
     let index = 0;
-    const inserts = this._operations[0];
-    const patch = this._operations[1];
-    const inserted = this._diff.inserted;
     // A loop with a stack of the parents left open, not a recursive closure:
     // V8 can keep the context of a closure it optimized, and with it every
-    // array of the load (the columns and what was recorded).
-    const open: [DocNode, number, DocNode | undefined, [string, string][]][] =
-      [];
+    // array of the load.
+    const open: [DocNode, number, DocNode | undefined][] = [];
     let parent = root;
     let left = childCount(children, 0);
     let prev: DocNode | undefined;
-    // One insert per list of children, in the order a walk finds them.
-    let written: [string, string][] = [];
-    // Columns without nodes (not what `toJSON` writes) insert nothing.
-    if (left > 0) inserts.push([0, written, 0, 0, 0]);
     for (;;) {
       if (left === 0) {
         parent["_set"]("last", prev);
         const frame = open.pop();
         if (!frame) break;
-        [parent, left, prev, written] = frame;
+        [parent, left, prev] = frame;
         continue;
       }
       left--;
@@ -1425,7 +1426,6 @@ export class Doc {
       ) as DocNode;
       index++;
       const keyCount = type.keys.length;
-      let hasState = false;
       for (let base = 0; ; base += MASK_BITS) {
         if (maskAt === states.length)
           throw new Error(
@@ -1441,7 +1441,6 @@ export class Doc {
             throw new Error(
               `Invalid stored document: node '${nodeId!}' has a mask that is not valid.`,
             );
-          hasState = true;
           const state = node["_values"]();
           for (let k = base; mask > 0; k++, mask >>>= 1) {
             if ((mask & 1) === 0) continue;
@@ -1461,12 +1460,6 @@ export class Doc {
         }
         if (base + MASK_BITS >= keyCount) break;
       }
-      if (hasState) {
-        const changed = node["_stateJson"]();
-        if (!isObjectEmpty(changed)) patch[nodeId!] = changed;
-      }
-      written.push([nodeId!, type.name]);
-      inserted.add(nodeId!);
       map.set(nodeId!, node);
       node["_set"]("parent", parent);
       if (prev) {
@@ -1476,12 +1469,10 @@ export class Doc {
       prev = node;
       const grandchildren = childCount(children, index);
       if (grandchildren > 0) {
-        open.push([parent, left, prev, written]);
+        open.push([parent, left, prev]);
         parent = node;
         left = grandchildren;
         prev = undefined;
-        written = [];
-        inserts.push([0, written, node.id, 0, 0]);
       }
     }
     if (index !== count)
@@ -1498,13 +1489,58 @@ export class Doc {
       throw new Error(
         "Invalid stored document: it has more masks than its nodes need.",
       );
+    // Columns without nodes (not what `toJSON` writes) insert nothing.
+    this._unrecordedLoad = root.first !== undefined;
+  }
+
+  /**
+   * Records the nodes `fromJSON` loaded as inserts: what `ops.onInsertRange`
+   * records when a tree is appended to the root (an insert per list of
+   * children, in the order a walk finds them, their state, `diff.inserted`
+   * and the inverse delete). Like Yjs, which builds its update only when
+   * someone listens (`Transaction.js`), it runs only when someone will use
+   * it: when the load's transaction commits with normalize or change
+   * listeners (an enabled undo manager is one), or before anything else
+   * changes the document in that transaction, since later operations and
+   * `abort` build on it.
+   */
+  protected _recordLoad() {
+    this._unrecordedLoad = false;
+    const root = this.root;
+    const inserts = this._operations[0];
+    const patch = this._operations[1];
+    const inserted = this._diff.inserted;
+    // A walk along the links, as in `_writeJson`.
+    let node: DocNode | undefined = root;
+    while (node) {
+      if (node !== root) {
+        inserted.add(node.id);
+        if (node["_state"] !== NO_STATE) {
+          const state = node["_stateJson"]();
+          if (!isObjectEmpty(state)) patch[node.id] = state;
+        }
+      }
+      if (node.first) {
+        const list: [string, string][] = [];
+        for (
+          let child: DocNode | undefined = node.first;
+          child;
+          child = child.next
+        )
+          list.push([child.id, child.type]);
+        inserts.push([0, list, node === root ? 0 : node.id, 0, 0]);
+        node = node.first;
+        continue;
+      }
+      while (node !== root && !node.next) node = node.parent!;
+      node = node === root ? undefined : node.next;
+    }
     const { first, last } = root;
-    if (first)
-      this._inverseOperations[0].push([
-        1,
-        first.id,
-        last !== first ? last!.id : 0,
-      ]);
+    this._inverseOperations[0].push([
+      1,
+      first!.id,
+      last !== first ? last!.id : 0,
+    ]);
   }
 
   /** The definition of a stored state, which must be registered. */

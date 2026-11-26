@@ -4,6 +4,7 @@ import {
   defineState,
   string,
   type ChangeEvent,
+  type DocConfig,
   type DocNode,
   type Extension,
   type JsonDoc,
@@ -23,6 +24,7 @@ import {
   textDoc,
   textDocConfig as config,
   TextExtension,
+  assertDoc,
 } from "./utils.js";
 
 const ROOT_ID = "01kc52hq510g6y44jhq0wqrjb3";
@@ -580,6 +582,136 @@ describe("loading a stored document is a transaction that inserts it", () => {
     replica.applyOperations(events[0]!.operations);
     replica.forceCommit();
     expect(replica.toJSON()).toStrictEqual(json);
+  });
+});
+
+describe("the load is recorded only if someone will use it", () => {
+  /** "1" with "1.1" in it, and "2", stored. */
+  const stored = () => {
+    const doc = textDoc();
+    doc.root.append(...text(doc, "1", "2"));
+    doc.root.first!.append(...text(doc, "1.1"));
+    doc.forceCommit();
+    return doc.toJSON();
+  };
+
+  /** `Doc.fromJSON`, counting how many times it records the load. */
+  const load = (docConfig: DocConfig = config) => {
+    const doc = Doc.fromJSON(docConfig, stored());
+    let records = 0;
+    const record = doc["_recordLoad"].bind(doc);
+    doc["_recordLoad"] = () => {
+      records++;
+      record();
+    };
+    return { doc, records: () => records };
+  };
+
+  /** The inserts of `event`, as lists of values under a parent's value. */
+  const inserts = (doc: Doc, event: ChangeEvent) =>
+    humanReadableOperations(doc, event).operations.filter((op) =>
+      op.startsWith("INSERT"),
+    );
+
+  const loadedInserts = [
+    "INSERT: undefined --> 1 - 2 <-- undefined | PARENT: ROOT",
+    "INSERT: undefined --> 1.1 <-- undefined | PARENT: 1",
+  ];
+
+  test("nobody listening: nothing is recorded", () => {
+    const { doc, records } = load();
+    expect(doc["_operations"]).toStrictEqual([[], {}]);
+    expect(doc["_diff"].inserted.size).toBe(0);
+    doc.forceCommit();
+    expect(records()).toBe(0);
+    // Nothing of the load leaks into the next transaction.
+    const events: ChangeEvent[] = [];
+    doc.onChange((event) => events.push(event));
+    doc.root.append(...text(doc, "3"));
+    doc.forceCommit();
+    expect(events.map((event) => inserts(doc, event))).toStrictEqual([
+      ["INSERT: 2 --> 3 <-- undefined | PARENT: ROOT"],
+    ]);
+  });
+
+  test("a normalize callback sees the loaded nodes", () => {
+    const normalized: string[][] = [];
+    const Normalize: Extension = {
+      register: (doc) =>
+        doc.onNormalize(({ diff }) => normalized.push([...diff.inserted])),
+    };
+    const { doc, records } = load({
+      ...config,
+      strictMode: false,
+      extensions: [TextExtension, Normalize],
+    });
+    doc.forceCommit();
+    expect(records()).toBe(1);
+    const ids: string[] = [];
+    doc.root.descendants().forEach((node) => ids.push(node.id));
+    expect(normalized.at(-1)).toStrictEqual(ids);
+  });
+
+  test("a change listener added after fromJSON, before the commit, sees them", () => {
+    const { doc, records } = load();
+    const events: ChangeEvent[] = [];
+    doc.onChange((event) => events.push(event));
+    doc.forceCommit();
+    expect(records()).toBe(1);
+    expect(events.map((event) => inserts(doc, event))).toStrictEqual([
+      loadedInserts,
+    ]);
+  });
+
+  test("an enabled undo manager records it, a disabled one does not", () => {
+    const withUndo = load({ ...config, undoManager: { maxUndoSteps: 10 } });
+    withUndo.doc.forceCommit();
+    expect(withUndo.records()).toBe(1);
+    const withoutUndo = load({ ...config, undoManager: { maxUndoSteps: 0 } });
+    withoutUndo.doc.forceCommit();
+    expect(withoutUndo.records()).toBe(0);
+  });
+
+  test("a change in the load's transaction comes after the recorded load", () => {
+    const { doc, records } = load();
+    doc.root.append(...text(doc, "3"));
+    expect(records()).toBe(1);
+    const events: ChangeEvent[] = [];
+    doc.onChange((event) => events.push(event));
+    doc.forceCommit();
+    expect(records()).toBe(1);
+    expect(events.map((event) => inserts(doc, event))).toStrictEqual([
+      [...loadedInserts, "INSERT: 2 --> 3 <-- undefined | PARENT: ROOT"],
+    ]);
+  });
+
+  test("a stored value equal to the default is not in the recorded patch", () => {
+    const doc = Doc.fromJSON(config, [
+      ROOT_ID,
+      "root",
+      {},
+      [["text", "value"]],
+      [0, 0],
+      [2, 0, 0],
+      [1, 1],
+      ["", "x"],
+      [],
+      ["a.0", "a.1"],
+    ]);
+    const events: ChangeEvent[] = [];
+    doc.onChange((event) => events.push(event));
+    doc.forceCommit();
+    expect(humanReadableOperations(doc, events[0]!).operations).toStrictEqual([
+      "INSERT: undefined -->  - x <-- undefined | PARENT: ROOT",
+      'UPDATE: {"x":{"value":"x"}}',
+    ]);
+  });
+
+  test("abort in the load's transaction rolls the load back, as before", () => {
+    const { doc } = load();
+    doc.abort();
+    doc.forceCommit();
+    assertDoc(doc, []);
   });
 });
 

@@ -80,6 +80,8 @@ export function withTransaction(
     queueMicrotask(doc["_commitTask"]);
   }
 
+  // What changes the document next builds on the record of a load.
+  if (doc["_unrecordedLoad"]) doc["_recordLoad"]();
   try {
     return fn();
   } catch (errorInUpdate) {
