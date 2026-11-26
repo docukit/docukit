@@ -55,12 +55,33 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
   // nothing, it stays out of `Object.keys` and JSON, and unlike a private
   // field (`#doc`) it can be read through a Proxy (Vue, MobX, Valtio).
   readonly [DOC]: Doc;
+  /**
+   * The index of the node's session in the document's table (`NodeIds`), or
+   * -1 when its id is of another form. With `_clock`, it is the id as numbers.
+   */
+  protected readonly _session: number;
+  protected readonly _clock: number;
 
-  private constructor(doc: Doc, type: string, id?: string) {
+  private constructor(
+    doc: Doc,
+    type: string,
+    id?: string,
+    session = -1,
+    clock = 0,
+  ) {
     this.type = type;
     this._state = {};
     this[DOC] = doc;
-    this.id = id ?? doc["_nodeIdGenerator"](doc);
+    const ids = doc["_nodeIds"];
+    if (id === undefined && ids) {
+      this._session = ids["_index"];
+      this._clock = ids["_made"];
+      this.id = ids.generate();
+    } else {
+      this._session = session;
+      this._clock = clock;
+      this.id = id ?? doc["_idGen"].generate();
+    }
   }
 
   get doc() {
@@ -577,7 +598,6 @@ export class Doc {
     moved: new Set(),
     updated: new Set(),
   };
-  protected _nodeIdGenerator: (doc: Doc) => string;
   protected _idGen: NodeIdGenerator;
   /** The ids of this document's session, unless a generator without time makes them. */
   protected _nodeIds: NodeIds | undefined;
@@ -684,7 +704,6 @@ export class Doc {
     this._nodeIds = idGen.extractTime
       ? new NodeIds(this, idGen.extractTime)
       : undefined;
-    this._nodeIdGenerator = this._nodeIds?.generate ?? idGen.generate;
 
     this._lifeCycleStage = "init";
     config.extensions.forEach((extension) => {
@@ -706,12 +725,19 @@ export class Doc {
   }
 
   /**
-   * A node another replica inserted. If its id is of this document's session
-   * but past what it made, another replica has the same session, so this one
-   * takes a new one (see `NodeIds`).
+   * A node another replica inserted (or an undo inserts again). If its id is
+   * of this document's session but past what it made, another replica has
+   * the same session, so this one takes a new one (see `NodeIds`).
    */
-  private _checkSession(id: string) {
-    if (this._nodeIds?.collides(id)) this._nodeIds.renew();
+  private _insertedNode(id: string, type: string) {
+    const ids = this._nodeIds;
+    if (!ids) {
+      this._validateNodeId(id);
+      return this._storedNode(id, type, -1, 0);
+    }
+    if (ids.collides(id)) ids.renew();
+    const session = ids.split(id);
+    return this._storedNode(id, type, session, ids.splitClock);
   }
 
   getNodeById(docNodeId: string): DocNode | undefined {
@@ -1108,15 +1134,44 @@ export class Doc {
 
   private _createNodeFromJson(jsonNode: JsonDoc): DocNode {
     const [id, type] = jsonNode;
-    if (!this._idGen.extractTime && !this._idGen.validate(id)) {
-      throw new Error(`Invalid node id: ${id}.`);
-    }
+    const ids = this._nodeIds;
+    if (!ids) this._validateNodeId(id);
+    const session = ids ? ids.split(id) : -1;
     // @ts-expect-error - private constructor
-    const node = new DocNode(this, type, id) as DocNode;
+    const node = new DocNode(
+      this,
+      type,
+      id,
+      session,
+      ids?.splitClock,
+    ) as DocNode;
     const state = this["_createStateFromJson"](jsonNode);
     // @ts-expect-error - read-only property
     node["_state"] = state;
     return node;
+  }
+
+  /**
+   * Throws if `id` is not valid for the document's generator. Only for a
+   * custom generator without `extractTime`: `NodeIds` reads the others.
+   */
+  private _validateNodeId(id: string) {
+    if (!this._idGen.validate(id)) throw new Error(`Invalid node id: ${id}.`);
+  }
+
+  /** A node of a stored document or of an operation, without state yet. */
+  private _storedNode(
+    id: string,
+    type: string,
+    session: number,
+    clock: number,
+  ) {
+    if (!this._resolvedNodeDefs.has(type))
+      throw new Error(
+        `Attempted to create a node of type '${type}' that was not registered.`,
+      );
+    // @ts-expect-error - private constructor
+    return new DocNode(this, type, id, session, clock) as DocNode;
   }
 
   private _createStateFromJson(jsonNode: JsonDoc): Record<string, unknown> {

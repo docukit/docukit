@@ -16,6 +16,7 @@ import {
   TextExtension,
   DOCNODE_ID,
   checkUndoManager,
+  nextNodeId,
 } from "./utils.js";
 
 describe("accessors & getters", () => {
@@ -41,7 +42,7 @@ describe("accessors & getters", () => {
         spy.mockRestore();
         let id!: string;
         for (let i = 0; i <= ms; i++) {
-          id = doc["_nodeIdGenerator"](doc);
+          id = nextNodeId(doc);
           if (i === 0) expect(id).toMatch(DOCNODE_ID(value, "-"));
         }
         expect(id).toMatch(DOCNODE_ID(value, value));
@@ -978,6 +979,8 @@ test("DocNode.doc is readonly and not enumerable", () => {
     "next",
     "first",
     "last",
+    "_session",
+    "_clock",
   ]);
   const newDoc = new Doc({ type: "root", extensions: [TextExtension] });
   // @ts-expect-error - readonly
