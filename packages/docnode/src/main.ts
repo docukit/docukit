@@ -27,7 +27,7 @@ import {
   defineNode,
 } from "./utils.js";
 import * as ops from "./operations.js";
-import { NodeIds } from "./idGenerator.js";
+import { MAX_CLOCK, NodeIds, numberToBase64 } from "./idGenerator.js";
 import { decodeTime, ulid } from "ulid";
 import { UndoManager } from "./undoManager.js";
 
@@ -1075,7 +1075,9 @@ export class Doc {
 
   /**
    * The stored document: the root, then the other nodes in preorder as
-   * columns (see `JsonDoc`), written in one pass.
+   * columns (see `JsonDoc`). It is written in one pass, like the encoders of
+   * lib0 (Yjs): the runs of ids are decided as the nodes come, without
+   * looking ahead.
    */
   private _writeJson(): JsonDoc {
     const root = this.root;
@@ -1086,7 +1088,7 @@ export class Doc {
     const typeColumn: number[] = [];
     const children: number[] = [0];
     const states: Record<string, Json>[] = [];
-    const ids: string[] = [];
+    const ids = new IdsWriter(this._nodeIds);
     let lastTypeName = "";
     let lastTypeIndex = 0;
     // A walk along the links, not a recursive closure: V8 can keep the
@@ -1097,7 +1099,7 @@ export class Doc {
     while (node) {
       const at = open[open.length - 1]!;
       children[at] = children[at]! + 1;
-      ids.push(node.id);
+      ids.write(node);
       const typeName = node.type;
       if (typeName !== lastTypeName) {
         let index = typeIndexes.get(typeName);
@@ -1122,6 +1124,7 @@ export class Doc {
       }
       node = node === root ? undefined : node.next;
     }
+    ids.flush();
     const json: JsonDoc = [
       root.id,
       root.type,
@@ -1130,7 +1133,8 @@ export class Doc {
       typeColumn,
       children,
       states,
-      ids,
+      ids.sessions,
+      ids.ids,
     ];
     return json;
   }
@@ -1183,17 +1187,14 @@ export class Doc {
 
   /** Builds the nodes below `root` of a stored document into `map`. */
   private _readNodes(
-    json: Extract<JsonDoc, { length: 8 }>,
+    json: Extract<JsonDoc, { length: 9 }>,
     root: DocNode,
     map: Map<string, DocNode>,
   ) {
-    const [, rootType, , types, typeColumn, children, states, ids] = json;
-    const count = ids.length;
-    if (
-      typeColumn.length !== count ||
-      states.length !== count ||
-      children.length !== count + 1
-    )
+    const [, rootType, , types, typeColumn, children, states, sessions, ids] =
+      json;
+    const count = typeColumn.length;
+    if (states.length !== count || children.length !== count + 1)
       throw new Error(
         "Invalid stored document: its columns do not have matching lengths.",
       );
@@ -1208,6 +1209,25 @@ export class Doc {
       return definition;
     });
     const nodeIds = this._nodeIds;
+    // The index in `nodeIds` of each stored session, and the clock that
+    // follows the last one read of each.
+    // The same sessions an id read as text could have (see `clockAt`),
+    // checked before any is registered.
+    for (const session of sessions)
+      if (typeof session !== "string" || session === "")
+        throw new Error(
+          "Invalid stored document: it has a session that is not valid.",
+        );
+    const sessionIndexes = sessions.map(
+      (session) => nodeIds?.register(session) ?? -1,
+    );
+    const nextClocks = sessions.map(() => 0);
+    let idAt = 0;
+    let runPrefix = "";
+    let runSession = 0;
+    let runClock = 0;
+    let runLeft = 0;
+    let runStep = 1;
     let index = 0;
     const inserts = this._operations[0];
     const patch = this._operations[1];
@@ -1237,33 +1257,80 @@ export class Doc {
         throw new Error(
           "Invalid stored document: it counts more children than it has nodes.",
         );
-      const nodeId = ids[index]!;
-      if (!nodeIds) this._validateNodeId(nodeId);
-      if (map.has(nodeId))
+      let nodeId: string;
+      let session = -1;
+      let clock = 0;
+      if (runLeft === 0) {
+        if (idAt === ids.length)
+          throw new Error(
+            "Invalid stored document: it has fewer ids than nodes.",
+          );
+        const entry = ids[idAt++]!;
+        if (typeof entry === "string") {
+          // An id of a custom generator, or one `fromLegacyJson` kept.
+          nodeId = entry;
+          if (nodeIds) {
+            session = nodeIds.split(entry);
+            clock = nodeIds.splitClock;
+          }
+        } else {
+          runSession += entry;
+          const delta = ids[idAt++];
+          const length = ids[idAt++];
+          if (
+            !(runSession in sessions) ||
+            !Number.isInteger(delta) ||
+            !Number.isInteger(length) ||
+            length === 0
+          )
+            throw new Error(
+              "Invalid stored document: it has an id run that is not valid.",
+            );
+          runPrefix = `${sessions[runSession]}.`;
+          runClock = nextClocks[runSession]! + (delta as number);
+          runStep = (length as number) < 0 ? -1 : 1;
+          runLeft = (length as number) * runStep;
+          const lastClock = runClock + runStep * (runLeft - 1);
+          // Both ends, before any id is written: a run going down starts
+          // at its largest clock.
+          if (
+            runClock < 0 ||
+            lastClock < 0 ||
+            runClock > MAX_CLOCK ||
+            lastClock > MAX_CLOCK
+          )
+            throw new Error(
+              "Invalid stored document: it has an id run that is not valid.",
+            );
+          nextClocks[runSession] = lastClock + 1;
+        }
+      }
+      if (runLeft > 0) {
+        session = sessionIndexes[runSession]!;
+        clock = runClock;
+        nodeId = runPrefix + numberToBase64(clock);
+        runClock += runStep;
+        runLeft--;
+      }
+      if (!nodeIds) this._validateNodeId(nodeId!);
+      if (map.has(nodeId!))
         throw new Error(
-          `Node '${nodeId}' cannot be inserted because it already exists in the doc.`,
+          `Node '${nodeId!}' cannot be inserted because it already exists in the doc.`,
         );
       const definition = definitions[typeColumn[index]!];
       if (!definition)
         throw new Error(
-          `Invalid stored document: node '${nodeId}' has type ${typeColumn[index]}, which is not in its types.`,
+          `Invalid stored document: node '${nodeId!}' has type ${typeColumn[index]}, which is not in its types.`,
         );
       const type = definition.type;
-      const session = nodeIds ? nodeIds.split(nodeId) : -1;
       // @ts-expect-error - private constructor
-      const node = new DocNode(
-        this,
-        type,
-        nodeId,
-        session,
-        nodeIds?.splitClock,
-      ) as DocNode;
+      const node = new DocNode(this, type, nodeId!, session, clock) as DocNode;
       this._readState(node, definition, states[index++]!);
       const changed = node["_stateToJson"]();
-      if (!isObjectEmpty(changed)) patch[nodeId] = changed;
-      written.push([nodeId, type]);
-      inserted.add(nodeId);
-      map.set(nodeId, node);
+      if (!isObjectEmpty(changed)) patch[nodeId!] = changed;
+      written.push([nodeId!, type]);
+      inserted.add(nodeId!);
+      map.set(nodeId!, node);
       node["_set"]("parent", parent);
       if (prev) {
         node["_set"]("prev", prev);
@@ -1284,6 +1351,8 @@ export class Doc {
       throw new Error(
         "Invalid stored document: it has nodes that no parent counts.",
       );
+    if (idAt !== ids.length || runLeft !== 0)
+      throw new Error("Invalid stored document: it has more ids than nodes.");
     const { first, last } = root;
     if (first)
       this._inverseOperations[0].push([
@@ -1336,6 +1405,74 @@ export class Doc {
       );
     // @ts-expect-error - private constructor
     return new DocNode(this, type, id, session, clock) as DocNode;
+  }
+}
+
+/**
+ * Writes the ids of a stored document as runs (see `JsonDoc`), in one pass
+ * like the encoders of lib0 (Yjs): a run is decided as the nodes come,
+ * without looking ahead.
+ */
+class IdsWriter {
+  readonly sessions: string[] = [];
+  readonly ids: (number | string)[] = [];
+  /**
+   * The index in `sessions` of each session of `NodeIds`, and the clock that
+   * follows the last one written of each session.
+   */
+  private readonly _indexes: number[] = [];
+  private readonly _nextClocks: number[] = [];
+  private _lastSession = 0;
+  /** The run being written: its session, first and last clock, length, step. */
+  private _session = -1;
+  private _start = 0;
+  private _last = 0;
+  private _count = 0;
+  private _step = 1;
+
+  constructor(private readonly _nodeIds: NodeIds | undefined) {}
+
+  write(node: DocNode) {
+    const session = node["_session"];
+    if (session < 0) {
+      this.flush();
+      this.ids.push(node.id);
+      return;
+    }
+    const clock = node["_clock"];
+    if (session === this._session && this._count > 0) {
+      const last = this._last;
+      if (this._count === 1 && (clock === last + 1 || clock === last - 1))
+        this._step = clock - last;
+      if (clock === last + this._step) {
+        this._count++;
+        this._last = clock;
+        return;
+      }
+    }
+    this.flush();
+    this._session = session;
+    this._start = this._last = clock;
+    this._count = 1;
+    this._step = 1;
+  }
+
+  flush() {
+    if (this._count === 0) return;
+    let index = this._indexes[this._session];
+    if (index === undefined) {
+      index = this._indexes[this._session] = this.sessions.length;
+      this.sessions.push(this._nodeIds!.session(this._session));
+      this._nextClocks.push(0);
+    }
+    this.ids.push(
+      index - this._lastSession,
+      this._start - this._nextClocks[index]!,
+      this._count * this._step,
+    );
+    this._lastSession = index;
+    this._nextClocks[index] = this._last + 1;
+    this._count = 0;
   }
 }
 

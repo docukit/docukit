@@ -151,6 +151,12 @@ export const textDocConfig: DocConfig = {
 /** An empty document of text nodes. */
 export const textDoc = () => new Doc(textDocConfig);
 
+/** The session of the ids `doc` makes now. */
+export const sessionOf = (doc: Doc) => nextNodeId(doc).split(".")[0];
+
+/** The ids column of `doc` stored. */
+export const idsOf = (doc: Doc) => doc.toJSON()[8];
+
 /** The next node id of `doc`, as its generator makes them. */
 export const nextNodeId = (doc: Doc) =>
   doc["_nodeIds"]?.generate() ?? doc["_idGen"].generate();
