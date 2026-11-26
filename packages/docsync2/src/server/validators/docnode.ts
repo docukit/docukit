@@ -53,9 +53,11 @@ const jsonSchema: v.GenericSchema<unknown, Json> = v.lazy(() =>
 
 const stateSchema = v.record(v.string(), jsonSchema);
 
+// Strict: a plain tuple drops extra items, so the shape of a root without
+// children would match any document and keep only its root.
 const serializedDocSchema: v.GenericSchema<unknown, JsonDoc> = v.union([
-  v.tuple([v.string(), v.string(), stateSchema]),
-  v.tuple([
+  v.strictTuple([v.string(), v.string(), stateSchema]),
+  v.strictTuple([
     v.string(),
     v.string(),
     stateSchema,
