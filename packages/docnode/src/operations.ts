@@ -1,23 +1,37 @@
 import { type Doc, type DocNode } from "./main.js";
 import { type Json, type UnsafeDefinition } from "./types.js";
-import { detachRange, isObjectEmpty } from "./utils.js";
+import { detachRange, freezeInDev, isObjectEmpty } from "./utils.js";
 
-export function stringifyStateKey(node: DocNode, key: string): string {
+/**
+ * The JSON of a node's state value, as its definition's `toJSON` writes it,
+ * or of the default when the key was never set. It is the value itself, not
+ * a copy: state values are not changed in place (they are frozen in
+ * development).
+ */
+export function stateKeyToJson(node: DocNode, key: string): Json {
   const resolvedNodeDef = node.doc["_resolvedNodeDefs"].get(node.type)!;
-  const stateDefinition = resolvedNodeDef?.state[key];
-  if (!(key in node["_state"])) {
-    return resolvedNodeDef.defaultStrings[key]!;
-  }
+  if (!(key in node["_state"])) return resolvedNodeDef.defaultJson[key]!;
   const stateValue = (node as DocNode<UnsafeDefinition>)["_state"][key];
-  const stateJson = stateDefinition?.toJSON
+  const stateDefinition = resolvedNodeDef.state[key];
+  const json: unknown = stateDefinition?.toJSON
     ? stateDefinition.toJSON(stateValue)
     : stateValue;
-  const stringified = JSON.stringify(stateJson);
-  if (stringified === undefined)
+  if (json === undefined || typeof json === "function")
     throw new Error(
       `The JSON serialization for state ${key} on a node of type ${node.type} is undefined.`,
     );
-  return stringified;
+  // An object that is not a plain object or list (a Date, a class) is
+  // stored as what `JSON.stringify` writes of it.
+  if (typeof json === "object" && json) {
+    const proto: unknown = Object.getPrototypeOf(json);
+    if (proto !== Object.prototype && proto !== Array.prototype)
+      return JSON.parse(JSON.stringify(json)) as Json;
+  }
+  return json as Json;
+}
+
+export function stringifyStateKey(node: DocNode, key: string): string {
+  return JSON.stringify(stateKeyToJson(node, key));
 }
 
 export function parseStateKey(
@@ -323,7 +337,7 @@ export const onApplyOperations = (doc: Doc, operations: Operations) => {
       }
       (currentStatePatch[id] ??= {})[key] = value;
       const state = (node as DocNode<UnsafeDefinition>)["_state"];
-      state[key] = parseStateKey(node, key, value);
+      state[key] = freezeInDev(parseStateKey(node, key, value));
     }
   }
 };

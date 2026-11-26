@@ -21,6 +21,8 @@ import {
   detachRange,
   withTransaction,
   isObjectEmpty,
+  freezeInDev,
+  equalJson,
   ULID_REGEX,
   defineNode,
 } from "./utils.js";
@@ -525,23 +527,26 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
   }
 
   toJSON(): JsonDocNode<T> {
-    return [this.id, this.type, this._stateToJson()];
+    return [this.id, this.type, this._stateJson() as NodeState.Jsonified<T>];
   }
 
+  /** Each value that is not the default, as a JSON string. */
   private _stateToJson(): NodeState.Stringified<T> {
     const jsonState: Record<string, string> = {};
-    const resolvedNodeDef = this.doc["_resolvedNodeDefs"].get(this.type);
-    const defaultString = resolvedNodeDef?.defaultStrings;
-    for (const key in this._state) {
-      const stringifiedState = ops.stringifyStateKey(this, key);
-      if (stringifiedState === defaultString?.[key]) continue;
-      const stateDefinition = resolvedNodeDef?.state[key];
-      const json = stateDefinition?.toJSON
-        ? stateDefinition.toJSON(this._state[key])
-        : this._state[key];
-      jsonState[key] = JSON.stringify(json);
-    }
+    const values = this._stateJson();
+    for (const key in values) jsonState[key] = JSON.stringify(values[key]);
     return jsonState as NodeState.Stringified<T>;
+  }
+
+  /** Each value that is not the default, as JSON (see `ops.stateKeyToJson`). */
+  private _stateJson(): Record<string, Json> {
+    const jsonState: Record<string, Json> = {};
+    const defaults = this.doc["_resolvedNodeDefs"].get(this.type)!.defaultJson;
+    for (const key in this._state) {
+      const json = ops.stateKeyToJson(this, key);
+      if (!equalJson(json, defaults[key])) jsonState[key] = json;
+    }
+    return jsonState;
   }
 }
 
@@ -595,6 +600,7 @@ export class Doc {
         state: {},
         defaultState: {},
         defaultStrings: {},
+        defaultJson: {},
         methods: undefined as unknown as ResolvedNodeDefinition["methods"],
       };
 
@@ -622,6 +628,7 @@ export class Doc {
             );
           }
           resolvedNodeDef.defaultStrings[key] = stringified;
+          resolvedNodeDef.defaultJson[key] = JSON.parse(stringified) as Json;
         }
       }
 
@@ -1015,6 +1022,12 @@ export class Doc {
     this._lifeCycleStage = "disposed";
   }
 
+  /**
+   * The document as plain JSON (see `JsonDoc`), to store it or send it.
+   *
+   * State values are not copied: the result shares them with the document,
+   * so do not change them in place. Use `set` to change a value.
+   */
   toJSON(options?: { unsafe?: boolean }): JsonDoc {
     if (
       !options?.unsafe &&
@@ -1032,7 +1045,7 @@ export class Doc {
       );
     }
     const nodeToJsonDoc = (node: DocNode): JsonDoc => {
-      const jsonDoc: JsonDoc = node.toJSON();
+      const jsonDoc: JsonDoc = [node.id, node.type, node["_stateJson"]()];
       if (node.first) {
         const children: JsonDoc[] = [];
         node.children().forEach((childNode) => {
@@ -1056,6 +1069,10 @@ export class Doc {
    *
    * The initial JSON import starts a transaction, allowing updates made
    * immediately afterward to be batched with it.
+   *
+   * State values are not copied: the document keeps the values of `jsonDoc`
+   * (each through its definition's `fromJSON`), so do not change them in
+   * place afterwards.
    */
   static fromJSON(config: DocConfig, jsonDoc: JsonDoc): Doc {
     const id = jsonDoc[0];
@@ -1102,23 +1119,23 @@ export class Doc {
     return node;
   }
 
-  private _createStateFromJson(jsonNode: JsonDoc): Record<string, Json> {
-    const [, type, stringifiedState] = jsonNode;
+  private _createStateFromJson(jsonNode: JsonDoc): Record<string, unknown> {
+    const [, type, jsonState] = jsonNode;
     const resolvedNodeDef = this._resolvedNodeDefs.get(type);
     if (!resolvedNodeDef)
       throw new Error(
         `Attempted to create a node of type '${type}' that was not registered.`,
       );
-    const state: Record<string, Json> = {};
-    for (const key in stringifiedState) {
-      const stateString = stringifiedState[key]!;
-      const stateJson = JSON.parse(stateString) as Json;
+    const state: Record<string, unknown> = {};
+    for (const key in jsonState) {
       const stateDefinition = resolvedNodeDef.state[key];
       if (!stateDefinition)
         throw new Error(
           `Attempted to create a node of type '${type}' with a state that is not registered: ${key}`,
         );
-      state[key] = stateDefinition.fromJSON(stateJson) as Json;
+      // The value is the stored document's, not a copy: frozen, like a
+      // value set with `set`.
+      state[key] = freezeInDev(stateDefinition.fromJSON(jsonState[key]));
     }
     return state;
   }
@@ -1177,7 +1194,9 @@ function stateKeyMethods(
         // that is not attached yet
         const isAttached = node.doc["_nodeMap"].has(node.id);
         if (isAttached) ops.onSetState.inverseOps(node, key);
-        state[key] = value;
+        // Frozen in development: a value changed in place would change the
+        // document without an operation (see `freezeInDev`).
+        state[key] = freezeInDev(value);
         if (isAttached) ops.onSetState.operations(node, key);
 
         // TODO: Subdocs. This is not implemented yet

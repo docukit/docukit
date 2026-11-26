@@ -18,6 +18,7 @@ import {
   string,
   defineState,
 } from "@docukit/docnode";
+import { fromLegacyJson } from "@docukit/docnode/compat";
 import { test, expect, describe } from "vitest";
 import * as v from "valibot";
 
@@ -125,38 +126,44 @@ describe("json serialization", () => {
   });
 
   test("fromJSON", () => {
-    const doc = Doc.fromJSON({ type: "root", extensions: [TextExtension] }, [
-      "01kdjkhm2wkfkcw7xkjdjrd1cc",
-      "root",
-      {},
-      [
-        ["1", "text", { value: '"1"' }],
+    const doc = Doc.fromJSON(
+      { type: "root", extensions: [TextExtension] },
+      fromLegacyJson([
+        "01kdjkhm2wkfkcw7xkjdjrd1cc",
+        "root",
+        {},
         [
-          "2",
-          "text",
-          { value: '"2"' },
+          ["1", "text", { value: '"1"' }],
           [
-            ["2.1", "text", { value: '"2.1"' }],
-            ["2.2", "text", { value: '"2.2"' }],
+            "2",
+            "text",
+            { value: '"2"' },
+            [
+              ["2.1", "text", { value: '"2.1"' }],
+              ["2.2", "text", { value: '"2.2"' }],
+            ],
           ],
+          ["3", "text", { value: '"3"' }],
+          ["4", "text", { value: '"4"' }],
         ],
-        ["3", "text", { value: '"3"' }],
-        ["4", "text", { value: '"4"' }],
-      ],
-    ]);
+      ]),
+    );
     assertDoc(doc, ["1", "2", "__2.1", "__2.2", "3", "4"]);
   });
 
   test("fromJSON with invalid state should not be imported", () => {
-    const doc = Doc.fromJSON({ type: "root", extensions: [TextExtension] }, [
-      "01kdjkhm2wkfkcw7xkjdjrd1cc",
-      "root",
-      {},
-      [
-        // value is a number here, but it should be a string
-        ["1", "text", { value: "1" }],
-      ],
-    ]);
+    const doc = Doc.fromJSON(
+      { type: "root", extensions: [TextExtension] },
+      fromLegacyJson([
+        "01kdjkhm2wkfkcw7xkjdjrd1cc",
+        "root",
+        {},
+        [
+          // value is a number here, but it should be a string
+          ["1", "text", { value: "1" }],
+        ],
+      ]),
+    );
     const node = doc.root.first as DocNode<typeof Text>;
     expect(node.state.value.get()).toStrictEqual("");
     assertJson(doc, ["root", {}, [["text", {}]]]);
@@ -183,7 +190,7 @@ describe("json serialization", () => {
       // setting value to true
       node.state.boolean.set(true);
       const [_id2, ...rest2] = node.toJSON();
-      expect(rest2).toStrictEqual(["test", { boolean: "1" }]);
+      expect(rest2).toStrictEqual(["test", { boolean: 1 }]);
       assertJson(doc, ["root", {}, [["test", { boolean: "1" }]]]);
       const doc3 = Doc.fromJSON(
         { type: "root", extensions: [TestExtension] },
@@ -197,12 +204,15 @@ describe("json serialization", () => {
 
   test("fromJSON contains a node that is not registered should throw", () => {
     expect(() =>
-      Doc.fromJSON({ type: "root", extensions: [TextExtension] }, [
-        "01kdjkhm2wkfkcw7xkjdjrd1cc",
-        "root",
-        {},
-        [["1", "node-not-registered", { value: '"1"' }]],
-      ]),
+      Doc.fromJSON(
+        { type: "root", extensions: [TextExtension] },
+        fromLegacyJson([
+          "01kdjkhm2wkfkcw7xkjdjrd1cc",
+          "root",
+          {},
+          [["1", "node-not-registered", { value: '"1"' }]],
+        ]),
+      ),
     ).toThrowError(
       "Attempted to create a node of type 'node-not-registered' that was not registered.",
     );
@@ -210,12 +220,15 @@ describe("json serialization", () => {
 
   test("fromJSON contains a state that is not registered should throw", () => {
     expect(() =>
-      Doc.fromJSON({ type: "root", extensions: [TextExtension] }, [
-        "01kdjkhm2wkfkcw7xkjdjrd1cc",
-        "root",
-        {},
-        [["1", "text", { notRegistered: '"1"' }]],
-      ]),
+      Doc.fromJSON(
+        { type: "root", extensions: [TextExtension] },
+        fromLegacyJson([
+          "01kdjkhm2wkfkcw7xkjdjrd1cc",
+          "root",
+          {},
+          [["1", "text", { notRegistered: '"1"' }]],
+        ]),
+      ),
     ).toThrowError(
       "Attempted to create a node of type 'text' with a state that is not registered: notRegistered",
     );
@@ -258,7 +271,7 @@ describe("json serialization", () => {
           extractTime: (id) => parseInt(id.split("-")[1]!, 10),
         },
       },
-      [
+      fromLegacyJson([
         `ts-${baseTime}`,
         "root",
         {},
@@ -266,7 +279,7 @@ describe("json serialization", () => {
           ["compact-1", "text", { value: '"1"' }],
           ["compact-2", "text", { value: '"2"' }],
         ],
-      ],
+      ]),
     );
     expect(doc.root.id).toBe(`ts-${baseTime}`);
     assertDoc(doc, ["1", "2"]);
@@ -300,7 +313,7 @@ describe("json serialization", () => {
           validate: (id) => id.startsWith("ok-"),
         },
       },
-      [
+      fromLegacyJson([
         "ok-root",
         "root",
         {},
@@ -308,7 +321,7 @@ describe("json serialization", () => {
           ["ok-1", "text", { value: '"1"' }],
           ["ok-2", "text", { value: '"2"' }],
         ],
-      ],
+      ]),
     );
     expect(doc.root.id).toBe("ok-root");
     assertDoc(doc, ["1", "2"]);
@@ -325,7 +338,12 @@ describe("json serialization", () => {
             validate: (id) => id.startsWith("ok-"),
           },
         },
-        ["ok-root", "root", {}, [["bad-child", "text", { value: '"1"' }]]],
+        fromLegacyJson([
+          "ok-root",
+          "root",
+          {},
+          [["bad-child", "text", { value: '"1"' }]],
+        ]),
       ),
     ).toThrowError("Invalid node id: bad-child.");
   });

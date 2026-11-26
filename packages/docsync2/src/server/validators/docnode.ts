@@ -1,4 +1,4 @@
-import type { JsonDoc, Operations } from "@docukit/docnode";
+import type { Json, JsonDoc, Operations } from "@docukit/docnode";
 import * as v from "valibot";
 
 const stringRecordSchema = v.record(v.string(), v.string());
@@ -40,6 +40,19 @@ const operationsSchema = v.tuple([
   v.record(v.string(), stringRecordSchema),
 ]);
 
+const jsonSchema: v.GenericSchema<unknown, Json> = v.lazy(() =>
+  v.union([
+    v.string(),
+    v.number(),
+    v.boolean(),
+    v.null(),
+    v.array(jsonSchema),
+    v.record(v.string(), jsonSchema),
+  ]),
+);
+
+const stateSchema = v.record(v.string(), jsonSchema);
+
 const serializedDocSchema: v.GenericSchema<unknown, JsonDoc> = v.lazy(() => {
   const childrenSchema = v.tupleWithRest(
     [serializedDocSchema],
@@ -47,8 +60,8 @@ const serializedDocSchema: v.GenericSchema<unknown, JsonDoc> = v.lazy(() => {
   );
 
   return v.union([
-    v.tuple([v.string(), v.string(), stringRecordSchema]),
-    v.tuple([v.string(), v.string(), stringRecordSchema, childrenSchema]),
+    v.tuple([v.string(), v.string(), stateSchema]),
+    v.tuple([v.string(), v.string(), stateSchema, childrenSchema]),
   ]);
 });
 

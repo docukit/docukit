@@ -44,7 +44,7 @@ describe("types", () => {
       [
         string,
         "test",
-        { string?: string; number?: string; boolean?: string; date?: string },
+        { string?: Json; number?: Json; boolean?: Json; date?: Json },
       ]
     >();
   });
@@ -63,8 +63,9 @@ describe("types", () => {
       ["1", "text", { value: "1" }, []]
     >().not.toMatchTypeOf<JsonDoc>();
 
+    // State values are plain JSON.
     expectTypeOf<
-      ["1", "text", { value: "1" }, [["2", "text", { value: "2" }]]]
+      ["1", "text", { value: 1 }, [["2", "text", { value: [true] }]]]
     >().toMatchTypeOf<JsonDoc>();
   });
 

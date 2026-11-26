@@ -82,6 +82,10 @@ export namespace NodeState {
     [K in keyof T["state"]]?: string;
   };
 
+  export type Jsonified<T extends NodeDefinition> = {
+    [K in keyof T["state"]]?: Json;
+  };
+
   export type State<T extends NodeDefinition> = {
     [K in keyof T["state"]]?: T["state"][K] extends StateDefinition<
       infer V,
@@ -107,19 +111,25 @@ export type UnsafeDefinition = NodeDefinition<string, StateRecord>;
 export type ResolvedNodeDefinition = UnsafeDefinition & {
   defaultState: NodeState.State<UnsafeDefinition>;
   defaultStrings: NodeState.Stringified<UnsafeDefinition>;
+  /** The JSON of each default value, to leave it out of stored documents. */
+  defaultJson: Record<string, Json>;
   methods: (node: DocNode) => NodeState.Methods<UnsafeDefinition>;
 };
 
 export type JsonDocNode<T extends NodeDefinition = NodeDefinition> = [
   id: string,
   type: T["type"],
-  state: NodeState.Stringified<T>,
+  state: NodeState.Jsonified<T>,
 ];
 
+/**
+ * A document saved with `doc.toJSON()`, ready to load with `Doc.fromJSON`.
+ * It is plain JSON. Its layout is internal, so store it as it is.
+ */
 export type JsonDoc = [
   id: string,
   type: string,
-  state: Record<string, string>,
+  state: Record<string, Json>,
   children?: [JsonDoc, ...JsonDoc[]],
 ];
 

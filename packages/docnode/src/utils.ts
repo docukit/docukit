@@ -1,5 +1,5 @@
 import type { Doc, DocNode } from "./main.js";
-import type { StateRecord } from "./types.js";
+import type { Json, StateRecord } from "./types.js";
 
 // lowercase ulid
 export const ULID_REGEX = /^[0-7][0-9a-hjkmnp-tv-z]{25}$/;
@@ -75,4 +75,57 @@ export function withTransaction(
     }
     if (!isApplyOperations) throw errorInUpdate;
   }
+}
+
+const isList = (json: Json): json is readonly Json[] => Array.isArray(json);
+
+/**
+ * Whether state values are frozen, as Yjs does with the values it stores
+ * (`ContentAny.js`): stored documents and the live state share objects, so a
+ * value changed in place, instead of with `set`, would change the document
+ * without an operation. Freezing makes that throw outside production.
+ *
+ * `process.env.NODE_ENV` is written literally so that bundlers replace it:
+ * in a browser build it is on in development and gone in production.
+ */
+const FREEZE =
+  typeof process !== "undefined" && process.env.NODE_ENV !== "production";
+
+/** Freezes `value` and the plain objects and lists in it (see `FREEZE`). */
+export function freezeInDev<V>(value: V): V {
+  /* v8 ignore if -- @preserve */
+  if (!FREEZE) return value;
+  deepFreeze(value);
+  return value;
+}
+
+function deepFreeze(value: unknown) {
+  if (typeof value !== "object" || !value || Object.isFrozen(value)) return;
+  const proto: unknown = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== Array.prototype) return;
+  Object.freeze(value);
+  for (const key in value) {
+    const item: unknown = Reflect.get(value, key);
+    deepFreeze(item);
+  }
+}
+
+/** Whether two JSON values are equal. */
+export function equalJson(a: Json | undefined, b: Json | undefined): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || !a) return false;
+  if (typeof b !== "object" || !b) return false;
+  if (isList(a)) {
+    if (!isList(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (!equalJson(a[i], b[i])) return false;
+    return true;
+  }
+  if (isList(b)) return false;
+  let count = 0;
+  for (const key in a) {
+    if (!(key in b) || !equalJson(a[key], b[key])) return false;
+    count++;
+  }
+  for (const _ in b) count--;
+  return count === 0;
 }

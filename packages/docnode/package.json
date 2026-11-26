@@ -26,6 +26,11 @@
       "vitest": "./src/exports/index.ts",
       "types": "./dist/src/exports/index.d.ts",
       "default": "./dist/src/exports/index.js"
+    },
+    "./compat": {
+      "vitest": "./src/exports/compat.ts",
+      "types": "./dist/src/exports/compat.d.ts",
+      "default": "./dist/src/exports/compat.js"
     }
   },
   "dependencies": {

@@ -101,6 +101,15 @@ const [changedBar, prevBar] = node.state.bar.getPrev(); // [true, 0]
 const [changedBaz, prevBaz] = node.state.baz.getPrev(); // [false, false]
 ```
 
+<Callout type="warning">
+  Treat state values as read-only. To change an object or an array, give
+  `set` a new one, for example
+  `node.state.items.set((items) => [...items, "new"])`. A change made in
+  place is not an operation, so it doesn't reach other clients or the undo
+  manager. Outside production (when `NODE_ENV` is not `production`), state
+  values are frozen so that this mistake throws.
+</Callout>
+
 In the two subpages of this page ([Custom State](/docs/nodes/custom-state) and [Schema Migrations](/docs/nodes/migrations)), we explain how you can define your own StateDefinitions and their methods. If `string`, `boolean`, and `number` are sufficient for your use cases and you don't need to migrate the state of a node from one version to another, you can skip that pages.
 
 <Callout type="info">
