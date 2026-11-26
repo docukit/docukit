@@ -80,16 +80,26 @@ export function withTransaction(
 const isList = (json: Json): json is readonly Json[] => Array.isArray(json);
 
 /**
- * Whether state values are frozen, as Yjs does with the values it stores
+ * Whether state values are frozen, as Yjs does in development
  * (`ContentAny.js`): stored documents and the live state share objects, so a
  * value changed in place, instead of with `set`, would change the document
- * without an operation. Freezing makes that throw outside production.
+ * without an operation. Freezing makes that throw in development and tests.
+ * In production, or when `NODE_ENV` is not set, it costs nothing.
  *
- * `process.env.NODE_ENV` is written literally so that bundlers replace it:
- * in a browser build it is on in development and gone in production.
+ * `process.env.NODE_ENV` is written literally so that bundlers replace it.
  */
-const FREEZE =
-  typeof process !== "undefined" && process.env.NODE_ENV !== "production";
+const FREEZE = isDevelopmentOrTest();
+
+function isDevelopmentOrTest() {
+  try {
+    const env = process.env.NODE_ENV;
+    return env === "development" || env === "test";
+  } catch {
+    // No `process` (a browser without a bundler that replaces it).
+    /* v8 ignore next -- @preserve */
+    return false;
+  }
+}
 
 /** Freezes `value` and the plain objects and lists in it (see `FREEZE`). */
 export function freezeInDev<V>(value: V): V {
