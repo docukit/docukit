@@ -139,6 +139,7 @@ export type JsonDoc =
       values: Json[],
       sessions: string[],
       ids: (number | string)[],
+      ints?: string,
     ];
 
 /**

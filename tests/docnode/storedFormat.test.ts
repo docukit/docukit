@@ -2,6 +2,7 @@ import {
   Doc,
   defineNode,
   defineState,
+  number,
   string,
   type ChangeEvent,
   type DocConfig,
@@ -19,6 +20,10 @@ import {
   humanReadableOperations,
   idsOf,
   loadAndSave,
+  intColumnOf,
+  intsOf,
+  intWidthOf,
+  withBase64,
   sessionOf,
   text,
   textDoc,
@@ -100,7 +105,7 @@ describe("stored format", () => {
     expect(loaded.toJSON()).toStrictEqual(doc.toJSON());
   });
 
-  test("state values are plain JSON, without the defaults, in the order of the keys", () => {
+  test("state values are JSON, without the defaults, in the order of the keys", () => {
     const doc = new Doc({ type: "root", extensions: [TestExtension] });
     const node = doc.createNode(TestNode);
     node.state.boolean.set(true);
@@ -112,10 +117,12 @@ describe("stored format", () => {
     expect(json[3]).toStrictEqual([
       ["test", "string", "number", "boolean", "date"],
     ]);
+    // 5 and `true` (1) are integers: `values` holds 0 in their place.
     expect(json.slice(6, 8)).toStrictEqual([
       [6, 0],
-      [5, 1],
+      [0, 0],
     ]);
+    expect(intsOf(json)).toStrictEqual([5, 1]);
     expect(loadAndSave(doc)).toStrictEqual(json);
   });
 
@@ -260,6 +267,149 @@ describe("stored format: more shapes", () => {
     const loaded = Doc.fromJSON(custom, doc.toJSON());
     loaded.forceCommit();
     expect(idsOf(loaded)).toStrictEqual([doc.root.first!.id]);
+  });
+});
+
+describe("integers are stored as bytes in one column", () => {
+  const testConfig: DocConfig = { type: "root", extensions: [TestExtension] };
+
+  /** A document with a test node for each of `numbers`, stored. */
+  const stored = (numbers: number[]) => {
+    const doc = new Doc(testConfig);
+    doc.root.append(
+      ...numbers.map((value) => {
+        const node = doc.createNode(TestNode);
+        node.state.number.set(value);
+        return node;
+      }),
+    );
+    doc.forceCommit();
+    return doc.toJSON();
+  };
+
+  /** The numbers of the test nodes of a stored document, loaded. */
+  const load = (json: JsonDoc) => {
+    const numbers: number[] = [];
+    Doc.fromJSON(testConfig, json)
+      .root.children()
+      .forEach((node) => {
+        if (node.is(TestNode)) numbers.push(node.state.number.get());
+      });
+    return numbers;
+  };
+
+  test("values hold 0 in place of each integer, and the column has their bytes", () => {
+    const doc = new Doc(testConfig);
+    checkUndoManager(1, doc, () => {
+      const [a, b] = [doc.createNode(TestNode), doc.createNode(TestNode)];
+      a.state.number.set(5);
+      b.state.number.set(-3);
+      doc.root.append(a, b);
+    });
+    doc.forceCommit();
+    const json = doc.toJSON();
+    expect(json[7]).toStrictEqual([0, 0]);
+    // The width (1 byte), then 5 and -3: bytes 1, 5, 253.
+    expect(intColumnOf(json)).toBe("AQX9");
+    expect(loadAndSave(doc)).toStrictEqual(json);
+  });
+
+  test.each([
+    [[127, -128], 1],
+    [[128], 2],
+    [[-129], 2],
+    [[32767, -32768], 2],
+    [[32768], 4],
+    [[-32769], 4],
+    [[2 ** 31 - 1, -(2 ** 31)], 4],
+  ])(
+    "%j take %i bytes each, the fewest that fit them all",
+    (numbers, width) => {
+      const json = stored([1, ...numbers]);
+      expect(intWidthOf(json)).toBe(width);
+      expect(intsOf(json)).toStrictEqual([1, ...numbers]);
+      expect(load(json)).toStrictEqual([1, ...numbers]);
+    },
+  );
+
+  test("numbers that are not 32-bit integers stay JSON numbers", () => {
+    const numbers = [2 ** 31, -(2 ** 31) - 1, 1.5, 1e12];
+    const json = stored([...numbers, 7]);
+    expect(json[7]).toStrictEqual([...numbers, 0]);
+    expect(intsOf(json)).toStrictEqual([7]);
+    expect(load(json)).toStrictEqual([...numbers, 7]);
+  });
+
+  test("without integers there is no column", () => {
+    expect(stored([1.5])).toHaveLength(10);
+  });
+
+  test("the root's state keeps its integers as JSON", () => {
+    const Root = defineNode({ type: "root", state: { count: number(0) } });
+    const doc = new Doc({
+      type: "root",
+      extensions: [{ nodes: [Root, TestNode] }],
+    });
+    if (!doc.root.is(Root)) throw new Error("The root is of type Root");
+    doc.root.state.count.set(5);
+    const node = doc.createNode(TestNode);
+    node.state.number.set(3);
+    doc.root.append(node);
+    doc.forceCommit();
+    const json = doc.toJSON();
+    expect(json[2]).toStrictEqual({ count: 5 });
+    expect(intsOf(json)).toStrictEqual([3]);
+  });
+
+  test("a 0 is a 0 in a document without the column", () => {
+    const json = fromLegacyJson([
+      ROOT_ID,
+      "root",
+      {},
+      [
+        ["a.0", "test", { number: "0" }],
+        ["a.1", "test", { number: "7" }],
+      ],
+    ]);
+    expect(json[7]).toStrictEqual([0, 7]);
+    expect(load(json)).toStrictEqual([0, 7]);
+  });
+
+  // More bytes than `btoa` takes in one chunk.
+  const many = Array.from({ length: 30_000 }, (_, i) => i * 100_003 - 1e9);
+
+  test.each(["native", "Buffer", "btoa"] as const)(
+    "with %s base64, the column is the same and loads back",
+    (path) => {
+      const expected = intColumnOf(stored(many));
+      const json = withBase64(path, () => stored(many));
+      expect(intColumnOf(json)).toBe(expected);
+      expect(withBase64(path, () => load(json))).toStrictEqual(many);
+      expect(withBase64(path, () => load(stored([1, 2])))).toStrictEqual([
+        1, 2,
+      ]);
+    },
+  );
+
+  /** `[5, 6]` stored, with `column` as its integer column. */
+  const withColumn = (column: unknown) => {
+    const json = stored([5, 6]);
+    // Not always a string: what `JSON.parse` of a stored document could return.
+    Reflect.set(json, 10, column);
+    return json;
+  };
+  const base64 = (...bytes: number[]) => Buffer.from(bytes).toString("base64");
+
+  test.each([
+    [5, "its integers are not valid."],
+    [base64(3, 0, 0, 5, 0, 0), "its integers are not valid."],
+    [base64(2, 0, 5), "its integers are not valid."],
+    [base64(1, 5), "it has fewer integers than its values say."],
+    [base64(1, 5, 6, 7), "it has more integers than its values say."],
+  ])("the column %j throws", (column, message) => {
+    expect(() => Doc.fromJSON(testConfig, withColumn(column))).toThrowError(
+      `Invalid stored document: ${message}`,
+    );
   });
 });
 

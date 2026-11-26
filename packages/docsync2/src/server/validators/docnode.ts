@@ -55,20 +55,23 @@ const stateSchema = v.record(v.string(), jsonSchema);
 
 // Strict: a plain tuple drops extra items, so the shape of a root without
 // children would match any document and keep only its root.
+const columns = [
+  v.string(),
+  v.string(),
+  stateSchema,
+  v.array(v.tupleWithRest([v.string()], v.string())),
+  v.array(v.number()),
+  v.array(v.number()),
+  v.array(v.number()),
+  v.array(jsonSchema),
+  v.array(v.string()),
+  v.array(v.union([v.number(), v.string()])),
+] as const;
 const serializedDocSchema: v.GenericSchema<unknown, JsonDoc> = v.union([
   v.strictTuple([v.string(), v.string(), stateSchema]),
-  v.strictTuple([
-    v.string(),
-    v.string(),
-    stateSchema,
-    v.array(v.tupleWithRest([v.string()], v.string())),
-    v.array(v.number()),
-    v.array(v.number()),
-    v.array(v.number()),
-    v.array(jsonSchema),
-    v.array(v.string()),
-    v.array(v.union([v.number(), v.string()])),
-  ]),
+  v.strictTuple(columns),
+  // With the integer column.
+  v.strictTuple([...columns, v.string()]),
 ]);
 
 export const DocNodeValidators = () => {

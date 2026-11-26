@@ -28,6 +28,7 @@ import {
   ownId,
 } from "./utils.js";
 import * as ops from "./operations.js";
+import { readInts, writeInts } from "./ints.js";
 import { MAX_CLOCK, NodeIds, numberToBase64 } from "./idGenerator.js";
 import { decodeTime, ulid } from "ulid";
 import { UndoManager } from "./undoManager.js";
@@ -1147,6 +1148,7 @@ export class Doc {
         if ((mask & 1) === 1) rootState[rootType.keys[k]!] = values[at++]!;
     if (!root.first) return [root.id, root.type, rootState];
     values.length = 0;
+    const ints: Ints = { list: [], bits: 0 };
     const types: StoredType[] = [];
     const typeIndexes = new Map<string, number>();
     const typeColumn: number[] = [];
@@ -1178,7 +1180,9 @@ export class Doc {
         lastTypeIndex = index;
       }
       typeColumn.push(lastTypeIndex);
-      states.push(writeMask(node, lastType, values, 0, lastType.firstEnd));
+      states.push(
+        writeMask(node, lastType, values, 0, lastType.firstEnd, ints),
+      );
       for (let k = MASK_BITS; k < lastType.keys.length; k += MASK_BITS)
         states.push(
           writeMask(
@@ -1187,6 +1191,7 @@ export class Doc {
             values,
             k,
             Math.min(k + MASK_BITS, lastType.keys.length),
+            ints,
           ),
         );
       children.push(0);
@@ -1214,6 +1219,7 @@ export class Doc {
       ids.sessions,
       ids.ids,
     ];
+    if (ints.list.length > 0) json.push(writeInts(ints.list, ints.bits));
     return json;
   }
 
@@ -1286,13 +1292,14 @@ export class Doc {
 
   /** Builds the nodes below `root` of a stored document into `map`. */
   private _readNodes(
-    json: Extract<JsonDoc, { length: 10 }>,
+    json: Exclude<JsonDoc, { length: 3 }>,
     root: DocNode,
     map: Map<string, DocNode>,
   ) {
     const [, rootType, , storedTypes, typeColumn, children, states, values] =
       json;
-    const [, , , , , , , , sessions, ids] = json;
+    const [, , , , , , , , sessions, ids, intColumn] = json;
+    const ints = intColumn === undefined ? undefined : readInts(intColumn);
     const count = typeColumn.length;
     if (children.length !== count + 1)
       throw new Error(
@@ -1325,6 +1332,7 @@ export class Doc {
     let idAt = 0;
     let valueAt = 0;
     let maskAt = 0;
+    let intAt = 0;
     let runPrefix = "";
     let runSession = 0;
     let runClock = 0;
@@ -1449,12 +1457,19 @@ export class Doc {
                 "Invalid stored document: it has fewer values than its masks say.",
               );
             const key = type.keys[k]!;
+            let json = values[valueAt++];
+            // `0` holds the place of the next value of the integer column.
+            if (json === 0 && ints) {
+              if (intAt === ints.length)
+                throw new Error(
+                  "Invalid stored document: it has fewer integers than its values say.",
+                );
+              json = ints[intAt++]!;
+            }
             // The value is the stored document's, not a copy: frozen, like a
             // value set with `set`.
             state[key] = freezeInDev(
-              this._storedStateDefinition(type.definition, key).fromJSON(
-                values[valueAt++],
-              ),
+              this._storedStateDefinition(type.definition, key).fromJSON(json),
             );
           }
         }
@@ -1488,6 +1503,10 @@ export class Doc {
     if (maskAt !== states.length)
       throw new Error(
         "Invalid stored document: it has more masks than its nodes need.",
+      );
+    if (ints && intAt !== ints.length)
+      throw new Error(
+        "Invalid stored document: it has more integers than its values say.",
       );
     // Columns without nodes (not what `toJSON` writes) insert nothing.
     this._unrecordedLoad = root.first !== undefined;
@@ -1666,10 +1685,14 @@ type StoredType = {
  */
 const MASK_BITS = 30;
 
+/** The integers of the integer column, and the bits they need (see `writeInts`). */
+type Ints = { list: number[]; bits: number };
+
 /**
  * Pushes to `values` the node's state values that are not the default, as
  * plain JSON, and to `masks` the masks of their keys: bit `k` of mask `c`
- * stands for `type.keys[c * MASK_BITS + k]`.
+ * stands for `type.keys[c * MASK_BITS + k]`. With `ints`, 32-bit integers go
+ * to `ints` instead, and `values` holds `0`.
  */
 function writeValues(
   node: DocNode,
@@ -1697,6 +1720,7 @@ function writeMask(
   values: Json[],
   from: number,
   to: number,
+  ints?: Ints,
 ) {
   const state: Record<string, unknown> = node["_state"];
   if (state === NO_STATE) return 0;
@@ -1716,7 +1740,11 @@ function writeMask(
     // Most values are primitives: compared without a call.
     if (json === fallback) continue;
     if (typeof json === "object" && equalJson(json, fallback)) continue;
-    values.push(json);
+    if (ints && typeof json === "number" && (json | 0) === json) {
+      values.push(0);
+      ints.list.push(json);
+      ints.bits |= json ^ (json >> 31);
+    } else values.push(json);
     mask += bit;
   }
   return mask;

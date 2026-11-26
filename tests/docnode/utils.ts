@@ -16,7 +16,7 @@ import {
   _INTERNAL_decodeOperations as decode,
 } from "@docukit/docnode";
 import { ULID_REGEX } from "valibot";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 
 /**
  * Two replicas' nodes are equal when they have the same id, type, state and
@@ -123,6 +123,8 @@ type JsonWithoutId = [
 export function prettifyJson(doc: JsonDoc): JsonWithoutId {
   const [, type, rootState, types = [], typeColumn = [], children = [0]] = doc;
   const [, , , , , , states = [], values = []] = doc;
+  const ints = intsOf(doc);
+  let intAt = 0;
   const stringify = (state: Record<string, unknown>) =>
     Object.fromEntries(
       Object.entries(state).map(([key, value]) => [key, JSON.stringify(value)]),
@@ -134,8 +136,9 @@ export function prettifyJson(doc: JsonDoc): JsonWithoutId {
       const [name, ...keys] = types[typeColumn[index]!]!;
       const state: Record<string, unknown> = {};
       keys.forEach((key, k) => {
-        if (Math.floor(states[index]! / 2 ** k) % 2 === 1)
-          state[key] = values[valueAt++];
+        if (Math.floor(states[index]! / 2 ** k) % 2 !== 1) return;
+        const value = values[valueAt++];
+        state[key] = value === 0 && intAt < ints.length ? ints[intAt++] : value;
       });
       const count = children[++index]!;
       const node: JsonWithoutId = [name, stringify(state)];
@@ -159,6 +162,57 @@ export const textDoc = () => new Doc(textDocConfig);
 
 /** The session of the ids `doc` makes now. */
 export const sessionOf = (doc: Doc) => nextNodeId(doc).split(".")[0];
+
+/**
+ * The integers of a stored document's integer column, read with Node's
+ * `Buffer`: a width byte, then that many bytes per integer.
+ */
+export function intsOf(json: JsonDoc) {
+  const column = intColumnOf(json);
+  if (column === undefined) return [];
+  const bytes = Buffer.from(column, "base64");
+  const ints: number[] = [];
+  for (let at = bytes[0]!; at < bytes.length; at += bytes[0]!)
+    ints.push(bytes.readIntLE(at, bytes[0]!));
+  return ints;
+}
+
+/** The width in bytes of each integer of a stored document's integer column. */
+export const intWidthOf = (json: JsonDoc) =>
+  Buffer.from(intColumnOf(json) ?? "", "base64")[0];
+
+/** The integer column of a stored document, if it has one. */
+export const intColumnOf = (json: JsonDoc) =>
+  json.length === 3 ? undefined : json[10];
+
+/**
+ * Runs `callback` with base64 as a runtime without the native `toBase64` and
+ * `fromBase64` has it: with Node's `Buffer`, or without it (`btoa` and
+ * `atob`, as a browser before them). `"native"` leaves the runtime as it is.
+ */
+export function withBase64<T>(
+  path: "native" | "Buffer" | "btoa",
+  callback: () => T,
+) {
+  const toBase64 = Object.getOwnPropertyDescriptor(
+    Uint8Array.prototype,
+    "toBase64",
+  );
+  const fromBase64 = Object.getOwnPropertyDescriptor(Uint8Array, "fromBase64");
+  if (path !== "native") {
+    Reflect.deleteProperty(Uint8Array.prototype, "toBase64");
+    Reflect.deleteProperty(Uint8Array, "fromBase64");
+  }
+  if (path === "btoa") vi.stubGlobal("Buffer", undefined);
+  try {
+    return callback();
+  } finally {
+    vi.unstubAllGlobals();
+    if (toBase64)
+      Object.defineProperty(Uint8Array.prototype, "toBase64", toBase64);
+    if (fromBase64) Object.defineProperty(Uint8Array, "fromBase64", fromBase64);
+  }
+}
 
 /** The ids column of `doc` stored. */
 export const idsOf = (doc: Doc) => doc.toJSON()[9];
