@@ -27,7 +27,7 @@ import {
   defineNode,
 } from "./utils.js";
 import * as ops from "./operations.js";
-import { NodeIds, numberToBase64 } from "./idGenerator.js";
+import { MAX_CLOCK, NodeIds, numberToBase64 } from "./idGenerator.js";
 import { decodeTime, ulid } from "ulid";
 import { UndoManager } from "./undoManager.js";
 
@@ -1211,6 +1211,13 @@ export class Doc {
     const nodeIds = this._nodeIds;
     // The index in `nodeIds` of each stored session, and the clock that
     // follows the last one read of each.
+    // The same sessions an id read as text could have (see `clockAt`),
+    // checked before any is registered.
+    for (const session of sessions)
+      if (typeof session !== "string" || session === "")
+        throw new Error(
+          "Invalid stored document: it has a session that is not valid.",
+        );
     const sessionIndexes = sessions.map(
       (session) => nodeIds?.register(session) ?? -1,
     );
@@ -1284,7 +1291,14 @@ export class Doc {
           runStep = (length as number) < 0 ? -1 : 1;
           runLeft = (length as number) * runStep;
           const lastClock = runClock + runStep * (runLeft - 1);
-          if (runClock < 0 || lastClock < 0)
+          // Both ends, before any id is written: a run going down starts
+          // at its largest clock.
+          if (
+            runClock < 0 ||
+            lastClock < 0 ||
+            runClock > MAX_CLOCK ||
+            lastClock > MAX_CLOCK
+          )
             throw new Error(
               "Invalid stored document: it has an id run that is not valid.",
             );

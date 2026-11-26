@@ -6,6 +6,10 @@ const base64Alphabet =
   "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz";
 const ALPH_LEN = 64;
 const FIRST_CHAR = base64Alphabet[0]!;
+/** The most digits the clock of a `session.clock` id has. */
+const CLOCK_DIGITS = 8;
+/** The largest clock of a `session.clock` id (see `clockAt`). */
+export const MAX_CLOCK = ALPH_LEN ** CLOCK_DIGITS - 1;
 
 // O(1) char -> index map
 const IDX = new Int16Array(128).fill(-1);
@@ -66,7 +70,7 @@ function incrementStringInBase64(str: string): string {
  */
 export function clockAt(id: string, dot: number) {
   const length = id.length - dot - 1;
-  if (dot < 1 || length < 1 || length > 8) return -1;
+  if (dot < 1 || length < 1 || length > CLOCK_DIGITS) return -1;
   if (length > 1 && id.charCodeAt(dot + 1) === 45) return -1; // "-" = 0
   let clock = 0;
   for (let i = dot + 1; i < id.length; i++) {

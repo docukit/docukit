@@ -317,6 +317,9 @@ describe("reading a stored document", () => {
     expect(idsOf(noDot)).toStrictEqual([".0", "x."]);
   });
 
+  /** The largest clock of an id, `zzzzzzzz`: 8 digits of 64. */
+  const MAX_CLOCK = 64 ** 8 - 1;
+
   /** Two text nodes in the root, with the given sessions and ids columns. */
   const twoNodesWithIds = (
     sessions: string[],
@@ -343,10 +346,45 @@ describe("reading a stored document", () => {
     [[0, 0.5, 2], "it has an id run that is not valid."],
     [[0, -1, 2], "it has an id run that is not valid."],
     [[0, 0, -2], "it has an id run that is not valid."],
+    // Clocks have at most 8 digits, as in an id read as text.
+    [[0, MAX_CLOCK, 2], "it has an id run that is not valid."],
+    [[0, MAX_CLOCK + 1, -2], "it has an id run that is not valid."],
+    // The second run would start at an infinite clock.
+    [[0, 1e308, 1, 0, 1e308, 1], "it has an id run that is not valid."],
   ])("ids %j that do not fit throw", (ids, message) => {
     expect(() =>
       Doc.fromJSON(config, twoNodesWithIds(["s"], ids)),
     ).toThrowError(`Invalid stored document: ${message}`);
+  });
+
+  test("a run can reach the largest clock", () => {
+    const doc = Doc.fromJSON(
+      config,
+      twoNodesWithIds(["s"], [0, MAX_CLOCK - 1, 2]),
+    );
+    doc.forceCommit();
+    expect([doc.root.first!.id, doc.root.last!.id]).toStrictEqual([
+      "s.zzzzzzzy",
+      "s.zzzzzzzz",
+    ]);
+  });
+
+  test("an empty session throws", () => {
+    expect(() =>
+      Doc.fromJSON(config, twoNodesWithIds([""], [0, 0, 2])),
+    ).toThrowError(
+      "Invalid stored document: it has a session that is not valid.",
+    );
+  });
+
+  test("a session that is not a string, as parsed JSON could have, throws", () => {
+    const sessions = ["s"];
+    // Not a string: what `JSON.parse` of a stored document could return.
+    Reflect.set(sessions, 0, 5);
+    const json = twoNodesWithIds(sessions, [0, 0, 2]);
+    expect(() => Doc.fromJSON(config, json)).toThrowError(
+      "Invalid stored document: it has a session that is not valid.",
+    );
   });
 
   test("columns without nodes load an empty document", () => {
