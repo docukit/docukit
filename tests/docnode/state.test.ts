@@ -224,7 +224,7 @@ describe("getState", () => {
     const nodeX = doc.createNode(TestNode);
     doc.root.append(nodeX);
     // 1. Default state
-    expect(nodeX["_state"]).toStrictEqual({});
+    expect({ ...nodeX["_state"] }).toStrictEqual({});
     expect(nodeX.state.string.get()).toStrictEqual("");
     expect(nodeX.state.number.get()).toStrictEqual(0);
     expect(nodeX.state.boolean.get()).toStrictEqual(false);
@@ -233,7 +233,7 @@ describe("getState", () => {
     // 2. After setting state
     nodeX.state.string.set("foo");
     expect(nodeX.state.string.get()).toStrictEqual("foo");
-    expect(nodeX["_state"]).toStrictEqual({ string: "foo" });
+    expect({ ...nodeX["_state"] }).toStrictEqual({ string: "foo" });
 
     // 3. After setting state to default
     expect(nodeX.state.string.set(""));
@@ -241,7 +241,7 @@ describe("getState", () => {
     // The next line is debatable. But the reason we don't query the default
     // value in setState is because it should be done in toJSON anyway, and
     // therefore this should be faster (although at a memory cost).
-    expect(nodeX["_state"]).toStrictEqual({ string: "" }); // instead of {} ?
+    expect({ ...nodeX["_state"] }).toStrictEqual({ string: "" }); // instead of {} ?
   });
 });
 
@@ -627,14 +627,14 @@ describe("setState", () => {
     let node: DocNode<typeof Text>;
     checkUndoManager(3, doc, () => {
       node = doc.createNode(Text);
-      expect(node["_state"]).toStrictEqual({});
+      expect({ ...node["_state"] }).toStrictEqual({});
       expect(node.state.value.get()).toStrictEqual("");
       doc.root.append(node);
 
       doc.forceCommit();
       assertJson(doc, ["root", {}, [["text", {}]]]);
       node.state.value.set("foo");
-      expect(node["_state"]).toStrictEqual({ value: "foo" });
+      expect({ ...node["_state"] }).toStrictEqual({ value: "foo" });
       expect(node.state.value.get()).toStrictEqual("foo");
 
       doc.forceCommit();
@@ -643,7 +643,7 @@ describe("setState", () => {
       // The next line is debatable. But the reason we don't query the default
       // value in setState is because it should be done in toJSON anyway, and
       // therefore this should be faster (although at a memory cost).
-      expect(node["_state"]).toStrictEqual({ value: "" });
+      expect({ ...node["_state"] }).toStrictEqual({ value: "" });
       expect(node.state.value.get()).toStrictEqual("");
       assertJson(doc, ["root", {}, [["text", {}]]]);
     });

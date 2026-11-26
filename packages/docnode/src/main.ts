@@ -35,6 +35,23 @@ import { UndoManager } from "./undoManager.js";
 const DOC: unique symbol = Symbol("doc");
 /** Where a node's `state` keeps the node (see `Doc`). */
 const STATE_NODE: unique symbol = Symbol("node");
+/**
+ * The state of a node without values: it gets its own object (`_values`)
+ * only when one is set, so a node without state does not carry an empty one.
+ */
+const NO_STATE = Object.freeze({});
+/** The class of the state objects of each type, shared by all documents. */
+const stateClasses = new Map<string, new () => Record<string, unknown>>();
+const stateClass = (type: string) => {
+  let Values = stateClasses.get(type);
+  if (!Values) {
+    Values = class {
+      [key: string]: unknown;
+    };
+    stateClasses.set(type, Values);
+  }
+  return Values;
+};
 /** What `node.state[key]` gives. */
 type StateKeyMethods = NodeState.Methods<UnsafeDefinition>[string];
 
@@ -70,7 +87,7 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     clock = 0,
   ) {
     this.type = type;
-    this._state = {};
+    this._state = NO_STATE;
     this[DOC] = doc;
     const ids = doc["_nodeIds"];
     if (id === undefined && ids) {
@@ -86,6 +103,21 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
 
   get doc() {
     return this[DOC];
+  }
+
+  /**
+   * The node's state to write to. Its first value gives it an object of the
+   * class of its type (`stateClass`): V8 then fits that object to the keys
+   * its type uses (slack tracking), where an object literal always reserves
+   * 4 of them.
+   */
+  private _values(): Record<string, unknown> {
+    if (this._state === NO_STATE) {
+      const Values = stateClass(this.type);
+      // @ts-expect-error - read-only property
+      this._state = new Values();
+    }
+    return this._state;
   }
 
   /**
@@ -365,7 +397,7 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
             for (const key in node["_state"]) {
               const stringified = ops.stringifyStateKey(node, key);
               const parsed = ops.parseStateKey(newNode, key, stringified);
-              (newNode as DocNode<UnsafeDefinition>)["_state"][key] = parsed;
+              newNode["_values"]()[key] = parsed;
             }
             return newNode;
           };
@@ -652,6 +684,11 @@ export class Doc {
         }
       }
 
+      // A stored document marks a node's keys with the bits of a JSON number.
+      if (Object.keys(resolvedNodeDef.state).length > 53)
+        throw new Error(
+          `Node type '${nodeDef.type}' has more than 53 states, which is not allowed.`,
+        );
       this._resolvedNodeDefs.set(nodeDef.type, resolvedNodeDef);
       this._nodeDefs.add(nodeDef);
       if (!nodeDef.type) throw new Error(`Node does not have a type property`);
@@ -1081,15 +1118,22 @@ export class Doc {
    */
   private _writeJson(): JsonDoc {
     const root = this.root;
-    const rootState = root["_stateJson"]();
+    const values: Json[] = [];
+    const rootType = this._storedType(root.type);
+    const rootMask = writeValues(root, rootType, values);
+    const rootState: Record<string, Json> = {};
+    for (let k = 0, at = 0, mask = rootMask; mask > 0; k++, mask = half(mask))
+      if (mask % 2 === 1) rootState[rootType.keys[k]!] = values[at++]!;
     if (!root.first) return [root.id, root.type, rootState];
-    const types: string[] = [];
+    values.length = 0;
+    const types: StoredType[] = [];
     const typeIndexes = new Map<string, number>();
     const typeColumn: number[] = [];
     const children: number[] = [0];
-    const states: Record<string, Json>[] = [];
+    const states: number[] = [];
     const ids = new IdsWriter(this._nodeIds);
     let lastTypeName = "";
+    let lastType = rootType;
     let lastTypeIndex = 0;
     // A walk along the links, not a recursive closure: V8 can keep the
     // context of a closure it optimized, and with it the last document
@@ -1104,14 +1148,16 @@ export class Doc {
       if (typeName !== lastTypeName) {
         let index = typeIndexes.get(typeName);
         if (index === undefined) {
-          index = types.push(typeName) - 1;
+          index = types.length;
+          types.push(this._storedType(typeName));
           typeIndexes.set(typeName, index);
         }
         lastTypeName = typeName;
+        lastType = types[index]!;
         lastTypeIndex = index;
       }
       typeColumn.push(lastTypeIndex);
-      states.push(node["_stateJson"]());
+      states.push(writeValues(node, lastType, values));
       children.push(0);
       if (node.first) {
         open.push(children.length - 1);
@@ -1129,14 +1175,27 @@ export class Doc {
       root.id,
       root.type,
       rootState,
-      types,
+      types.map((type) => [type.name, ...type.keys]),
       typeColumn,
       children,
       states,
+      values,
       ids.sessions,
       ids.ids,
     ];
     return json;
+  }
+
+  /** A registered type as stored documents write it: its state keys in order. */
+  private _storedType(name: string): StoredType {
+    const definition = this._resolvedNodeDefs.get(name)!;
+    const keys = Object.keys(definition.state);
+    return {
+      name,
+      keys,
+      definitions: keys.map((key) => definition.state[key]!),
+      defaults: keys.map((key) => definition.defaultJson[key]!),
+    };
   }
 
   // NOTE: Maybe someday, if I find it necessary, I can make a non-static method.
@@ -1177,7 +1236,13 @@ export class Doc {
   private _readJson(json: JsonDoc) {
     const [id, rootType, rootState] = json;
     const root = this._storedNode(id, rootType, -1, 0);
-    this._readState(root, this._resolvedNodeDefs.get(rootType)!, rootState);
+    const rootDefinition = this._resolvedNodeDefs.get(rootType)!;
+    for (const key in rootState)
+      root["_values"]()[key] = freezeInDev(
+        this._storedStateDefinition(rootDefinition, key).fromJSON(
+          rootState[key],
+        ),
+      );
     const map = new Map([[id, root]]);
     if (json.length !== 3) this._readNodes(json, root, map);
     // @ts-expect-error - read-only property
@@ -1187,18 +1252,19 @@ export class Doc {
 
   /** Builds the nodes below `root` of a stored document into `map`. */
   private _readNodes(
-    json: Extract<JsonDoc, { length: 9 }>,
+    json: Extract<JsonDoc, { length: 10 }>,
     root: DocNode,
     map: Map<string, DocNode>,
   ) {
-    const [, rootType, , types, typeColumn, children, states, sessions, ids] =
+    const [, rootType, , storedTypes, typeColumn, children, states, values] =
       json;
+    const [, , , , , , , , sessions, ids] = json;
     const count = typeColumn.length;
     if (states.length !== count || children.length !== count + 1)
       throw new Error(
         "Invalid stored document: its columns do not have matching lengths.",
       );
-    const definitions = types.map((name) => {
+    const types = storedTypes.map(([name, ...keys]) => {
       if (name === rootType)
         throw new Error("You cannot insert nodes of type 'root'");
       const definition = this._resolvedNodeDefs.get(name);
@@ -1206,7 +1272,7 @@ export class Doc {
         throw new Error(
           `Attempted to create a node of type '${name}' that was not registered.`,
         );
-      return definition;
+      return { name, definition, keys };
     });
     const nodeIds = this._nodeIds;
     // The index in `nodeIds` of each stored session, and the clock that
@@ -1223,6 +1289,7 @@ export class Doc {
     );
     const nextClocks = sessions.map(() => 0);
     let idAt = 0;
+    let valueAt = 0;
     let runPrefix = "";
     let runSession = 0;
     let runClock = 0;
@@ -1317,18 +1384,37 @@ export class Doc {
         throw new Error(
           `Node '${nodeId!}' cannot be inserted because it already exists in the doc.`,
         );
-      const definition = definitions[typeColumn[index]!];
-      if (!definition)
+      const type = types[typeColumn[index]!];
+      if (!type)
         throw new Error(
           `Invalid stored document: node '${nodeId!}' has type ${typeColumn[index]}, which is not in its types.`,
         );
-      const type = definition.type;
       // @ts-expect-error - private constructor
-      const node = new DocNode(this, type, nodeId!, session, clock) as DocNode;
-      this._readState(node, definition, states[index++]!);
-      const changed = node["_stateToJson"]();
-      if (!isObjectEmpty(changed)) patch[nodeId!] = changed;
-      written.push([nodeId!, type]);
+      const node = new DocNode(
+        this,
+        type.name,
+        nodeId!,
+        session,
+        clock,
+      ) as DocNode;
+      let mask = states[index++]!;
+      if (mask > 0) {
+        const state = node["_values"]();
+        for (let k = 0; mask > 0; k++, mask = half(mask)) {
+          if (mask % 2 === 0) continue;
+          const key = type.keys[k]!;
+          // The value is the stored document's, not a copy: frozen, like a
+          // value set with `set`.
+          state[key] = freezeInDev(
+            this._storedStateDefinition(type.definition, key).fromJSON(
+              values[valueAt++],
+            ),
+          );
+        }
+        const changed = node["_stateToJson"]();
+        if (!isObjectEmpty(changed)) patch[nodeId!] = changed;
+      }
+      written.push([nodeId!, type.name]);
       inserted.add(nodeId!);
       map.set(nodeId!, node);
       node["_set"]("parent", parent);
@@ -1362,26 +1448,17 @@ export class Doc {
       ]);
   }
 
-  /**
-   * Reads a stored state into `node`, each value through its key's
-   * definition, which must be registered.
-   */
-  private _readState(
-    node: DocNode,
+  /** The definition of a stored state, which must be registered. */
+  private _storedStateDefinition(
     definition: ResolvedNodeDefinition,
-    json: Record<string, Json>,
+    key: string,
   ) {
-    const state: Record<string, unknown> = node["_state"];
-    for (const key in json) {
-      const stateDefinition = definition.state[key];
-      if (!stateDefinition)
-        throw new Error(
-          `Attempted to create a node of type '${node.type}' with a state that is not registered: ${key}`,
-        );
-      // The value is the stored document's, not a copy: frozen, like a
-      // value set with `set`.
-      state[key] = freezeInDev(stateDefinition.fromJSON(json[key]));
-    }
+    const stateDefinition = definition.state[key];
+    if (!stateDefinition)
+      throw new Error(
+        `Attempted to create a node of type '${definition.type}' with a state that is not registered: ${key}`,
+      );
+    return stateDefinition;
   }
 
   /**
@@ -1476,6 +1553,46 @@ class IdsWriter {
   }
 }
 
+/** A type as `Doc.toJSON` writes it (see `Doc._storedType`). */
+type StoredType = {
+  name: string;
+  keys: string[];
+  definitions: StateDefinition[];
+  defaults: Json[];
+};
+
+/** `mask` without its lowest bit, shifted: exact up to 2^53, unlike `>>>`. */
+const half = (mask: number) => (mask - (mask % 2)) / 2;
+
+/**
+ * Pushes to `values` the node's state values that are not the default, as
+ * plain JSON (the operations keep them as strings of JSON), and returns the
+ * mask of their keys: bit `k` stands for `type.keys[k]`.
+ */
+function writeValues(node: DocNode, type: StoredType, values: Json[]) {
+  const state: Record<string, unknown> = node["_state"];
+  if (state === NO_STATE) return 0;
+  let mask = 0;
+  let bit = 1;
+  const { keys, definitions, defaults } = type;
+  for (let k = 0; k < keys.length; k++, bit *= 2) {
+    const key = keys[k]!;
+    if (!(key in state)) continue;
+    const definition = definitions[k]!;
+    const value = state[key];
+    const json = ops.toPlainJson(
+      definition.toJSON ? definition.toJSON(value) : value,
+    );
+    const fallback = defaults[k];
+    // Most values are primitives: compared without a call.
+    if (json === fallback) continue;
+    if (typeof json === "object" && equalJson(json, fallback)) continue;
+    values.push(json);
+    mask += bit;
+  }
+  return mask;
+}
+
 /**
  * The methods of one state key, chosen once per node definition. Reading
  * `node.state[key]` only binds them to the node, so `get`, `set` and
@@ -1515,7 +1632,7 @@ function stateKeyMethods(
      */
     set: (valueOrUpdaterFn) =>
       withTransaction(node.doc, () => {
-        const state = node["_state"];
+        const state = node["_values"]();
         state[key] ??= defaultValue;
         if (state[key] === valueOrUpdaterFn) return;
 

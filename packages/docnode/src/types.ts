@@ -132,10 +132,11 @@ export type JsonDoc =
       id: string,
       type: string,
       state: Record<string, Json>,
-      types: string[],
+      types: [name: string, ...keys: string[]][],
       type: number[],
       children: number[],
-      states: Record<string, Json>[],
+      states: number[],
+      values: Json[],
       sessions: string[],
       ids: (number | string)[],
     ];

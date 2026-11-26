@@ -20,8 +20,15 @@ export function stateKeyToJson(node: DocNode, key: string): Json {
     throw new Error(
       `The JSON serialization for state ${key} on a node of type ${node.type} is undefined.`,
     );
-  // An object that is not a plain object or list (a Date, a class) is
-  // stored as what `JSON.stringify` writes of it.
+  return toPlainJson(json);
+}
+
+/**
+ * `json` as plain JSON: an object that is not a plain object or list (a
+ * Date, a class) is what `JSON.stringify` writes of it, so that a stored
+ * document stays the same through `structuredClone` (IndexedDB).
+ */
+export function toPlainJson(json: unknown): Json {
   if (typeof json === "object" && json) {
     const proto: unknown = Object.getPrototypeOf(json);
     if (proto !== Object.prototype && proto !== Array.prototype)
@@ -333,8 +340,7 @@ export const onApplyOperations = (doc: Doc, operations: Operations) => {
         (currentInverseStatePatch[id] ??= {})[key] ??= current;
       }
       (currentStatePatch[id] ??= {})[key] = value;
-      const state = (node as DocNode<UnsafeDefinition>)["_state"];
-      state[key] = freezeInDev(parseStateKey(node, key, value));
+      node["_values"]()[key] = freezeInDev(parseStateKey(node, key, value));
     }
   }
 };

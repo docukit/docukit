@@ -121,16 +121,21 @@ type JsonWithoutId = [
  */
 export function prettifyJson(doc: JsonDoc): JsonWithoutId {
   const [, type, rootState, types = [], typeColumn = [], children = [0]] = doc;
-  const [, , , , , , states = []] = doc;
+  const [, , , , , , states = [], values = []] = doc;
   const stringify = (state: Record<string, unknown>) =>
     Object.fromEntries(
       Object.entries(state).map(([key, value]) => [key, JSON.stringify(value)]),
     );
   let index = 0;
+  let valueAt = 0;
   const read = (count: number): JsonWithoutId[] =>
     Array.from({ length: count }, () => {
-      const name = types[typeColumn[index]!]!;
-      const state = states[index]!;
+      const [name, ...keys] = types[typeColumn[index]!]!;
+      const state: Record<string, unknown> = {};
+      keys.forEach((key, k) => {
+        if (Math.floor(states[index]! / 2 ** k) % 2 === 1)
+          state[key] = values[valueAt++];
+      });
       const count = children[++index]!;
       const node: JsonWithoutId = [name, stringify(state)];
       if (count > 0)
@@ -155,7 +160,7 @@ export const textDoc = () => new Doc(textDocConfig);
 export const sessionOf = (doc: Doc) => nextNodeId(doc).split(".")[0];
 
 /** The ids column of `doc` stored. */
-export const idsOf = (doc: Doc) => doc.toJSON()[8];
+export const idsOf = (doc: Doc) => doc.toJSON()[9];
 
 /** The next node id of `doc`, as its generator makes them. */
 export const nextNodeId = (doc: Doc) =>
