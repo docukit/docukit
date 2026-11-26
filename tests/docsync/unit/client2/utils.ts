@@ -230,9 +230,8 @@ export const syncStatus = (
 // ============================================================================
 
 /**
- * Triggers a sync for the given doc by invoking the same "dirty" handler
- * the client registers when the server says the doc has pending ops.
- * Calls the handler directly so sync runs without going through socket.emit.
+ * Triggers a sync for the given doc, as loading it or reconnecting would.
+ * Calls the client directly so sync runs without going through socket.emit.
  */
 export const triggerSync = (
   client: DocSyncClient<Doc, JsonDoc, Operations>,
@@ -242,14 +241,7 @@ export const triggerSync = (
   if (!client["_docsCache"].has(docId)) {
     cacheDoc(client, docId);
   }
-
-  const socket = client["_socket"] as unknown as {
-    listeners: (e: string) => ((payload: { docId: string }) => void)[];
-  };
-  const fns = socket.listeners("dirty");
-  if (fns.length > 0 && typeof fns[0] === "function") {
-    fns[0]({ docId });
-  }
+  void client["_sync"](docId);
 };
 
 // ============================================================================

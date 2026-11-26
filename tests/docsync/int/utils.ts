@@ -91,9 +91,10 @@ declare global {
  * Get the test server URL with the dynamically assigned port.
  * The port is set by globalSetup.ts and stored in globalThis.
  */
-const getTestServerUrl = (): string => {
+const getTestServerUrl = (ownPort?: number): string => {
   const injectedPort: number | undefined = inject("testServerPort");
-  const port = injectedPort ?? globalThis.__TEST_SERVER_PORT__ ?? 8082;
+  const port =
+    ownPort ?? injectedPort ?? globalThis.__TEST_SERVER_PORT__ ?? 8082;
   return `ws://localhost:${port}`;
 };
 
@@ -207,8 +208,12 @@ type ClientsSetup = {
   reference: ClientUtils;
   otherTab: ClientUtils;
   otherDevice: ClientUtils;
-  /** A device that has never opened the document: its own user and IndexedDB. */
-  addNewDevice: () => Promise<ClientUtils>;
+  /**
+   * A device that has never opened the document: its own user and IndexedDB.
+   * `deviceId` gives it the browser of another one (another user signed in
+   * there).
+   */
+  addNewDevice: (options?: { deviceId?: string }) => Promise<ClientUtils>;
 };
 
 // ============================================================================
@@ -221,11 +226,19 @@ type ClientsSetup = {
  */
 export const testWrapper = async (
   callback: (clients: ClientsSetup) => Promise<void>,
+  /** A server of the test's own (see `startOwnServer`) instead of the shared one. */
+  options?: { port?: number },
 ): Promise<void> => {
-  const clients = await setupClients();
+  const url = getTestServerUrl(options?.port);
+  const clients = await setupClients(url);
   const newDevices: ClientUtils[] = [];
-  const addNewDevice = async () => {
-    const device = await createDevice(clients.docId, createDocBinding());
+  const addNewDevice = async (options?: { deviceId?: string }) => {
+    const device = await createDevice(
+      clients.docId,
+      createDocBinding(),
+      url,
+      options?.deviceId,
+    );
     newDevices.push(device);
     return device;
   };
@@ -273,6 +286,7 @@ export const testWrapper = async (
  * Creates a DocSyncClient with specific configuration.
  */
 const createClientWithConfig = async (config: {
+  url: string;
   userId: string;
   deviceId: string;
   token: string;
@@ -282,7 +296,7 @@ const createClientWithConfig = async (config: {
 
   const clientConfig: ClientConfig<Doc, JsonDoc, Operations> = {
     server: {
-      url: getTestServerUrl(),
+      url: config.url,
       auth: { mode: "token", getToken: () => config.token },
     },
     timing: { collabMaxDebounce: 50, singleClientMaxDebounce: 50 },
@@ -308,18 +322,23 @@ const createClientWithConfig = async (config: {
 const createDevice = async (
   docId: string,
   docBinding: ReturnType<typeof createDocBinding>,
+  url: string,
+  deviceId: string = crypto.randomUUID(),
 ): Promise<ClientUtils> => {
   const userId = generateUserId(); // Different user = different IDB + BC namespace
   const client = await createClientWithConfig({
+    url,
     userId,
-    deviceId: crypto.randomUUID(),
+    deviceId,
     token: createTestToken(userId),
     docBinding,
   });
   return createClientUtils(client, docId, userId);
 };
 
-const setupClients = async (): Promise<Omit<ClientsSetup, "addNewDevice">> => {
+const setupClients = async (
+  url: string,
+): Promise<Omit<ClientsSetup, "addNewDevice">> => {
   const docId = generateDocId();
   const docBinding = createDocBinding();
 
@@ -327,6 +346,7 @@ const setupClients = async (): Promise<Omit<ClientsSetup, "addNewDevice">> => {
   const referenceUserId = generateUserId();
   const referenceDeviceId = crypto.randomUUID();
   const referenceClient = await createClientWithConfig({
+    url,
     userId: referenceUserId,
     deviceId: referenceDeviceId,
     token: createTestToken(referenceUserId),
@@ -335,6 +355,7 @@ const setupClients = async (): Promise<Omit<ClientsSetup, "addNewDevice">> => {
 
   // OtherTab: local + RT + BC enabled (same userId1 as reference)
   const otherTabClient = await createClientWithConfig({
+    url,
     userId: referenceUserId, // Same user for broadcast channel and IDB sharing
     deviceId: referenceDeviceId,
     token: createTestToken(referenceUserId),
@@ -342,7 +363,7 @@ const setupClients = async (): Promise<Omit<ClientsSetup, "addNewDevice">> => {
   });
 
   // OtherDevice: local enabled with different userId2, RT enabled, BC disabled
-  const otherDevice = await createDevice(docId, docBinding);
+  const otherDevice = await createDevice(docId, docBinding, url);
 
   return {
     docId,
@@ -553,7 +574,7 @@ const createClientUtils = async (
         }
         sendToServer(event, payload, (response) => {
           syncs.push({
-            sentDoc: payload.serializedDoc !== null,
+            sentDoc: (payload.serializedDoc ?? null) !== null,
             ...summarizeResponse(response),
           });
           ack?.(response);

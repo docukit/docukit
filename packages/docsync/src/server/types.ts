@@ -5,6 +5,7 @@ import type {
   MaybePromise,
   ServerToClientEvents,
   SerializedDocPayload,
+  SyncRequest,
 } from "../shared/types.js";
 import type { IncomingMessage } from "node:http";
 import type { Server, Socket } from "socket.io";
@@ -58,13 +59,7 @@ export type SyncRequestEvent<O = unknown, S = unknown> = {
   clientId: string;
   status: "success" | "error";
 
-  req: {
-    type: string;
-    docId: string;
-    operations: O[];
-    serializedDoc: S | null;
-    clock: number;
-  };
+  req: SyncRequest<S, O>;
 
   res?: { operations: O[]; clock: number | null; serializedDoc: S | null };
 
@@ -155,6 +150,12 @@ export type ServerProviderContext<S extends object, O extends object> = {
   getSerializedDoc(arg: { docId: string }): Promise<{ serializedDoc: S; clock: number } | undefined>;
   getOperations(arg: { docId: string; clock: number }): Promise<O[][]>;
   deleteOperations(arg: { docId: string; count: number }): Promise<void>;
+  /**
+   * Saves a batch and returns its clock: exactly one more than the greatest
+   * clock of the document, counting its snapshot. Pushed batches carry no
+   * clock, so clients number them by counting. With no operations it saves
+   * nothing and returns that greatest clock, or `0`.
+   */
   saveOperations(arg: { docId: string; operations: O[] }): Promise<number>;
   saveSerializedDoc(arg: SerializedDocPayload<S>): Promise<void>;
 };
@@ -195,7 +196,7 @@ export type ServerSocket<
   O extends object = object,
 > = Server<
   ClientToServerEvents<S, O>,
-  ServerToClientEvents,
+  ServerToClientEvents<O>,
   Record<string, never>,
   AuthenticatedSocketData<TContext>
 >;
@@ -207,7 +208,7 @@ export type ServerConnectionSocket<
   O extends object = object,
 > = Socket<
   ClientToServerEvents<S, O>,
-  ServerToClientEvents,
+  ServerToClientEvents<O>,
   Record<string, never>,
   AuthenticatedSocketData<TContext>
 >;

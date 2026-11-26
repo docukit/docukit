@@ -37,7 +37,9 @@ expect.addEqualityTesters([
   },
 ]);
 
-export const DOCNODE_ID = (sessionId = "[\\w-]", clockId = "[\\w-]") =>
+// The session starts with the milliseconds since the root was made, so it
+// takes more characters the older the document.
+export const DOCNODE_ID = (sessionId = "[\\w-]+", clockId = "[\\w-]") =>
   new RegExp(`^${sessionId}[\\w-]{3}\\.${clockId}$`);
 
 export const Text = defineNode({ type: "text", state: { value: string("") } });

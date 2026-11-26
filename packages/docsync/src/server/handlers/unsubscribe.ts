@@ -35,35 +35,38 @@ export function handleUnsubscribeDoc<
 
   socket.on(
     "unsubscribe-doc",
-    async (
+    (
       { docId }: UnsubscribeDocRequest,
       cb: (res: UnsubscribeDocResponse) => void,
-    ): Promise<void> => {
-      await socket.leave(`doc:${docId}`);
+    ): Promise<void> =>
+      // In the document's order, so a push never reaches a subscription that
+      // a later sync of this same connection opens again.
+      server["_inDocOrder"](docId, async () => {
+        await socket.leave(`doc:${docId}`);
 
-      const subscribedDocs = socketToDocsMap.get(socket.id);
-      if (subscribedDocs) {
-        subscribedDocs.delete(docId);
-        if (subscribedDocs.size === 0) {
-          socketToDocsMap.delete(socket.id);
+        const subscribedDocs = socketToDocsMap.get(socket.id);
+        if (subscribedDocs) {
+          subscribedDocs.delete(docId);
+          if (subscribedDocs.size === 0) {
+            socketToDocsMap.delete(socket.id);
+          }
         }
-      }
 
-      applyPresenceUpdate(presenceByDoc, socket, clientId, {
-        docId,
-        presence: null,
-      });
-      broadcastCollaborationState(server, docId);
+        applyPresenceUpdate(presenceByDoc, socket, clientId, {
+          docId,
+          presence: null,
+        });
+        broadcastCollaborationState(server, docId);
 
-      server["_emit"](server["_docUnsubscribeEventListeners"], {
-        userId,
-        deviceId,
-        clientId,
-        docId,
-        reason: "unsubscribe-doc",
-      });
+        server["_emit"](server["_docUnsubscribeEventListeners"], {
+          userId,
+          deviceId,
+          clientId,
+          docId,
+          reason: "unsubscribe-doc",
+        });
 
-      cb({ success: true });
-    },
+        cb({ success: true });
+      }),
   );
 }

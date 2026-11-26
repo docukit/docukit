@@ -21,7 +21,7 @@ import { handleConnect } from "./handlers/connection/connect.js";
 import { handleDeleteDoc } from "./handlers/clientInitiated/deleteDoc.js";
 import { handleDisconnect } from "./handlers/connection/disconnect.js";
 import { handleCollaboration } from "./handlers/serverInitiated/collaboration.js";
-import { handleDirty } from "./handlers/serverInitiated/dirty.js";
+import { handleOperations } from "./handlers/serverInitiated/operations.js";
 import { handlePresence } from "./handlers/clientInitiated/presence.js";
 import { handlePresence as handleServerPresence } from "./handlers/serverInitiated/presence.js";
 import { handleSync } from "./handlers/clientInitiated/sync/sync.js";
@@ -41,6 +41,7 @@ import { setupDocChangeListener } from "./utils/setupDocChangeListener.js";
 import { pauseQueries } from "./utils/pauseQueries.js";
 import { setupLocalPromise } from "./utils/setupLocalPromise.js";
 import { clearSyncRetry, type SyncRetryState } from "./utils/syncRetry.js";
+import type { DocStream } from "./utils/docStream.js";
 import { DocSyncError } from "./utils/DocSyncError.js";
 
 // TODO: review this type!
@@ -72,7 +73,7 @@ type SyncQueueSlot = {
 type ChangeOrigin = "local" | "network" | "local-broadcast";
 type LocalLoadMode = "load" | "loadOrCreate";
 type QueryListener = (result: QueryResult<DocData<object> | undefined>) => void;
-type DocCacheEntry<D> = {
+type DocCacheEntry<D, O> = {
   promisedDoc: Promise<D | undefined>;
   refCount: number;
   localVersion: number;
@@ -83,9 +84,12 @@ type DocCacheEntry<D> = {
   queryListeners: Set<QueryListener>;
   presence: Presence;
   presenceListeners: Set<(presence: Presence) => void>;
+  /** Server batches of this document on the current connection. */
+  stream?: DocStream<O>;
 };
 
 const LOCAL_IDB_MAX_DEBOUNCE = 50;
+const STORAGE_GAP_TIMEOUT = 2000;
 
 export class DocSyncClient<
   D extends object = object,
@@ -93,7 +97,14 @@ export class DocSyncClient<
   O extends object = object,
 > {
   protected _docBinding: DocBinding<D, S, O>;
-  protected _docsCache = new Map<string, DocCacheEntry<D>>();
+  protected _docsCache = new Map<string, DocCacheEntry<D, O>>();
+  /**
+   * How long a server batch may wait for another tab of this device to store
+   * the one before it, before this tab subscribes again (see `docStream.ts`).
+   */
+  protected _storageGapTimeout = STORAGE_GAP_TIMEOUT;
+  /** The server clock each live doc shows under its local edits. */
+  protected _liveClocks = new WeakMap<D, number>();
   protected _localPromise: Promise<LocalResolved<S, O>>;
   /** Client-generated id for presence (works offline; sent in auth so server uses same key) */
   protected _clientId: string;
@@ -113,6 +124,8 @@ export class DocSyncClient<
   // Flow control state (batching, debouncing, push queueing)
   protected _localOpsBatchState = new Map<string, LocalOpsBatchState<O>>();
   protected _localWrites = new Map<string, Promise<void>>();
+  /** Writes to IndexedDB finished so far, for any document. */
+  protected _finishedLocalWrites = 0;
   protected _syncDebounceState = new Map<string, SyncDebounceState>();
   protected _collabMaxDebounce: number;
   protected _singleClientMaxDebounce: number;
@@ -201,7 +214,7 @@ export class DocSyncClient<
     handleConnect({ client: this });
     handleDisconnect({ client: this });
     handleCollaboration({ client: this });
-    handleDirty({ client: this });
+    handleOperations({ client: this });
     handleServerPresence({ client: this });
   }
 
@@ -543,6 +556,7 @@ export class DocSyncClient<
 
       if (stored) {
         const doc = this._docBinding.deserialize(stored.serializedDoc);
+        this._liveClocks.set(doc, stored.clock);
         localOperations.forEach(({ operations: operationsBatch }) => {
           operationsBatch.forEach((operations) => {
             this._docBinding.applyOperations(doc, operations, {
@@ -556,6 +570,7 @@ export class DocSyncClient<
       // Create new doc if type provided
       if (type) {
         const { doc } = this._docBinding.create(type, docId);
+        this._liveClocks.set(doc, 0);
         if (localOperations.length)
           throw new Error(
             `Doc ${docId} has operations stored locally but no serialized doc found`,
@@ -734,6 +749,7 @@ export class DocSyncClient<
         throw error;
       } finally {
         this._localWrites.delete(docId);
+        this._finishedLocalWrites += 1;
       }
       if (options?.sync !== false) void handleSync(this, docId);
       return true;

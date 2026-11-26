@@ -1,5 +1,10 @@
-import type { SyncRequest, SyncResponse } from "../../../../shared/types.js";
+import type {
+  SubscriptionData,
+  SyncRequest,
+  SyncResponse,
+} from "../../../../shared/types.js";
 import type { DocSyncClient } from "../../../index.js";
+import type { ClientProvider, OperationsBatch } from "../../../types.js";
 import {
   dispatchLocalDocFound,
   dispatchNetworkDocFound,
@@ -7,10 +12,26 @@ import {
   dispatchNetworkQueryError,
 } from "../../../utils/dispatchDocQueryAction.js";
 import { DocSyncError } from "../../../utils/DocSyncError.js";
-import { getOwnPresencePatch } from "../../../utils/getOwnPresencePatch.js";
+import {
+  type DocStream,
+  announceStoredBatches,
+  catchUpLiveDoc,
+  getLiveClock,
+  inStreamOrder,
+  isStreaming,
+  receiveOwnBatch,
+  restartDocStream,
+  setLiveClock,
+  startDocStream,
+} from "../../../utils/docStream.js";
+import {
+  exportHistoryFromCurrentSource,
+  replaceDocInCache,
+  resolveHistorySourceForPotentialReplacement,
+  resolvePendingMemoryOperations,
+} from "../../../utils/liveDoc.js";
 import { getLocalDocVersion } from "../../../utils/localDocVersion.js";
 import { request } from "../../../utils/request.js";
-import { setupDocChangeListener } from "../../../utils/setupDocChangeListener.js";
 import {
   cancelPendingSyncRetry,
   clearSyncRetry,
@@ -70,162 +91,12 @@ async function applyServerOperations<
   }
 }
 
-function replaceDocInCache<
-  D extends object,
-  S extends object,
-  O extends object,
->(
-  client: DocSyncClient<D, S, O>,
-  args: {
-    docId: string;
-    doc: D;
-    exportedHistory?: { promisedDoc: Promise<D | undefined>; value: unknown };
-  },
-) {
-  const cacheEntry = client["_docsCache"].get(args.docId);
-  if (!cacheEntry) return;
-
-  const previousPromisedDoc = cacheEntry.promisedDoc;
-  const nextPromisedDoc = Promise.resolve(args.doc);
-  const docBinding = client["_docBinding"];
-  let historyImportError: { historyImportError: unknown } | undefined;
-  if (
-    args.exportedHistory?.promisedDoc === previousPromisedDoc &&
-    docBinding.importHistory
-  ) {
-    try {
-      docBinding.importHistory(args.doc, args.exportedHistory.value);
-    } catch (error) {
-      historyImportError = { historyImportError: error };
-    }
-  }
-  setupDocChangeListener(client, args);
-  // The entry itself is kept: it identifies the loaded document for the sync
-  // attempt that is replacing its doc, and for any subscriber holding it.
-  cacheEntry.promisedDoc = nextPromisedDoc;
-
-  void previousPromisedDoc
-    .then((previousDoc) => {
-      const currentEntry = client["_docsCache"].get(args.docId);
-      if (
-        currentEntry?.promisedDoc === nextPromisedDoc &&
-        previousDoc &&
-        previousDoc !== args.doc
-      ) {
-        client["_docBinding"].dispose(previousDoc);
-      }
-    })
-    .catch(() => undefined);
-
-  return historyImportError;
-}
-
-type HistorySource<D extends object> = {
-  doc: D;
-  promisedDoc: Promise<D | undefined>;
-};
-
-async function resolveHistorySourceForPotentialReplacement<
-  D extends object,
-  S extends object,
-  O extends object,
->(
-  client: DocSyncClient<D, S, O>,
-  args: {
-    docId: string;
-    hasServerSnapshot: boolean;
-    hasConcurrentOperations: boolean;
-  },
-): Promise<HistorySource<D> | undefined> {
-  if (!args.hasServerSnapshot && !args.hasConcurrentOperations) return;
-  const docBinding = client["_docBinding"];
-  if (!docBinding.exportHistory) return;
-  const cacheEntry = client["_docsCache"].get(args.docId);
-  if (!cacheEntry) return;
-  const doc = await cacheEntry.promisedDoc;
-  if (!doc) return;
-  return { doc, promisedDoc: cacheEntry.promisedDoc };
-}
-
-function exportHistoryFromCurrentSource<
-  D extends object,
-  S extends object,
-  O extends object,
->(
-  client: DocSyncClient<D, S, O>,
-  docId: string,
-  source: HistorySource<D> | undefined,
-): { promisedDoc: Promise<D | undefined>; value: unknown } | undefined {
-  if (!source) return;
-  const cacheEntry = client["_docsCache"].get(docId);
-  const docBinding = client["_docBinding"];
-  if (
-    cacheEntry?.promisedDoc !== source.promisedDoc ||
-    !docBinding.exportHistory
-  )
-    return;
-  return {
-    promisedDoc: source.promisedDoc,
-    value: docBinding.exportHistory(source.doc),
-  };
-}
-
 /**
- * Resolves the in-memory operations batch across the history export.
- *
- * `exportHistory` force-commits the live doc, which pushes the resulting
- * operation into the batch *and* can flush it in the same synchronous turn:
- * `_flushLocalOperations` deletes the batch entry before its first await, so
- * reading the batch only after the export would miss that operation. The
- * replacement doc would then be swapped in without an edit whose undo entry we
- * just exported. The flush keeps the array it took, and the push happens before
- * it, so the reference captured beforehand still holds the operation.
- */
-function resolvePendingMemoryOperations<
-  D extends object,
-  S extends object,
-  O extends object,
->(
-  client: DocSyncClient<D, S, O>,
-  docId: string,
-  batchBeforeExport: O[] | undefined,
-): O[] {
-  const batchAfterExport = client["_localOpsBatchState"].get(docId)?.data;
-  if (batchBeforeExport === undefined) return batchAfterExport ?? [];
-  if (
-    batchAfterExport === undefined ||
-    batchAfterExport === batchBeforeExport
-  ) {
-    return batchBeforeExport;
-  }
-  return [...batchBeforeExport, ...batchAfterExport];
-}
-
-function broadcastServerOperations<
-  D extends object,
-  S extends object,
-  O extends object,
->(
-  client: DocSyncClient<D, S, O>,
-  args: { docId: string; operations: O[] },
-): void {
-  const presence = getOwnPresencePatch(client, args.docId);
-  for (const op of args.operations) {
-    client["_bcHelper"]?.broadcast({
-      type: "OPERATIONS",
-      source: "network",
-      operations: op,
-      docId: args.docId,
-      flags: {},
-      presence,
-    });
-  }
-}
-
-/**
- * One request/response round trip for a document: push the operations saved
- * locally, receive what the server has since the local clock, and reconcile
- * both into IndexedDB and the live doc. Flow control lives in `handleSync`.
+ * One request/response round trip for a document. The first on a connection
+ * subscribes: it sends the operations saved locally with the local clock,
+ * receives what the server has since, and reconciles both into IndexedDB and
+ * the live doc. Later ones only send operations, because the server pushes
+ * every other batch (see `docStream.ts`). Flow control lives in `handleSync`.
  */
 async function runSyncAttempt<
   D extends object,
@@ -277,30 +148,45 @@ async function runSyncAttempt<
           skipUndo: true,
         });
       }
+      setLiveClock(client, doc, stored.clock);
       replaceDocInCache(client, { docId, doc });
       dispatchLocalDocFound(client, docId, { doc, docId });
       if (!isLive()) return stale;
     }
   }
 
+  let subscribed = isStreaming(client, cacheEntry.stream);
+  // Subscribed and nothing to send: the server pushes everything else.
+  if (subscribed && operationsBatches.length === 0) return { type: "synced" };
   const clock = stored?.clock ?? 0;
-  // Syncs send operations, not the whole doc. The doc goes only while the local
-  // copy is still at clock 0, because no operation of it has reached the
-  // server yet, or when the server asks for it because it lost its copy.
-  let req: SyncRequest<S, O> = {
-    type: cacheEntry.type,
-    clock,
-    docId,
-    operations,
-    serializedDoc: clock === 0 ? (stored?.serializedDoc ?? null) : null,
-  };
+  // Syncs send operations, not the whole doc. A subscription sends the doc
+  // only while the local copy is still at clock 0, because no operation of it
+  // has reached the server yet, or when the server asks for it because it
+  // lost its copy. A subscribed sync never sends it.
+  let req: SyncRequest<S, O> = subscribed
+    ? { docId, operations }
+    : {
+        type: cacheEntry.type,
+        clock,
+        docId,
+        operations,
+        serializedDoc: clock === 0 ? (stored?.serializedDoc ?? null) : null,
+      };
 
   let response: SyncResponse<S, O>;
   try {
     response = await request(client["_socket"], "sync", req);
-    if (stored && response.data?.needsSerializedDoc) {
+    if (stored && response.data && "needsSerializedDoc" in response.data) {
       if (!isLive()) return stale;
-      req = { ...req, serializedDoc: stored.serializedDoc };
+      // The server lost its copy and saved nothing: subscribe again with ours.
+      subscribed = false;
+      req = {
+        type: cacheEntry.type,
+        clock: stored.clock,
+        docId,
+        operations,
+        serializedDoc: stored.serializedDoc,
+      };
       response = await request(client["_socket"], "sync", req);
     }
   } catch (error) {
@@ -330,9 +216,108 @@ async function runSyncAttempt<
     };
   }
 
-  clearSyncRetry(client, docId);
   const { data } = response;
+  // Still synchronous since the response arrived: a batch pushed right after
+  // it has not been numbered yet.
+  if (subscribed) {
+    const stream = cacheEntry.stream;
+    if (!stream) return stale;
+    clearSyncRetry(client, docId);
+    client["_events"].emit("sync", { req, data });
+    // Restarted while this request was on the wire (`restartDocStream`): the
+    // server still saved this batch with `data.clock`, so it is stored as
+    // usual, and the rerun the restart asked for subscribes again.
+    const restarted = !isStreaming(client, stream);
+    const expected = stream.clock + (operations.length > 0 ? 1 : 0);
+    if (!restarted && data.clock !== expected) {
+      restartDocStream(client, docId);
+      return {
+        type: "failed",
+        error: new DocSyncError(
+          "ValidationError",
+          `Expected clock ${expected} from the server, got ${data.clock}: the server provider must number the batches of a document one by one`,
+        ),
+        transient: false,
+      };
+    }
+    await receiveOwnBatch(client, {
+      docId,
+      stream,
+      clock: data.clock,
+      operations,
+      ids: operationsBatches.map((batch) => batch.id),
+    });
+    return isLive() ? { type: "synced" } : stale;
+  }
+  if (!("operations" in data)) {
+    return {
+      type: "failed",
+      error: new DocSyncError(
+        "ValidationError",
+        "The server answered a subscription with a bare clock",
+      ),
+      transient: false,
+    };
+  }
+  const stream = startDocStream(client, docId, {
+    generation: token.generation,
+    clock: data.clock,
+  });
+  if (!stream) return stale;
+  clearSyncRetry(client, docId);
   client["_events"].emit("sync", { req, data });
+  return inStreamOrder(stream, () =>
+    reconcileSubscription(client, {
+      docId,
+      token,
+      stream,
+      provider,
+      operationsBatches,
+      operations,
+      requestLocalVersion,
+      requestClock: req.clock ?? 0,
+      data,
+    }),
+  );
+}
+
+/**
+ * Reconciles the response to a subscription into IndexedDB and the live doc,
+ * in the stream's order: batches pushed after it wait until it is done.
+ */
+async function reconcileSubscription<
+  D extends object,
+  S extends object,
+  O extends object,
+>(
+  client: DocSyncClient<D, S, O>,
+  args: {
+    docId: string;
+    token: SyncAttemptToken;
+    stream: DocStream<O>;
+    provider: ClientProvider<S, O>;
+    operationsBatches: OperationsBatch<O>[];
+    operations: O[];
+    requestLocalVersion: number;
+    requestClock: number;
+    data: SubscriptionData<S, O>;
+  },
+): Promise<SyncAttemptOutcome> {
+  const {
+    docId,
+    token,
+    stream,
+    provider,
+    operationsBatches,
+    operations,
+    requestLocalVersion,
+    requestClock,
+    data,
+  } = args;
+  const isLive = () => isLiveSyncAttempt(client, docId, token);
+  const stale: SyncAttemptOutcome = { type: "stale" };
+  const cacheEntry = client["_docsCache"].get(docId);
+  if (!cacheEntry || !isLive()) return stale;
 
   // Resolve the live doc before starting the asynchronous provider work. The
   // history itself is exported only in the synchronous final section below.
@@ -354,6 +339,9 @@ async function runSyncAttempt<
     data,
     isCurrent: isLive,
   });
+  if (preparedReconciliation.didConsolidate) {
+    announceStoredBatches(client, { docId, clock: data.clock });
+  }
   if (!isLive()) return stale;
 
   // Keep this section synchronous. Exporting DocNode history force-commits a
@@ -366,6 +354,7 @@ async function runSyncAttempt<
     preparedReconciliation.shouldReplaceDoc
       ? exportHistoryFromCurrentSource(client, docId, historySource)
       : undefined;
+  const liveDocBefore = historySource?.doc;
   const reconcileResult = finalizeSyncReconciliation(client, {
     docId,
     prepared: preparedReconciliation,
@@ -378,30 +367,43 @@ async function runSyncAttempt<
   });
 
   if (reconcileResult.type === "replaceDoc") {
+    setLiveClock(client, reconcileResult.doc, data.clock);
     const replaceResult = replaceDocInCache(client, {
       docId,
       doc: reconcileResult.doc,
       ...(exportedHistory && { exportedHistory }),
     });
     dispatchLocalDocFound(client, docId, { doc: reconcileResult.doc, docId });
-    broadcastServerOperations(client, { docId, operations: data.operations });
     // IndexedDB was already reconciled before the history import. Finish the
     // cache swap first so persistent and visible content cannot diverge, then
     // keep the binding failure loud for the caller.
     if (replaceResult) throw replaceResult.historyImportError;
-  } else if (reconcileResult.type === "applyServerOperations") {
-    await applyServerOperations(client, {
-      docId,
-      operations: reconcileResult.operations,
-      isLive,
-    });
-    if (!isLive()) return stale;
-    broadcastServerOperations(client, {
-      docId,
-      operations: reconcileResult.operations,
-    });
+  } else {
+    const liveDoc = liveDocBefore ?? (await cacheEntry.promisedDoc);
+    // The response holds everything after the request's clock. Applied on a
+    // live doc at that clock, or with nothing to apply, the live doc ends at
+    // the response's clock; otherwise the catch-up below rebuilds it.
+    const isAtRequestClock =
+      liveDoc !== undefined && getLiveClock(client, liveDoc) === requestClock;
+    if (reconcileResult.type === "applyServerOperations") {
+      await applyServerOperations(client, {
+        docId,
+        operations: reconcileResult.operations,
+        isLive,
+      });
+      if (!isLive()) return stale;
+    }
+    if (
+      liveDoc &&
+      isAtRequestClock &&
+      (reconcileResult.type === "applyServerOperations" ||
+        data.operations.length === 0)
+    ) {
+      setLiveClock(client, liveDoc, data.clock);
+    }
   }
-  return { type: "synced" };
+  await catchUpLiveDoc(client, { docId, stream, clock: data.clock });
+  return isLive() ? { type: "synced" } : stale;
 }
 
 /**

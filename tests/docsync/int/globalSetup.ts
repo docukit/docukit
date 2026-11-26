@@ -21,8 +21,15 @@ declare module "vitest" {
 // Extend globalThis to include test server port
 declare global {
   var __TEST_SERVER_PORT__: number | undefined;
-  /** Used by the `forgetServerDoc` browser command in vitest.config.ts. */
+  /** Used by the DocSync server commands in vitest.config.ts. */
   var __DOCSYNC_FORGET_SERVER_DOC__: ((docId: string) => void) | undefined;
+  var __DOCSYNC_OWN_SERVERS__:
+    | {
+        start: () => Promise<number>;
+        restart: (port: number) => Promise<void>;
+        stop: (port: number) => Promise<void>;
+      }
+    | undefined;
 }
 
 /**
@@ -77,15 +84,13 @@ const parseTestToken = (token: string): string | undefined => {
 let server: DocSyncServer | undefined;
 let serverPort: number;
 
-export async function setup(project: TestProject) {
-  // Find an available port
-  serverPort = await findAvailablePort(PREFERRED_PORT);
-
-  const { provider, forgetDoc } = createForgetfulProvider();
-  globalThis.__DOCSYNC_FORGET_SERVER_DOC__ = forgetDoc;
-  server = new DocSyncServer({
+const createTestServer = (
+  port: number,
+  provider: ReturnType<typeof inMemoryServerProvider>,
+) =>
+  new DocSyncServer({
     docBinding: DocNodeBinding([testDocConfig]),
-    port: serverPort,
+    port,
     provider,
     authenticate: ({ token }) => {
       if (!token) return undefined;
@@ -94,6 +99,45 @@ export async function setup(project: TestProject) {
       return { userId };
     },
   });
+
+/**
+ * Servers started by a test for itself. A restart keeps the provider, like a
+ * server process that restarts on top of the same database.
+ */
+const ownServers = new Map<
+  number,
+  { server: DocSyncServer; provider: ReturnType<typeof inMemoryServerProvider> }
+>();
+
+globalThis.__DOCSYNC_OWN_SERVERS__ = {
+  start: async () => {
+    const port = await findAvailablePort(PREFERRED_PORT + 100);
+    const provider = inMemoryServerProvider();
+    ownServers.set(port, {
+      server: createTestServer(port, provider),
+      provider,
+    });
+    return port;
+  },
+  restart: async (port) => {
+    const own = ownServers.get(port);
+    if (!own) throw new Error(`No test server on port ${port}`);
+    await own.server.close();
+    own.server = createTestServer(port, own.provider);
+  },
+  stop: async (port) => {
+    await ownServers.get(port)?.server.close();
+    ownServers.delete(port);
+  },
+};
+
+export async function setup(project: TestProject) {
+  // Find an available port
+  serverPort = await findAvailablePort(PREFERRED_PORT);
+
+  const { provider, forgetDoc } = createForgetfulProvider();
+  globalThis.__DOCSYNC_FORGET_SERVER_DOC__ = forgetDoc;
+  server = createTestServer(serverPort, provider);
 
   // Give the server a short moment to finish binding before browser workers connect.
   await new Promise((resolve) => setTimeout(resolve, 10));
@@ -106,6 +150,9 @@ export async function setup(project: TestProject) {
 
 export async function teardown() {
   globalThis.__DOCSYNC_FORGET_SERVER_DOC__ = undefined;
+  for (const port of ownServers.keys()) {
+    await globalThis.__DOCSYNC_OWN_SERVERS__?.stop(port);
+  }
   if (server) await server.close();
   console.log("✅ Test server stopped\n");
 }
