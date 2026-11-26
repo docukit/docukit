@@ -6,7 +6,6 @@ import {
   type ChangeEvent,
   type DocNode,
   type Extension,
-  type Json,
   type JsonDoc,
 } from "@docukit/docnode";
 import { fromLegacyJson } from "@docukit/docnode/compat";
@@ -14,7 +13,7 @@ import { describe, expect, test } from "vitest";
 import {
   TestExtension,
   TestNode,
-  TextExtension,
+  Text,
   checkUndoManager,
   humanReadableOperations,
   idsOf,
@@ -23,19 +22,11 @@ import {
   text,
   textDoc,
   textDocConfig as config,
+  TextExtension,
 } from "./utils.js";
 
 const ROOT_ID = "01kc52hq510g6y44jhq0wqrjb3";
-
-/** The ids of the nodes of `doc` other than the root, in preorder. */
-const preorderIds = (doc: Doc) => {
-  const ids: string[] = [];
-  doc.root.descendants().forEach((node) => ids.push(node.id));
-  return ids;
-};
-
-/** The stored state of each node of `doc` other than the root. */
-const statesOf = (doc: Doc) => doc.toJSON()[6];
+type StoredTypes = [name: string, ...keys: string[]][];
 
 describe("stored format", () => {
   test("the root, then the other nodes in preorder as columns", () => {
@@ -49,10 +40,11 @@ describe("stored format", () => {
       doc.root.id,
       "root",
       {},
-      ["text"],
+      [["text", "value"]],
       [0, 0, 0, 0, 0],
       [3, 0, 2, 0, 0, 0],
-      ["1", "2", "2.1", "2.2", "3"].map((value) => ({ value })),
+      [1, 1, 1, 1, 1],
+      ["1", "2", "2.1", "2.2", "3"],
       [sessionOf(doc)],
       // clocks 0-1, then 3-4 (1 after the next one, 2), then 2 (3 before 5)
       [0, 0, 2, 0, 1, 2, 0, -3, 1],
@@ -81,10 +73,10 @@ describe("stored format", () => {
     a.root.append(...text(a, "a2"));
     a.forceCommit();
     const json = a.toJSON();
-    expect(json[7]).toStrictEqual([sessionOf(a), sessionOf(b)]);
+    expect(json[8]).toStrictEqual([sessionOf(a), sessionOf(b)]);
     // a1 and a2 are clocks 0 and 1 of the first session, b1 and b2 0 and 1
     // of the second: the session is written minus the previous run's.
-    expect(json[8]).toStrictEqual([0, 0, 1, 1, 0, 2, -1, 0, 1]);
+    expect(json[9]).toStrictEqual([0, 0, 1, 1, 0, 2, -1, 0, 1]);
     expect(loadAndSave(a)).toStrictEqual(json);
   });
 
@@ -100,44 +92,13 @@ describe("stored format", () => {
     const doc = new Doc(custom);
     doc.root.append(...text(doc, "1", "2"));
     doc.forceCommit();
-    expect(doc.toJSON().slice(7)).toStrictEqual([[], ["ok-1", "ok-2"]]);
+    expect(doc.toJSON().slice(8)).toStrictEqual([[], ["ok-1", "ok-2"]]);
     const loaded = Doc.fromJSON(custom, doc.toJSON());
     loaded.forceCommit();
     expect(loaded.toJSON()).toStrictEqual(doc.toJSON());
   });
 
-  test("a document with a custom generator loads ids of DocNode's generator", () => {
-    const doc = textDoc();
-    doc.root.append(...text(doc, "1"));
-    doc.forceCommit();
-    const custom = {
-      ...config,
-      nodeIdGenerator: { generate: () => "x", validate: () => true },
-    };
-    const loaded = Doc.fromJSON(custom, doc.toJSON());
-    loaded.forceCommit();
-    expect(idsOf(loaded)).toStrictEqual([doc.root.first!.id]);
-  });
-
-  test("types alternate", () => {
-    const doc = new Doc({
-      type: "root",
-      extensions: [TextExtension, TestExtension],
-    });
-    doc.root.append(
-      ...text(doc, "1"),
-      doc.createNode(TestNode),
-      ...text(doc, "2"),
-    );
-    doc.forceCommit();
-    expect(doc.toJSON().slice(3, 5)).toStrictEqual([
-      ["text", "test"],
-      [0, 1, 0],
-    ]);
-    expect(loadAndSave(doc)).toStrictEqual(doc.toJSON());
-  });
-
-  test("state values are plain JSON, without the defaults", () => {
+  test("state values are plain JSON, without the defaults, in the order of the keys", () => {
     const doc = new Doc({ type: "root", extensions: [TestExtension] });
     const node = doc.createNode(TestNode);
     node.state.boolean.set(true);
@@ -145,8 +106,15 @@ describe("stored format", () => {
     node.state.string.set("");
     doc.root.append(node, doc.createNode(TestNode));
     doc.forceCommit();
-    expect(statesOf(doc)).toStrictEqual([{ number: 5, boolean: 1 }, {}]);
-    expect(loadAndSave(doc)).toStrictEqual(doc.toJSON());
+    const json = doc.toJSON();
+    expect(json[3]).toStrictEqual([
+      ["test", "string", "number", "boolean", "date"],
+    ]);
+    expect(json.slice(6, 8)).toStrictEqual([
+      [6, 0],
+      [5, 1],
+    ]);
+    expect(loadAndSave(doc)).toStrictEqual(json);
   });
 
   test("a value equal to its default is not stored, also lists and objects", () => {
@@ -164,20 +132,18 @@ describe("stored format", () => {
       node.state.value.set(value);
       doc.root.replaceChildren(node);
       doc.forceCommit();
-      return statesOf(doc)![0];
+      return doc.toJSON()[7];
     };
-    expect(stored([1, { a: 2 }])).toStrictEqual({});
-    expect(stored([1, { a: 3 }])).toStrictEqual({ value: [1, { a: 3 }] });
-    expect(stored([1, { b: 2 }])).toStrictEqual({ value: [1, { b: 2 }] });
-    expect(stored([1, { a: 2, b: 3 }])).toStrictEqual({
-      value: [1, { a: 2, b: 3 }],
-    });
-    expect(stored([1, {}])).toStrictEqual({ value: [1, {}] });
-    expect(stored([1, [2]])).toStrictEqual({ value: [1, [2]] });
-    expect(stored([null])).toStrictEqual({ value: [null] });
-    expect(stored([1])).toStrictEqual({ value: [1] });
-    expect(stored({ 0: 1 })).toStrictEqual({ value: { 0: 1 } });
-    expect(stored("1")).toStrictEqual({ value: "1" });
+    expect(stored([1, { a: 2 }])).toStrictEqual([]);
+    expect(stored([1, { a: 3 }])).toStrictEqual([[1, { a: 3 }]]);
+    expect(stored([1, { b: 2 }])).toStrictEqual([[1, { b: 2 }]]);
+    expect(stored([1, { a: 2, b: 3 }])).toStrictEqual([[1, { a: 2, b: 3 }]]);
+    expect(stored([1, {}])).toStrictEqual([[1, {}]]);
+    expect(stored([1, [2]])).toStrictEqual([[1, [2]]]);
+    expect(stored([null])).toStrictEqual([[null]]);
+    expect(stored([1])).toStrictEqual([[1]]);
+    expect(stored({ 0: 1 })).toStrictEqual([{ 0: 1 }]);
+    expect(stored("1")).toStrictEqual(["1"]);
   });
 
   test("a value that is not plain JSON (a Date) is stored as its JSON", () => {
@@ -186,30 +152,104 @@ describe("stored format", () => {
     node.state.date.set(new Date(Date.UTC(2026, 10, 25)));
     doc.root.append(node);
     doc.forceCommit();
-    expect(statesOf(doc)).toStrictEqual([{ date: "2026-11-25T00:00:00.000Z" }]);
+    expect(doc.toJSON()[7]).toStrictEqual(["2026-11-25T00:00:00.000Z"]);
+    expect(loadAndSave(doc)).toStrictEqual(doc.toJSON());
+  });
+
+  test("a value whose JSON is undefined throws, also one from operations", () => {
+    // `fromJSON` reads "undefined" as `undefined`, which has no JSON.
+    const Maybe = defineNode({
+      type: "maybe",
+      state: {
+        value: defineState({
+          fromJSON: (json) => (json === "undefined" ? undefined : (json ?? "")),
+        }),
+      },
+    });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [Maybe] }] });
+    doc.applyOperations([
+      [[0, [["a.0", "maybe"]], 0, 0, 0]],
+      { "a.0": { value: '"undefined"' } },
+    ]);
+    doc.forceCommit();
+    expect(() => doc.toJSON()).toThrowError(
+      "The JSON serialization for state value on a node of type maybe is undefined.",
+    );
   });
 
   test("a document without other nodes is the root only", () => {
+    const doc = textDoc();
+    expect(doc.toJSON()).toStrictEqual([doc.root.id, "root", {}]);
+    expect(loadAndSave(doc)).toStrictEqual(doc.toJSON());
+  });
+});
+
+describe("stored format: more shapes", () => {
+  test("the root's state is an object of plain JSON", () => {
     const Root = defineNode({
       type: "root",
       state: { a: string(""), b: string("") },
     });
     const doc = new Doc({ type: "root", extensions: [{ nodes: [Root] }] });
-    expect(doc.toJSON()).toStrictEqual([doc.root.id, "root", {}]);
     if (!doc.root.is(Root)) throw new Error("The root is of type Root");
     doc.root.state.b.set("x");
     doc.forceCommit();
     expect(doc.toJSON()).toStrictEqual([doc.root.id, "root", { b: "x" }]);
     expect(loadAndSave(doc)).toStrictEqual(doc.toJSON());
   });
+
+  test("types alternate", () => {
+    const doc = new Doc({
+      type: "root",
+      extensions: [TextExtension, TestExtension],
+    });
+    doc.root.append(
+      ...text(doc, "1"),
+      doc.createNode(TestNode),
+      ...text(doc, "2"),
+    );
+    doc.forceCommit();
+    expect(doc.toJSON().slice(3, 5)).toStrictEqual([
+      [
+        ["text", "value"],
+        ["test", "string", "number", "boolean", "date"],
+      ],
+      [0, 1, 0],
+    ]);
+    expect(loadAndSave(doc)).toStrictEqual(doc.toJSON());
+  });
+
+  test("an object where the default is not one is stored", () => {
+    const Any = defineNode({
+      type: "any",
+      state: {
+        value: defineState({ fromJSON: (json): unknown => json ?? "x" }),
+      },
+    });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [Any] }] });
+    const node = doc.createNode(Any);
+    node.state.value.set({ a: 1 });
+    doc.root.append(node);
+    doc.forceCommit();
+    expect(doc.toJSON()[7]).toStrictEqual([{ a: 1 }]);
+  });
+
+  test("a document with a custom generator loads ids of DocNode's generator", () => {
+    const doc = textDoc();
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+    const custom = {
+      ...config,
+      nodeIdGenerator: { generate: () => "x", validate: () => true },
+    };
+    const loaded = Doc.fromJSON(custom, doc.toJSON());
+    loaded.forceCommit();
+    expect(idsOf(loaded)).toStrictEqual([doc.root.first!.id]);
+  });
 });
 
 describe("reading a stored document", () => {
-  const stored = (
-    types: string[],
-    ids: string[],
-    states: Record<string, Json>[] = ids.map(() => ({ value: "x" })),
-  ) =>
+  const stored = (types: StoredTypes, states: number[], ids: string[]) =>
     [
       ROOT_ID,
       "root",
@@ -218,38 +258,45 @@ describe("reading a stored document", () => {
       ids.map(() => 0),
       [ids.length, ...ids.map(() => 0)],
       states,
+      states.filter((state) => state > 0).map(() => "x"),
       [],
       ids,
     ] satisfies JsonDoc;
 
   test("an id twice throws", () => {
     expect(() =>
-      Doc.fromJSON(config, stored(["text"], ["a.0", "a.0"])),
+      Doc.fromJSON(config, stored([["text", "value"]], [0, 0], ["a.0", "a.0"])),
     ).toThrowError("Node 'a.0' cannot be inserted because it already exists");
   });
 
   test("a node of the root's type throws", () => {
-    expect(() => Doc.fromJSON(config, stored(["root"], ["a.0"]))).toThrowError(
-      "You cannot insert nodes of type 'root'",
-    );
+    expect(() =>
+      Doc.fromJSON(config, stored([["root"]], [0], ["a.0"])),
+    ).toThrowError("You cannot insert nodes of type 'root'");
   });
 
   test("a type that is not registered throws", () => {
-    expect(() => Doc.fromJSON(config, stored(["other"], ["a.0"]))).toThrowError(
+    expect(() =>
+      Doc.fromJSON(config, stored([["other"]], [0], ["a.0"])),
+    ).toThrowError(
       "Attempted to create a node of type 'other' that was not registered.",
     );
   });
 
-  test("a state that is not registered throws", () => {
-    const json = stored(["text"], ["a.0"], [{ gone: "x" }]);
-    expect(() => Doc.fromJSON(config, json)).toThrowError(
-      "with a state that is not registered: gone",
-    );
+  test("a state that is not registered throws, unless no node has it", () => {
+    const types: StoredTypes = [["text", "gone", "value"]];
+    expect(() =>
+      Doc.fromJSON(config, stored(types, [1], ["a.0"])),
+    ).toThrowError("with a state that is not registered: gone");
+    const doc = Doc.fromJSON(config, stored(types, [2], ["a.0"]));
+    const node = doc.root.first!;
+    if (!node.is(Text)) throw new Error("The node is of type Text");
+    expect(node.state.value.get()).toBe("x");
   });
 
   /** Two text nodes in the root, with the type or children column changed. */
   const twoNodes = (columns: { type?: number[]; children?: number[] }) => {
-    const json = stored(["text"], ["a.0", "a.1"]);
+    const json = stored([["text"]], [0, 0], ["a.0", "a.1"]);
     if (columns.type) json[4] = columns.type;
     if (columns.children) json[5] = columns.children;
     return json;
@@ -290,11 +337,8 @@ describe("reading a stored document", () => {
         rootBefore = doc.root;
       },
     };
-    const json = stored(
-      ["picky"],
-      ["a.0", "a.1"],
-      [{ value: "good" }, { value: "bad" }],
-    );
+    const json = stored([["picky", "value"]], [1, 1], ["a.0", "a.1"]);
+    json[7] = ["good", "bad"];
     expect(() =>
       Doc.fromJSON({ type: "root", extensions: [Keep] }, json),
     ).toThrowError("A bad value");
@@ -305,17 +349,42 @@ describe("reading a stored document", () => {
 
   test("ids of the form session.clock are read as runs, other ids as they are", () => {
     const ids = ["s.-", "s.0", "s.1", "t.0-", "s.-0", "s.é", "s.123456789"];
-    const doc = Doc.fromJSON(config, stored(["text"], ids));
+    const doc = Doc.fromJSON(
+      config,
+      stored([["text"]], [0, 0, 0, 0, 0, 0, 0], ids),
+    );
     doc.forceCommit();
-    expect(doc.toJSON().slice(7)).toStrictEqual([
+    expect(doc.toJSON().slice(8)).toStrictEqual([
       ["s", "t"],
       [0, 0, 3, 1, 64, 1, "s.-0", "s.é", "s.123456789"],
     ]);
-    expect(loadAndSave(doc).slice(7)).toStrictEqual(doc.toJSON().slice(7));
-    const noDot = Doc.fromJSON(config, stored(["text"], [".0", "x."]));
+    expect(loadAndSave(doc).slice(8)).toStrictEqual(doc.toJSON().slice(8));
+    const noDot = Doc.fromJSON(
+      config,
+      stored([["text"]], [0, 0], [".0", "x."]),
+    );
     noDot.forceCommit();
     expect(idsOf(noDot)).toStrictEqual([".0", "x."]);
   });
+
+  test.each([
+    [[2, 0], ["x"], "node 'a.0' has a mask that is not valid."],
+    [[-1, 0], ["x"], "node 'a.0' has a mask that is not valid."],
+    [[0.5, 0], ["x"], "node 'a.0' has a mask that is not valid."],
+    [[1, 1], ["x"], "it has fewer values than its masks say."],
+    [[1, 0], ["x", "y"], "it has more values than its masks say."],
+    [[0], [], "it has fewer masks than its nodes need."],
+    [[0, 0, 0], [], "it has more masks than its nodes need."],
+  ])(
+    "masks %j with values %j that do not fit throw",
+    (masks, values, message) => {
+      const json = stored([["text", "value"]], masks, ["a.0", "a.1"]);
+      json[7] = values;
+      expect(() => Doc.fromJSON(config, json)).toThrowError(
+        `Invalid stored document: ${message}`,
+      );
+    },
+  );
 
   /** The largest clock of an id, `zzzzzzzz`: 8 digits of 64. */
   const MAX_CLOCK = 64 ** 8 - 1;
@@ -328,10 +397,11 @@ describe("reading a stored document", () => {
     ROOT_ID,
     "root",
     {},
-    ["text"],
+    [["text"]],
     [0, 0],
     [2, 0, 0],
-    [{}, {}],
+    [0, 0],
+    [],
     sessions,
     ids,
   ];
@@ -388,12 +458,57 @@ describe("reading a stored document", () => {
   });
 
   test("columns without nodes load an empty document", () => {
-    const doc = Doc.fromJSON(config, stored([], []));
+    const doc = Doc.fromJSON(config, stored([], [], []));
     const events: ChangeEvent[] = [];
     doc.onChange((event) => events.push(event));
     doc.forceCommit();
     expect(events).toStrictEqual([]);
     expect(doc.toJSON()).toStrictEqual([ROOT_ID, "root", {}]);
+  });
+
+  /** `count` number states, `s0`, `s1`... */
+  const manyStates = (count: number) =>
+    Object.fromEntries(
+      Array.from({ length: count }, (_, i) => [
+        `s${i}`,
+        defineState({ fromJSON: (json) => json ?? 0 }),
+      ]),
+    );
+
+  test("a node type can have any number of states: one mask per 30 keys", () => {
+    const Wide = defineNode({ type: "wide", state: manyStates(120) });
+    const wideConfig = { type: "root", extensions: [{ nodes: [Wide] }] };
+    const doc = new Doc(wideConfig);
+    const node = doc.createNode(Wide);
+    doc.root.append(node, doc.createNode(Wide));
+    for (const k of [0, 52, 53, 105, 106, 119]) node.state[`s${k}`]!.set(k + 1);
+    doc.forceCommit();
+    const json = doc.toJSON();
+    expect(json.slice(6, 8)).toStrictEqual([
+      [1, 2 ** 22 + 2 ** 23, 0, 2 ** 15 + 2 ** 16 + 2 ** 29, 0, 0, 0, 0],
+      [1, 53, 54, 106, 107, 120],
+    ]);
+    const loaded = Doc.fromJSON(wideConfig, json);
+    loaded.forceCommit();
+    expect(loaded.toJSON()).toStrictEqual(json);
+  });
+
+  test("so can the root's type", () => {
+    const WideRoot = defineNode({ type: "wideRoot", state: manyStates(40) });
+    const wideConfig = {
+      type: "wideRoot",
+      extensions: [{ nodes: [WideRoot] }],
+    };
+    const doc = new Doc(wideConfig);
+    const root: DocNode = doc.root;
+    if (!root.is(WideRoot)) throw new Error("The root is a WideRoot");
+    root.state.s35!.set(36);
+    doc.forceCommit();
+    const json = doc.toJSON();
+    expect(json).toStrictEqual([root.id, "wideRoot", { s35: 36 }]);
+    const loaded = Doc.fromJSON(wideConfig, json);
+    loaded.forceCommit();
+    expect(loaded.toJSON()).toStrictEqual(json);
   });
 });
 
@@ -422,7 +537,9 @@ describe("loading a stored document is a transaction that inserts it", () => {
     const events: ChangeEvent[] = [];
     doc.onChange((event) => events.push(event));
     doc.forceCommit();
-    expect(normalized).toStrictEqual([[], preorderIds(doc)]);
+    const ids: string[] = [];
+    doc.root.descendants().forEach((node) => ids.push(node.id));
+    expect(normalized).toStrictEqual([[], ids]);
     expect(events).toHaveLength(1);
     expect(humanReadableOperations(doc, events[0]!)).toStrictEqual({
       operations: [
@@ -455,25 +572,28 @@ describe("loading a stored document is a transaction that inserts it", () => {
 
 describe("fromLegacyJson", () => {
   test("converts a document of the previous format", () => {
-    expect(
-      fromLegacyJson([
-        ROOT_ID,
-        "root",
-        { title: '"Doc"' },
-        [
-          ["a.-", "text", { value: '"1"' }],
-          ["a.0", "item", { b: "2", a: '"x"' }, []],
-          ["a.1", "item", { a: "[1,{}]" }, [["a.2", "text", {}]]],
-        ],
-      ]),
-    ).toStrictEqual([
+    const legacy = fromLegacyJson([
+      ROOT_ID,
+      "root",
+      { title: '"Doc"' },
+      [
+        ["a.-", "text", { value: '"1"' }],
+        ["a.0", "item", { b: "2", a: '"x"' }, []],
+        ["a.1", "item", { a: '"y"' }, [["a.2", "text", {}]]],
+      ],
+    ]);
+    expect(legacy).toStrictEqual([
       ROOT_ID,
       "root",
       { title: "Doc" },
-      ["text", "item"],
+      [
+        ["text", "value"],
+        ["item", "b", "a"],
+      ],
       [0, 1, 1, 0],
       [3, 0, 0, 1, 0],
-      [{ value: "1" }, { b: 2, a: "x" }, { a: [1, {}] }, {}],
+      [1, 3, 2, 0],
+      ["1", 2, "x", "y"],
       [],
       ["a.-", "a.0", "a.1", "a.2"],
     ]);
@@ -481,6 +601,26 @@ describe("fromLegacyJson", () => {
       ROOT_ID,
       "root",
       {},
+    ]);
+  });
+
+  test("a type with more than 30 state keys takes one mask per 30 keys", () => {
+    const state: Record<string, string> = {};
+    for (let k = 0; k < 54; k++) state[`k${k}`] = String(k);
+    const [, , , types, , , masks, values] = fromLegacyJson([
+      ROOT_ID,
+      "root",
+      {},
+      [
+        ["a.0", "wide", { k0: "0" }],
+        ["a.1", "wide", state],
+      ],
+    ]) as Extract<JsonDoc, { length: 10 }>;
+    expect(types[0]!.length).toBe(55);
+    expect(masks).toStrictEqual([1, 0, 2 ** 30 - 1, 2 ** 24 - 1]);
+    expect(values).toStrictEqual([
+      0,
+      ...Array.from({ length: 54 }, (_, k) => k),
     ]);
   });
 
@@ -514,7 +654,6 @@ describe("state values are frozen in development and tests", () => {
     },
   });
   const anyConfig = { type: "root", extensions: [{ nodes: [Any] }] };
-  type Value = { a: [number, { b: number }] };
   const anyDoc = (value: unknown) => {
     const doc = new Doc(anyConfig);
     const node = doc.createNode(Any);
@@ -523,12 +662,13 @@ describe("state values are frozen in development and tests", () => {
     doc.forceCommit();
     return doc;
   };
+  type Value = { a: [number, { b: number }] };
   const valueOf = (doc: Doc) => {
-    const node: DocNode = doc.root.first!;
+    const node = doc.root.first!;
     if (!node.is(Any)) throw new Error("The first node is of type Any");
     return node.state.value.get() as Value;
   };
-  const storedValue = (json: JsonDoc) => json[6]![0]!.value as Value;
+  const storedValue = (json: JsonDoc) => json[7]![0] as Value;
 
   test("a value set cannot be changed in place", () => {
     const value = { a: [1, { b: 2 }] };
