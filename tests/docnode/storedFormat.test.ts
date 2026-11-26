@@ -157,22 +157,35 @@ describe("stored format", () => {
   });
 
   test("a value whose JSON is undefined throws, also one from operations", () => {
-    // `fromJSON` reads "undefined" as `undefined`, which has no JSON.
-    const Maybe = defineNode({
-      type: "maybe",
-      state: {
-        value: defineState({
-          fromJSON: (json) => (json === "undefined" ? undefined : (json ?? "")),
-        }),
-      },
+    // `fromJSON` reads "undefined" as `undefined`. Only the sender's
+    // definition has a `toJSON` that writes it back.
+    const maybe = (toJSON?: (value: unknown) => string) =>
+      defineNode({
+        type: "maybe",
+        state: {
+          value: defineState({
+            fromJSON: (json) =>
+              json === "undefined" ? undefined : (json ?? ""),
+            ...(toJSON && { toJSON }),
+          }),
+        },
+      });
+    const Sender = maybe((value) => (value === undefined ? "undefined" : ""));
+    const sender = new Doc({ type: "root", extensions: [{ nodes: [Sender] }] });
+    const receiver = new Doc({
+      type: "root",
+      id: sender.root.id,
+      extensions: [{ nodes: [maybe()] }],
     });
-    const doc = new Doc({ type: "root", extensions: [{ nodes: [Maybe] }] });
-    doc.applyOperations([
-      [[0, [["a.0", "maybe"]], 0, 0, 0]],
-      { "a.0": { value: '"undefined"' } },
-    ]);
-    doc.forceCommit();
-    expect(() => doc.toJSON()).toThrowError(
+    const events: ChangeEvent[] = [];
+    sender.onChange((event) => events.push(event));
+    const node = sender.createNode(Sender);
+    sender.root.append(node);
+    node.state.value.set(undefined);
+    sender.forceCommit();
+    receiver.applyOperations(events[0]!.operations);
+    receiver.forceCommit();
+    expect(() => receiver.toJSON()).toThrowError(
       "The JSON serialization for state value on a node of type maybe is undefined.",
     );
   });
