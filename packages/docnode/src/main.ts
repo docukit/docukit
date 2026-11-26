@@ -1254,6 +1254,10 @@ export class Doc {
       let session = -1;
       let clock = 0;
       if (runLeft === 0) {
+        if (idAt === ids.length)
+          throw new Error(
+            "Invalid stored document: it has fewer ids than nodes.",
+          );
         const entry = ids[idAt++]!;
         if (typeof entry === "string") {
           // An id of a custom generator, or one `fromLegacyJson` kept.
@@ -1264,13 +1268,27 @@ export class Doc {
           }
         } else {
           runSession += entry;
-          const delta = ids[idAt++] as number;
-          const length = ids[idAt++] as number;
+          const delta = ids[idAt++];
+          const length = ids[idAt++];
+          if (
+            !(runSession in sessions) ||
+            !Number.isInteger(delta) ||
+            !Number.isInteger(length) ||
+            length === 0
+          )
+            throw new Error(
+              "Invalid stored document: it has an id run that is not valid.",
+            );
           runPrefix = `${sessions[runSession]}.`;
-          runClock = nextClocks[runSession]! + delta;
-          runStep = length < 0 ? -1 : 1;
-          runLeft = length * runStep;
-          nextClocks[runSession] = runClock + runStep * (runLeft - 1) + 1;
+          runClock = nextClocks[runSession]! + (delta as number);
+          runStep = (length as number) < 0 ? -1 : 1;
+          runLeft = (length as number) * runStep;
+          const lastClock = runClock + runStep * (runLeft - 1);
+          if (runClock < 0 || lastClock < 0)
+            throw new Error(
+              "Invalid stored document: it has an id run that is not valid.",
+            );
+          nextClocks[runSession] = lastClock + 1;
         }
       }
       if (runLeft > 0) {
@@ -1288,7 +1306,7 @@ export class Doc {
       const definition = definitions[typeColumn[index]!];
       if (!definition)
         throw new Error(
-          `Invalid stored document: node '${nodeId}' has type ${typeColumn[index]}, which is not in its types.`,
+          `Invalid stored document: node '${nodeId!}' has type ${typeColumn[index]}, which is not in its types.`,
         );
       const type = definition.type;
       // @ts-expect-error - private constructor
@@ -1319,6 +1337,8 @@ export class Doc {
       throw new Error(
         "Invalid stored document: it has nodes that no parent counts.",
       );
+    if (idAt !== ids.length || runLeft !== 0)
+      throw new Error("Invalid stored document: it has more ids than nodes.");
     const { first, last } = root;
     if (first)
       this._inverseOperations[0].push([

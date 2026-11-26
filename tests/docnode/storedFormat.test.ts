@@ -317,6 +317,38 @@ describe("reading a stored document", () => {
     expect(idsOf(noDot)).toStrictEqual([".0", "x."]);
   });
 
+  /** Two text nodes in the root, with the given sessions and ids columns. */
+  const twoNodesWithIds = (
+    sessions: string[],
+    ids: (string | number)[],
+  ): JsonDoc => [
+    ROOT_ID,
+    "root",
+    {},
+    ["text"],
+    [0, 0],
+    [2, 0, 0],
+    [{}, {}],
+    sessions,
+    ids,
+  ];
+
+  test.each([
+    [[0, 0, 1], "it has fewer ids than nodes."],
+    [[0, 0, 3], "it has more ids than nodes."],
+    [[0, 0, 2, "x.0"], "it has more ids than nodes."],
+    [[1, 0, 2], "it has an id run that is not valid."],
+    [[0, 0, 0], "it has an id run that is not valid."],
+    [[0, 0], "it has an id run that is not valid."],
+    [[0, 0.5, 2], "it has an id run that is not valid."],
+    [[0, -1, 2], "it has an id run that is not valid."],
+    [[0, 0, -2], "it has an id run that is not valid."],
+  ])("ids %j that do not fit throw", (ids, message) => {
+    expect(() =>
+      Doc.fromJSON(config, twoNodesWithIds(["s"], ids)),
+    ).toThrowError(`Invalid stored document: ${message}`);
+  });
+
   test("columns without nodes load an empty document", () => {
     const doc = Doc.fromJSON(config, stored([], []));
     const events: ChangeEvent[] = [];
