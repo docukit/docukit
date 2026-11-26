@@ -4,6 +4,7 @@ import {
   defineState,
   string,
   type ChangeEvent,
+  type DocNode,
   type Extension,
   type JsonDoc,
 } from "@docukit/docnode";
@@ -274,7 +275,7 @@ describe("reading a stored document", () => {
 
   /** Two text nodes in the root, with the type or children column changed. */
   const twoNodes = (columns: { type?: number[]; children?: number[] }) => {
-    const json = stored(["text"], ["a.0", "a.1"]);
+    const json = stored([["text"]], [0, 0], ["a.0", "a.1"]);
     if (columns.type) json[4] = columns.type;
     if (columns.children) json[5] = columns.children;
     return json;
@@ -315,11 +316,8 @@ describe("reading a stored document", () => {
         rootBefore = doc.root;
       },
     };
-    const json = stored(
-      ["picky"],
-      ["a.0", "a.1"],
-      [{ value: "good" }, { value: "bad" }],
-    );
+    const json = stored([["picky", "value"]], [1, 1], ["a.0", "a.1"]);
+    json[7] = ["good", "bad"];
     expect(() =>
       Doc.fromJSON({ type: "root", extensions: [Keep] }, json),
     ).toThrowError("A bad value");
@@ -348,6 +346,23 @@ describe("reading a stored document", () => {
     expect(idsOf(noDot)).toStrictEqual([".0", "x."]);
   });
 
+  test.each([
+    [[2, 0], ["x"], "node 'a.0' has a mask that is not valid."],
+    [[-1, 0], ["x"], "node 'a.0' has a mask that is not valid."],
+    [[0.5, 0], ["x"], "node 'a.0' has a mask that is not valid."],
+    [[1, 1], ["x"], "it has fewer values than its masks say."],
+    [[1, 0], ["x", "y"], "it has more values than its masks say."],
+  ])(
+    "masks %j with values %j that do not fit throw",
+    (masks, values, message) => {
+      const json = stored([["text", "value"]], masks, ["a.0", "a.1"]);
+      json[7] = values;
+      expect(() => Doc.fromJSON(config, json)).toThrowError(
+        `Invalid stored document: ${message}`,
+      );
+    },
+  );
+
   /** The largest clock of an id, `zzzzzzzz`: 8 digits of 64. */
   const MAX_CLOCK = 64 ** 8 - 1;
 
@@ -359,10 +374,11 @@ describe("reading a stored document", () => {
     ROOT_ID,
     "root",
     {},
-    ["text"],
+    [["text"]],
     [0, 0],
     [2, 0, 0],
-    [{}, {}],
+    [0, 0],
+    [],
     sessions,
     ids,
   ];

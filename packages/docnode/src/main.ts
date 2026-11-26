@@ -1398,10 +1398,22 @@ export class Doc {
         clock,
       ) as DocNode;
       let mask = states[index++]!;
-      if (mask > 0) {
+      if (mask !== 0) {
+        if (
+          !Number.isInteger(mask) ||
+          mask < 0 ||
+          mask >= 2 ** type.keys.length
+        )
+          throw new Error(
+            `Invalid stored document: node '${nodeId!}' has a mask that is not valid.`,
+          );
         const state = node["_values"]();
         for (let k = 0; mask > 0; k++, mask = half(mask)) {
           if (mask % 2 === 0) continue;
+          if (valueAt === values.length)
+            throw new Error(
+              "Invalid stored document: it has fewer values than its masks say.",
+            );
           const key = type.keys[k]!;
           // The value is the stored document's, not a copy: frozen, like a
           // value set with `set`.
@@ -1439,6 +1451,10 @@ export class Doc {
       );
     if (idAt !== ids.length || runLeft !== 0)
       throw new Error("Invalid stored document: it has more ids than nodes.");
+    if (valueAt !== values.length)
+      throw new Error(
+        "Invalid stored document: it has more values than its masks say.",
+      );
     const { first, last } = root;
     if (first)
       this._inverseOperations[0].push([
