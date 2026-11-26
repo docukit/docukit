@@ -132,6 +132,10 @@ export const textDocConfig: DocConfig = {
 /** An empty document of text nodes. */
 export const textDoc = () => new Doc(textDocConfig);
 
+/** The next node id of `doc`, as its generator makes them. */
+export const nextNodeId = (doc: Doc) =>
+  doc["_nodeIds"]?.generate() ?? doc["_idGen"].generate();
+
 /** `doc` stored, loaded in a new document with its nodes, and stored again. */
 export const loadAndSave = (doc: Doc) => {
   const loaded = Doc.fromJSON(

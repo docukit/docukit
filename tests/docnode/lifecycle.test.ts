@@ -7,6 +7,7 @@ import {
   assertError,
   updateAndListen,
   humanReadableOperations,
+  nextNodeId,
 } from "./utils.js";
 import { Doc, defineNode, type Extension } from "@docukit/docnode";
 
@@ -695,7 +696,7 @@ describe("onNormalize edge cases", () => {
 describe("applyOperations", () => {
   test("applyOperations triggers events with manual operations", () => {
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const nodeId = doc["_nodeIdGenerator"](doc);
+    const nodeId = nextNodeId(doc);
 
     checkUndoManager(1, doc, () => {
       doc.applyOperations([

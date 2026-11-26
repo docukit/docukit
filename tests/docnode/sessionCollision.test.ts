@@ -1,7 +1,7 @@
 import { Doc, type DocConfig, type Operations } from "@docukit/docnode";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { Text, TextExtension } from "./utils.js";
+import { Text, TextExtension, nextNodeId } from "./utils.js";
 
 const ROOT_ID = "01kc52hq510g6y44jhq0wqrjb3";
 const config = { type: "root", extensions: [TextExtension] };
@@ -30,7 +30,7 @@ afterEach(() => {
 
 /** The session of the next node id `doc` makes. */
 const nextSession = (doc: Doc) => {
-  const id = doc["_nodeIdGenerator"](doc);
+  const id = nextNodeId(doc);
   return id.slice(0, id.lastIndexOf("."));
 };
 

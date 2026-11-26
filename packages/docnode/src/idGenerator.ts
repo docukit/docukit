@@ -58,6 +58,25 @@ function incrementStringInBase64(str: string): string {
   return base64Alphabet[1] + FIRST_CHAR.repeat(n);
 }
 
+/**
+ * The clock of an id `session.clock` whose dot is at `dot`, if
+ * `numberToBase64` writes it back the same (up to 8 digits); else -1. Every
+ * place that splits a node id uses it, so all agree on which ids are
+ * `session.clock`.
+ */
+export function clockAt(id: string, dot: number) {
+  const length = id.length - dot - 1;
+  if (dot < 1 || length < 1 || length > 8) return -1;
+  if (length > 1 && id.charCodeAt(dot + 1) === 45) return -1; // "-" = 0
+  let clock = 0;
+  for (let i = dot + 1; i < id.length; i++) {
+    const digit = IDX[id.charCodeAt(i)] ?? -1;
+    if (digit < 0) return -1;
+    clock = clock * ALPH_LEN + digit;
+  }
+  return clock;
+}
+
 /** The number a `numberToBase64` string stands for, from `from` to its end. */
 function base64ToNumber(text: string, from: number) {
   let num = 0;
@@ -76,6 +95,10 @@ function base64ToNumber(text: string, from: number) {
  * (`cleanupTransactions`), a replica that receives an id of its session that
  * it did not make yet takes a new session (`collides`, `renew`): what it
  * writes next can no longer collide. What collided before stays as it was.
+ *
+ * It also keeps the table of the sessions its nodes are of, like the client
+ * ids of Yjs's struct store: a node keeps the index of its session and its
+ * clock as numbers, so its id can be written without parsing it again.
  */
 export class NodeIds {
   private readonly _createdAt: number;
@@ -83,6 +106,14 @@ export class NodeIds {
   private _clock = FIRST_CHAR;
   /** How many ids this session made: `_clock` as a number. */
   private _made = 0;
+  /** The sessions of the document's nodes, by index. */
+  private _sessions: string[] = [];
+  /** The index of each session, made when there is a second one. */
+  private _indexes: Map<string, number> | undefined;
+  /** The index of `_session` in `_sessions`. */
+  private _index = 0;
+  /** The clock of the id `split` read last. */
+  private _splitClock = 0;
 
   constructor(doc: Doc, extractTime: (id: string) => number) {
     const rootId = doc.root.id;
@@ -111,6 +142,41 @@ export class NodeIds {
     this._session = numberToBase64(milisecondsPassed) + randomStringBase64(3);
     this._clock = FIRST_CHAR;
     this._made = 0;
+    this._index = this.register(this._session);
+  }
+
+  /** The index of `session` in the table, which gets it if it is new. */
+  register(session: string) {
+    const sessions = this._sessions;
+    if (sessions[0] === session) return 0;
+    // A literal of one: a first push would reserve 17 slots.
+    if (sessions.length === 0) return ((this._sessions = [session]), 0);
+    this._indexes ??= new Map([[sessions[0]!, 0]]);
+    let index = this._indexes.get(session);
+    if (index === undefined) {
+      index = sessions.push(session) - 1;
+      this._indexes.set(session, index);
+    }
+    return index;
+  }
+
+  /**
+   * The index of the session of an id of the form `session.clock`, which
+   * the table gets if it is new, and its clock in `splitClock`. An id that
+   * would not be written back the same from them (one of a custom
+   * generator) gives -1.
+   */
+  split(id: string) {
+    const dot = id.lastIndexOf(".");
+    const clock = clockAt(id, dot);
+    if (clock < 0) return -1;
+    this._splitClock = clock;
+    return this.register(id.slice(0, dot));
+  }
+
+  /** The clock of the id `split` read last. */
+  get splitClock() {
+    return this._splitClock;
   }
 
   /**
