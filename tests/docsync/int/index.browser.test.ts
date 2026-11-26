@@ -173,6 +173,8 @@ describe("Local-First", () => {
 
       await reference.loadDoc();
       await reference.assertIDBDoc(emptyIDB);
+      // The load subscribes; only later syncs are debounced.
+      await expect.poll(() => syncCallCount(reference)).toBe(1);
       reference.client["_singleClientMaxDebounce"] = 1500;
       reference.client["_collabMaxDebounce"] = 1500;
       const referenceSyncCallsBeforeChange = syncCallCount(reference);

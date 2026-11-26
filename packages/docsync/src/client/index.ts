@@ -43,6 +43,7 @@ import { setupLocalPromise } from "./utils/setupLocalPromise.js";
 import { clearSyncRetry, type SyncRetryState } from "./utils/syncRetry.js";
 import type { DocStream } from "./utils/docStream.js";
 import { DocSyncError } from "./utils/DocSyncError.js";
+import { deserializeStoredDoc, readStoredDoc } from "./utils/storedDoc.js";
 
 // TODO: review this type!
 type LocalResolved<S extends object, O extends object> = {
@@ -89,6 +90,7 @@ type DocCacheEntry<D, O> = {
 };
 
 const LOCAL_IDB_MAX_DEBOUNCE = 50;
+const SERVER_BATCHES_TO_COMPACT = 500;
 const STORAGE_GAP_TIMEOUT = 2000;
 
 export class DocSyncClient<
@@ -98,6 +100,11 @@ export class DocSyncClient<
 > {
   protected _docBinding: DocBinding<D, S, O>;
   protected _docsCache = new Map<string, DocCacheEntry<D, O>>();
+  /**
+   * Server batches stored on top of a snapshot before they are folded into it
+   * (see `storedDoc.ts`).
+   */
+  protected _serverBatchesToCompact = SERVER_BATCHES_TO_COMPACT;
   /**
    * How long a server batch may wait for another tab of this device to store
    * the one before it, before this tab subscribes again (see `docStream.ts`).
@@ -551,11 +558,11 @@ export class DocSyncClient<
 
     return local.provider.transaction("readwrite", async (ctx) => {
       // Try to load existing doc
-      const stored = await ctx.getSerializedDoc({ docId });
+      const stored = await readStoredDoc(ctx, docId);
       const localOperations = await ctx.getOperations({ docId });
 
       if (stored) {
-        const doc = this._docBinding.deserialize(stored.serializedDoc);
+        const doc = deserializeStoredDoc(this, stored);
         this._liveClocks.set(doc, stored.clock);
         localOperations.forEach(({ operations: operationsBatch }) => {
           operationsBatch.forEach((operations) => {

@@ -1,6 +1,10 @@
 import { expect, test } from "vitest";
 import { indexedDBProvider } from "@docukit/docsync/client";
-import { openPreviousDatabase, transactionDone } from "./indexeddb/utils.js";
+import {
+  openPreviousDatabase,
+  previousDatabaseNames,
+  transactionDone,
+} from "./indexeddb/utils.js";
 
 test("lists stored clocks, including ties and zero, and filters document IDs", async () => {
   const local = indexedDBProvider({ userId: crypto.randomUUID() });
@@ -52,6 +56,20 @@ test("lists stored clocks, including ties and zero, and filters document IDs", a
       ctx.listClocks!({ docIds: ["a"] }),
     ),
   ).toStrictEqual([{ docId: "a", clock: 9 }]);
+
+  // Server batches stored after a snapshot take its doc further.
+  await local.transaction("readwrite", async (ctx) => {
+    await ctx.saveServerOperations({ docId: "b", clock: 4, operations: [] });
+    await ctx.saveServerOperations({ docId: "b", clock: 10, operations: [] });
+  });
+  expect(
+    await local.transaction("readonly", (ctx) => ctx.listClocks!()),
+  ).toStrictEqual([
+    { docId: "d", clock: 0 },
+    { docId: "c", clock: 3 },
+    { docId: "a", clock: 9 },
+    { docId: "b", clock: 10 },
+  ]);
 });
 
 test("providers on the same schema share snapshots and acknowledge exact operation batches", async () => {
@@ -114,40 +132,43 @@ test("keeps users with schema-like suffixes isolated", async () => {
   });
 });
 
-test("starts empty while a previous database with unsent work remains open", async () => {
-  const userId = crypto.randomUUID();
-  const previous = await openPreviousDatabase(userId);
-  const write = previous.transaction(["docs", "operations"], "readwrite");
-  write
-    .objectStore("docs")
-    .put({ docId: "a", clock: 0, serializedDoc: { text: "local only" } });
-  write
-    .objectStore("operations")
-    .add({ docId: "a", operations: [{ insert: "unsent" }] });
-  await transactionDone(write);
+test.each(Object.entries(previousDatabaseNames))(
+  "starts empty while a database of %s with unsent work remains open",
+  async (_schema, name) => {
+    const userId = crypto.randomUUID();
+    const previous = await openPreviousDatabase(userId, name);
+    const write = previous.transaction(["docs", "operations"], "readwrite");
+    write
+      .objectStore("docs")
+      .put({ docId: "a", clock: 0, serializedDoc: { text: "local only" } });
+    write
+      .objectStore("operations")
+      .add({ docId: "a", operations: [{ insert: "unsent" }] });
+    await transactionDone(write);
 
-  const local = indexedDBProvider({ userId });
-  await local.transaction("readonly", async (ctx) => {
-    expect(await ctx.listClocks!()).toStrictEqual([]);
-    expect(await ctx.getSerializedDoc({ docId: "a" })).toBeUndefined();
-    expect(await ctx.getOperations({ docId: "a" })).toStrictEqual([]);
-  });
-  await local.transaction("readwrite", (ctx) =>
-    ctx.saveSerializedDoc({
+    const local = indexedDBProvider({ userId });
+    await local.transaction("readonly", async (ctx) => {
+      expect(await ctx.listClocks!()).toStrictEqual([]);
+      expect(await ctx.getSerializedDoc({ docId: "a" })).toBeUndefined();
+      expect(await ctx.getOperations({ docId: "a" })).toStrictEqual([]);
+    });
+    await local.transaction("readwrite", (ctx) =>
+      ctx.saveSerializedDoc({
+        docId: "a",
+        clock: 5,
+        serializedDoc: { text: "current" },
+      }),
+    );
+
+    const read = previous.transaction(["docs", "operations"]);
+    const snapshot = read.objectStore("docs").get("a");
+    const pending = read.objectStore("operations").count();
+    await transactionDone(read);
+    expect(snapshot.result).toStrictEqual({
       docId: "a",
-      clock: 5,
-      serializedDoc: { text: "current" },
-    }),
-  );
-
-  const read = previous.transaction(["docs", "operations"]);
-  const snapshot = read.objectStore("docs").get("a");
-  const pending = read.objectStore("operations").count();
-  await transactionDone(read);
-  expect(snapshot.result).toStrictEqual({
-    docId: "a",
-    clock: 0,
-    serializedDoc: { text: "local only" },
-  });
-  expect(pending.result).toBe(1);
-});
+      clock: 0,
+      serializedDoc: { text: "local only" },
+    });
+    expect(pending.result).toBe(1);
+  },
+);
