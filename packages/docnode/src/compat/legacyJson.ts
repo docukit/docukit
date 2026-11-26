@@ -48,6 +48,11 @@ export function fromLegacyJson(legacy: LegacyJsonDoc): JsonDoc {
       for (const key in nodeState) {
         let k = keys.indexOf(key, 1);
         if (k < 0) k = keys.push(key) - 1;
+        // A mask is one JSON number: exact up to 53 bits.
+        if (k > 53)
+          throw new Error(
+            `Node type '${nodeType}' has more than 53 states, which is not allowed.`,
+          );
         mask += 2 ** (k - 1);
       }
       states.push(mask);

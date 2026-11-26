@@ -1,5 +1,9 @@
 import { type Doc, type DocNode } from "./main.js";
-import { type Json, type UnsafeDefinition } from "./types.js";
+import {
+  type Json,
+  type StateDefinition,
+  type UnsafeDefinition,
+} from "./types.js";
 import { detachRange, freezeInDev, isObjectEmpty } from "./utils.js";
 
 /**
@@ -12,13 +16,28 @@ export function stateKeyToJson(node: DocNode, key: string): Json {
   const resolvedNodeDef = node.doc["_resolvedNodeDefs"].get(node.type)!;
   if (!(key in node["_state"])) return resolvedNodeDef.defaultJson[key]!;
   const stateValue = (node as DocNode<UnsafeDefinition>)["_state"][key];
-  const stateDefinition = resolvedNodeDef.state[key];
-  const json: unknown = stateDefinition?.toJSON
-    ? stateDefinition.toJSON(stateValue)
-    : stateValue;
+  return stateValueToJson(
+    node.type,
+    key,
+    resolvedNodeDef.state[key],
+    stateValue,
+  );
+}
+
+/**
+ * The plain JSON of a state `value` of `key` on a node of `type`, through
+ * its definition's `toJSON`, which must not return `undefined` or a function.
+ */
+export function stateValueToJson(
+  type: string,
+  key: string,
+  definition: StateDefinition | undefined,
+  value: unknown,
+): Json {
+  const json: unknown = definition?.toJSON ? definition.toJSON(value) : value;
   if (json === undefined || typeof json === "function")
     throw new Error(
-      `The JSON serialization for state ${key} on a node of type ${node.type} is undefined.`,
+      `The JSON serialization for state ${key} on a node of type ${type} is undefined.`,
     );
   return toPlainJson(json);
 }

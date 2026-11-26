@@ -156,6 +156,27 @@ describe("stored format", () => {
     expect(loadAndSave(doc)).toStrictEqual(doc.toJSON());
   });
 
+  test("a value whose JSON is undefined throws, also one from operations", () => {
+    // `fromJSON` reads "undefined" as `undefined`, which has no JSON.
+    const Maybe = defineNode({
+      type: "maybe",
+      state: {
+        value: defineState({
+          fromJSON: (json) => (json === "undefined" ? undefined : (json ?? "")),
+        }),
+      },
+    });
+    const doc = new Doc({ type: "root", extensions: [{ nodes: [Maybe] }] });
+    doc.applyOperations([
+      [[0, [["a.0", "maybe"]], 0, 0, 0]],
+      { "a.0": { value: '"undefined"' } },
+    ]);
+    doc.forceCommit();
+    expect(() => doc.toJSON()).toThrowError(
+      "The JSON serialization for state value on a node of type maybe is undefined.",
+    );
+  });
+
   test("a document without other nodes is the root only", () => {
     const doc = textDoc();
     expect(doc.toJSON()).toStrictEqual([doc.root.id, "root", {}]);
@@ -554,6 +575,16 @@ describe("fromLegacyJson", () => {
       "root",
       {},
     ]);
+  });
+
+  test("a type with more than 53 state keys throws", () => {
+    const state: Record<string, string> = {};
+    for (let k = 0; k < 54; k++) state[`k${k}`] = "1";
+    expect(() =>
+      fromLegacyJson([ROOT_ID, "root", {}, [["a.0", "wide", state]]]),
+    ).toThrowError(
+      "Node type 'wide' has more than 53 states, which is not allowed.",
+    );
   });
 
   test("a converted document loads, and stores its ids as runs again", () => {

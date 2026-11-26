@@ -1594,10 +1594,11 @@ function writeValues(node: DocNode, type: StoredType, values: Json[]) {
   for (let k = 0; k < keys.length; k++, bit *= 2) {
     const key = keys[k]!;
     if (!(key in state)) continue;
-    const definition = definitions[k]!;
-    const value = state[key];
-    const json = ops.toPlainJson(
-      definition.toJSON ? definition.toJSON(value) : value,
+    const json = ops.stateValueToJson(
+      type.name,
+      key,
+      definitions[k],
+      state[key],
     );
     const fallback = defaults[k];
     // Most values are primitives: compared without a call.
