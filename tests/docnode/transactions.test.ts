@@ -429,7 +429,7 @@ describe("undoManager", () => {
     const doc = createTextDocWithUndo();
     const history: UndoHistory = {
       ...doc.undoManager.exportHistory(),
-      undoStack: [{ operations: [[[2, "start", 0, 0, 0, 0]], {}], meta: {} }],
+      undoStack: [{ operations: ["", [2, "start", 0, 0, 0, 0]], meta: {} }],
     };
 
     doc.undoManager.importHistory(history);
@@ -455,35 +455,39 @@ describe("undoManager", () => {
       { ...valid, docType: 1 },
       { ...valid, undoStack: null },
       { ...valid, undoStack: [null] },
-      { ...valid, undoStack: [{ operations: [[], {}], meta: [] }] },
+      { ...valid, undoStack: [{ operations: [""], meta: [] }] },
       { ...valid, redoStack: null },
       { ...valid, lastUpdate: "now" },
       { ...valid, lastUpdate: Number.NaN },
       withOperations(null),
       withOperations([]),
       withOperations([[]]),
-      withOperations([[null], {}]),
-      withOperations([[[0]], {}]),
-      withOperations([[[0, {}, 0, 0, 0]], {}]),
-      withOperations([[[0, [null], 0, 0, 0]], {}]),
-      withOperations([[[0, [["id"]], 0, 0, 0]], {}]),
-      withOperations([[[0, [["id", 1]], 0, 0, 0]], {}]),
-      withOperations([[[0, [["id", "type"]], null, 0, 0]], {}]),
-      withOperations([[[0, [["id", "type"]], 0, null, 0]], {}]),
-      withOperations([[[0, [["id", "type"]], 0, 0, null]], {}]),
-      withOperations([[[1]], {}]),
-      withOperations([[[1, 1, 0]], {}]),
-      withOperations([[[1, "start", null]], {}]),
-      withOperations([[[2]], {}]),
-      withOperations([[[2, 1, 0, 0, 0, 0]], {}]),
-      withOperations([[[2, "start", null, 0, 0, 0]], {}]),
-      withOperations([[[2, "start", 0, null, 0, 0]], {}]),
-      withOperations([[[2, "start", 0, 0, null, 0]], {}]),
-      withOperations([[[2, "start", 0, 0, 0, null]], {}]),
-      withOperations([[[3]], {}]),
-      withOperations([[], []]),
-      withOperations([[], { node: [] }]),
-      withOperations([[], { node: { value: 1 } }]),
+      withOperations([1]),
+      withOperations(["", null]),
+      withOperations(["", [0]]),
+      withOperations(["", [0, {}, 0, 0, 0]]),
+      withOperations(["", [0, [null], 0, 0, 0]]),
+      withOperations(["", [0, [["id"]], 0, 0, 0]]),
+      withOperations(["", [0, [["id", 1]], 0, 0, 0]]),
+      withOperations(["", [0, [["id", "type", "2"]], 0, 0, 0]]),
+      withOperations(["", [0, [["id", "type"]], null, 0, 0]]),
+      withOperations(["", [0, [["id", "type"]], 0, 0.5, 0]]),
+      withOperations(["", [0, [["id", "type"]], 0, 0]]),
+      withOperations(["", [1]]),
+      withOperations(["", [1, null, 0]]),
+      withOperations(["", [2]]),
+      withOperations(["", [2, "start", 0, 0, 0, null]]),
+      withOperations(["", [3]]),
+      // The state patch: columns of nodes, keys and values, the last row.
+      withOperations(["", [-9, ["node"], ["value"]]]),
+      withOperations(["", [-9, "node", ["value"], ["x"]]]),
+      withOperations(["", [-9, [{}], ["value"], ["x"]]]),
+      withOperations(["", [-9, ["node"], "value", ["x"]]]),
+      withOperations(["", [-9, ["node"], [1], ["x"]]]),
+      withOperations(["", [-9, ["node"], ["value"], "x"]]),
+      withOperations(["", [-9, ["node"], ["value", "key"], ["x"]]]),
+      withOperations(["", [-9, ["node"], ["value"], ["x", "y"]]]),
+      withOperations(["", [-9, ["node"], ["value"], ["x"]], [1, "start", 0]]),
     ];
 
     for (const malformed of malformedHistories) {
@@ -539,31 +543,26 @@ describe("undoManager", () => {
 
   test("mergeOperations combines operations without mutating inputs", () => {
     const first: Operations = [
-      [[1, "a", 0]],
-      { a: { value: "1" }, b: { value: "2" } },
+      "",
+      [1, "a", 0],
+      [-9, ["a", "b"], ["value", "value"], ["1", "2"]],
     ];
     const second: Operations = [
-      [[2, "b", 0, 0, 0, 0]],
-      { b: { value: "3" }, c: { value: "4" } },
+      "",
+      [2, "b", 0, 0, 0, 0],
+      [-9, ["b", "c"], ["value", "value"], ["3", "4"]],
     ];
+    const copies = structuredClone([first, second]);
 
     const merged = mergeOperations(first, second);
 
     expect(merged).toStrictEqual([
-      [
-        [1, "a", 0],
-        [2, "b", 0, 0, 0, 0],
-      ],
-      { a: { value: "1" }, b: { value: "3" }, c: { value: "4" } },
+      "",
+      [1, "a", 0],
+      [2, "b", 0, 0, 0, 0],
+      [-9, ["a", "b", "c"], ["value", "value", "value"], ["1", "3", "4"]],
     ]);
-    expect(first).toStrictEqual([
-      [[1, "a", 0]],
-      { a: { value: "1" }, b: { value: "2" } },
-    ]);
-    expect(second).toStrictEqual([
-      [[2, "b", 0, 0, 0, 0]],
-      { b: { value: "3" }, c: { value: "4" } },
-    ]);
+    expect([first, second]).toStrictEqual(copies);
   });
 
   test("undo immediately after a pending local update still undoes that update", () => {
@@ -972,22 +971,23 @@ describe("applyOperations", () => {
       doc.root.append(existing!);
       doc.forceCommit();
       doc.applyOperations([
+        "",
         [
+          0,
           [
-            0,
-            [
-              [existing!.id, "text"],
-              [created.id, "text"],
-            ],
-            0,
-            0,
-            0,
+            [existing!.id, "text"],
+            [created.id, "text"],
           ],
+          0,
+          0,
+          0,
         ],
-        {
-          [existing!.id]: { value: JSON.stringify("updated") },
-          [created.id]: { value: JSON.stringify("created") },
-        },
+        [
+          -9,
+          [existing!.id, created.id],
+          ["value", "value"],
+          ["updated", "created"],
+        ],
       ]);
       assertDoc(doc, ["updated", "created"]);
       expect(doc.getNodeById(existing!.id)).toBe(existing);
@@ -1001,8 +1001,9 @@ describe("applyOperations", () => {
       doc.root.append(existing!);
       doc.forceCommit();
       doc.applyOperations([
-        [[0, [[existing!.id, "text"]], 0, 0, 0]],
-        { [existing!.id]: { value: JSON.stringify("updated") } },
+        "",
+        [0, [[existing!.id, "text"]], 0, 0, 0],
+        [-9, [existing!.id], ["value"], ["updated"]],
       ]);
       assertDoc(doc, ["updated"]);
     });
@@ -1016,8 +1017,9 @@ describe("applyOperations", () => {
     const id = doc.createNode(Text).id;
     expect(() =>
       doc.applyOperations([
-        [[0, [[id, "unregistered"]], 0, 0, 0]],
-        { [existing!.id]: { value: JSON.stringify("updated") } },
+        "",
+        [0, [[id, "unregistered"]], 0, 0, 0],
+        [-9, [existing!.id], ["value"], ["updated"]],
       ]),
     ).not.toThrow();
     assertDoc(doc, ["existing"]);
@@ -1101,7 +1103,7 @@ describe("change", () => {
       assertMutation("15", () => node.to(node).copy(doc.root, "append"));
       assertMutation("16", () => node.to(node).move(doc.root, "append"));
       assertMutation("17", () => doc.forceCommit());
-      assertMutation("18", () => doc.applyOperations([[], {}]));
+      assertMutation("18", () => doc.applyOperations([""]));
     });
   });
 
