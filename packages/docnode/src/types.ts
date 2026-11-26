@@ -126,12 +126,18 @@ export type JsonDocNode<T extends NodeDefinition = NodeDefinition> = [
  * A document saved with `doc.toJSON()`, ready to load with `Doc.fromJSON`.
  * It is plain JSON. Its layout is internal, so store it as it is.
  */
-export type JsonDoc = [
-  id: string,
-  type: string,
-  state: Record<string, Json>,
-  children?: [JsonDoc, ...JsonDoc[]],
-];
+export type JsonDoc =
+  | [id: string, type: string, state: Record<string, Json>]
+  | [
+      id: string,
+      type: string,
+      state: Record<string, Json>,
+      types: string[],
+      type: number[],
+      children: number[],
+      states: Record<string, Json>[],
+      ids: string[],
+    ];
 
 /**
  * Information about nodes deleted, inserted, or updated during the transaction.

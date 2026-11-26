@@ -37,7 +37,12 @@ expect.addEqualityTesters([
   },
 ]);
 
-export const DOCNODE_ID = (sessionId = "[\\w-]", clockId = "[\\w-]") =>
+/**
+ * A DocNode id: the milliseconds between the root's creation and the
+ * session's (any length: a document loaded later has more), 3 random
+ * characters, and the clock.
+ */
+export const DOCNODE_ID = (sessionId = "[\\w-]+", clockId = "[\\w-]+") =>
   new RegExp(`^${sessionId}[\\w-]{3}\\.${clockId}$`);
 
 export const Text = defineNode({ type: "text", state: { value: string("") } });
@@ -111,17 +116,31 @@ type JsonWithoutId = [
 ];
 
 /**
- * A stored document without ids, with each state value as its JSON text,
- * which is easier to read in assertions.
+ * A stored document as a tree without ids, with each state value as its JSON
+ * text, which is easier to read in assertions than the stored columns.
  */
 export function prettifyJson(doc: JsonDoc): JsonWithoutId {
-  const state = Object.fromEntries(
-    Object.entries(doc[2]).map(([key, value]) => [key, JSON.stringify(value)]),
-  );
-  const children = doc[3]?.map(prettifyJson) as
-    | [JsonWithoutId, ...JsonWithoutId[]]
-    | undefined;
-  return children ? [doc[1], state, children] : [doc[1], state];
+  const [, type, rootState, types = [], typeColumn = [], children = [0]] = doc;
+  const [, , , , , , states = []] = doc;
+  const stringify = (state: Record<string, unknown>) =>
+    Object.fromEntries(
+      Object.entries(state).map(([key, value]) => [key, JSON.stringify(value)]),
+    );
+  let index = 0;
+  const read = (count: number): JsonWithoutId[] =>
+    Array.from({ length: count }, () => {
+      const name = types[typeColumn[index]!]!;
+      const state = states[index]!;
+      const count = children[++index]!;
+      const node: JsonWithoutId = [name, stringify(state)];
+      if (count > 0)
+        node.push(read(count) as [JsonWithoutId, ...JsonWithoutId[]]);
+      return node;
+    });
+  const nodes = read(children[0]!);
+  return nodes.length > 0
+    ? [type, stringify(rootState), nodes as [JsonWithoutId, ...JsonWithoutId[]]]
+    : [type, stringify(rootState)];
 }
 
 export const textDocConfig: DocConfig = {

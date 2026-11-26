@@ -53,17 +53,19 @@ const jsonSchema: v.GenericSchema<unknown, Json> = v.lazy(() =>
 
 const stateSchema = v.record(v.string(), jsonSchema);
 
-const serializedDocSchema: v.GenericSchema<unknown, JsonDoc> = v.lazy(() => {
-  const childrenSchema = v.tupleWithRest(
-    [serializedDocSchema],
-    serializedDocSchema,
-  );
-
-  return v.union([
-    v.tuple([v.string(), v.string(), stateSchema]),
-    v.tuple([v.string(), v.string(), stateSchema, childrenSchema]),
-  ]);
-});
+const serializedDocSchema: v.GenericSchema<unknown, JsonDoc> = v.union([
+  v.tuple([v.string(), v.string(), stateSchema]),
+  v.tuple([
+    v.string(),
+    v.string(),
+    stateSchema,
+    v.array(v.string()),
+    v.array(v.number()),
+    v.array(v.number()),
+    v.array(stateSchema),
+    v.array(v.string()),
+  ]),
+]);
 
 export const DocNodeValidators = () => {
   return {

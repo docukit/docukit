@@ -22,11 +22,44 @@ export type LegacyJsonDoc = [
  */
 export function fromLegacyJson(legacy: LegacyJsonDoc): JsonDoc {
   const [id, type, legacyState, legacyChildren] = legacy;
-  const state: Record<string, Json> = {};
-  for (const key in legacyState) state[key] = parse(legacyState[key]!);
-  if (!legacyChildren?.length) return [id, type, state];
-  const [first, ...rest] = legacyChildren.map(fromLegacyJson);
-  return [id, type, state, [first!, ...rest]];
+  if (!legacyChildren?.length) return [id, type, parseState(legacyState)];
+  const types: string[] = [];
+  const typeIndexes = new Map<string, number>();
+  const typeColumn: number[] = [];
+  const children: number[] = [legacyChildren.length];
+  const states: Record<string, Json>[] = [];
+  const ids: string[] = [];
+  const walk = (nodes: LegacyJsonDoc[]) => {
+    for (const [nodeId, nodeType, nodeState, nodeChildren] of nodes) {
+      ids.push(nodeId);
+      let index = typeIndexes.get(nodeType);
+      if (index === undefined) {
+        index = types.push(nodeType) - 1;
+        typeIndexes.set(nodeType, index);
+      }
+      typeColumn.push(index);
+      states.push(parseState(nodeState));
+      children.push(nodeChildren?.length ?? 0);
+      if (nodeChildren) walk(nodeChildren);
+    }
+  };
+  walk(legacyChildren);
+  const json: JsonDoc = [
+    id,
+    type,
+    parseState(legacyState),
+    types,
+    typeColumn,
+    children,
+    states,
+    ids,
+  ];
+  return json;
 }
 
-const parse = (text: string): Json => JSON.parse(text) as Json;
+function parseState(legacyState: Record<string, string>) {
+  const state: Record<string, Json> = {};
+  for (const key in legacyState)
+    state[key] = JSON.parse(legacyState[key]!) as Json;
+  return state;
+}
