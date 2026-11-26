@@ -1070,19 +1070,69 @@ export class Doc {
         ].join(" "),
       );
     }
-    const nodeToJsonDoc = (node: DocNode): JsonDoc => {
-      const jsonDoc: JsonDoc = [node.id, node.type, node["_stateJson"]()];
-      if (node.first) {
-        const children: JsonDoc[] = [];
-        node.children().forEach((childNode) => {
-          children.push(nodeToJsonDoc(childNode));
-        });
-        jsonDoc[3] = children as [JsonDoc, ...JsonDoc[]];
+    return this._writeJson();
+  }
+
+  /**
+   * The stored document: the root, then the other nodes in preorder as
+   * columns (see `JsonDoc`), written in one pass.
+   */
+  private _writeJson(): JsonDoc {
+    const root = this.root;
+    const rootState = root["_stateJson"]();
+    if (!root.first) return [root.id, root.type, rootState];
+    const types: string[] = [];
+    const typeIndexes = new Map<string, number>();
+    const typeColumn: number[] = [];
+    const children: number[] = [0];
+    const states: Record<string, Json>[] = [];
+    const ids: string[] = [];
+    let lastTypeName = "";
+    let lastTypeIndex = 0;
+    // A walk along the links, not a recursive closure: V8 can keep the
+    // context of a closure it optimized, and with it the last document
+    // written. `open` has the slot in `children` of each parent left open.
+    const open = [0];
+    let node: DocNode | undefined = root.first;
+    while (node) {
+      const at = open[open.length - 1]!;
+      children[at] = children[at]! + 1;
+      ids.push(node.id);
+      const typeName = node.type;
+      if (typeName !== lastTypeName) {
+        let index = typeIndexes.get(typeName);
+        if (index === undefined) {
+          index = types.push(typeName) - 1;
+          typeIndexes.set(typeName, index);
+        }
+        lastTypeName = typeName;
+        lastTypeIndex = index;
       }
-      return jsonDoc;
-    };
-    const jsonDoc = nodeToJsonDoc(this.root);
-    return jsonDoc;
+      typeColumn.push(lastTypeIndex);
+      states.push(node["_stateJson"]());
+      children.push(0);
+      if (node.first) {
+        open.push(children.length - 1);
+        node = node.first;
+        continue;
+      }
+      while (node !== root && !node.next) {
+        node = node.parent!;
+        open.pop();
+      }
+      node = node === root ? undefined : node.next;
+    }
+    const json: JsonDoc = [
+      root.id,
+      root.type,
+      rootState,
+      types,
+      typeColumn,
+      children,
+      states,
+      ids,
+    ];
+    return json;
   }
 
   // NOTE: Maybe someday, if I find it necessary, I can make a non-static method.
@@ -1108,47 +1158,161 @@ export class Doc {
       );
     }
     const doc = new Doc({ ...config, id });
-    const jsonDocToDocNode = (node: DocNode, childrenJsonDoc: JsonDoc[]) => {
-      const childrenNodes = childrenJsonDoc?.map((child) => {
-        const childNode = doc._createNodeFromJson(child);
-        return childNode;
-      });
-      if (childrenNodes) node.append(...childrenNodes);
-      childrenJsonDoc?.forEach((childNode, index) => {
-        const children = childNode[3];
-        if (children) {
-          jsonDocToDocNode(childrenNodes[index]!, children);
-        }
-      });
-    };
-    withTransaction(doc, () => {
-      const root = doc._createNodeFromJson(jsonDoc);
-      doc._nodeMap.delete(doc.root.id);
-      // @ts-expect-error - read-only property
-      doc.root = root;
-      doc._nodeMap.set(doc.root.id, doc.root);
-      if (jsonDoc[3]) jsonDocToDocNode(root, jsonDoc[3]);
-    });
+    withTransaction(doc, () => doc._readJson(jsonDoc));
     return doc;
   }
 
-  private _createNodeFromJson(jsonNode: JsonDoc): DocNode {
-    const [id, type] = jsonNode;
-    const ids = this._nodeIds;
-    if (!ids) this._validateNodeId(id);
-    const session = ids ? ids.split(id) : -1;
-    // @ts-expect-error - private constructor
-    const node = new DocNode(
-      this,
-      type,
-      id,
-      session,
-      ids?.splitClock,
-    ) as DocNode;
-    const state = this["_createStateFromJson"](jsonNode);
+  /**
+   * Builds the stored nodes of `json` (see `JsonDoc`) into this document,
+   * recording them as inserts while it goes: what `ops.onInsertRange` records
+   * when a tree is appended to the root, without walking it again.
+   *
+   * The new root and node map replace the document's only at the end, so a
+   * load that throws halfway leaves the document as it was.
+   */
+  private _readJson(json: JsonDoc) {
+    const [id, rootType, rootState] = json;
+    const root = this._storedNode(id, rootType, -1, 0);
+    this._readState(root, this._resolvedNodeDefs.get(rootType)!, rootState);
+    const map = new Map([[id, root]]);
+    if (json.length !== 3) this._readNodes(json, root, map);
     // @ts-expect-error - read-only property
-    node["_state"] = state;
-    return node;
+    this.root = root;
+    this._nodeMap = map;
+  }
+
+  /** Builds the nodes below `root` of a stored document into `map`. */
+  private _readNodes(
+    json: Extract<JsonDoc, { length: 8 }>,
+    root: DocNode,
+    map: Map<string, DocNode>,
+  ) {
+    const [, rootType, , types, typeColumn, children, states, ids] = json;
+    const count = ids.length;
+    if (
+      typeColumn.length !== count ||
+      states.length !== count ||
+      children.length !== count + 1
+    )
+      throw new Error(
+        "Invalid stored document: its columns do not have matching lengths.",
+      );
+    const definitions = types.map((name) => {
+      if (name === rootType)
+        throw new Error("You cannot insert nodes of type 'root'");
+      const definition = this._resolvedNodeDefs.get(name);
+      if (!definition)
+        throw new Error(
+          `Attempted to create a node of type '${name}' that was not registered.`,
+        );
+      return definition;
+    });
+    const nodeIds = this._nodeIds;
+    let index = 0;
+    const inserts = this._operations[0];
+    const patch = this._operations[1];
+    const inserted = this._diff.inserted;
+    // A loop with a stack of the parents left open, not a recursive closure:
+    // V8 can keep the context of a closure it optimized, and with it every
+    // array of the load (the columns and what was recorded).
+    const open: [DocNode, number, DocNode | undefined, [string, string][]][] =
+      [];
+    let parent = root;
+    let left = childCount(children, 0);
+    let prev: DocNode | undefined;
+    // One insert per list of children, in the order a walk finds them.
+    let written: [string, string][] = [];
+    // Columns without nodes (not what `toJSON` writes) insert nothing.
+    if (left > 0) inserts.push([0, written, 0, 0, 0]);
+    for (;;) {
+      if (left === 0) {
+        parent["_set"]("last", prev);
+        const frame = open.pop();
+        if (!frame) break;
+        [parent, left, prev, written] = frame;
+        continue;
+      }
+      left--;
+      if (index === count)
+        throw new Error(
+          "Invalid stored document: it counts more children than it has nodes.",
+        );
+      const nodeId = ids[index]!;
+      if (!nodeIds) this._validateNodeId(nodeId);
+      if (map.has(nodeId))
+        throw new Error(
+          `Node '${nodeId}' cannot be inserted because it already exists in the doc.`,
+        );
+      const definition = definitions[typeColumn[index]!];
+      if (!definition)
+        throw new Error(
+          `Invalid stored document: node '${nodeId}' has type ${typeColumn[index]}, which is not in its types.`,
+        );
+      const type = definition.type;
+      const session = nodeIds ? nodeIds.split(nodeId) : -1;
+      // @ts-expect-error - private constructor
+      const node = new DocNode(
+        this,
+        type,
+        nodeId,
+        session,
+        nodeIds?.splitClock,
+      ) as DocNode;
+      this._readState(node, definition, states[index++]!);
+      const changed = node["_stateToJson"]();
+      if (!isObjectEmpty(changed)) patch[nodeId] = changed;
+      written.push([nodeId, type]);
+      inserted.add(nodeId);
+      map.set(nodeId, node);
+      node["_set"]("parent", parent);
+      if (prev) {
+        node["_set"]("prev", prev);
+        prev["_set"]("next", node);
+      } else parent["_set"]("first", node);
+      prev = node;
+      const grandchildren = childCount(children, index);
+      if (grandchildren > 0) {
+        open.push([parent, left, prev, written]);
+        parent = node;
+        left = grandchildren;
+        prev = undefined;
+        written = [];
+        inserts.push([0, written, node.id, 0, 0]);
+      }
+    }
+    if (index !== count)
+      throw new Error(
+        "Invalid stored document: it has nodes that no parent counts.",
+      );
+    const { first, last } = root;
+    if (first)
+      this._inverseOperations[0].push([
+        1,
+        first.id,
+        last !== first ? last!.id : 0,
+      ]);
+  }
+
+  /**
+   * Reads a stored state into `node`, each value through its key's
+   * definition, which must be registered.
+   */
+  private _readState(
+    node: DocNode,
+    definition: ResolvedNodeDefinition,
+    json: Record<string, Json>,
+  ) {
+    const state: Record<string, unknown> = node["_state"];
+    for (const key in json) {
+      const stateDefinition = definition.state[key];
+      if (!stateDefinition)
+        throw new Error(
+          `Attempted to create a node of type '${node.type}' with a state that is not registered: ${key}`,
+        );
+      // The value is the stored document's, not a copy: frozen, like a
+      // value set with `set`.
+      state[key] = freezeInDev(stateDefinition.fromJSON(json[key]));
+    }
   }
 
   /**
@@ -1172,27 +1336,6 @@ export class Doc {
       );
     // @ts-expect-error - private constructor
     return new DocNode(this, type, id, session, clock) as DocNode;
-  }
-
-  private _createStateFromJson(jsonNode: JsonDoc): Record<string, unknown> {
-    const [, type, jsonState] = jsonNode;
-    const resolvedNodeDef = this._resolvedNodeDefs.get(type);
-    if (!resolvedNodeDef)
-      throw new Error(
-        `Attempted to create a node of type '${type}' that was not registered.`,
-      );
-    const state: Record<string, unknown> = {};
-    for (const key in jsonState) {
-      const stateDefinition = resolvedNodeDef.state[key];
-      if (!stateDefinition)
-        throw new Error(
-          `Attempted to create a node of type '${type}' with a state that is not registered: ${key}`,
-        );
-      // The value is the stored document's, not a copy: frozen, like a
-      // value set with `set`.
-      state[key] = freezeInDev(stateDefinition.fromJSON(jsonState[key]));
-    }
-    return state;
   }
 }
 
@@ -1294,4 +1437,14 @@ function stateKeyMethods(
     return (node: DocNode<UnsafeDefinition>): StateKeyMethods =>
       definition.methods?.(methods(node));
   return methods;
+}
+
+/** The number of children of the stored node at `index` of `children`. */
+function childCount(children: number[], index: number) {
+  const count = children[index]!;
+  if (!Number.isInteger(count) || count < 0)
+    throw new Error(
+      `Invalid stored document: ${count} is not a number of children.`,
+    );
+  return count;
 }

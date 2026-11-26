@@ -63,9 +63,22 @@ describe("types", () => {
       ["1", "text", { value: "1" }, []]
     >().not.toMatchTypeOf<JsonDoc>();
 
-    // State values are plain JSON.
     expectTypeOf<
       ["1", "text", { value: 1 }, [["2", "text", { value: [true] }]]]
+    >().not.toMatchTypeOf<JsonDoc>();
+
+    // The other nodes as columns, with state values as plain JSON.
+    expectTypeOf<
+      [
+        "1",
+        "text",
+        { value: 1 },
+        ["text"],
+        [0],
+        [1, 0],
+        [{ value: [true] }],
+        ["2"],
+      ]
     >().toMatchTypeOf<JsonDoc>();
   });
 

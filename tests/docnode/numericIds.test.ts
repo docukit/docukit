@@ -1,4 +1,5 @@
 import { Doc, type DocNode, type Operations } from "@docukit/docnode";
+import { fromLegacyJson } from "@docukit/docnode/compat";
 import { describe, expect, test } from "vitest";
 import {
   assertDoc,
@@ -73,18 +74,16 @@ describe("each node keeps its id as numbers", () => {
     // Not written back the same from numbers: a clock with a leading zero,
     // a character out of the alphabet, more than 8 digits, no session or
     // no clock.
-    const loaded = Doc.fromJSON(config, [
-      "01kc52hq510g6y44jhq0wqrjb3",
-      "root",
-      {},
-      [
-        ["s.-0", "text", {}],
-        ["s.é", "text", {}],
-        ["s.123456789", "text", {}],
-        [".0", "text", {}],
-        ["x.", "text", {}],
-      ],
-    ]);
+    const ids = ["s.-0", "s.é", "s.123456789", ".0", "x."];
+    const loaded = Doc.fromJSON(
+      config,
+      fromLegacyJson([
+        "01kc52hq510g6y44jhq0wqrjb3",
+        "root",
+        {},
+        ids.map((id) => [id, "text", {}]),
+      ]),
+    );
     expect(loaded.root["_session"]).toBe(-1);
     loaded.root.children().forEach((node) => {
       expect(node["_session"]).toBe(-1);
