@@ -77,10 +77,7 @@ export function withTransaction(
   const isNewTx = doc["_lifeCycleStage"] === "idle";
   if (isNewTx) {
     doc["_lifeCycleStage"] = "update";
-    queueMicrotask(() => {
-      // A forceCommit can put the stage into idle mode and there is no need to commit again.
-      if (doc["_lifeCycleStage"] === "update") doc.forceCommit();
-    });
+    queueMicrotask(doc["_commitTask"]);
   }
 
   try {

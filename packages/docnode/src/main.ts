@@ -619,6 +619,14 @@ export class Doc {
   protected _inverseOperations: ops.DraftOperations = [[], {}];
   protected _transactionFlags: TransactionFlags;
   private _isForceCommitCallback = false;
+  /**
+   * The microtask that commits a transaction: one function per document, not
+   * a closure per transaction. A forceCommit can put the stage into idle mode
+   * and there is no need to commit again.
+   */
+  private readonly _commitTask = () => {
+    if (this._lifeCycleStage === "update") this.forceCommit();
+  };
   protected _diff: Diff = {
     deleted: new Map(),
     inserted: new Set(),
