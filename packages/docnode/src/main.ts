@@ -1166,18 +1166,37 @@ export class Doc {
    * Builds the stored nodes of `json` (see `JsonDoc`) into this document,
    * recording them as inserts while it goes: what `ops.onInsertRange` records
    * when a tree is appended to the root, without walking it again.
+   *
+   * The new root and node map replace the document's only at the end, so a
+   * load that throws halfway leaves the document as it was.
    */
   private _readJson(json: JsonDoc) {
     const [id, rootType, rootState] = json;
     const root = this._storedNode(id, rootType, -1, 0);
     this._readState(root, this._resolvedNodeDefs.get(rootType)!, rootState);
-    const map = this._nodeMap;
-    map.clear();
+    const map = new Map([[id, root]]);
+    if (json.length !== 3) this._readNodes(json, root, map);
     // @ts-expect-error - read-only property
     this.root = root;
-    map.set(id, root);
-    if (json.length === 3) return;
-    const [, , , types, typeColumn, children, states, ids] = json;
+    this._nodeMap = map;
+  }
+
+  /** Builds the nodes below `root` of a stored document into `map`. */
+  private _readNodes(
+    json: Extract<JsonDoc, { length: 8 }>,
+    root: DocNode,
+    map: Map<string, DocNode>,
+  ) {
+    const [, rootType, , types, typeColumn, children, states, ids] = json;
+    const count = ids.length;
+    if (
+      typeColumn.length !== count ||
+      states.length !== count ||
+      children.length !== count + 1
+    )
+      throw new Error(
+        "Invalid stored document: its columns do not have matching lengths.",
+      );
     const definitions = types.map((name) => {
       if (name === rootType)
         throw new Error("You cannot insert nodes of type 'root'");
@@ -1199,7 +1218,7 @@ export class Doc {
     const open: [DocNode, number, DocNode | undefined, [string, string][]][] =
       [];
     let parent = root;
-    let left = children[0]!;
+    let left = childCount(children, 0);
     let prev: DocNode | undefined;
     // One insert per list of children, in the order a walk finds them.
     let written: [string, string][] = [];
@@ -1214,13 +1233,21 @@ export class Doc {
         continue;
       }
       left--;
+      if (index === count)
+        throw new Error(
+          "Invalid stored document: it counts more children than it has nodes.",
+        );
       const nodeId = ids[index]!;
       if (!nodeIds) this._validateNodeId(nodeId);
       if (map.has(nodeId))
         throw new Error(
           `Node '${nodeId}' cannot be inserted because it already exists in the doc.`,
         );
-      const definition = definitions[typeColumn[index]!]!;
+      const definition = definitions[typeColumn[index]!];
+      if (!definition)
+        throw new Error(
+          `Invalid stored document: node '${nodeId}' has type ${typeColumn[index]}, which is not in its types.`,
+        );
       const type = definition.type;
       const session = nodeIds ? nodeIds.split(nodeId) : -1;
       // @ts-expect-error - private constructor
@@ -1243,7 +1270,7 @@ export class Doc {
         prev["_set"]("next", node);
       } else parent["_set"]("first", node);
       prev = node;
-      const grandchildren = children[index]!;
+      const grandchildren = childCount(children, index);
       if (grandchildren > 0) {
         open.push([parent, left, prev, written]);
         parent = node;
@@ -1253,6 +1280,10 @@ export class Doc {
         inserts.push([0, written, node.id, 0, 0]);
       }
     }
+    if (index !== count)
+      throw new Error(
+        "Invalid stored document: it has nodes that no parent counts.",
+      );
     const { first, last } = root;
     if (first)
       this._inverseOperations[0].push([
@@ -1406,4 +1437,14 @@ function stateKeyMethods(
     return (node: DocNode<UnsafeDefinition>): StateKeyMethods =>
       definition.methods?.(methods(node));
   return methods;
+}
+
+/** The number of children of the stored node at `index` of `children`. */
+function childCount(children: number[], index: number) {
+  const count = children[index]!;
+  if (!Number.isInteger(count) || count < 0)
+    throw new Error(
+      `Invalid stored document: ${count} is not a number of children.`,
+    );
+  return count;
 }

@@ -183,6 +183,62 @@ describe("reading a stored document", () => {
     );
   });
 
+  /** Two text nodes in the root, with the type or children column changed. */
+  const twoNodes = (columns: { type?: number[]; children?: number[] }) => {
+    const json = stored(["text"], ["a.0", "a.1"]);
+    if (columns.type) json[4] = columns.type;
+    if (columns.children) json[5] = columns.children;
+    return json;
+  };
+
+  test.each([
+    [{ type: [0] }, "its columns do not have matching lengths."],
+    [{ children: [2, 0] }, "its columns do not have matching lengths."],
+    [{ children: [3, 0, 0] }, "it counts more children than it has nodes."],
+    [{ children: [1, 0, 0] }, "it has nodes that no parent counts."],
+    [{ type: [0, 1] }, "node 'a.1' has type 1, which is not in its types."],
+    [{ children: [1, -1, 0] }, "-1 is not a number of children."],
+    [{ children: [2, 0.5, 0] }, "0.5 is not a number of children."],
+  ])("columns %j that do not fit throw", (columns, message) => {
+    expect(() => Doc.fromJSON(config, twoNodes(columns))).toThrowError(
+      `Invalid stored document: ${message}`,
+    );
+  });
+
+  test("a load that throws halfway leaves the document as it was", () => {
+    const Picky = defineNode({
+      type: "picky",
+      state: {
+        value: defineState({
+          fromJSON: (json) => {
+            if (json === "bad") throw new Error("A bad value");
+            return json ?? "";
+          },
+        }),
+      },
+    });
+    let kept: Doc | undefined;
+    let rootBefore: DocNode | undefined;
+    const Keep: Extension = {
+      nodes: [Picky],
+      register: (doc) => {
+        kept = doc;
+        rootBefore = doc.root;
+      },
+    };
+    const json = stored(
+      ["picky"],
+      ["a.0", "a.1"],
+      [{ value: "good" }, { value: "bad" }],
+    );
+    expect(() =>
+      Doc.fromJSON({ type: "root", extensions: [Keep] }, json),
+    ).toThrowError("A bad value");
+    expect(kept!.root).toBe(rootBefore);
+    expect(kept!.toJSON()).toStrictEqual([ROOT_ID, "root", {}]);
+    expect(kept!.getNodeById("a.0")).toBeUndefined();
+  });
+
   test("columns without nodes load an empty document", () => {
     const doc = Doc.fromJSON(config, stored([], []));
     const events: ChangeEvent[] = [];
