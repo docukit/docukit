@@ -684,11 +684,6 @@ export class Doc {
         }
       }
 
-      // A stored document marks a node's keys with the bits of a JSON number.
-      if (Object.keys(resolvedNodeDef.state).length > 53)
-        throw new Error(
-          `Node type '${nodeDef.type}' has more than 53 states, which is not allowed.`,
-        );
       this._resolvedNodeDefs.set(nodeDef.type, resolvedNodeDef);
       this._nodeDefs.add(nodeDef);
       if (!nodeDef.type) throw new Error(`Node does not have a type property`);
@@ -1120,10 +1115,17 @@ export class Doc {
     const root = this.root;
     const values: Json[] = [];
     const rootType = this._storedType(root.type);
-    const rootMask = writeValues(root, rootType, values);
+    const rootMasks: number[] = [];
+    writeValues(root, rootType, values, rootMasks);
     const rootState: Record<string, Json> = {};
-    for (let k = 0, at = 0, mask = rootMask; mask > 0; k++, mask = half(mask))
-      if (mask % 2 === 1) rootState[rootType.keys[k]!] = values[at++]!;
+    let at = 0;
+    for (let c = 0; c < rootMasks.length; c++)
+      for (
+        let k = c * MASK_BITS, mask = rootMasks[c]!;
+        mask > 0;
+        k++, mask >>>= 1
+      )
+        if ((mask & 1) === 1) rootState[rootType.keys[k]!] = values[at++]!;
     if (!root.first) return [root.id, root.type, rootState];
     values.length = 0;
     const types: StoredType[] = [];
@@ -1157,7 +1159,17 @@ export class Doc {
         lastTypeIndex = index;
       }
       typeColumn.push(lastTypeIndex);
-      states.push(writeValues(node, lastType, values));
+      states.push(writeMask(node, lastType, values, 0, lastType.firstEnd));
+      for (let k = MASK_BITS; k < lastType.keys.length; k += MASK_BITS)
+        states.push(
+          writeMask(
+            node,
+            lastType,
+            values,
+            k,
+            Math.min(k + MASK_BITS, lastType.keys.length),
+          ),
+        );
       children.push(0);
       if (node.first) {
         open.push(children.length - 1);
@@ -1195,6 +1207,7 @@ export class Doc {
       keys,
       definitions: keys.map((key) => definition.state[key]!),
       defaults: keys.map((key) => definition.defaultJson[key]!),
+      firstEnd: Math.min(keys.length, MASK_BITS),
     };
   }
 
@@ -1260,7 +1273,7 @@ export class Doc {
       json;
     const [, , , , , , , , sessions, ids] = json;
     const count = typeColumn.length;
-    if (states.length !== count || children.length !== count + 1)
+    if (children.length !== count + 1)
       throw new Error(
         "Invalid stored document: its columns do not have matching lengths.",
       );
@@ -1290,6 +1303,7 @@ export class Doc {
     const nextClocks = sessions.map(() => 0);
     let idAt = 0;
     let valueAt = 0;
+    let maskAt = 0;
     let runPrefix = "";
     let runSession = 0;
     let runClock = 0;
@@ -1397,32 +1411,45 @@ export class Doc {
         session,
         clock,
       ) as DocNode;
-      let mask = states[index++]!;
-      if (mask !== 0) {
-        if (
-          !Number.isInteger(mask) ||
-          mask < 0 ||
-          mask >= 2 ** type.keys.length
-        )
+      index++;
+      const keyCount = type.keys.length;
+      let hasState = false;
+      for (let base = 0; ; base += MASK_BITS) {
+        if (maskAt === states.length)
           throw new Error(
-            `Invalid stored document: node '${nodeId!}' has a mask that is not valid.`,
+            "Invalid stored document: it has fewer masks than its nodes need.",
           );
-        const state = node["_values"]();
-        for (let k = 0; mask > 0; k++, mask = half(mask)) {
-          if (mask % 2 === 0) continue;
-          if (valueAt === values.length)
+        let mask = states[maskAt++]!;
+        if (mask !== 0) {
+          if (
+            !Number.isInteger(mask) ||
+            mask < 0 ||
+            mask >= 2 ** Math.min(MASK_BITS, keyCount - base)
+          )
             throw new Error(
-              "Invalid stored document: it has fewer values than its masks say.",
+              `Invalid stored document: node '${nodeId!}' has a mask that is not valid.`,
             );
-          const key = type.keys[k]!;
-          // The value is the stored document's, not a copy: frozen, like a
-          // value set with `set`.
-          state[key] = freezeInDev(
-            this._storedStateDefinition(type.definition, key).fromJSON(
-              values[valueAt++],
-            ),
-          );
+          hasState = true;
+          const state = node["_values"]();
+          for (let k = base; mask > 0; k++, mask >>>= 1) {
+            if ((mask & 1) === 0) continue;
+            if (valueAt === values.length)
+              throw new Error(
+                "Invalid stored document: it has fewer values than its masks say.",
+              );
+            const key = type.keys[k]!;
+            // The value is the stored document's, not a copy: frozen, like a
+            // value set with `set`.
+            state[key] = freezeInDev(
+              this._storedStateDefinition(type.definition, key).fromJSON(
+                values[valueAt++],
+              ),
+            );
+          }
         }
+        if (base + MASK_BITS >= keyCount) break;
+      }
+      if (hasState) {
         const changed = node["_stateToJson"]();
         if (!isObjectEmpty(changed)) patch[nodeId!] = changed;
       }
@@ -1454,6 +1481,10 @@ export class Doc {
     if (valueAt !== values.length)
       throw new Error(
         "Invalid stored document: it has more values than its masks say.",
+      );
+    if (maskAt !== states.length)
+      throw new Error(
+        "Invalid stored document: it has more masks than its nodes need.",
       );
     const { first, last } = root;
     if (first)
@@ -1575,23 +1606,56 @@ type StoredType = {
   keys: string[];
   definitions: StateDefinition[];
   defaults: Json[];
+  /** The end of the keys of its first mask. */
+  firstEnd: number;
 };
 
-/** `mask` without its lowest bit, shifted: exact up to 2^53, unlike `>>>`. */
-const half = (mask: number) => (mask - (mask % 2)) / 2;
+/**
+ * The bits of one mask: a node's keys take one mask per `MASK_BITS` of its
+ * type's keys (at least one), so a type has no limit of keys. 30 bits keep
+ * every mask a small integer of V8, which bit operations handle fastest.
+ */
+const MASK_BITS = 30;
 
 /**
  * Pushes to `values` the node's state values that are not the default, as
- * plain JSON (the operations keep them as strings of JSON), and returns the
- * mask of their keys: bit `k` stands for `type.keys[k]`.
+ * plain JSON (the operations keep them as strings of JSON), and to `masks`
+ * the masks of their keys: bit `k` of mask `c` stands for
+ * `type.keys[c * MASK_BITS + k]`.
  */
-function writeValues(node: DocNode, type: StoredType, values: Json[]) {
+function writeValues(
+  node: DocNode,
+  type: StoredType,
+  values: Json[],
+  masks: number[],
+) {
+  masks.push(writeMask(node, type, values, 0, type.firstEnd));
+  for (let k = MASK_BITS; k < type.keys.length; k += MASK_BITS)
+    masks.push(
+      writeMask(
+        node,
+        type,
+        values,
+        k,
+        Math.min(k + MASK_BITS, type.keys.length),
+      ),
+    );
+}
+
+/** The mask of the keys `from` up to `to` (see `writeValues`). */
+function writeMask(
+  node: DocNode,
+  type: StoredType,
+  values: Json[],
+  from: number,
+  to: number,
+) {
   const state: Record<string, unknown> = node["_state"];
   if (state === NO_STATE) return 0;
   let mask = 0;
   let bit = 1;
   const { keys, definitions, defaults } = type;
-  for (let k = 0; k < keys.length; k++, bit *= 2) {
+  for (let k = from; k < to; k++, bit <<= 1) {
     const key = keys[k]!;
     if (!(key in state)) continue;
     const json = ops.stateValueToJson(

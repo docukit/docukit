@@ -32,6 +32,9 @@ export function fromLegacyJson(legacy: LegacyJsonDoc): JsonDoc {
   const states: number[] = [];
   const values: Json[] = [];
   const ids: string[] = [];
+  // The keys each node has, as indexes in its type's keys: its masks are
+  // written once every type has all its keys.
+  const nodeKeys: number[][] = [];
   const walk = (nodes: LegacyJsonDoc[]) => {
     for (const [nodeId, nodeType, nodeState, nodeChildren] of nodes) {
       ids.push(nodeId);
@@ -44,25 +47,29 @@ export function fromLegacyJson(legacy: LegacyJsonDoc): JsonDoc {
       typeColumn.push(index);
       // The keys of a type are its keys in the order they first appear.
       const keys = types[index]!;
-      let mask = 0;
+      const present: number[] = [];
       for (const key in nodeState) {
         let k = keys.indexOf(key, 1);
         if (k < 0) k = keys.push(key) - 1;
-        // A mask is one JSON number: exact up to 53 bits.
-        if (k > 53)
-          throw new Error(
-            `Node type '${nodeType}' has more than 53 states, which is not allowed.`,
-          );
-        mask += 2 ** (k - 1);
+        present.push(k - 1);
       }
-      states.push(mask);
-      for (let k = 1; mask > 0; k++, mask = Math.floor(mask / 2))
-        if (mask % 2 === 1) values.push(parse(nodeState[keys[k]!]!));
+      present.sort((a, b) => a - b);
+      for (const k of present) values.push(parse(nodeState[keys[k + 1]!]!));
+      nodeKeys.push(present);
       children.push(nodeChildren?.length ?? 0);
       if (nodeChildren) walk(nodeChildren);
     }
   };
   walk(legacyChildren);
+  for (let n = 0; n < nodeKeys.length; n++) {
+    const chunks = Math.max(
+      1,
+      Math.ceil((types[typeColumn[n]!]!.length - 1) / 30),
+    );
+    const masks: number[] = new Array<number>(chunks).fill(0);
+    for (const k of nodeKeys[n]!) masks[Math.floor(k / 30)]! += 2 ** (k % 30);
+    states.push(...masks);
+  }
   const json: JsonDoc = [
     id,
     type,

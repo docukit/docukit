@@ -373,6 +373,8 @@ describe("reading a stored document", () => {
     [[0.5, 0], ["x"], "node 'a.0' has a mask that is not valid."],
     [[1, 1], ["x"], "it has fewer values than its masks say."],
     [[1, 0], ["x", "y"], "it has more values than its masks say."],
+    [[0], [], "it has fewer masks than its nodes need."],
+    [[0, 0, 0], [], "it has more masks than its nodes need."],
   ])(
     "masks %j with values %j that do not fit throw",
     (masks, values, message) => {
@@ -464,24 +466,49 @@ describe("reading a stored document", () => {
     expect(doc.toJSON()).toStrictEqual([ROOT_ID, "root", {}]);
   });
 
-  test("a node type can have up to 53 states", () => {
-    const states = (count: number) =>
-      Object.fromEntries(
-        Array.from({ length: count }, (_, i) => [
-          `s${i}`,
-          defineState({ fromJSON: (json) => json ?? 0 }),
-        ]),
-      );
-    const Big = defineNode({ type: "big", state: states(53) });
-    expect(
-      () => new Doc({ type: "root", extensions: [{ nodes: [Big] }] }),
-    ).not.toThrow();
-    const TooBig = defineNode({ type: "big", state: states(54) });
-    expect(
-      () => new Doc({ type: "root", extensions: [{ nodes: [TooBig] }] }),
-    ).toThrowError(
-      "Node type 'big' has more than 53 states, which is not allowed.",
+  /** `count` number states, `s0`, `s1`... */
+  const manyStates = (count: number) =>
+    Object.fromEntries(
+      Array.from({ length: count }, (_, i) => [
+        `s${i}`,
+        defineState({ fromJSON: (json) => json ?? 0 }),
+      ]),
     );
+
+  test("a node type can have any number of states: one mask per 30 keys", () => {
+    const Wide = defineNode({ type: "wide", state: manyStates(120) });
+    const wideConfig = { type: "root", extensions: [{ nodes: [Wide] }] };
+    const doc = new Doc(wideConfig);
+    const node = doc.createNode(Wide);
+    doc.root.append(node, doc.createNode(Wide));
+    for (const k of [0, 52, 53, 105, 106, 119]) node.state[`s${k}`]!.set(k + 1);
+    doc.forceCommit();
+    const json = doc.toJSON();
+    expect(json.slice(6, 8)).toStrictEqual([
+      [1, 2 ** 22 + 2 ** 23, 0, 2 ** 15 + 2 ** 16 + 2 ** 29, 0, 0, 0, 0],
+      [1, 53, 54, 106, 107, 120],
+    ]);
+    const loaded = Doc.fromJSON(wideConfig, json);
+    loaded.forceCommit();
+    expect(loaded.toJSON()).toStrictEqual(json);
+  });
+
+  test("so can the root's type", () => {
+    const WideRoot = defineNode({ type: "wideRoot", state: manyStates(40) });
+    const wideConfig = {
+      type: "wideRoot",
+      extensions: [{ nodes: [WideRoot] }],
+    };
+    const doc = new Doc(wideConfig);
+    const root: DocNode = doc.root;
+    if (!root.is(WideRoot)) throw new Error("The root is a WideRoot");
+    root.state.s35!.set(36);
+    doc.forceCommit();
+    const json = doc.toJSON();
+    expect(json).toStrictEqual([root.id, "wideRoot", { s35: 36 }]);
+    const loaded = Doc.fromJSON(wideConfig, json);
+    loaded.forceCommit();
+    expect(loaded.toJSON()).toStrictEqual(json);
   });
 });
 
@@ -577,14 +604,24 @@ describe("fromLegacyJson", () => {
     ]);
   });
 
-  test("a type with more than 53 state keys throws", () => {
+  test("a type with more than 30 state keys takes one mask per 30 keys", () => {
     const state: Record<string, string> = {};
-    for (let k = 0; k < 54; k++) state[`k${k}`] = "1";
-    expect(() =>
-      fromLegacyJson([ROOT_ID, "root", {}, [["a.0", "wide", state]]]),
-    ).toThrowError(
-      "Node type 'wide' has more than 53 states, which is not allowed.",
-    );
+    for (let k = 0; k < 54; k++) state[`k${k}`] = String(k);
+    const [, , , types, , , masks, values] = fromLegacyJson([
+      ROOT_ID,
+      "root",
+      {},
+      [
+        ["a.0", "wide", { k0: "0" }],
+        ["a.1", "wide", state],
+      ],
+    ]) as Extract<JsonDoc, { length: 10 }>;
+    expect(types[0]!.length).toBe(55);
+    expect(masks).toStrictEqual([1, 0, 2 ** 30 - 1, 2 ** 24 - 1]);
+    expect(values).toStrictEqual([
+      0,
+      ...Array.from({ length: 54 }, (_, k) => k),
+    ]);
   });
 
   test("a converted document loads, and stores its ids as runs again", () => {
