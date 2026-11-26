@@ -136,7 +136,8 @@ export type JsonDoc =
       type: number[],
       children: number[],
       states: Record<string, Json>[],
-      ids: string[],
+      sessions: string[],
+      ids: (number | string)[],
     ];
 
 /**

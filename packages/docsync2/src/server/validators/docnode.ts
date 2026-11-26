@@ -66,6 +66,7 @@ const serializedDocSchema: v.GenericSchema<unknown, JsonDoc> = v.union([
     v.array(v.number()),
     v.array(stateSchema),
     v.array(v.string()),
+    v.array(v.union([v.number(), v.string()])),
   ]),
 ]);
 

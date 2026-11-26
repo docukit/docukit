@@ -17,7 +17,9 @@ import {
   TextExtension,
   checkUndoManager,
   humanReadableOperations,
+  idsOf,
   loadAndSave,
+  sessionOf,
   text,
   textDoc,
   textDocConfig as config,
@@ -26,7 +28,7 @@ import {
 const ROOT_ID = "01kc52hq510g6y44jhq0wqrjb3";
 
 /** The ids of the nodes of `doc` other than the root, in preorder. */
-const idsOf = (doc: Doc) => {
+const preorderIds = (doc: Doc) => {
   const ids: string[] = [];
   doc.root.descendants().forEach((node) => ids.push(node.id));
   return ids;
@@ -51,9 +53,70 @@ describe("stored format", () => {
       [0, 0, 0, 0, 0],
       [3, 0, 2, 0, 0, 0],
       ["1", "2", "2.1", "2.2", "3"].map((value) => ({ value })),
-      idsOf(doc),
+      [sessionOf(doc)],
+      // clocks 0-1, then 3-4 (1 after the next one, 2), then 2 (3 before 5)
+      [0, 0, 2, 0, 1, 2, 0, -3, 1],
     ]);
     expect(loadAndSave(doc)).toStrictEqual(doc.toJSON());
+  });
+
+  test("a run of ids can go down, as prepending makes it", () => {
+    const doc = textDoc();
+    for (const value of ["1", "2", "3"]) doc.root.prepend(...text(doc, value));
+    doc.forceCommit();
+    expect(idsOf(doc)).toStrictEqual([0, 2, -3]);
+    expect(loadAndSave(doc)).toStrictEqual(doc.toJSON());
+  });
+
+  test("the ids of nodes of other sessions", () => {
+    const a = textDoc();
+    const b = Doc.fromJSON(config, a.toJSON());
+    b.forceCommit();
+    const sent: Parameters<Doc["applyOperations"]>[0][] = [];
+    b.onChange(({ operations }) => sent.push(operations));
+    b.root.append(...text(b, "b1", "b2"));
+    b.forceCommit();
+    a.root.append(...text(a, "a1"));
+    for (const operations of sent) a.applyOperations(operations);
+    a.root.append(...text(a, "a2"));
+    a.forceCommit();
+    const json = a.toJSON();
+    expect(json[7]).toStrictEqual([sessionOf(a), sessionOf(b)]);
+    // a1 and a2 are clocks 0 and 1 of the first session, b1 and b2 0 and 1
+    // of the second: the session is written minus the previous run's.
+    expect(json[8]).toStrictEqual([0, 0, 1, 1, 0, 2, -1, 0, 1]);
+    expect(loadAndSave(a)).toStrictEqual(json);
+  });
+
+  test("the ids of a custom generator are written as they are", () => {
+    let n = 0;
+    const custom = {
+      ...config,
+      nodeIdGenerator: {
+        generate: () => `ok-${n++}`,
+        validate: (id: string) => id.startsWith("ok-"),
+      },
+    };
+    const doc = new Doc(custom);
+    doc.root.append(...text(doc, "1", "2"));
+    doc.forceCommit();
+    expect(doc.toJSON().slice(7)).toStrictEqual([[], ["ok-1", "ok-2"]]);
+    const loaded = Doc.fromJSON(custom, doc.toJSON());
+    loaded.forceCommit();
+    expect(loaded.toJSON()).toStrictEqual(doc.toJSON());
+  });
+
+  test("a document with a custom generator loads ids of DocNode's generator", () => {
+    const doc = textDoc();
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+    const custom = {
+      ...config,
+      nodeIdGenerator: { generate: () => "x", validate: () => true },
+    };
+    const loaded = Doc.fromJSON(custom, doc.toJSON());
+    loaded.forceCommit();
+    expect(idsOf(loaded)).toStrictEqual([doc.root.first!.id]);
   });
 
   test("types alternate", () => {
@@ -155,6 +218,7 @@ describe("reading a stored document", () => {
       ids.map(() => 0),
       [ids.length, ...ids.map(() => 0)],
       states,
+      [],
       ids,
     ] satisfies JsonDoc;
 
@@ -239,6 +303,20 @@ describe("reading a stored document", () => {
     expect(kept!.getNodeById("a.0")).toBeUndefined();
   });
 
+  test("ids of the form session.clock are read as runs, other ids as they are", () => {
+    const ids = ["s.-", "s.0", "s.1", "t.0-", "s.-0", "s.é", "s.123456789"];
+    const doc = Doc.fromJSON(config, stored(["text"], ids));
+    doc.forceCommit();
+    expect(doc.toJSON().slice(7)).toStrictEqual([
+      ["s", "t"],
+      [0, 0, 3, 1, 64, 1, "s.-0", "s.é", "s.123456789"],
+    ]);
+    expect(loadAndSave(doc).slice(7)).toStrictEqual(doc.toJSON().slice(7));
+    const noDot = Doc.fromJSON(config, stored(["text"], [".0", "x."]));
+    noDot.forceCommit();
+    expect(idsOf(noDot)).toStrictEqual([".0", "x."]);
+  });
+
   test("columns without nodes load an empty document", () => {
     const doc = Doc.fromJSON(config, stored([], []));
     const events: ChangeEvent[] = [];
@@ -274,7 +352,7 @@ describe("loading a stored document is a transaction that inserts it", () => {
     const events: ChangeEvent[] = [];
     doc.onChange((event) => events.push(event));
     doc.forceCommit();
-    expect(normalized).toStrictEqual([[], idsOf(doc)]);
+    expect(normalized).toStrictEqual([[], preorderIds(doc)]);
     expect(events).toHaveLength(1);
     expect(humanReadableOperations(doc, events[0]!)).toStrictEqual({
       operations: [
@@ -326,6 +404,7 @@ describe("fromLegacyJson", () => {
       [0, 1, 1, 0],
       [3, 0, 0, 1, 0],
       [{ value: "1" }, { b: 2, a: "x" }, { a: [1, {}] }, {}],
+      [],
       ["a.-", "a.0", "a.1", "a.2"],
     ]);
     expect(fromLegacyJson([ROOT_ID, "root", {}, []])).toStrictEqual([
@@ -335,7 +414,7 @@ describe("fromLegacyJson", () => {
     ]);
   });
 
-  test("a converted document loads as it was stored", () => {
+  test("a converted document loads, and stores its ids as runs again", () => {
     const doc = textDoc();
     doc.root.append(...text(doc, "1", "2"));
     doc.forceCommit();

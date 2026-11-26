@@ -11,7 +11,7 @@ const FIRST_CHAR = base64Alphabet[0]!;
 const IDX = new Int16Array(128).fill(-1);
 for (let i = 0; i < ALPH_LEN; i++) IDX[base64Alphabet.charCodeAt(i)] = i;
 
-function numberToBase64(num: number): string {
+export function numberToBase64(num: number): string {
   if (num === 0) return FIRST_CHAR;
   let result = "";
   while (num > 0) {
@@ -98,7 +98,8 @@ function base64ToNumber(text: string, from: number) {
  *
  * It also keeps the table of the sessions its nodes are of, like the client
  * ids of Yjs's struct store: a node keeps the index of its session and its
- * clock as numbers, so its id can be written without parsing it again.
+ * clock as numbers, so a stored document writes runs of ids without parsing
+ * them (see `Doc.toJSON`).
  */
 export class NodeIds {
   private readonly _createdAt: number;
@@ -158,6 +159,11 @@ export class NodeIds {
       this._indexes.set(session, index);
     }
     return index;
+  }
+
+  /** A session of the table. */
+  session(index: number) {
+    return this._sessions[index]!;
   }
 
   /**

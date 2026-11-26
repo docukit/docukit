@@ -52,6 +52,7 @@ export function fromLegacyJson(legacy: LegacyJsonDoc): JsonDoc {
     typeColumn,
     children,
     states,
+    [],
     ids,
   ];
   return json;

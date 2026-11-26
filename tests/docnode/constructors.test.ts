@@ -77,7 +77,8 @@ describe("types", () => {
         [0],
         [1, 0],
         [{ value: [true] }],
-        ["2"],
+        ["s"],
+        [0, 0, 1],
       ]
     >().toMatchTypeOf<JsonDoc>();
   });
