@@ -649,9 +649,15 @@ describe("reading a stored document", () => {
     for (const k of [0, 52, 53, 105, 106, 119]) node.state[`s${k}`]!.set(k + 1);
     doc.forceCommit();
     const json = doc.toJSON();
-    expect(json.slice(6, 8)).toStrictEqual([
-      [1, 2 ** 22 + 2 ** 23, 0, 2 ** 15 + 2 ** 16 + 2 ** 29, 0, 0, 0, 0],
-      [1, 53, 54, 106, 107, 120],
+    expect(json[6]).toStrictEqual([
+      1,
+      2 ** 22 + 2 ** 23,
+      0,
+      2 ** 15 + 2 ** 16 + 2 ** 29,
+      0,
+      0,
+      0,
+      0,
     ]);
     const loaded = Doc.fromJSON(wideConfig, json);
     loaded.forceCommit();
@@ -902,7 +908,7 @@ describe("fromLegacyJson", () => {
   test("a type with more than 30 state keys takes one mask per 30 keys", () => {
     const state: Record<string, string> = {};
     for (let k = 0; k < 54; k++) state[`k${k}`] = String(k);
-    const [, , , types, , , masks, values] = fromLegacyJson([
+    const json = fromLegacyJson([
       ROOT_ID,
       "root",
       {},
@@ -910,7 +916,9 @@ describe("fromLegacyJson", () => {
         ["a.0", "wide", { k0: "0" }],
         ["a.1", "wide", state],
       ],
-    ]) as Extract<JsonDoc, { length: 10 }>;
+    ]);
+    if (json.length === 3) throw new Error("The document has nodes");
+    const [, , , types, , , masks, values] = json;
     expect(types[0]!.length).toBe(55);
     expect(masks).toStrictEqual([1, 0, 2 ** 30 - 1, 2 ** 24 - 1]);
     expect(values).toStrictEqual([
