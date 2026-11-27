@@ -1,5 +1,9 @@
 import { type Doc, type DocNode } from "./main.js";
-import type { Operations } from "./operations.js";
+import type {
+  Operations,
+  OrderedOperation,
+  TextOperation,
+} from "./operations.js";
 
 // For convention, we are not goint to uppercase all letters in Json (JSON),
 // except in fromJSON and toJSON functions (for compatibility with the web standard).
@@ -114,6 +118,32 @@ export type ResolvedNodeDefinition = UnsafeDefinition & {
   /** The JSON of each default value, to leave it out of stored documents. */
   defaultJson: Record<string, Json>;
   methods: (node: DocNode) => NodeState.Methods<UnsafeDefinition>;
+  /** Its keys of `text()`, if it has any. */
+  textKeys: string[] | undefined;
+};
+
+/**
+ * What a document asks of `text()` (see `text.ts`). The document reaches it
+ * through the definitions `text()` makes (`textEngines`), so that only
+ * documents with texts bundle it.
+ */
+export type TextEngine = {
+  /** What `node.state[key]` gives for a text key. */
+  methods(node: DocNode, key: string): unknown;
+  /**
+   * The node is inserted: its texts go into the document, and `ordered`
+   * gets the inserts of their letters, after the insert of the node.
+   */
+  attach(node: DocNode, keys: string[], ordered: OrderedOperation[]): void;
+  /**
+   * The node is deleted: its texts leave the document, and with `inverse`,
+   * the inserts that put their letters back after the node.
+   */
+  detach(node: DocNode, keys: string[], inverse?: OrderedOperation[]): void;
+  /** Applies an insert of letters. */
+  insert(doc: Doc, operation: TextOperation): void;
+  /** Applies a delete of the letters from `start` to `end`. */
+  delete(doc: Doc, start: string, end: string | 0): void;
 };
 
 export type JsonDocNode<T extends NodeDefinition = NodeDefinition> = [
