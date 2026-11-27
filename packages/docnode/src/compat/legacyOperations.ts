@@ -29,9 +29,10 @@ export function upgradeOperations(
 ): Operations {
   if (!isLegacy(operations)) return operations;
   const [ordered, legacyPatch] = operations;
-  const patch: StatePatch = {};
+  const patch: StatePatch = new Map();
   for (const id in legacyPatch) {
-    const state: Record<string, Json> = (patch[ownId(id)] = {});
+    const state: Record<string, Json> = {};
+    patch.set(ownId(id), state);
     for (const key in legacyPatch[id])
       state[ownKey(key)] = JSON.parse(legacyPatch[id][key]!) as Json;
   }

@@ -616,8 +616,8 @@ export class Doc {
     | "normalize2"
     | "change"
     | "disposed" = "idle";
-  protected _operations: ops.DraftOperations = [[], {}];
-  protected _inverseOperations: ops.DraftOperations = [[], {}];
+  protected _operations: ops.DraftOperations = [[], new Map()];
+  protected _inverseOperations: ops.DraftOperations = [[], new Map()];
   protected _transactionFlags: TransactionFlags;
   private _isForceCommitCallback = false;
   /**
@@ -977,8 +977,7 @@ export class Doc {
     operations: ops.DraftOperations,
     flags?: TransactionFlags,
   ) {
-    const hasOperations =
-      operations[0].length > 0 || !isObjectEmpty(operations[1]);
+    const hasOperations = operations[0].length > 0 || operations[1].size > 0;
     if (!hasOperations) {
       if (
         this._lifeCycleStage === "change" ||
@@ -1049,8 +1048,13 @@ export class Doc {
     // End update stage before normalization
     this._lifeCycleStage = "idle";
     ops.maybeTriggerListeners(this, ignoreEmptyDiff);
-    this._operations = [[], {}];
-    this._inverseOperations = [[], {}];
+    this._reset();
+  }
+
+  /** Clears what the transaction recorded, to start the next one. */
+  private _reset() {
+    this._operations = [[], new Map()];
+    this._inverseOperations = [[], new Map()];
     this._transactionFlags = {};
     this._diff = {
       deleted: new Map(),
@@ -1073,16 +1077,7 @@ export class Doc {
       },
       true,
     );
-    this["_operations"] = [[], {}];
-    this["_inverseOperations"] = [[], {}];
-    this["_transactionFlags"] = {};
-    this["_diff"] = {
-      deleted: new Map(),
-      inserted: new Set(),
-      moved: new Set(),
-      updated: new Set(),
-    };
-    this["_lifeCycleStage"] = "idle";
+    this._reset();
   }
 
   /**
@@ -1536,7 +1531,7 @@ export class Doc {
         inserted.add(node.id);
         if (node["_state"] !== NO_STATE) {
           const state = node["_stateJson"]();
-          if (!isObjectEmpty(state)) patch[node.id] = state;
+          if (!isObjectEmpty(state)) patch.set(node.id, state);
         }
       }
       if (node.first) {
@@ -1835,7 +1830,7 @@ function stateKeyMethods(
             "will want to use getPrev with nodes from diff.updated.",
           ].join(" "),
         );
-      const maybePrevState = doc["_inverseOperations"][1][node.id]?.[key];
+      const maybePrevState = doc["_inverseOperations"][1].get(node.id)?.[key];
       return maybePrevState !== undefined
         ? [true, ops.parseStateKey(node, key, maybePrevState)]
         : [false, node["_state"][key]];

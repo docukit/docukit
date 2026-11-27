@@ -776,7 +776,7 @@ describe("the load is recorded only if someone will use it", () => {
 
   test("nobody listening: nothing is recorded", () => {
     const { doc, records } = load();
-    expect(doc["_operations"]).toStrictEqual([[], {}]);
+    expect(doc["_operations"]).toStrictEqual([[], new Map()]);
     expect(doc["_diff"].inserted.size).toBe(0);
     doc.forceCommit();
     expect(records()).toBe(0);

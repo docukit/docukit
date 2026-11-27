@@ -8,6 +8,7 @@ import type {
 } from "./operations.js";
 import type { Json } from "./types.js";
 import { MAX_CLOCK, clockAt, numberToBase64 } from "./idGenerator.js";
+import { patchOf } from "./operations.js";
 import { ownId, ownKey } from "./utils.js";
 
 // `Operations`, a batch as it travels and is stored, is `[head, ...rows]`,
@@ -58,7 +59,7 @@ function headOf(draft: DraftOperations) {
     const first = op[0] === 0 ? op[1][0]![0] : op[1];
     if (clockOf(first) >= 0) return first;
   }
-  for (const id in draft[1]) if (clockOf(id) >= 0) return id;
+  for (const id of draft[1].keys()) if (clockOf(id) >= 0) return id;
   return "";
 }
 
@@ -137,9 +138,8 @@ export function encodeOperations(draft: DraftOperations): Operations {
   const keys: string[] = [];
   const values: Json[] = [];
   let last = 0;
-  for (const id in patch) {
+  for (const [id, state] of patch) {
     const node = refOf(id, prefix, dot, base);
-    const state = patch[id]!;
     for (const key in state) {
       // A number as its difference from the one before (see the format).
       nodes.push(typeof node === "number" ? node - last : node);
@@ -196,7 +196,7 @@ export function decodeOperations(operations: Operations): DraftOperations {
   const base = clockAt(head, dot);
   const prefix = head.slice(0, dot + 1);
   const ordered: OrderedOperation[] = [];
-  const patch: StatePatch = {};
+  const patch: StatePatch = new Map();
   let inserted = 0;
   for (let index = 1; index < operations.length; index++) {
     const row = operations[index] as OperationsRow;
@@ -258,7 +258,7 @@ export function decodeOperations(operations: Operations): DraftOperations {
       for (let entry = 0; entry < nodes.length; entry++) {
         let ref = nodes[entry]!;
         if (typeof ref === "number") last = ref += last;
-        (patch[nodeOf(ref, prefix, base)] ??= {})[ownKey(keys[entry]!)] =
+        patchOf(patch, nodeOf(ref, prefix, base))[ownKey(keys[entry]!)] =
           values[entry]!;
       }
     } else throw invalid(`its row ${index} is not an operation`);
