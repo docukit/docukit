@@ -1,5 +1,6 @@
 import { type Doc, type DocNode } from "./main.js";
 import type {
+  MoveOperation,
   Operations,
   OrderedOperation,
   TextOperation,
@@ -144,6 +145,8 @@ export type TextEngine = {
   insert(doc: Doc, operation: TextOperation): void;
   /** Applies a delete of the letters from `start` to `end`. */
   delete(doc: Doc, start: string, end: string | 0): void;
+  /** Applies a move of letters. */
+  move(doc: Doc, operation: MoveOperation): void;
   /**
    * Writes the `letters` column of a stored document (see `JsonDoc`), one
    * text at a time. `sessionIndex` gives the index in the stored `sessions`

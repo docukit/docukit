@@ -338,8 +338,13 @@ export const onApplyOperations = (doc: Doc, operations: DraftOperations) => {
         break;
       case 2:
         const startNode = doc.getNodeById(operation[1]);
+        // An id that is not of a node may be of a letter (see `text.ts`).
+        if (!startNode) {
+          doc["_textEngine"]?.move(doc, operation);
+          break;
+        }
         const endNode = doc.getNodeById(operation[2] || operation[1]);
-        if (!startNode || !endNode) break;
+        if (!endNode) break;
         // A move is a delete plus an insert. Like an insert, it is dropped
         // when its new parent was deleted by a concurrent change, so the range
         // ends up deleted. Otherwise an anchor deleted concurrently falls back
@@ -487,14 +492,30 @@ type InsertOperation = [
 
 type DeleteOperation = [operation: 1, start: string, end: string | 0];
 
-type MoveOperation = [
-  operation: 2,
-  start: string,
-  end: string | 0,
-  parent: string | 0,
-  prev: string | 0,
-  next: string | 0,
-];
+/**
+ * A move of nodes, or of letters (see `text.ts`): an id is of a node or of a
+ * letter, never both. Letters go right after `prev`, or if it is gone right
+ * before `next`, with `parent` `0`; with `key`, into the empty text of that
+ * key of `node` (`0` for the root), or at its start if it has letters.
+ */
+export type MoveOperation =
+  | [
+      operation: 2,
+      start: string,
+      end: string | 0,
+      parent: string | 0,
+      prev: string | 0,
+      next: string | 0,
+    ]
+  | [
+      operation: 2,
+      first: string,
+      last: string | 0,
+      node: string | 0,
+      prev: 0,
+      next: 0,
+      key: string,
+    ];
 
 /**
  * An insert of letters (see `text.ts`): `text`, whose letters take the
@@ -608,6 +629,16 @@ export type OrderedRow =
       parent?: NodeRef,
       prev?: NodeRef,
       next?: NodeRef,
+    ]
+  /** A move of letters into the empty text of `key` of `node`. */
+  | readonly [
+      op: 2,
+      first: NodeRef,
+      last: NodeRef,
+      node: NodeRef,
+      prev: 0,
+      next: 0,
+      key: string,
     ];
 
 /**

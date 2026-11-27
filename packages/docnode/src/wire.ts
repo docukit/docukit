@@ -53,6 +53,10 @@ import { ownId, ownKey } from "./utils.js";
 //   letters of a row take consecutive clocks, from the one after the last
 //   letter of the row before (the head for the first row); a row whose
 //   letters start elsewhere says where first: `"N>prev,next|text"`.
+// - Moving letters is `[2, first, last, 0, prev, next]`, like moving nodes
+//   with the letters as above (`parent` `0`): the letters keep their ids, so
+//   the row does not write them. `[2, first, last, node, 0, 0, key]` moves
+//   them into the empty text of `key` of `node` (`0` for the root).
 
 /** The tag of the state patch row. */
 const PATCH = 3;
@@ -163,6 +167,17 @@ function rowOf(
     return trimmed(row);
   }
   if (op[0] === 2) {
+    // Letters into an empty text: its key, after the zeros.
+    if (op[6] !== undefined)
+      return [
+        2,
+        refOf(op[1], prefix, dot, base),
+        refOf(op[2], prefix, dot, base),
+        refOf(op[3], prefix, dot, base),
+        0,
+        0,
+        op[6],
+      ];
     const row: [2, NodeRef, NodeRef?, NodeRef?, NodeRef?, NodeRef?] = [
       2,
       refOf(op[1], prefix, dot, base),
@@ -514,15 +529,32 @@ function readRow(
     ]);
     end = at + 2;
   } else if (tag === 2) {
-    ordered.push([
-      2,
-      nodeOf(row[at + 1], prefix, base),
-      idOf(row[at + 2], prefix, base),
-      idOf(row[at + 3], prefix, base),
-      idOf(row[at + 4], prefix, base),
-      idOf(row[at + 5], prefix, base),
-    ]);
-    end = at + 5;
+    const key = row[at + 6];
+    if (typeof key === "string") {
+      // Letters into an empty text (see the format above).
+      if (row[at + 4] !== 0 || row[at + 5] !== 0)
+        throw invalid(`its row ${index} is not an operation`);
+      ordered.push([
+        2,
+        nodeOf(row[at + 1], prefix, base),
+        idOf(row[at + 2], prefix, base),
+        idOf(row[at + 3], prefix, base),
+        0,
+        0,
+        ownKey(key),
+      ]);
+      end = at + 6;
+    } else {
+      ordered.push([
+        2,
+        nodeOf(row[at + 1], prefix, base),
+        idOf(row[at + 2], prefix, base),
+        idOf(row[at + 3], prefix, base),
+        idOf(row[at + 4], prefix, base),
+        idOf(row[at + 5], prefix, base),
+      ]);
+      end = at + 5;
+    }
   } else throw invalid(`its row ${index} is not an operation`);
   if (row.length > end + 1)
     throw invalid(`its row ${index} has items after its operation`);
