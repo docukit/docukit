@@ -1503,6 +1503,7 @@ export class Doc {
       throw new Error(
         "Invalid stored document: it has more integers than its values say.",
       );
+    nodeIds?.forgetIndexes();
     // Columns without nodes (not what `toJSON` writes) insert nothing.
     this._unrecordedLoad = root.first !== undefined;
   }
