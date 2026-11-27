@@ -275,16 +275,24 @@ export const onMoveRange = (
 };
 
 export const onApplyOperations = (doc: Doc, operations: DraftOperations) => {
-  operations[0].forEach((operation) => {
+  // Up to the length it has now, like `forEach`: an abort applies the inverse
+  // batch, and applying it adds to that same batch.
+  const ordered = operations[0];
+  const length = ordered.length;
+  for (let index = 0; index < length; index++) {
+    const operation = ordered[index]!;
     switch (operation[0]) {
       case 0:
         // Deleting or moving a missing node skips that operation and keeps
         // applying the batch. Inserting a node that already exists is treated
         // the same way: the intent is already satisfied. Undo steps depend on
         // this when an excluded change restored the node first.
-        const nodes = operation[1]
-          .filter(([id]) => !doc.getNodeById(id))
-          .map(([id, type]) => doc["_insertedNode"](id, type));
+        const list = operation[1];
+        const nodes: DocNode[] = [];
+        for (const entry of list) {
+          if (!doc.getNodeById(entry[0]))
+            nodes.push(doc["_insertedNode"](entry[0], entry[1]));
+        }
         if (nodes.length === 0) break;
         const prev = operation[3] ? doc.getNodeById(operation[3]) : undefined;
         if (prev) {
@@ -332,7 +340,7 @@ export const onApplyOperations = (doc: Doc, operations: DraftOperations) => {
         } catch {}
         break;
     }
-  });
+  }
   // Apply state patch
   const toApplyStatePatch = operations[1];
   const currentStatePatch = doc["_operations"][1];
@@ -362,30 +370,29 @@ export const onApplyOperations = (doc: Doc, operations: DraftOperations) => {
   }
 };
 
-/** We trigger listeners at the end of each update if there were operations (i.e. something changed) */
-export const maybeTriggerListeners = (doc: Doc, ignoreEmptyDiff = false) => {
-  const hasChanges = () => {
-    const { inserted, deleted, moved } = doc["_diff"];
-    return (
-      inserted.size ||
-      deleted.size ||
-      moved.size ||
-      !isObjectEmpty(doc["_operations"][1])
-    );
-  };
-  if (!hasChanges() && !ignoreEmptyDiff) return;
-  doc["_lifeCycleStage"] = "normalize";
-  doc["_normalizeListeners"].forEach((listener) =>
-    listener({ diff: doc["_diff"] }),
+/** Whether the transaction of `doc` changed something. */
+const hasChanges = (doc: Doc) => {
+  const diff = doc["_diff"];
+  return (
+    diff.inserted.size > 0 ||
+    diff.deleted.size > 0 ||
+    diff.moved.size > 0 ||
+    !isObjectEmpty(doc["_operations"][1])
   );
-  if (doc["_strictMode"]) {
-    doc["_lifeCycleStage"] = "normalize2";
-    doc["_normalizeListeners"].forEach((listener) =>
-      listener({ diff: doc["_diff"] }),
-    );
-  }
-  if (!hasChanges()) return;
-  doc["_lifeCycleStage"] = "change";
+};
+
+/** Calls each normalize listener of `doc`, if it has any. */
+const normalize = (doc: Doc) => {
+  const listeners = doc["_normalizeListeners"];
+  if (listeners.size === 0) return;
+  for (const listener of listeners) listener({ diff: doc["_diff"] });
+};
+
+/**
+ * The event of a change. Its own function, so the closures of its getters
+ * are made only when someone listens, not in every transaction.
+ */
+const changeEvent = (doc: Doc): ChangeEvent => {
   const operations = doc["_operations"];
   const inverseOperations = doc["_inverseOperations"];
   let encoded: Operations | undefined;
@@ -394,7 +401,7 @@ export const maybeTriggerListeners = (doc: Doc, ignoreEmptyDiff = false) => {
   // Yjs writes its update only when someone listens to it (`Transaction.js`):
   // the undo manager keeps the inverse as it is built, and loading a
   // document inserts all its nodes.
-  const event: ChangeEvent = {
+  return {
     get operations() {
       return (encoded ??= encodeOperations(operations));
     },
@@ -404,7 +411,23 @@ export const maybeTriggerListeners = (doc: Doc, ignoreEmptyDiff = false) => {
     diff: doc["_diff"],
     flags: doc["_transactionFlags"],
   };
-  doc["_changeListeners"].forEach((listener) => listener(event));
+};
+
+/** We trigger listeners at the end of each update if there were operations (i.e. something changed) */
+export const maybeTriggerListeners = (doc: Doc, ignoreEmptyDiff = false) => {
+  if (!ignoreEmptyDiff && !hasChanges(doc)) return;
+  doc["_lifeCycleStage"] = "normalize";
+  normalize(doc);
+  if (doc["_strictMode"]) {
+    doc["_lifeCycleStage"] = "normalize2";
+    normalize(doc);
+  }
+  if (!hasChanges(doc)) return;
+  doc["_lifeCycleStage"] = "change";
+  const listeners = doc["_changeListeners"];
+  if (listeners.size === 0) return;
+  const event = changeEvent(doc);
+  for (const listener of listeners) listener(event);
 };
 
 const copyDeletedToDiff = (node: DocNode) => {

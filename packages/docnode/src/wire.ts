@@ -53,13 +53,34 @@ function follows(id: string, next: string) {
 }
 
 /** The first node id of the form `session.clock` that a draft names. */
-function headOf([ordered, patch]: DraftOperations) {
-  for (const op of ordered) {
+function headOf(draft: DraftOperations) {
+  for (const op of draft[0]) {
     const first = op[0] === 0 ? op[1][0]![0] : op[1];
     if (clockOf(first) >= 0) return first;
   }
-  for (const id in patch) if (clockOf(id) >= 0) return id;
+  for (const id in draft[1]) if (clockOf(id) >= 0) return id;
   return "";
+}
+
+// The functions below take the head's parts as arguments and read rows by
+// index: a closure per batch, a rest copy or a destructuring (which runs an
+// iterator) would be garbage of every transaction.
+
+/**
+ * `id` as a batch with a head of `prefix` and `base` writes it (`dot` is where
+ * the head's clock starts, and `base` is -1 if the batch has no head).
+ */
+function refOf(
+  id: string | 0,
+  prefix: string,
+  dot: number,
+  base: number,
+): NodeRef {
+  if (id === 0 || base < 0 || !id.startsWith(prefix)) return id;
+  // -1 for a clock with a dot or one that would not be written back the same.
+  const clock = clockAt(id, dot);
+  if (clock < 0) return id;
+  return clock >= base ? clock - base + 1 : clock - base;
 }
 
 /** A draft as it travels (see the format above). */
@@ -68,21 +89,15 @@ export function encodeOperations(draft: DraftOperations): Operations {
   const dot = head.lastIndexOf(".");
   const base = clockAt(head, dot);
   const prefix = head.slice(0, dot + 1);
-  const ref = (id: string | 0): NodeRef => {
-    if (id === 0 || base < 0 || !id.startsWith(prefix)) return id;
-    // -1 for a clock with a dot or one that would not be written back the same.
-    const clock = clockAt(id, dot);
-    if (clock < 0) return id;
-    return clock >= base ? clock - base + 1 : clock - base;
-  };
-  const [ordered, patch] = draft;
+  const patch = draft[1];
   const rows: [string, ...OperationsRow[]] = [head];
-  for (const op of ordered) {
+  for (const op of draft[0]) {
     if (op[0] === 0) {
       const list = op[1];
       const nodes: ([NodeRef, string] | [NodeRef, string, number])[] = [];
       for (let at = 0; at < list.length; ) {
-        const [id, type] = list[at]!;
+        const id = list[at]![0];
+        const type = list[at]![1];
         let count = 1;
         while (
           at + count < list.length &&
@@ -90,15 +105,32 @@ export function encodeOperations(draft: DraftOperations): Operations {
           follows(list[at + count - 1]![0], list[at + count]![0])
         )
           count++;
-        nodes.push(count > 1 ? [ref(id), type, count] : [ref(id), type]);
+        const ref = refOf(id, prefix, dot, base);
+        nodes.push(count > 1 ? [ref, type, count] : [ref, type]);
         at += count;
       }
-      rows.push([0, nodes, ref(op[2]), ref(op[3]), ref(op[4])]);
+      rows.push([
+        0,
+        nodes,
+        refOf(op[2], prefix, dot, base),
+        refOf(op[3], prefix, dot, base),
+        refOf(op[4], prefix, dot, base),
+      ]);
     } else if (op[0] === 1) {
-      rows.push([1, ref(op[1]), ref(op[2])]);
+      rows.push([
+        1,
+        refOf(op[1], prefix, dot, base),
+        refOf(op[2], prefix, dot, base),
+      ]);
     } else {
-      const [, start, end, parent, prev, next] = op;
-      rows.push([2, ref(start), ref(end), ref(parent), ref(prev), ref(next)]);
+      rows.push([
+        2,
+        refOf(op[1], prefix, dot, base),
+        refOf(op[2], prefix, dot, base),
+        refOf(op[3], prefix, dot, base),
+        refOf(op[4], prefix, dot, base),
+        refOf(op[5], prefix, dot, base),
+      ]);
     }
   }
   const nodes: NodeRef[] = [];
@@ -106,7 +138,7 @@ export function encodeOperations(draft: DraftOperations): Operations {
   const values: Json[] = [];
   let last = 0;
   for (const id in patch) {
-    const node = ref(id);
+    const node = refOf(id, prefix, dot, base);
     const state = patch[id]!;
     for (const key in state) {
       // A number as its difference from the one before (see the format).
@@ -129,13 +161,33 @@ const isList = (column: unknown): boolean => Array.isArray(column);
 /** A batch that does not follow the format above. */
 const invalid = (why: string) => new Error(`Invalid operations: ${why}.`);
 
+/** The whole id of `ref`, in a batch with a head of `prefix` and `base`. */
+function nodeOf(ref: NodeRef, prefix: string, base: number): string {
+  if (typeof ref === "string") return ownId(ref);
+  const clock = ref > 0 ? base + ref - 1 : base + ref;
+  if (
+    base < 0 ||
+    ref === 0 ||
+    !Number.isInteger(ref) ||
+    clock < 0 ||
+    clock > MAX_CLOCK
+  )
+    throw invalid(`${ref} is not a node of the head's session`);
+  return prefix + numberToBase64(clock);
+}
+
+/** Like `nodeOf`, but `0` (none) stays `0`. */
+function idOf(ref: NodeRef, prefix: string, base: number): string | 0 {
+  return ref === 0 ? 0 : nodeOf(ref, prefix, base);
+}
+
 /**
  * The draft that a batch (see the format above) stands for. It throws on a
  * batch that does not follow the format, before anything is applied: each
  * check is a comparison in a loop the decoding already makes.
  */
 export function decodeOperations(operations: Operations): DraftOperations {
-  const [head, ...rows] = operations;
+  const head = operations[0];
   if (typeof head !== "string")
     throw new Error(
       "These operations are in the previous format: convert them with `upgradeOperations` from `@docukit/docnode/compat`.",
@@ -143,30 +195,17 @@ export function decodeOperations(operations: Operations): DraftOperations {
   const dot = head.lastIndexOf(".");
   const base = clockAt(head, dot);
   const prefix = head.slice(0, dot + 1);
-  const node = (ref: NodeRef): string => {
-    if (typeof ref === "string") return ownId(ref);
-    const clock = ref > 0 ? base + ref - 1 : base + ref;
-    if (
-      base < 0 ||
-      ref === 0 ||
-      !Number.isInteger(ref) ||
-      clock < 0 ||
-      clock > MAX_CLOCK
-    )
-      throw invalid(`${ref} is not a node of the head's session`);
-    return prefix + numberToBase64(clock);
-  };
-  const id = (ref: NodeRef): string | 0 => (ref === 0 ? 0 : node(ref));
   const ordered: OrderedOperation[] = [];
   const patch: StatePatch = {};
   let inserted = 0;
-  for (let at = 0; at < rows.length; at++) {
-    const row = rows[at]!;
+  for (let index = 1; index < operations.length; index++) {
+    const row = operations[index] as OperationsRow;
     if (row[0] === 0) {
       const nodes: [string, string][] = [];
       for (const entry of row[1]) {
-        const [ref, type, count = 1] = entry;
-        const first = node(ref);
+        const type = entry[1];
+        const count = entry[2] ?? 1;
+        const first = nodeOf(entry[0], prefix, base);
         nodes.push([first, type]);
         inserted += count;
         if (entry.length === 2) continue;
@@ -181,14 +220,32 @@ export function decodeOperations(operations: Operations): DraftOperations {
         for (let i = 1; i < count; i++)
           nodes.push([session + numberToBase64(clock + i), type]);
       }
-      ordered.push([0, nodes, id(row[2]), id(row[3]), id(row[4])]);
+      ordered.push([
+        0,
+        nodes,
+        idOf(row[2], prefix, base),
+        idOf(row[3], prefix, base),
+        idOf(row[4], prefix, base),
+      ]);
     } else if (row[0] === 1) {
-      ordered.push([1, node(row[1]), id(row[2])]);
+      ordered.push([
+        1,
+        nodeOf(row[1], prefix, base),
+        idOf(row[2], prefix, base),
+      ]);
     } else if (row[0] === 2) {
-      const [, start, end, parent, prev, next] = row;
-      ordered.push([2, node(start), id(end), id(parent), id(prev), id(next)]);
-    } else if (row[0] === PATCH && at === rows.length - 1) {
-      const [, nodes, keys, values] = row;
+      ordered.push([
+        2,
+        nodeOf(row[1], prefix, base),
+        idOf(row[2], prefix, base),
+        idOf(row[3], prefix, base),
+        idOf(row[4], prefix, base),
+        idOf(row[5], prefix, base),
+      ]);
+    } else if (row[0] === PATCH && index === operations.length - 1) {
+      const nodes = row[1];
+      const keys = row[2];
+      const values = row[3];
       if (
         !isList(nodes) ||
         !isList(keys) ||
@@ -201,9 +258,10 @@ export function decodeOperations(operations: Operations): DraftOperations {
       for (let entry = 0; entry < nodes.length; entry++) {
         let ref = nodes[entry]!;
         if (typeof ref === "number") last = ref += last;
-        (patch[node(ref)] ??= {})[ownKey(keys[entry]!)] = values[entry]!;
+        (patch[nodeOf(ref, prefix, base)] ??= {})[ownKey(keys[entry]!)] =
+          values[entry]!;
       }
-    } else throw invalid(`its row ${at + 1} is not an operation`);
+    } else throw invalid(`its row ${index} is not an operation`);
   }
   return [ordered, patch];
 }

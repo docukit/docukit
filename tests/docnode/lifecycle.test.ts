@@ -767,3 +767,50 @@ describe("dispose", () => {
     }).toThrowError("You can't trigger an update inside a disposed stage");
   });
 });
+
+describe("change event", () => {
+  // Listeners may copy, serialize or inspect the event: its shape is public.
+  test("is a plain object with the same own properties", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    updateAndListen(
+      doc,
+      () => doc.root.append(doc.createNode(Text)),
+      (event) => {
+        expect(Object.getPrototypeOf(event)).toBe(Object.prototype);
+        expect(Reflect.ownKeys(event)).toStrictEqual([
+          "operations",
+          "inverseOperations",
+          "diff",
+          "flags",
+        ]);
+        const { operations, inverseOperations, ...data } =
+          Object.getOwnPropertyDescriptors(event);
+        for (const getter of [operations, inverseOperations]) {
+          expect(typeof getter.get).toBe("function");
+          expect({ ...getter, get: undefined }).toStrictEqual({
+            get: undefined,
+            set: undefined,
+            enumerable: true,
+            configurable: true,
+          });
+          // It writes its batch once, and works on its own.
+          expect(getter.get?.call(undefined)).toBe(getter.get?.call(event));
+        }
+        const value = { writable: true, enumerable: true, configurable: true };
+        expect(data).toStrictEqual({
+          diff: { ...value, value: doc["_diff"] },
+          flags: { ...value, value: doc["_transactionFlags"] },
+        });
+
+        const copy = {
+          operations: event.operations,
+          inverseOperations: event.inverseOperations,
+          diff: event.diff,
+          flags: event.flags,
+        };
+        expect({ ...event }).toStrictEqual(copy);
+        expect(JSON.stringify(event)).toBe(JSON.stringify(copy));
+      },
+    );
+  });
+});
