@@ -16,8 +16,8 @@ import { ownId, ownKey } from "./utils.js";
 // `Operations`, a batch as it travels and is stored, is `[head, ...rows]`,
 // plain JSON read on its own:
 //
-// - `head` is the id of the first node of the form `session.clock` that the
-//   batch names, or "" if none. A node of its session is written as a number:
+// - `head` is the id of the first node of the form `session.clock` (see
+//   `clockAt`) that the batch names, or "" if none. A node of its session is written as a number:
 //   its clock's distance `d` from the head's, `d + 1` from 0 on and `d` below
 //   (`1` is the head's node, `-1` the one before). Any other node is its whole
 //   id, a string. `0` is none: the root as a parent, or no sibling. Like Yjs,

@@ -206,6 +206,51 @@ describe("operations format", () => {
     ]);
   });
 
+  test("an id whose session is longer than 64 characters is written whole", () => {
+    /** The batch of two nodes of a custom generator, of a session of `length`. */
+    const batchOfSession = (length: number) => {
+      const session = "s".repeat(length);
+      let n = 0;
+      const doc = new Doc({
+        ...config,
+        nodeIdGenerator: {
+          generate: () => `${session}.${n++}`,
+          validate: () => true,
+        },
+      });
+      return batchesOf(doc, () => doc.root.append(...text(doc, "a", "b")))[0]!;
+    };
+    const a = `${"s".repeat(64)}.1`;
+    expect(batchOfSession(64)).toStrictEqual([
+      a,
+      [0, [[1, "text", 2]]],
+      [-9, [1, 2], "value", ["a", "b"]],
+    ]);
+    const [long, longer] = [`${"s".repeat(65)}.1`, `${"s".repeat(65)}.2`];
+    const batch = batchOfSession(65);
+    expect(batch).toStrictEqual([
+      "",
+      [
+        0,
+        [
+          [long, "text"],
+          [longer, "text"],
+        ],
+      ],
+      [-9, long, "value", "a", longer, "value", "b"],
+    ]);
+
+    // A document with sessions of its own writes them whole too.
+    const doc = textDoc();
+    doc.applyOperations(batch);
+    doc.forceCommit();
+    assertDoc(doc, ["a", "b"]);
+    const [deleted] = batchesOf(doc, () =>
+      doc.root.first!.to(doc.root.last!).delete(),
+    );
+    expect(deleted).toStrictEqual(["", 1, long, longer]);
+  });
+
   test("an id of the head's session that its generator would not write stays whole", () => {
     expect(
       mergeOperations(["S.0", 1, 1], ["", 1, "S.-0", "S.0.1"]),
@@ -300,6 +345,28 @@ describe("a batch that does not follow the format", () => {
     expect(() => doc.applyOperations(operations)).toThrowError(message);
     doc.forceCommit();
     expect(doc.toJSON()).toStrictEqual(before);
+  });
+
+  test("a run or a head with a session longer than 64 characters throws before it is expanded", () => {
+    // Expanded, each of a million ids would have the million characters.
+    const id = `${"s".repeat(1e6)}.0`;
+    const doc = textDoc();
+    doc.root.append(...text(doc, "a"));
+    doc.forceCommit();
+    const before = doc.toJSON();
+    const broken: [Operations, string][] = [
+      [[id, [0, [[1, "text", 1e6]]]], "1 is not a node of the head's session"],
+      [["", [0, [[id, "text", 1e6]]]], "a run of 1000000 nodes"],
+      [["", [-9, [id, 2], "value", ["a", "b"]]], "a run of 2 nodes"],
+    ];
+    for (const [operations, message] of broken)
+      expect(() => doc.applyOperations(operations)).toThrowError(message);
+    doc.forceCommit();
+    expect(doc.toJSON()).toStrictEqual(before);
+    // Written whole, the same id is a node like any other.
+    doc.applyOperations([id, 0, id, "text"]);
+    doc.forceCommit();
+    expect(doc.root.last!.id).toBe(id);
   });
 
   test.each([
