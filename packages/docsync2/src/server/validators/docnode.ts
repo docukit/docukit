@@ -32,13 +32,17 @@ const orderedRowSchema = v.union([
   ),
 ]);
 
-/** The state patch: `[-9, node, key, value, ...]`, the last row. */
+/** The state patch: `[-9, node, key, value, ...]`, the last row. Keys are strings. */
 const patchRowSchema = v.pipe(
   v.tupleWithRest(
     [v.literal(-9)],
     v.lazy(() => jsonSchema),
   ),
-  v.check((row) => row.length % 3 === 1),
+  v.check(
+    (row) =>
+      row.length % 3 === 1 &&
+      row.every((item, index) => index % 3 !== 2 || typeof item === "string"),
+  ),
 );
 
 const rowsSchema = v.pipe(
