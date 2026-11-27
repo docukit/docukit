@@ -53,6 +53,22 @@ cd benchmarks/kevin-fair
 ./setup.sh   # downloads crdt-benchmarks @796f7025 into cb/, applies the patches, installs Yjs 13, Yjs 14 and esbuild
 ```
 
+### Compare two DocNode versions
+
+This is the only source of numbers for a decision or a PR description about DocNode speed. It runs the whole method
+(rules 4, 6, 7, 10 and 11) and prints only verdicts, with the median % next to "better" or "worse" only (~25 min).
+
+```sh
+git worktree add --detach trees/base origin/main
+git worktree add --detach trees/new <your-branch>
+node scripts/fair/docnode-compare.ts trees/base trees/new           # writes out/docnode-compare/
+node scripts/fair/docnode-compare.ts trees/base trees/new --smoke   # 5 rounds: only names cells that may have changed
+```
+
+`--smoke` prints no numbers on purpose. Short runs move with GC and JIT timing: on 2026-11-27 a 3-round run showed a
+B3.2 time of +125 % (+38 % instructions) that was only a young GC landing inside the 2–5 ms window, and it vanished
+with a bigger young heap. Before each run the command waits for the load average to drop under `QUIET_LOAD` (4).
+
 ### Measure the best Yjs + the current DocNode + a candidate
 
 Both Yjs versions always run; each cell uses the better one as the reference. A DocNode subject is a DocuKit checkout
@@ -109,6 +125,7 @@ WARM=10 MEAS=10 node --expose-gc scripts/fair/warm-pilot.ts candidate "[B1.8],[B
 | `scripts/fair/stats.ts`, `compare.ts`                | The fixed statistics and the per-cell summary.                                                                                                                                                                                      |
 | `scripts/fair/docs*.ts`, `build-docs.ts`             | App-shaped documents probe (DocNode and Yjs build the same seeded content) and its statistics.                                                                                                                                      |
 | `scripts/fair/ic-compare.ts`, `icount.ts`            | DocNode against DocNode with instructions; the thread instruction counter.                                                                                                                                                          |
+| `scripts/fair/docnode-compare.ts`                    | DocNode against DocNode, end to end: bundles, runs, instructions, statistics, verdicts only.                                                                                                                                        |
 | `scripts/fair/report.ts`, `warm-pilot.ts`            | Markdown report; warm-up pilot.                                                                                                                                                                                                     |
 | `cb/`, `deps/`, `trees/`, `bundles/`, `out/`, `tmp/` | Work folders, git-ignored. Never commit raw output or bundles.                                                                                                                                                                      |
 
