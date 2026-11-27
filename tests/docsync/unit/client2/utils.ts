@@ -51,7 +51,7 @@ const createDocBinding = () =>
 export const ops = (data: Record<string, string> = {}): Operations => [
   "",
   [
-    -9,
+    3,
     ...Object.entries(data).flatMap(([key, value]) => ["testNode", key, value]),
   ],
 ];
