@@ -36,7 +36,7 @@ const ROWS = "[B1.8],[B1.9],[B1.10],[B1.11],[B3.1],[B3.2],[B3.3],[B3.4]";
 const COLS = [
   ["time", "time exact"],
   ["save", "encodeTime exact"],
-  ["load", "loadNoGc exact"],
+  ["loadNoGc", "loadNoGc exact"],
 ] as const;
 mkdirSync(DIR, { recursive: true });
 mkdirSync(`${W}/bundles`, { recursive: true });
