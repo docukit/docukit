@@ -1,0 +1,54 @@
+--- factory.js
++++ factory-node.js
+@@ -1,3 +1,4 @@
++// B1.9 fairness variant: one Y.Node('i') with attribute v per element.
+ // Yjs 14 (@y/y) adapter for crdt-benchmarks (upstream @796f7025 has no Yjs 14 factory). Same as upstream's Yjs 13
+ // factory (V2 updates), with the new API: every shared type is a `YNode` (`ydoc.get(name)`); text and array are its
+ // children and the map is its attributes (`setAttr` / `getAttrs`).
+@@ -7,15 +8,15 @@
+ // path), so every Yjs version is loaded the same way by scripts/fair/child.ts.
+ import * as Y from '@y/y'
+ 
+-export const name = 'yjs14'
++export const name = 'yjs14node'
+ 
+-export class Yjs14Factory {
++export class Yjs14NodeFactory {
+   create (updateHandler) {
+-    return new Yjs14CRDT(updateHandler)
++    return new Yjs14NodeCRDT(updateHandler)
+   }
+ 
+   load (updateHandler, bin) {
+-    const crdt = new Yjs14CRDT(updateHandler)
++    const crdt = new Yjs14NodeCRDT(updateHandler)
+     crdt.applyUpdate(bin)
+     return crdt
+   }
+@@ -25,7 +26,7 @@
+   }
+ }
+ 
+-export class Yjs14CRDT {
++export class Yjs14NodeCRDT {
+   constructor (updateHandler) {
+     this.ydoc = new Y.Doc()
+     this.ydoc.on('updateV2', update => {
+@@ -45,7 +46,7 @@
+   }
+ 
+   insertArray (index, elems) {
+-    this.yarray.insert(index, elems)
++    this.yarray.insert(index, elems.map(v => { const e = new Y.Node('i'); e.setAttr('v', v); return e }))
+   }
+ 
+   deleteArray (index, len) {
+@@ -53,7 +54,7 @@
+   }
+ 
+   getArray () {
+-    return this.yarray.toArray()
++    return this.yarray.toArray().map(e => e.getAttr('v'))
+   }
+ 
+   insertText (index, text) {

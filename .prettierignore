@@ -1,2 +1,5 @@
 pnpm-lock.yaml
 .context
+
+# Upstream-style harness files: kept as upstream formats them, so the patches apply.
+benchmarks/kevin-fair/harness

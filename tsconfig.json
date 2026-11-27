@@ -1,6 +1,13 @@
 {
   "extends": "ultimate-tooling/bundler/dom",
-  "exclude": ["packages", "docs", "playwright", "tests", "examples"],
+  "exclude": [
+    "packages",
+    "docs",
+    "playwright",
+    "tests",
+    "examples",
+    "benchmarks"
+  ],
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "exactOptionalPropertyTypes": true

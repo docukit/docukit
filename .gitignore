@@ -50,5 +50,13 @@ tsconfig.vitest-temp.json
 .content-collections
 .source
 
+# benchmarks/kevin-fair work folders (made by its setup.sh and its runs)
+/benchmarks/kevin-fair/cb/
+/benchmarks/kevin-fair/deps/
+/benchmarks/kevin-fair/bundles/
+/benchmarks/kevin-fair/trees/
+/benchmarks/kevin-fair/out/
+/benchmarks/kevin-fair/tmp/
+
 # release notes — discord variant is not intended to be committed
 changelog/*_DISCORD.md

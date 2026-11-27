@@ -1,0 +1,70 @@
+--- factory.js
++++ factory-xml.js
+@@ -1,18 +1,19 @@
++// B1.9 fairness variant: one Y.XmlElement('i') with attribute v per element.
+ 
+ import { AbstractCrdt, CrdtFactory } from '../../js-lib/index.js' // eslint-disable-line
+ import * as Y from 'yjs'
+ 
+-export const name = 'yjs'
++export const name = 'yjs13xml'
+ 
+ /**
+  * @implements {CrdtFactory}
+  */
+-export class YjsFactory {
++export class YjsXmlFactory {
+   /**
+    * @param {function(Uint8Array):void} updateHandler
+    */
+   create (updateHandler) {
+-    return new YjsCRDT(updateHandler)
++    return new YjsXmlCRDT(updateHandler)
+   }
+ 
+   /**
+@@ -21,7 +22,7 @@
+    * @return {AbstractCrdt}
+    */
+   load (updateHandler, bin) {
+-    const crdt = new YjsCRDT(updateHandler)
++    const crdt = new YjsXmlCRDT(updateHandler)
+     crdt.applyUpdate(bin)
+     return crdt
+   }
+@@ -34,7 +35,7 @@
+ /**
+  * @implements {AbstractCrdt}
+  */
+-export class YjsCRDT {
++export class YjsXmlCRDT {
+   /**
+    * @param {function(Uint8Array):void} updateHandler
+    */
+@@ -43,7 +44,7 @@
+     this.ydoc.on('updateV2', update => {
+       updateHandler(update)
+     })
+-    this.yarray = this.ydoc.getArray('array')
++    this.yarray = this.ydoc.getXmlFragment('array')
+     this.ymap = this.ydoc.getMap('map')
+     this.ytext = this.ydoc.getText('text')
+   }
+@@ -69,7 +70,7 @@
+    * @param {Array<any>} elems
+    */
+   insertArray (index, elems) {
+-    this.yarray.insert(index, elems)
++    this.yarray.insert(index, elems.map(v => { const e = new Y.XmlElement('i'); e.setAttribute('v', v); return e }))
+   }
+ 
+   /**
+@@ -86,7 +87,7 @@
+    * @return {Array<any>}
+    */
+   getArray () {
+-    return this.yarray.toArray()
++    return this.yarray.toArray().map(e => e.getAttribute('v'))
+   }
+ 
+   /**

@@ -214,6 +214,8 @@ export const rootEslintConfig = tseslint.config(
       "**/.test-results",
       "**/.source",
       "**/next-env.d.ts",
+      // Research scripts outside the workspace (see benchmarks/kevin-fair/README.md).
+      "benchmarks/kevin-fair",
     ],
   },
 );

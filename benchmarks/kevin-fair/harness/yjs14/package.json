@@ -1,0 +1,9 @@
+{
+  "name": "yjs14-benchmarks",
+  "private": true,
+  "type": "module",
+  "description": "Yjs 14 (@y/y) adapter for crdt-benchmarks. setup.sh copies it to benchmarks/yjs14 of the pinned checkout.",
+  "dependencies": {
+    "@y/y": "14.0.0-rc.29"
+  }
+}

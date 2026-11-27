@@ -1,0 +1,184 @@
+--- js-lib/b1.js
++++ js-lib-fair/b1.js
+@@ -1,4 +1,5 @@
+-import { setBenchmarkResult, gen, N, benchmarkTime, logMemoryUsed, getMemUsed, runBenchmark } from './utils.js'
++// FAIR COPY of upstream b1.js (JavaScript like upstream): adds an inner (loadNoGc) window around load + check.
++import { setBenchmarkResult, gen, N, benchmarkTime, logMemoryUsed, getMemUsed, runBenchmark, innerStart, innerEnd } from './utils.js'
+ import * as prng from 'lib0/prng'
+ import * as math from 'lib0/math'
+ import * as t from 'lib0/testing'
+@@ -34,7 +35,7 @@
+         check(doc1, doc2)
+       })
+       const updateSize = doc1Updates.reduce((a, b) => a + b.length, 0)
+-      setBenchmarkResult(crdtFactory.getName(), `${id} (avgUpdateSize)`, `${math.round(updateSize / inputData.length)} bytes`)
++      setBenchmarkResult(crdtFactory.getName(), `${id} (avgUpdateSize)`, `${(updateSize / inputData.length).toFixed(2)} bytes`)
+       benchmarkTime(crdtFactory.getName(), `${id} (encodeTime)`, () => {
+         encodedState = doc1.getEncodedState()
+       })
+@@ -44,8 +45,10 @@
+     }
+     benchmarkTime(crdtFactory.getName(), `${id} (parseTime)`, () => {
+       const startHeapUsed = getMemUsed()
++      const __inner = innerStart()
+       const doc = crdtFactory.load(() => {}, encodedState)
+       check(doc2, doc)
++      innerEnd(__inner, crdtFactory.getName(), `${id} (loadNoGc)`)
+       logMemoryUsed(crdtFactory.getName(), id, startHeapUsed)
+     })
+   }
+--- js-lib/b2.js
++++ js-lib-fair/b2.js
+@@ -1,4 +1,5 @@
+-import { setBenchmarkResult, gen, N, benchmarkTime, runBenchmark, logMemoryUsed, getMemUsed } from './utils.js'
++// FAIR COPY of upstream b2.js (JavaScript like upstream): adds an inner (loadNoGc) window around load + check.
++import { setBenchmarkResult, gen, N, benchmarkTime, runBenchmark, logMemoryUsed, getMemUsed, innerStart, innerEnd } from './utils.js'
+ import * as prng from 'lib0/prng'
+ import * as math from 'lib0/math'
+ import { createMutex } from 'lib0/mutex'
+@@ -35,7 +36,7 @@
+         })
+         check(doc1, doc2)
+       })
+-      const avgUpdateSize = math.round(updatesSize / 2)
++      const avgUpdateSize = (updatesSize / 2).toFixed(2)
+       setBenchmarkResult(crdtFactory.getName(), `${id} (updateSize)`, `${avgUpdateSize} bytes`)
+       benchmarkTime(crdtFactory.getName(), `${id} (encodeTime)`, () => {
+         encodedState = doc1.getEncodedState()
+@@ -47,8 +48,10 @@
+     benchmarkTime(crdtFactory.getName(), `${id} (parseTime)`, () => {
+       const startHeapUsed = getMemUsed()
+       // eslint-disable-next-line
++      const __inner = innerStart()
+       const doc = crdtFactory.load(() => {}, encodedState)
+       check(doc, doc2)
++      innerEnd(__inner, crdtFactory.getName(), `${id} (loadNoGc)`)
+       logMemoryUsed(crdtFactory.getName(), id, startHeapUsed)
+     })
+   }
+--- js-lib/b3.js
++++ js-lib-fair/b3.js
+@@ -1,4 +1,5 @@
+-import { setBenchmarkResult, benchmarkTime, N, logMemoryUsed, getMemUsed, runBenchmark } from './utils.js'
++// FAIR COPY of upstream b3.js (JavaScript like upstream): adds an inner (loadNoGc) window around load + check.
++import { setBenchmarkResult, benchmarkTime, N, logMemoryUsed, getMemUsed, runBenchmark, innerStart, innerEnd } from './utils.js'
+ import * as t from 'lib0/testing'
+ import * as math from 'lib0/math'
+ import { createMutex } from 'lib0/mutex'
+@@ -60,8 +61,10 @@
+     benchmarkTime(crdtFactory.getName(), `${id} (parseTime)`, () => {
+       const startHeapUsed = getMemUsed()
+       // eslint-disable-next-line
++      const __inner = innerStart()
+       const doc = crdtFactory.load(() => {}, encodedState)
+       check([doc, docs[0]])
++      innerEnd(__inner, crdtFactory.getName(), `${id} (loadNoGc)`)
+       logMemoryUsed(crdtFactory.getName(), id, startHeapUsed)
+     })
+   }
+--- js-lib/index.js
++++ js-lib-fair/index.js
+@@ -1,7 +1,8 @@
+-import { runBenchmarksB1 } from '../js-lib/b1.js'
+-import { runBenchmarkB2 } from '../js-lib/b2.js'
+-import { runBenchmarkB3 } from '../js-lib/b3.js'
+-import { runBenchmarkB4 } from '../js-lib/b4.js'
++// FAIR COPY of cb/js-lib/index.js (JavaScript like upstream, so it stays comparable): only the import paths point to this folder.
++import { runBenchmarksB1 } from './b1.js'
++import { runBenchmarkB2 } from './b2.js'
++import { runBenchmarkB3 } from './b3.js'
++import { runBenchmarkB4 } from './b4.js'
+ import { CrdtFactory } from './utils.js' // eslint-disable-line
+ 
+ export * from './b1.js'
+--- js-lib/utils.js
++++ js-lib-fair/utils.js
+@@ -1,3 +1,11 @@
++// FAIR COPY of upstream js-lib/utils.js (crdt-benchmarks @796f7025). Prints 2 decimals instead of rounding. JavaScript
++// because the upstream harness is plain JS and this copy must stay line-for-line comparable with it.
++// Changes (the upstream columns are NOT changed):
++//  - benchmarkTime also records the exact (unrounded) window as `<id> (<column> exact)`;
++//  - innerStart/innerEnd time an inner window (load + check, without the harness's two gc() calls): `(loadNoGc)`;
++//  - FAIR_IC=1: every window also records the thread's instruction count (`... ins`), see scripts/fair/icount.ts.
++//  - FAIR_GC=1: every window also records the bytes the code allocated (`... alloc`), and, after `finishGc()`, the GC
++//    pause time that fell inside it (`... gc`) and the window minus those pauses (`... noGcPause`).
+ import * as prng from 'lib0/prng'
+ import * as metric from 'lib0/metric'
+ import * as math from 'lib0/math'
+@@ -40,13 +48,65 @@
+   }
+ }
+ 
++// Instruction counter (only when FAIR_IC=1; a top-level await keeps the normal path free of any extra import).
++const IC = typeof process !== 'undefined' && process.env.FAIR_IC === '1' ? (await import('../../scripts/fair/icount.ts')).counts : null
++// GC tracking (only when FAIR_GC=1).
++const GC = typeof process !== 'undefined' && process.env.FAIR_GC === '1'
++const v8 = GC ? await import('node:v8') : null
++const gcEntries = []
++const gcWindows = []
++if (GC) {
++  const { PerformanceObserver } = await import('node:perf_hooks')
++  new PerformanceObserver(list => { for (const e of list.getEntries()) gcEntries.push([e.startTime, e.startTime + e.duration]) }).observe({ entryTypes: ['gc'] })
++}
++const allocated = () => v8.getHeapStatistics().total_allocated_bytes
++/** Call after the run (the observer delivers GC entries asynchronously). */
++export const finishGc = async () => {
++  if (!GC) return
++  await new Promise(resolve => setTimeout(resolve, 20))
++  for (const w of gcWindows) {
++    let pause = 0
++    for (const [a, b] of gcEntries) pause += Math.max(0, Math.min(b, w.t1) - Math.max(a, w.t0))
++    benchmarkResults[`${w.key} gc)`] = { [w.libname]: pause }
++    benchmarkResults[`${w.key} noGcPause)`] = { [w.libname]: w.t1 - w.t0 - pause }
++  }
++}
++const columnOf = id => id.slice(id.lastIndexOf(' (') + 2, -1)
++const rowOf = id => id.slice(0, id.lastIndexOf(' ('))
++const record = (libname, id, ms, ins) => {
++  benchmarkResults[`${rowOf(id)} (${columnOf(id)} exact)`] = { [libname]: ms }
++  if (ins !== undefined) benchmarkResults[`${rowOf(id)} (${columnOf(id)} ins)`] = { [libname]: ins }
++}
++
++const recordGc = (libname, id, t0, t1, a0) => {
++  const a1 = allocated()
++  const key = `${rowOf(id)} (${columnOf(id)}`
++  benchmarkResults[`${key} alloc)`] = { [libname]: a1 - a0 }
++  gcWindows.push({ key, libname, t0, t1 })
++}
++
+ export const benchmarkTime = (libname, id, f) => {
++  const a0 = GC && allocated()
++  const i0 = IC && IC()
+   const start = perf.now()
+   f()
+-  const time = perf.now() - start
+-  setBenchmarkResult(libname, id, `${time.toFixed(0)} ms`)
++  const end = perf.now()
++  const i1 = IC && IC()
++  const time = end - start
++  if (GC) recordGc(libname, id, start, end, a0)
++  setBenchmarkResult(libname, id, `${time.toFixed(2)} ms`)
++  record(libname, id, time, IC ? Number(i1.ins - i0.ins) : undefined)
+ }
+ 
++/** Inner window (see header). Use as `const a = innerStart(); ...; innerEnd(a, libname, id)`. */
++export const innerStart = () => ({ a0: GC && allocated(), i0: IC && IC(), t0: perf.now() })
++export const innerEnd = (a, libname, id) => {
++  const t1 = perf.now()
++  const i1 = IC && IC()
++  if (GC) recordGc(libname, id, a.t0, t1, a.a0)
++  record(libname, id, t1 - a.t0, IC ? Number(i1.ins - a.i0.ins) : undefined)
++}
++
+ /**
+  * @param {string} name
+  * @param {function(string):boolean} filter
+@@ -83,7 +143,7 @@
+     }
+     const diff = process.memoryUsage().heapUsed - startHeapUsed
+     const p = metric.prefix(diff)
+-    setBenchmarkResult(libname, `${id} (memUsed)`, `${math.round(math.max(p.n * 10, 0)) / 10} ${p.prefix}B`)
++    setBenchmarkResult(libname, `${id} (memUsed)`, `${(math.max(p.n, 0)).toFixed(2)} ${p.prefix}B`)
+   }
+ }
+ 

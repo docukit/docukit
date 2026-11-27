@@ -6,6 +6,8 @@ const config: KnipConfig = {
     "packages/docnode-editor/src/**",
     "docs/source.config.ts",
     "docs/src/components/ui/**",
+    // Research scripts outside the workspace (see benchmarks/kevin-fair/README.md).
+    "benchmarks/kevin-fair/**",
   ],
   // TODO: maybe I should ignore specifically for each package instead of the whole monorepo
   // Dependencies that are used in the package.json scripts
