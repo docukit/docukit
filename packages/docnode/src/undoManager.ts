@@ -1,13 +1,21 @@
 import { type Doc } from "./main.js";
 import {
-  mergeOperations,
+  mergeDrafts,
+  type DraftOperations,
   type Operations,
-  type OrderedOperation,
 } from "./operations.js";
 import type { UndoManagerConfig } from "./types.js";
+import { decodeOperations, encodeOperations } from "./wire.js";
 
-/** `meta` is opaque — consumers attach arbitrary data (e.g. selection). */
-type UndoStackItem = { operations: Operations; meta: Map<string, unknown> };
+/**
+ * `meta` is opaque — consumers attach arbitrary data (e.g. selection). The
+ * operations are kept as the document records them: merging the steps of a
+ * burst of typing needs no decoding, and only `exportHistory` writes them.
+ */
+type UndoStackItem = {
+  operations: DraftOperations;
+  meta: Map<string, unknown>;
+};
 
 export type UndoHistoryItem = {
   operations: Operations;
@@ -46,7 +54,7 @@ export class UndoManager {
     this._doc.onChange((event) => {
       if (event.flags?.skipUndo) return;
       const item: UndoStackItem = {
-        operations: event.inverseOperations,
+        operations: this._doc["_inverseOperations"],
         meta: new Map(),
       };
       if (this._txType === "update") {
@@ -57,7 +65,7 @@ export class UndoManager {
           this._lastUpdate !== undefined &&
           now - this._lastUpdate < this._mergeInterval
         ) {
-          lastItem.operations = mergeOperations(
+          lastItem.operations = mergeDrafts(
             item.operations,
             lastItem.operations,
           );
@@ -98,7 +106,7 @@ export class UndoManager {
     this._txType = "undo";
     this._lastUpdate = undefined;
     try {
-      this._doc.applyOperations(item.operations);
+      this._doc["_applyDraft"](item.operations);
     } finally {
       // Nothing may have changed (every operation was skipped), in which case
       // no change event resets the mode. It must not leak into the next edit.
@@ -114,7 +122,7 @@ export class UndoManager {
     this._txType = "redo";
     this._lastUpdate = undefined;
     try {
-      this._doc.applyOperations(item.operations);
+      this._doc["_applyDraft"](item.operations);
     } finally {
       this._txType = "update";
     }
@@ -164,8 +172,11 @@ export class UndoManager {
     }
 
     const maxSteps = this._maxUndoSteps;
-    this._undoStack = importStack(history.undoStack, maxSteps);
-    this._redoStack = importStack(history.redoStack, maxSteps);
+    // Both stacks first: one that does not decode changes neither.
+    const undoStack = importStack(history.undoStack, maxSteps);
+    const redoStack = importStack(history.redoStack, maxSteps);
+    this._undoStack = undoStack;
+    this._redoStack = redoStack;
     this._lastUpdate = history.lastUpdate;
     this._txType = "update";
   }
@@ -193,40 +204,10 @@ export class UndoManager {
   }
 }
 
-function cloneOperations(operations: Operations): Operations {
-  const orderedOperations = operations[0].map(cloneOrderedOperation);
-  const statePatch = Object.fromEntries(
-    Object.entries(operations[1]).map(([id, state]) => [id, { ...state }]),
-  );
-  return [orderedOperations, statePatch];
-}
-
-function cloneOrderedOperation(operation: OrderedOperation): OrderedOperation {
-  if (operation[0] === 0) {
-    return [
-      0,
-      operation[1].map(([id, type]) => [id, type]),
-      operation[2],
-      operation[3],
-      operation[4],
-    ];
-  }
-  if (operation[0] === 1) {
-    return [1, operation[1], operation[2]];
-  }
-  return [
-    2,
-    operation[1],
-    operation[2],
-    operation[3],
-    operation[4],
-    operation[5],
-  ];
-}
-
 function exportStackItem(item: UndoStackItem): UndoHistoryItem {
   return {
-    operations: cloneOperations(item.operations),
+    // Since #129 the history shares its state values with the stack: do not change them in place.
+    operations: encodeOperations(item.operations),
     // Intentionally shallow: history handoff normally disposes the source doc,
     // while persistence owns serialization of its opaque metadata values. A
     // deep clone would reject valid non-serializable editor metadata.
@@ -237,7 +218,7 @@ function exportStackItem(item: UndoStackItem): UndoHistoryItem {
 function importStack(items: UndoHistoryItem[], maxSteps: number) {
   const retainedItems = maxSteps === 0 ? [] : items.slice(-maxSteps);
   return retainedItems.map((item) => ({
-    operations: cloneOperations(item.operations),
+    operations: decodeOperations(item.operations),
     meta: new Map(Object.entries(item.meta)),
   }));
 }
@@ -250,63 +231,60 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return isRecord(value) && Object.values(value).every(isString);
-}
-
 function isString(value: unknown): value is string {
   return typeof value === "string";
 }
 
-function isNodeReference(value: unknown): value is string | 0 {
-  return value === 0 || typeof value === "string";
+/** A node in a batch: a number (of the head's session) or a whole id. */
+function isNodeRef(value: unknown): boolean {
+  return Number.isInteger(value) || typeof value === "string";
 }
 
-function isOrderedOperation(value: unknown): boolean {
+/** `[node, type]` or `[node, type, count]` of an insert row. */
+function isInsertedNodes(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    (value.length === 2 ||
+      (value.length === 3 && Number.isInteger(value[2]))) &&
+    isNodeRef(value[0]) &&
+    isString(value[1])
+  );
+}
+
+/** A row of a batch (see `wire.ts`); the state patch must be the last. */
+function isRow(value: unknown, last: boolean): boolean {
   if (!Array.isArray(value)) return false;
-  if (value[0] === 0) {
+  const row: unknown[] = value;
+  const [tag, ...rest] = row;
+  if (tag === 0)
     return (
-      value.length === 5 &&
-      Array.isArray(value[1]) &&
-      value[1].every(
-        (node) =>
-          Array.isArray(node) && node.length === 2 && node.every(isString),
-      ) &&
-      isNodeReference(value[2]) &&
-      isNodeReference(value[3]) &&
-      isNodeReference(value[4])
+      rest.length === 4 &&
+      Array.isArray(rest[0]) &&
+      rest[0].every(isInsertedNodes) &&
+      rest.slice(1).every(isNodeRef)
     );
-  }
-  if (value[0] === 1) {
-    return (
-      value.length === 3 &&
-      typeof value[1] === "string" &&
-      isNodeReference(value[2])
-    );
-  }
-  if (value[0] === 2) {
-    return (
-      value.length === 6 &&
-      typeof value[1] === "string" &&
-      isNodeReference(value[2]) &&
-      isNodeReference(value[3]) &&
-      isNodeReference(value[4]) &&
-      isNodeReference(value[5])
-    );
-  }
-  return false;
+  if (tag === 1) return rest.length === 2 && rest.every(isNodeRef);
+  if (tag === 2) return rest.length === 5 && rest.every(isNodeRef);
+  // `[-9, nodes, keys, values]`: columns of the same length.
+  const [nodes, keys, values] = rest;
+  return (
+    tag === -9 &&
+    last &&
+    rest.length === 3 &&
+    Array.isArray(nodes) &&
+    nodes.every(isNodeRef) &&
+    Array.isArray(keys) &&
+    keys.every(isString) &&
+    Array.isArray(values) &&
+    keys.length === nodes.length &&
+    values.length === nodes.length
+  );
 }
 
 function isOperations(value: unknown): value is Operations {
-  if (!Array.isArray(value) || value.length !== 2) return false;
-  const orderedOperations: unknown = value[0];
-  const statePatch: unknown = value[1];
-  return (
-    Array.isArray(orderedOperations) &&
-    orderedOperations.every(isOrderedOperation) &&
-    isRecord(statePatch) &&
-    Object.values(statePatch).every(isStringRecord)
-  );
+  if (!Array.isArray(value) || !isString(value[0])) return false;
+  const rows: unknown[] = value.slice(1);
+  return rows.every((row, index) => isRow(row, index === rows.length - 1));
 }
 
 function isHistoryItem(value: unknown): value is UndoHistoryItem {

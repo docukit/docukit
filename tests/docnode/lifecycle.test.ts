@@ -699,9 +699,11 @@ describe("applyOperations", () => {
     const nodeId = nextNodeId(doc);
 
     checkUndoManager(1, doc, () => {
+      // The head is the node's id: `1` is that node.
       doc.applyOperations([
-        [[0, [[nodeId, "text"]], 0, 0, 0]],
-        { [nodeId]: { value: '"test"' } },
+        nodeId,
+        [0, [[1, "text"]], 0, 0, 0],
+        [-9, [1], ["value"], ["test"]],
       ]);
     });
     assertDoc(doc, ["test"]);

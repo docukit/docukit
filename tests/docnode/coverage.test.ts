@@ -78,7 +78,8 @@ describe("main.ts coverage", () => {
   });
 
   test("empty applyOperations throws during strict mode second normalize pass", () => {
-    const emptyOperations: Operations = [[], {}];
+    // Only a head: a batch with nothing in it.
+    const emptyOperations: Operations = [""];
     const TestExtension: Extension = {
       nodes: [Text],
       register: (doc) => {
@@ -407,7 +408,7 @@ describe("operations.ts coverage", () => {
 
   test("move operation with missing range endpoints is ignored", () => {
     const doc = new Doc({ type: "root", extensions: [TextExtension] });
-    const operations: Operations = [[[2, "missing-start", 0, 0, 0, 0]], {}];
+    const operations: Operations = ["", [2, "missing-start", 0, 0, 0, 0]];
 
     expect(() => doc.applyOperations(operations)).not.toThrow();
   });

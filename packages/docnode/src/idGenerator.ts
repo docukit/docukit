@@ -1,4 +1,5 @@
 import type { Doc } from "./main.js";
+import { ownId } from "./utils.js";
 
 // RFC 4648 §5 alphabet: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 // But Lexicographically sorted.
@@ -179,7 +180,10 @@ export class NodeIds {
   split(id: string) {
     const dot = id.lastIndexOf(".");
     const clock = clockAt(id, dot);
-    if (clock < 0) return -1;
+    if (clock < 0) {
+      ownId(id);
+      return -1;
+    }
     this._splitClock = clock;
     return this.register(id.slice(0, dot));
   }

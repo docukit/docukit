@@ -12,6 +12,7 @@ import {
   type JsonDoc,
   type Operations,
   type DocNode,
+  _INTERNAL_decodeOperations as decodeOperations,
 } from "@docukit/docnode";
 import { ulid } from "ulid";
 import { expect, inject, vi, type Mock } from "vitest";
@@ -475,22 +476,11 @@ const createClientUtils = async (
           const opsChildren: string[] = [];
 
           for (const { operations: batch } of result.operations) {
-            if (batch.length === 0) continue;
-            for (const item of batch) {
-              if (!Array.isArray(item) || item.length < 2) continue;
-              const stateUpdates = item[1];
-              if (!stateUpdates || typeof stateUpdates !== "object") continue;
-
-              for (const [, nodeState] of Object.entries(stateUpdates)) {
-                if (
-                  nodeState &&
-                  typeof nodeState === "object" &&
-                  "value" in nodeState
-                ) {
-                  const jsonValue = nodeState.value;
-                  const parsedValue = JSON.parse(jsonValue) as string;
-                  opsChildren.push(parsedValue);
-                }
+            for (const operations of batch) {
+              const [, statePatch] = decodeOperations(operations);
+              for (const nodeState of Object.values(statePatch)) {
+                const value = nodeState.value;
+                if (typeof value === "string") opsChildren.push(value);
               }
             }
           }

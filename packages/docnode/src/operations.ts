@@ -1,16 +1,17 @@
 import { type Doc, type DocNode } from "./main.js";
 import {
+  type ChangeEvent,
   type Json,
   type StateDefinition,
   type UnsafeDefinition,
 } from "./types.js";
-import { detachRange, freezeInDev, isObjectEmpty } from "./utils.js";
+import { detachRange, equalJson, freezeInDev, isObjectEmpty } from "./utils.js";
+import { decodeOperations, encodeOperations } from "./wire.js";
 
 /**
  * The JSON of a node's state value, as its definition's `toJSON` writes it,
- * or of the default when the key was never set. It is the value itself, not
- * a copy: state values are not changed in place (they are frozen in
- * development).
+ * or of the default when the key was never set. Operations keep it as it is:
+ * state values are not changed in place (they are frozen in development).
  */
 export function stateKeyToJson(node: DocNode, key: string): Json {
   const resolvedNodeDef = node.doc["_resolvedNodeDefs"].get(node.type)!;
@@ -44,8 +45,8 @@ export function stateValueToJson(
 
 /**
  * `json` as plain JSON: an object that is not a plain object or list (a
- * Date, a class) is what `JSON.stringify` writes of it, so that a stored
- * document stays the same through `structuredClone` (IndexedDB).
+ * Date, a class) is what `JSON.stringify` writes of it, so that it stays the
+ * same through `structuredClone` (IndexedDB) and travels as it is stored.
  */
 export function toPlainJson(json: unknown): Json {
   if (typeof json === "object" && json) {
@@ -60,26 +61,21 @@ export function stringifyStateKey(node: DocNode, key: string): string {
   return JSON.stringify(stateKeyToJson(node, key));
 }
 
-export function parseStateKey(
-  node: DocNode,
-  key: string,
-  stringifiedValue: string,
-): unknown {
+/** The state value of `json`, as the key's definition reads it. */
+export function parseStateKey(node: DocNode, key: string, json: Json): unknown {
   const stateDef = node.doc["_resolvedNodeDefs"].get(node.type)?.state[key];
-  const value = JSON.parse(stringifiedValue) as Json;
-  const stateValue = stateDef?.fromJSON(value);
-  return stateValue;
+  return stateDef?.fromJSON(json);
 }
 
 export const onSetState = {
   operations: (node: DocNode, key: string) => {
     const { doc } = node;
     const statePatchs = doc["_operations"][1];
-    const valueString = stringifyStateKey(node, key);
+    const value = stateKeyToJson(node, key);
 
-    const prevValueString = doc["_inverseOperations"][1][node.id]?.[key];
+    const prevValue = doc["_inverseOperations"][1][node.id]?.[key];
     const nodePatch = statePatchs[node.id];
-    if (prevValueString === valueString && nodePatch) {
+    if (prevValue !== undefined && nodePatch && equalJson(prevValue, value)) {
       delete nodePatch[key];
       if (isObjectEmpty(nodePatch)) {
         delete statePatchs[node.id];
@@ -87,7 +83,7 @@ export const onSetState = {
       }
       delete doc["_inverseOperations"][1][node.id]?.[key];
     } else {
-      (statePatchs[node.id] ??= {})[key] = valueString;
+      (statePatchs[node.id] ??= {})[key] = value;
       if (!doc["_diff"].inserted.has(node.id))
         doc["_diff"].updated.add(node.id);
     }
@@ -98,8 +94,7 @@ export const onSetState = {
     if (insertedInSameTransaction) return;
     const inverseStatePatchs = doc["_inverseOperations"][1];
     if (inverseStatePatchs[node.id]?.[key] !== undefined) return;
-    const originalStringifiedState = stringifyStateKey(node, key);
-    (inverseStatePatchs[node.id] ??= {})[key] = originalStringifiedState;
+    (inverseStatePatchs[node.id] ??= {})[key] = stateKeyToJson(node, key);
   },
 };
 
@@ -182,7 +177,7 @@ function copyInsertedToDiff(node: DocNode) {
     diff.inserted.add(node.id);
   }
   // [#4GOSK]
-  const jsonState = node["_stateToJson"]();
+  const jsonState = node["_stateJson"]();
   if (isObjectEmpty(jsonState)) return;
   doc["_operations"][1][node.id] = jsonState;
 }
@@ -279,7 +274,7 @@ export const onMoveRange = (
   });
 };
 
-export const onApplyOperations = (doc: Doc, operations: Operations) => {
+export const onApplyOperations = (doc: Doc, operations: DraftOperations) => {
   operations[0].forEach((operation) => {
     switch (operation[0]) {
       case 0:
@@ -351,14 +346,17 @@ export const onApplyOperations = (doc: Doc, operations: Operations) => {
       // The state of a node inserted in this transaction is part of its
       // creation and needs no inverse: the inverse operation is a delete.
       if (!insertedInSameTransaction) {
-        const current = stringifyStateKey(node, key);
+        const current = stateKeyToJson(node, key);
         // A value already in place is treated as applied, like an insert of
         // an existing node. It changes nothing and needs no inverse.
-        if (current === value) continue;
+        if (equalJson(current, value)) continue;
         doc["_diff"].updated.add(id);
-        (currentInverseStatePatch[id] ??= {})[key] ??= current;
+        // The first inverse of a key in the transaction wins, even `null`.
+        const inverse = (currentInverseStatePatch[id] ??= {});
+        if (inverse[key] === undefined) inverse[key] = current;
       }
       (currentStatePatch[id] ??= {})[key] = value;
+      // The value is the batch's: frozen, like a value set here.
       node["_values"]()[key] = freezeInDev(parseStateKey(node, key, value));
     }
   }
@@ -388,14 +386,25 @@ export const maybeTriggerListeners = (doc: Doc, ignoreEmptyDiff = false) => {
   }
   if (!hasChanges()) return;
   doc["_lifeCycleStage"] = "change";
-  doc["_changeListeners"].forEach((listener) =>
-    listener({
-      operations: doc["_operations"],
-      inverseOperations: doc["_inverseOperations"],
-      diff: doc["_diff"],
-      flags: doc["_transactionFlags"],
-    }),
-  );
+  const operations = doc["_operations"];
+  const inverseOperations = doc["_inverseOperations"];
+  let encoded: Operations | undefined;
+  let inverseEncoded: Operations | undefined;
+  // The batches are written when a listener reads them, once for all, as
+  // Yjs writes its update only when someone listens to it (`Transaction.js`):
+  // the undo manager keeps the inverse as it is built, and loading a
+  // document inserts all its nodes.
+  const event: ChangeEvent = {
+    get operations() {
+      return (encoded ??= encodeOperations(operations));
+    },
+    get inverseOperations() {
+      return (inverseEncoded ??= encodeOperations(inverseOperations));
+    },
+    diff: doc["_diff"],
+    flags: doc["_transactionFlags"],
+  };
+  doc["_changeListeners"].forEach((listener) => listener(event));
 };
 
 const copyDeletedToDiff = (node: DocNode) => {
@@ -409,7 +418,7 @@ const copyDeletedToDiff = (node: DocNode) => {
   } else {
     // backup the previous state in inverseOperations.statePatch
     const inversePatchState = doc["_inverseOperations"][1][node.id];
-    const currentState = node["_stateToJson"]();
+    const currentState = node["_stateJson"]();
     const previousState = { ...currentState, ...inversePatchState };
     doc["_inverseOperations"][1][node.id] = previousState;
     // add to diff.deleted
@@ -450,21 +459,75 @@ export type OrderedOperation =
 //   includeDescendants: 1 | 0,
 // ]
 
-type StatePatch = { [id: string]: Record<string, string> };
+/** The new value of each changed key of each node, as JSON. */
+export type StatePatch = { [id: string]: Record<string, Json> };
 
-export type Operations = readonly [OrderedOperation[], StatePatch];
+/**
+ * The operations of a transaction as the document records and applies them,
+ * with whole node ids. `Operations` is how they travel (see `wire.ts`).
+ */
+export type DraftOperations = readonly [OrderedOperation[], StatePatch];
 
-export function mergeOperations(...operationsList: Operations[]): Operations {
+/**
+ * A node in a batch: a number is a node of the head's session, by its
+ * clock's distance from the head's (see `wire.ts`); a string is a whole node
+ * id. `0` is none: the root as a parent, or no sibling.
+ */
+export type NodeRef = string | number;
+
+/**
+ * A batch of operations as it travels and is stored: plain JSON, read on its
+ * own. See `wire.ts`.
+ */
+export type Operations = readonly [head: string, ...rows: OperationsRow[]];
+
+export type OperationsRow =
+  | readonly [
+      op: 0,
+      /** A count is a run of nodes made one after the other. */
+      nodes: readonly (
+        | readonly [node: NodeRef, type: string]
+        | readonly [node: NodeRef, type: string, count: number]
+      )[],
+      parent: NodeRef,
+      prev: NodeRef,
+      next: NodeRef,
+    ]
+  | readonly [op: 1, start: NodeRef, end: NodeRef]
+  | readonly [
+      op: 2,
+      start: NodeRef,
+      end: NodeRef,
+      parent: NodeRef,
+      prev: NodeRef,
+      next: NodeRef,
+    ]
+  /**
+   * The state patch, always the last row: `[-9, nodes, keys, values]`, an
+   * entry per key a node changed.
+   */
+  | readonly [
+      op: -9,
+      nodes: readonly NodeRef[],
+      keys: readonly string[],
+      values: readonly Json[],
+    ];
+
+/** Concatenates drafts (see `mergeOperations`). */
+export function mergeDrafts(...drafts: DraftOperations[]): DraftOperations {
   const orderedOperations: OrderedOperation[] = [];
   const statePatch: StatePatch = {};
-
-  for (const operations of operationsList) {
-    orderedOperations.push(...operations[0]);
-    for (const nodeId in operations[1]) {
+  for (const [ordered, patch] of drafts) {
+    orderedOperations.push(...ordered);
+    for (const nodeId in patch) {
       statePatch[nodeId] ??= {};
-      Object.assign(statePatch[nodeId], operations[1][nodeId]);
+      Object.assign(statePatch[nodeId], patch[nodeId]);
     }
   }
-
   return [orderedOperations, statePatch];
+}
+
+/** Concatenates batches of operations into one. */
+export function mergeOperations(...operationsList: Operations[]): Operations {
+  return encodeOperations(mergeDrafts(...operationsList.map(decodeOperations)));
 }

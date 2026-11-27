@@ -30,12 +30,8 @@ You can expand the rows in the following table to see a description of these obj
 Unless you're building your own sync solution or undo manager, you don't need to use it. Even if that's the case, its internal structure should be irrelevant since \`applyOperations\` is the only API that understands it. But for the curious, its simplified form is:
 
 \`\`\`ts
-type OrderedOperation =
-| InsertOperation
-| DeleteOperation
-| MoveOperation;
-
-type Operations = [OrderedOperation[], StatePatch];
+// Each row inserts, deletes or moves nodes, or sets state.
+type Operations = [head: string, ...rows: Row[]];
 
 \`\`\`
 `,

@@ -25,11 +25,13 @@ import {
   equalJson,
   ULID_REGEX,
   defineNode,
+  ownId,
 } from "./utils.js";
 import * as ops from "./operations.js";
 import { MAX_CLOCK, NodeIds, numberToBase64 } from "./idGenerator.js";
 import { decodeTime, ulid } from "ulid";
 import { UndoManager } from "./undoManager.js";
+import { decodeOperations } from "./wire.js";
 
 /** Where a node keeps its document (see `DocNode.doc`). */
 const DOC: unique symbol = Symbol("doc");
@@ -97,7 +99,7 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     } else {
       this._session = session;
       this._clock = clock;
-      this.id = id ?? doc["_idGen"].generate();
+      this.id = id ?? ownId(doc["_idGen"].generate());
     }
   }
 
@@ -395,8 +397,9 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
           const clone = (node: DocNode) => {
             const newNode = new DocNode(doc, node.type);
             for (const key in node["_state"]) {
-              const stringified = ops.stringifyStateKey(node, key);
-              const parsed = ops.parseStateKey(newNode, key, stringified);
+              // A copy, through its JSON text.
+              const copy = JSON.parse(ops.stringifyStateKey(node, key)) as Json;
+              const parsed = ops.parseStateKey(newNode, key, copy);
               newNode["_values"]()[key] = parsed;
             }
             return newNode;
@@ -583,14 +586,6 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     return [this.id, this.type, this._stateJson() as NodeState.Jsonified<T>];
   }
 
-  /** Each value that is not the default, as a JSON string. */
-  private _stateToJson(): NodeState.Stringified<T> {
-    const jsonState: Record<string, string> = {};
-    const values = this._stateJson();
-    for (const key in values) jsonState[key] = JSON.stringify(values[key]);
-    return jsonState as NodeState.Stringified<T>;
-  }
-
   /** Each value that is not the default, as JSON (see `ops.stateKeyToJson`). */
   private _stateJson(): Record<string, Json> {
     const jsonState: Record<string, Json> = {};
@@ -620,8 +615,8 @@ export class Doc {
     | "normalize2"
     | "change"
     | "disposed" = "idle";
-  protected _operations: ops.Operations = [[], {}];
-  protected _inverseOperations: ops.Operations = [[], {}];
+  protected _operations: ops.DraftOperations = [[], {}];
+  protected _inverseOperations: ops.DraftOperations = [[], {}];
   protected _transactionFlags: TransactionFlags;
   private _isForceCommitCallback = false;
   protected _diff: Diff = {
@@ -728,7 +723,7 @@ export class Doc {
       throw new Error(`Invalid document id: ${config.id}.`);
     }
 
-    const id = config.id ?? idGen.generate();
+    const id = ownId(config.id ?? idGen.generate());
     // @ts-expect-error - private constructor
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     this.root = new DocNode(this, config.type, id);
@@ -963,6 +958,14 @@ export class Doc {
   }
 
   applyOperations(operations: ops.Operations, flags?: TransactionFlags) {
+    this._applyDraft(decodeOperations(operations), flags);
+  }
+
+  /** `applyOperations` of operations as this document records them. */
+  private _applyDraft(
+    operations: ops.DraftOperations,
+    flags?: TransactionFlags,
+  ) {
     const hasOperations =
       operations[0].length > 0 || !isObjectEmpty(operations[1]);
     if (!hasOperations) {
@@ -1045,7 +1048,7 @@ export class Doc {
    * Aborts the current transaction and rolls back all changes.
    */
   abort() {
-    const inverseOps: ops.Operations = [...this["_inverseOperations"]];
+    const inverseOps: ops.DraftOperations = [...this["_inverseOperations"]];
     withTransaction(
       this,
       () => {
@@ -1220,7 +1223,8 @@ export class Doc {
    * Creates a new doc from the given JSON.
    *
    * The initial JSON import starts a transaction, allowing updates made
-   * immediately afterward to be batched with it.
+   * immediately afterward to be batched with it. The transaction inserts the
+   * stored nodes: its normalize and change events see them.
    *
    * State values are not copied: the document keeps the values of `jsonDoc`
    * (each through its definition's `fromJSON`), so do not change them in
@@ -1450,7 +1454,7 @@ export class Doc {
         if (base + MASK_BITS >= keyCount) break;
       }
       if (hasState) {
-        const changed = node["_stateToJson"]();
+        const changed = node["_stateJson"]();
         if (!isObjectEmpty(changed)) patch[nodeId!] = changed;
       }
       written.push([nodeId!, type.name]);
@@ -1513,7 +1517,8 @@ export class Doc {
    * custom generator without `extractTime`: `NodeIds` reads the others.
    */
   private _validateNodeId(id: string) {
-    if (!this._idGen.validate(id)) throw new Error(`Invalid node id: ${id}.`);
+    if (!this._idGen.validate(ownId(id)))
+      throw new Error(`Invalid node id: ${id}.`);
   }
 
   /** A node of a stored document or of an operation, without state yet. */
@@ -1619,9 +1624,8 @@ const MASK_BITS = 30;
 
 /**
  * Pushes to `values` the node's state values that are not the default, as
- * plain JSON (the operations keep them as strings of JSON), and to `masks`
- * the masks of their keys: bit `k` of mask `c` stands for
- * `type.keys[c * MASK_BITS + k]`.
+ * plain JSON, and to `masks` the masks of their keys: bit `k` of mask `c`
+ * stands for `type.keys[c * MASK_BITS + k]`.
  */
 function writeValues(
   node: DocNode,
@@ -1760,7 +1764,7 @@ function stateKeyMethods(
           ].join(" "),
         );
       const maybePrevState = doc["_inverseOperations"][1][node.id]?.[key];
-      return maybePrevState
+      return maybePrevState !== undefined
         ? [true, ops.parseStateKey(node, key, maybePrevState)]
         : [false, node["_state"][key]];
     },

@@ -48,11 +48,27 @@ const createDocBinding = () =>
 // ============================================================================
 
 /** Creates test operations - the content doesn't matter for sync tests */
-export const ops = (data?: Record<string, string>): Operations =>
-  [[], data ? { testNode: data } : {}] as Operations;
+export const ops = (data: Record<string, string> = {}): Operations => [
+  "",
+  [
+    -9,
+    Object.keys(data).map(() => "testNode"),
+    Object.keys(data),
+    Object.values(data),
+  ],
+];
 
-/** Empty operations */
-export const emptyOps = (): Operations => [[], {}] as Operations;
+/**
+ * The part of a sync request a test checks. Typed loosely: TypeScript gives up
+ * matching the type of the operations (recursive JSON) deep inside `expect`.
+ */
+export const syncRequest = (
+  docId: string,
+  operations: Operations[],
+): Record<string, unknown> => ({ docId, operations });
+
+/** Empty operations: a batch with only its head. */
+export const emptyOps = (): Operations => [""];
 
 // ============================================================================
 // Client Factory

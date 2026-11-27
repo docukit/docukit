@@ -3322,13 +3322,13 @@ describe("DocSyncClient", () => {
         await expect.poll(() => messageHandler !== null).toBe(true);
 
         // Simulate a message from BroadcastChannel with empty operations
-        // Operations format is [OrderedOperation[], StatePatch] - empty is [[], {}]
+        // Operations format is [head, ...rows] - empty is [""]
         messageHandler!({
           data: {
             type: "OPERATIONS",
             docId,
             source: "local-broadcast",
-            operations: [[], {}],
+            operations: [""],
             flags: {},
             presence: {},
           },
@@ -3381,13 +3381,13 @@ describe("DocSyncClient", () => {
         postMessageSpy.mockClear();
 
         // Simulate receiving operations from another tab (empty operations)
-        // Operations format is [OrderedOperation[], StatePatch] - empty is [[], {}]
+        // Operations format is [head, ...rows] - empty is [""]
         messageHandler!({
           data: {
             type: "OPERATIONS",
             docId,
             source: "local-broadcast",
-            operations: [[], {}],
+            operations: [""],
             flags: {},
             presence: {},
           },

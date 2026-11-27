@@ -98,10 +98,10 @@ describe("each node keeps its id as numbers", () => {
         validate: (id) => id.startsWith("ok-"),
       },
     });
-    doc.applyOperations([[[0, [["bad", "text"]], 0, 0, 0]], {}]);
+    doc.applyOperations(["", [0, [["bad", "text"]], 0, 0, 0]]);
     doc.forceCommit();
     expect(doc.root.first).toBeUndefined();
-    doc.applyOperations([[[0, [["ok-2", "text"]], 0, 0, 0]], {}]);
+    doc.applyOperations(["", [0, [["ok-2", "text"]], 0, 0, 0]]);
     doc.forceCommit();
     expect(doc.root.first!.id).toBe("ok-2");
   });

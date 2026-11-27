@@ -1,44 +1,44 @@
 import type { Json, JsonDoc, Operations } from "@docukit/docnode";
 import * as v from "valibot";
 
-const stringRecordSchema = v.record(v.string(), v.string());
-const stringOrZeroSchema = v.union([v.string(), v.literal(0)]);
+/** A node: a number (of the batch head's session), a whole id, or `0`. */
+const nodeRefSchema = v.union([v.string(), v.pipe(v.number(), v.integer())]);
 
-const nodeReferenceSchema = v.tuple([v.string(), v.string()]);
+const insertedNodesSchema = v.array(
+  v.union([
+    v.tuple([nodeRefSchema, v.string()]),
+    v.tuple([nodeRefSchema, v.string(), v.pipe(v.number(), v.integer())]),
+  ]),
+);
 
-const insertOperationSchema = v.tuple([
-  v.literal(0),
-  v.array(nodeReferenceSchema),
-  stringOrZeroSchema,
-  stringOrZeroSchema,
-  stringOrZeroSchema,
+/** A row of a batch (see `Operations` in `@docukit/docnode`). */
+const rowSchema = v.union([
+  v.tuple([
+    v.literal(0),
+    insertedNodesSchema,
+    nodeRefSchema,
+    nodeRefSchema,
+    nodeRefSchema,
+  ]),
+  v.tuple([v.literal(1), nodeRefSchema, nodeRefSchema]),
+  v.tuple([
+    v.literal(2),
+    nodeRefSchema,
+    nodeRefSchema,
+    nodeRefSchema,
+    nodeRefSchema,
+    nodeRefSchema,
+  ]),
+  v.tuple([
+    v.literal(-9),
+    v.array(nodeRefSchema),
+    v.array(v.string()),
+    v.array(v.lazy(() => jsonSchema)),
+  ]),
 ]);
 
-const deleteOperationSchema = v.tuple([
-  v.literal(1),
-  v.string(),
-  stringOrZeroSchema,
-]);
-
-const moveOperationSchema = v.tuple([
-  v.literal(2),
-  v.string(),
-  stringOrZeroSchema,
-  stringOrZeroSchema,
-  stringOrZeroSchema,
-  stringOrZeroSchema,
-]);
-
-const orderedOperationSchema = v.union([
-  insertOperationSchema,
-  deleteOperationSchema,
-  moveOperationSchema,
-]);
-
-const operationsSchema = v.tuple([
-  v.array(orderedOperationSchema),
-  v.record(v.string(), stringRecordSchema),
-]);
+/** `[head, ...rows]`. */
+const operationsSchema = v.tupleWithRest([v.string()], rowSchema);
 
 const jsonSchema: v.GenericSchema<unknown, Json> = v.lazy(() =>
   v.union([

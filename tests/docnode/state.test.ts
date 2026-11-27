@@ -426,7 +426,7 @@ test("setState should update patchState only if the node is inserted", () => {
       () => {
         doc.root.append(node);
         expect(doc["_operations"][1]).toStrictEqual({
-          [node.id]: { value: '"1"' },
+          [node.id]: { value: "1" },
         });
       },
       (changeEvent) => {
@@ -452,7 +452,7 @@ test("setState should update patchState only if the node is inserted", () => {
       () => {
         node.state.value.set("2");
         expect(doc["_operations"][1]).toStrictEqual({
-          [node.id]: { value: '"2"' },
+          [node.id]: { value: "2" },
         });
       },
       (changeEvent) => {

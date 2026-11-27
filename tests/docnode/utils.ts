@@ -13,6 +13,7 @@ import {
   type JsonDoc,
   type DocConfig,
   mergeOperations,
+  _INTERNAL_decodeOperations as decode,
 } from "@docukit/docnode";
 import { ULID_REGEX } from "valibot";
 import { expect } from "vitest";
@@ -225,7 +226,8 @@ export function humanReadableOperations(doc: Doc, changeEvent: ChangeEvent) {
     }
   };
 
-  const processOperations = (operations: Operations) => {
+  const processOperations = (wire: Operations) => {
+    const operations = decode(wire);
     const humanReadableOperations = [];
     for (const operation of operations[0]) {
       switch (operation[0]) {
@@ -269,10 +271,7 @@ export function humanReadableOperations(doc: Doc, changeEvent: ChangeEvent) {
         return [
           id(k),
           Object.fromEntries(
-            Object.entries(v).map(([k, v]) => [
-              k,
-              JSON.parse(v ?? '"❌UNDEFINED"'),
-            ]),
+            Object.entries(v).map(([k, v]) => [k, v ?? "❌UNDEFINED"]),
           ),
         ];
       }),
@@ -416,7 +415,9 @@ export function checkUndoManager(
       changeEvent.operations,
     );
 
-    const { operations, inverseOperations, diff } = changeEvent;
+    const { diff } = changeEvent;
+    const operations = decode(changeEvent.operations);
+    const inverseOperations = decode(changeEvent.inverseOperations);
     const allOperations = [...operations[0], ...inverseOperations[0]];
     allOperations.forEach((op) => {
       switch (op[0]) {
@@ -519,10 +520,10 @@ export function checkUndoManager(
       doc2.applyOperations(mergedOperations);
     },
     (changeEvent) => {
-      expect(changeEvent.operations.length).toBe(2); // A single op array + state patch
-      // The array of operations is equal to the conjunction of all those that were in changeEvents
-      // slice(0, -1) because the last operation is the state patch
-      expect(changeEvent.operations[0]).toStrictEqual(mergedOperations[0]);
+      // The operations are the conjunction of all those that were in changeEvents
+      expect(decode(changeEvent.operations)[0]).toStrictEqual(
+        decode(mergedOperations)[0],
+      );
       // Inverse operations can't be compared. The following isn't always true because if a node
       // is inserted in one update and its child is inserted in the next update, inverseOperations
       // will have only one delete op (the parent's) instead of the two I get when doing separate updates.
