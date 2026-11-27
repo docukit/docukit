@@ -30,7 +30,8 @@ expect.addEqualityTesters([
     return (
       a.id === b.id &&
       a.type === b.type &&
-      this.equals(a["_state"], b["_state"]) &&
+      // As JSON: a text keeps how its letters are laid out in each replica.
+      this.equals(a.toJSON()[2], b.toJSON()[2]) &&
       (["parent", "prev", "next", "first", "last"] as const).every(
         (key) => a[key]?.id === b[key]?.id,
       )
@@ -315,6 +316,9 @@ export function humanReadableOperations(doc: Doc, changeEvent: ChangeEvent) {
           );
           break;
         }
+        case 4:
+          humanReadableOperations.push(`INSERT LETTERS: ${operation[4]}`);
+          break;
         default:
           operation satisfies never;
       }
@@ -508,6 +512,15 @@ export function checkUndoManager(
           expect(start).not.toBe(end);
           break;
         }
+        case 4: {
+          // INSERT LETTERS
+          const [, first, prev, next, letters] = op;
+          expect(first).toMatch(DOCNODE_ID());
+          if (prev !== 0) expect(prev).toMatch(DOCNODE_ID());
+          if (next !== 0) expect(next).toMatch(DOCNODE_ID());
+          expect(letters).not.toBe("");
+          break;
+        }
         default:
           throw new Error(`Unknown operation type: ${op[0] as number}`);
       }
@@ -520,6 +533,8 @@ export function checkUndoManager(
       // A node can be in diff.updated and diff.moved at the same time
       // expect(diff.moved.has(id)).toBe(false);
       expect(diff.deleted.has(id)).toBe(false);
+      // A change of a text is in its letters, not in the state patch.
+      if (textChanged(doc, id)) return;
       expect(operations[1].get(id)).toBeDefined();
       expect(inverseOperations[1].get(id)).toBeDefined();
     });
@@ -554,7 +569,8 @@ export function checkUndoManager(
     });
     doc["_nodeMap"].forEach((node) => {
       if (diff.updated.has(node.id)) {
-        expect(operations[1].get(node.id)).toBeDefined();
+        if (!textChanged(doc, node.id))
+          expect(operations[1].get(node.id)).toBeDefined();
       } else if (!diff.inserted.has(node.id)) {
         expect(operations[1].get(node.id)).toBeUndefined();
       }
@@ -669,6 +685,10 @@ export function checkUndoManager(
     );
   }
 }
+
+/** Whether a text of node `id` changed in the transaction of `doc`. */
+const textChanged = (doc: Doc, id: string) =>
+  doc["_textChanges"]?.has(doc.getNodeById(id)!) ?? false;
 
 export const getPrevError = [
   "getPrev cannot be used on nodes that are not attached or that",
