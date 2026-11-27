@@ -203,6 +203,7 @@ export class UndoManager {
 
 function exportStackItem(item: UndoStackItem): UndoHistoryItem {
   return {
+    // Since #129 the history shares its state values with the stack: do not change them in place.
     operations: encodeOperations(item.operations),
     // Intentionally shallow: history handoff normally disposes the source doc,
     // while persistence owns serialization of its opaque metadata values. A
