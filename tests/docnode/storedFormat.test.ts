@@ -53,8 +53,9 @@ describe("stored format", () => {
       [1, 1, 1, 1, 1],
       ["1", "2", "2.1", "2.2", "3"],
       [sessionOf(doc)],
-      // clocks 0-1, then 3-4 (1 after the next one, 2), then 2 (3 before 5)
-      [0, 0, 2, 0, 1, 2, 0, -3, 1],
+      // clocks 0-1, then 3-4 (1 after the next one, 2), then 2 alone in
+      // the same session (3 before 5: 2 * -3 + 1)
+      [0, 0, 2, 0, 1, 2, -5],
     ]);
     expect(loadAndSave(doc)).toStrictEqual(doc.toJSON());
   });
@@ -82,8 +83,9 @@ describe("stored format", () => {
     const json = a.toJSON();
     expect(json[8]).toStrictEqual([sessionOf(a), sessionOf(b)]);
     // a1 and a2 are clocks 0 and 1 of the first session, b1 and b2 0 and 1
-    // of the second: the session is written minus the previous run's.
-    expect(json[9]).toStrictEqual([0, 0, 1, 1, 0, 2, -1, 0, 1]);
+    // of the second: the session is written minus the previous run's, times
+    // 2. a1 alone in the first session is 2 * 0 + 1.
+    expect(json[9]).toStrictEqual([1, 2, 0, 2, -2, 0, 1]);
     expect(loadAndSave(a)).toStrictEqual(json);
   });
 
@@ -538,7 +540,7 @@ describe("reading a stored document", () => {
     doc.forceCommit();
     expect(doc.toJSON().slice(8)).toStrictEqual([
       ["s", "t"],
-      [0, 0, 3, 1, 64, 1, "s.-0", "s.é", "s.123456789"],
+      [0, 0, 3, 2, 64, 1, "s.-0", "s.é", "s.123456789"],
     ]);
     expect(loadAndSave(doc).slice(8)).toStrictEqual(doc.toJSON().slice(8));
     const noDot = Doc.fromJSON(
@@ -592,7 +594,9 @@ describe("reading a stored document", () => {
     [[0, 0, 1], "it has fewer ids than nodes."],
     [[0, 0, 3], "it has more ids than nodes."],
     [[0, 0, 2, "x.0"], "it has more ids than nodes."],
-    [[1, 0, 2], "it has an id run that is not valid."],
+    [[2, 0, 2], "it has an id run that is not valid."],
+    [[1.5, 1], "it has an id run that is not valid."],
+    [[-1, 1], "it has an id run that is not valid."],
     [[0, 0, 0], "it has an id run that is not valid."],
     [[0, 0], "it has an id run that is not valid."],
     [[0, 0.5, 2], "it has an id run that is not valid."],
@@ -607,6 +611,25 @@ describe("reading a stored document", () => {
     expect(() =>
       Doc.fromJSON(config, twoNodesWithIds(["s"], ids)),
     ).toThrowError(`Invalid stored document: ${message}`);
+  });
+
+  test("a node alone in the session of the run before is its clock times 2, plus 1", () => {
+    const doc = Doc.fromJSON(config, twoNodesWithIds(["s"], [1, 3]));
+    doc.forceCommit();
+    // Clock 0, then clock 2: 1 after the 1 that follows clock 0.
+    expect([doc.root.first!.id, doc.root.last!.id]).toStrictEqual([
+      "s.-",
+      "s.1",
+    ]);
+    expect(loadAndSave(doc)).toStrictEqual(doc.toJSON());
+  });
+
+  test("a node alone needs a session before it", () => {
+    expect(() =>
+      Doc.fromJSON(config, twoNodesWithIds([], [1, 1])),
+    ).toThrowError(
+      "Invalid stored document: it has an id run that is not valid.",
+    );
   });
 
   test("a run can reach the largest clock", () => {
@@ -626,6 +649,39 @@ describe("reading a stored document", () => {
       Doc.fromJSON(config, twoNodesWithIds([""], [0, 0, 2])),
     ).toThrowError(
       "Invalid stored document: it has a session that is not valid.",
+    );
+  });
+
+  test("a session longer than 64 characters throws, and its ids are written whole", () => {
+    const session = "s".repeat(65);
+    expect(() =>
+      Doc.fromJSON(config, twoNodesWithIds([session], [0, 0, 2])),
+    ).toThrowError(
+      "Invalid stored document: it has a session that is not valid.",
+    );
+    const ids = [`${session}.-`, `${session}.0`];
+    const doc = Doc.fromJSON(config, twoNodesWithIds([], ids));
+    doc.forceCommit();
+    expect(doc.toJSON().slice(8)).toStrictEqual([[], ids]);
+    expect(loadAndSave(doc)).toStrictEqual(doc.toJSON());
+    // One character shorter, they are a run.
+    const shorter = session.slice(1);
+    const short = Doc.fromJSON(
+      config,
+      twoNodesWithIds([], [`${shorter}.-`, `${shorter}.0`]),
+    );
+    short.forceCommit();
+    expect(short.toJSON().slice(8)).toStrictEqual([[shorter], [0, 0, 2]]);
+  });
+
+  test("a run that does not start with an integer, as parsed JSON could have, throws", () => {
+    const ids = [0, 0, 2];
+    // `null % 2` is 0: it would read as a run of the first session.
+    Reflect.set(ids, 0, null);
+    expect(() =>
+      Doc.fromJSON(config, twoNodesWithIds(["s"], ids)),
+    ).toThrowError(
+      "Invalid stored document: it has an id run that is not valid.",
     );
   });
 
