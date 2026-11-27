@@ -1371,9 +1371,15 @@ export class Doc {
             clock = nodeIds.splitClock;
           }
         } else {
-          runSession += entry;
-          const delta = ids[idAt++];
-          const length = ids[idAt++];
+          // The parity of a run's first number says its form (see
+          // `IdsWriter`). Not `% 2 === 1`: -3 % 2 is -1.
+          let delta: number | string | undefined;
+          let length: number | string | undefined = 1;
+          if (entry % 2 === 0) {
+            runSession += entry / 2;
+            delta = ids[idAt++];
+            length = ids[idAt++];
+          } else delta = (entry - 1) / 2;
           if (
             !(runSession in sessions) ||
             !Number.isInteger(delta) ||
@@ -1597,9 +1603,24 @@ export class Doc {
 }
 
 /**
- * Writes the ids of a stored document as runs (see `JsonDoc`), in one pass
- * like the encoders of lib0 (Yjs): a run is decided as the nodes come,
- * without looking ahead.
+ * Writes the ids of a stored document as runs, in one pass like the encoders
+ * of lib0 (Yjs): a run is decided as the nodes come, without looking ahead.
+ *
+ * `sessions` has each session once, in the order the nodes first use it.
+ * `ids` has, for each node in preorder, either the id of a custom generator
+ * as a string, or a run of nodes of one session with consecutive clocks, up
+ * or down. The session of a run is written minus the previous run's (0
+ * before the first run), and its first clock minus the clock that follows
+ * the last one written of its session (0 before any). Like lib0's
+ * `IntDiffOptRleEncoder`, the first number of a run says its form:
+ *
+ * - Odd, `2 * clock + 1`: one node of the previous run's session, the most
+ *   common run where nodes were inserted at random places.
+ * - Even, `2 * session`: then its clock and its length, negative if it goes
+ *   down. `[0, 0, 3]` is clocks 0, 1 and 2 of the first session.
+ *
+ * `[0, 0, 2, 7]` is clocks 0 and 1, then clock 5 of the same session
+ * (`2 * 3 + 1`: 3 after the 2 that follows clock 1).
  */
 class IdsWriter {
   readonly sessions: string[] = [];
@@ -1653,11 +1674,11 @@ class IdsWriter {
       this.sessions.push(this._nodeIds!.session(this._session));
       this._nextClocks.push(0);
     }
-    this.ids.push(
-      index - this._lastSession,
-      this._start - this._nextClocks[index]!,
-      this._count * this._step,
-    );
+    const clock = this._start - this._nextClocks[index]!;
+    const length = this._count * this._step;
+    if (index === this._lastSession && length === 1)
+      this.ids.push(2 * clock + 1);
+    else this.ids.push(2 * (index - this._lastSession), clock, length);
     this._lastSession = index;
     this._nextClocks[index] = this._last + 1;
     this._count = 0;
