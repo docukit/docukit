@@ -31,6 +31,15 @@ export function ownId(id: string) {
   return id;
 }
 
+/** Like `ownId`, for the state keys of a state patch. */
+export function ownKey(key: string) {
+  if (key in Object.prototype)
+    throw new Error(
+      `Invalid state key: '${key}' is a key that every object has.`,
+    );
+  return key;
+}
+
 /**
  * Only way to check if an object is empty in O(1)
  * see https://stackoverflow.com/a/59787784/10476393
@@ -143,7 +152,7 @@ export function equalJson(a: Json | undefined, b: Json | undefined): boolean {
   if (isList(b)) return false;
   let count = 0;
   for (const key in a) {
-    if (!(key in b) || !equalJson(a[key], b[key])) return false;
+    if (!Object.hasOwn(b, key) || !equalJson(a[key], b[key])) return false;
     count++;
   }
   for (const _ in b) count--;

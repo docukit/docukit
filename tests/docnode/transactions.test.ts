@@ -425,6 +425,27 @@ describe("undoManager", () => {
     );
   });
 
+  test("importHistory changes nothing when a stack does not decode", () => {
+    const source = createTextDocWithUndo();
+    source.root.append(...text(source, "1"));
+    source.forceCommit();
+    const history = source.undoManager.exportHistory();
+    const doc = createTextDocWithUndo();
+    const before = doc.undoManager.exportHistory();
+    const broken: UndoHistory = {
+      ...before,
+      undoStack: history.undoStack,
+      // A run of one node, which the format writes as a single entry.
+      redoStack: [
+        { operations: ["s.0", [0, [[1, "text", 1]], 0, 0, 0]], meta: {} },
+      ],
+    };
+    expect(() => doc.undoManager.importHistory(broken)).toThrowError(
+      "a run of 1 nodes",
+    );
+    expect(doc.undoManager.exportHistory()).toStrictEqual(before);
+  });
+
   test("exportHistory and importHistory clone move operations", () => {
     const doc = createTextDocWithUndo();
     const history: UndoHistory = {

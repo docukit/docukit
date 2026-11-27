@@ -172,8 +172,11 @@ export class UndoManager {
     }
 
     const maxSteps = this._maxUndoSteps;
-    this._undoStack = importStack(history.undoStack, maxSteps);
-    this._redoStack = importStack(history.redoStack, maxSteps);
+    // Both stacks first: one that does not decode changes neither.
+    const undoStack = importStack(history.undoStack, maxSteps);
+    const redoStack = importStack(history.redoStack, maxSteps);
+    this._undoStack = undoStack;
+    this._redoStack = redoStack;
     this._lastUpdate = history.lastUpdate;
     this._txType = "update";
   }

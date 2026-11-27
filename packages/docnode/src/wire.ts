@@ -8,7 +8,7 @@ import type {
 } from "./operations.js";
 import type { Json } from "./types.js";
 import { MAX_CLOCK, clockAt, numberToBase64 } from "./idGenerator.js";
-import { ownId } from "./utils.js";
+import { ownId, ownKey } from "./utils.js";
 
 // `Operations`, a batch as it travels and is stored, is `[head, ...rows]`,
 // plain JSON read on its own:
@@ -123,6 +123,9 @@ export function encodeOperations(draft: DraftOperations): Operations {
 /** The most nodes a batch may insert, so that a broken one cannot hang. */
 const MAX_BATCH_NODES = 1_000_000;
 
+/** Whether a column of a batch is a list (as a boolean, so that it keeps its type). */
+const isList = (column: unknown): boolean => Array.isArray(column);
+
 /** A batch that does not follow the format above. */
 const invalid = (why: string) => new Error(`Invalid operations: ${why}.`);
 
@@ -186,13 +189,19 @@ export function decodeOperations(operations: Operations): DraftOperations {
       ordered.push([2, node(start), id(end), id(parent), id(prev), id(next)]);
     } else if (row[0] === PATCH && at === rows.length - 1) {
       const [, nodes, keys, values] = row;
-      if (keys.length !== nodes.length || values.length !== nodes.length)
-        throw invalid("the columns of its state patch differ in length");
+      if (
+        !isList(nodes) ||
+        !isList(keys) ||
+        !isList(values) ||
+        keys.length !== nodes.length ||
+        values.length !== nodes.length
+      )
+        throw invalid("its state patch is not three lists of equal length");
       let last = 0;
       for (let entry = 0; entry < nodes.length; entry++) {
         let ref = nodes[entry]!;
         if (typeof ref === "number") last = ref += last;
-        (patch[node(ref)] ??= {})[keys[entry]!] = values[entry]!;
+        (patch[node(ref)] ??= {})[ownKey(keys[entry]!)] = values[entry]!;
       }
     } else throw invalid(`its row ${at + 1} is not an operation`);
   }

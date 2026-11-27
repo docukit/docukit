@@ -4,6 +4,7 @@ import type {
   StatePatch,
 } from "../operations.js";
 import type { Json } from "../types.js";
+import { ownId, ownKey } from "../utils.js";
 import { encodeOperations } from "../wire.js";
 
 /**
@@ -30,9 +31,9 @@ export function upgradeOperations(
   const [ordered, legacyPatch] = operations;
   const patch: StatePatch = {};
   for (const id in legacyPatch) {
-    const state: Record<string, Json> = (patch[id] = {});
+    const state: Record<string, Json> = (patch[ownId(id)] = {});
     for (const key in legacyPatch[id])
-      state[key] = JSON.parse(legacyPatch[id][key]!) as Json;
+      state[ownKey(key)] = JSON.parse(legacyPatch[id][key]!) as Json;
   }
   return encodeOperations([[...ordered], patch]);
 }

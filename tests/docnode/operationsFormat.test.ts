@@ -198,7 +198,9 @@ describe("a batch that does not follow the format", () => {
     [batch("", [0, [["x", "text", 3]], 0, 0, 0]), "a run of 3 nodes from 'x'"],
     [batch("", [1, 5, 0]), "5 is not a node of the head's session"],
     [batch("s.0", [1, -5, 0]), "-5 is not a node of the head's session"],
-    [batch("s.0", [-9, [1], ["value"], []]), "columns of its state patch"],
+    [batch("s.0", [-9, [1], ["value"], []]), "three lists of equal length"],
+    [batch("s.0", [-9, [1], ["value"], "z"]), "three lists of equal length"],
+    [batch("s.0", [-9, [1], ["__proto__"], [{}]]), "every object has"],
     [batch("s.0", [7]), "its row 1 is not an operation"],
     [batch("", [0, [["__proto__", "text"]], 0, 0, 0]), "every object has"],
     [batch("s.0", [-9, [1], ["value"], ["a"]], [1, 1, 0]), "its row 1"],
@@ -238,25 +240,56 @@ describe("a batch that does not follow the format", () => {
         Doc.fromJSON(config, json);
       },
     ],
-  ])("an id that every object has, from %s, throws", (_, load) => {
+    [
+      "an old batch's id",
+      () => upgradeOperations([[], Object.fromEntries([["__proto__", {}]])]),
+    ],
+    [
+      "an old batch's state key",
+      () =>
+        upgradeOperations([
+          [],
+          { a: Object.fromEntries([["__proto__", "1"]]) },
+        ]),
+    ],
+  ])("a key that every object has, from %s, throws", (_, load) => {
     expect(load).toThrowError("is a key that every object has");
     expect(Object.prototype).not.toHaveProperty("value");
   });
 });
 
 describe("applying operations", () => {
-  test("the inverse of a key changed twice in a transaction is its first value, even null", () => {
-    const Maybe = defineNode({
-      type: "maybe",
-      state: { value: defineState({ fromJSON: (json) => json ?? null }) },
-    });
-    const maybeConfig = { type: "root", extensions: [{ nodes: [Maybe] }] };
+  /** A node whose state is any JSON value, `null` when unset. */
+  const Maybe = defineNode({
+    type: "maybe",
+    state: { value: defineState({ fromJSON: (json) => json ?? null }) },
+  });
+
+  /** A document with one `Maybe` node, and a replica loaded from it. */
+  const maybeDocs = (register?: (doc: Doc) => void) => {
+    const extension = register
+      ? { nodes: [Maybe], register }
+      : { nodes: [Maybe] };
+    const maybeConfig = { type: "root", extensions: [extension] };
     const sender = new Doc(maybeConfig);
     const node = sender.createNode(Maybe);
     sender.root.append(node);
     sender.forceCommit();
     const receiver = Doc.fromJSON(maybeConfig, sender.toJSON());
     receiver.forceCommit();
+    return { sender, node, receiver };
+  };
+
+  test("the inverse of a key changed twice in a transaction is its first value, even null", () => {
+    // The second batch is applied in the same transaction as the first.
+    let next: Operations | undefined;
+    const { sender, node, receiver } = maybeDocs((doc) =>
+      doc.onNormalize(() => {
+        const batch = next;
+        next = undefined;
+        if (batch) doc.applyOperations(batch);
+      }),
+    );
     const [first, second] = batchesOf(
       sender,
       commits(
@@ -269,14 +302,30 @@ describe("applying operations", () => {
     receiver.onChange(({ inverseOperations }) =>
       inverses.push(inverseOperations),
     );
+    next = second;
     receiver.applyOperations(first!);
-    receiver.applyOperations(second!);
-    receiver.forceCommit();
+    expect(inverses).toHaveLength(1);
     receiver.applyOperations(inverses[0]!);
     receiver.forceCommit();
     const undone = receiver.getNodeById(node.id);
     if (!undone?.is(Maybe)) throw new Error("The node is a Maybe");
     expect(undone.state.value.get()).toBe(null);
+  });
+
+  test("a value with an own `__proto__` key differs from one without it", () => {
+    const { sender, node, receiver } = maybeDocs();
+    const [first, second] = batchesOf(
+      sender,
+      commits(
+        sender,
+        () => node.state.value.set(Object.fromEntries([["__proto__", {}]])),
+        () => node.state.value.set({ other: {} }),
+      ),
+    );
+    receiver.applyOperations(first!);
+    receiver.applyOperations(second!);
+    receiver.forceCommit();
+    expect(receiver.toJSON()).toStrictEqual(sender.toJSON());
   });
 });
 
