@@ -218,9 +218,18 @@ function exportStackItem(item: UndoStackItem): UndoHistoryItem {
 function importStack(items: UndoHistoryItem[], maxSteps: number) {
   const retainedItems = maxSteps === 0 ? [] : items.slice(-maxSteps);
   return retainedItems.map((item) => ({
-    operations: decodeOperations(item.operations),
+    operations: importOperations(item.operations),
     meta: new Map(Object.entries(item.meta)),
   }));
+}
+
+/** The draft of an item's batch: `decodeOperations` checks its format. */
+function importOperations(operations: Operations) {
+  try {
+    return decodeOperations(operations);
+  } catch (cause) {
+    throw new TypeError("Invalid undo history", { cause });
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -231,81 +240,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-function isString(value: unknown): value is string {
-  return typeof value === "string";
-}
-
-/** A node in a batch: a number (of the head's session) or a whole id. */
-function isNodeRef(value: unknown): boolean {
-  return Number.isInteger(value) || typeof value === "string";
-}
-
-/** `[node, type]` or `[node, type, count]` of an insert row. */
-function isInsertedNodes(value: unknown): boolean {
-  return (
-    Array.isArray(value) &&
-    (value.length === 2 ||
-      (value.length === 3 && Number.isInteger(value[2]))) &&
-    isNodeRef(value[0]) &&
-    isString(value[1])
-  );
-}
-
-/** Whether the items of `row` from `from` on are nodes, at most `length` of them. */
-function areNodeRefs(row: unknown[], from: number, length: number) {
-  return row.length - from <= length && row.slice(from).every(isNodeRef);
-}
-
-/**
- * Whether `row` from `at` on inserts, deletes or moves nodes (see `wire.ts`),
- * maybe without its trailing zeros.
- */
-function isOrderedRow(row: unknown[], at: number): boolean {
-  const tag = row[at];
-  const first = row[at + 1];
-  if (tag === 0 && Array.isArray(first))
-    return first.every(isInsertedNodes) && areNodeRefs(row, at + 2, 3);
-  if (tag === 0)
-    return (
-      isNodeRef(first) && isString(row[at + 2]) && areNodeRefs(row, at + 3, 3)
-    );
-  if (tag === 1) return isNodeRef(first) && areNodeRefs(row, at + 2, 1);
-  return tag === 2 && isNodeRef(first) && areNodeRefs(row, at + 2, 4);
-}
-
-/** `[-9, node, key, value, ...]`, `node` maybe `[node, count]` with a list of values. */
-function isPatchRow(row: unknown[]): boolean {
-  if (row[0] !== -9 || row.length % 3 !== 1) return false;
-  for (let at = 1; at < row.length; at += 3) {
-    const node = row[at];
-    const values = row[at + 2];
-    const isRun =
-      Array.isArray(node) &&
-      node.length === 2 &&
-      isNodeRef(node[0]) &&
-      Number.isInteger(node[1]) &&
-      Array.isArray(values);
-    if (!(isNodeRef(node) || isRun) || !isString(row[at + 1])) return false;
-  }
-  return true;
-}
-
-function isOperations(value: unknown): value is Operations {
-  if (!Array.isArray(value) || !isString(value[0])) return false;
-  const batch: unknown[] = value;
-  // One row without its brackets.
-  if (typeof batch[1] === "number") return isOrderedRow(batch, 1);
-  const rows = batch.slice(1);
-  return rows.every(
-    (row, index) =>
-      Array.isArray(row) &&
-      (isOrderedRow(row, 0) || (index === rows.length - 1 && isPatchRow(row))),
-  );
-}
-
+/** Its batch is only a list here: `importOperations` checks the rest. */
 function isHistoryItem(value: unknown): value is UndoHistoryItem {
   return (
-    isRecord(value) && isOperations(value.operations) && isRecord(value.meta)
+    isRecord(value) && Array.isArray(value.operations) && isRecord(value.meta)
   );
 }
 

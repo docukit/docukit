@@ -426,20 +426,32 @@ describe("undoManager", () => {
   });
 
   test("importHistory changes nothing when a stack does not decode", () => {
-    const source = createTextDocWithUndo();
-    source.root.append(...text(source, "1"));
-    source.forceCommit();
-    const history = source.undoManager.exportHistory();
     const doc = createTextDocWithUndo();
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+    doc.root.append(...text(doc, "2"));
+    doc.forceCommit();
+    doc.undoManager.undo();
     const before = doc.undoManager.exportHistory();
+    expect(before.undoStack).toHaveLength(1);
+    expect(before.redoStack).toHaveLength(1);
     const broken: UndoHistory = {
       ...before,
-      undoStack: history.undoStack,
+      undoStack: [...before.undoStack, ...before.redoStack],
       // A run of one node, which the format writes as a single entry.
       redoStack: [{ operations: ["s.0", 0, [[1, "text", 1]]], meta: {} }],
     };
-    expect(() => doc.undoManager.importHistory(broken)).toThrowError(
-      "a run of 1 nodes",
+    let error: unknown;
+    try {
+      doc.undoManager.importHistory(broken);
+    } catch (thrown) {
+      error = thrown;
+    }
+    expect(error).toBeInstanceOf(TypeError);
+    expect(error).toHaveProperty("message", "Invalid undo history");
+    expect(error).toHaveProperty(
+      "cause.message",
+      expect.stringContaining("a run of 1 nodes"),
     );
     expect(doc.undoManager.exportHistory()).toStrictEqual(before);
   });
