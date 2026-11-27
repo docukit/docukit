@@ -162,7 +162,10 @@ describe("operations format", () => {
       [last.id, 2, 1, 0, 0, 0, -2],
       [first.id, 1, 1, 2],
     ]);
-    expect(decode(batches[1]!)).toStrictEqual([[[1, first.id, second.id]], {}]);
+    expect(decode(batches[1]!)).toStrictEqual([
+      [[1, first.id, second.id]],
+      new Map(),
+    ]);
     assertDoc(doc, ["c"]);
   });
 
