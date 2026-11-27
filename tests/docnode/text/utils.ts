@@ -75,17 +75,16 @@ export const first = (doc: Doc) => doc.root.first as DocNode<typeof Paragraph>;
 
 /**
  * A server that orders batches, as DocSync's: it applies each batch it
- * receives in order and keeps them. A replica is a document that applied the
- * batches the server kept so far.
+ * receives in order and keeps them. A replica is a document loaded from the
+ * server's document as it is now, as DocSync loads a snapshot.
  */
 export function orderedServer(setup: (doc: Doc) => void) {
   const server = textDoc();
   const log: Operations[] = [];
   server.forceCommit();
   log.push(...batchesOf(server, () => setup(server)));
-  const replica = () => {
-    const doc = textDoc({ id: server.root.id });
-    for (const batch of log) doc.applyOperations(batch);
+  const replica = (options?: Partial<DocConfig>) => {
+    const doc = Doc.fromJSON({ ...config, ...options }, server.toJSON());
     doc.forceCommit();
     return doc;
   };
