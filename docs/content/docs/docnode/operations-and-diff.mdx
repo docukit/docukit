@@ -27,14 +27,7 @@ You can expand the rows in the following table to see a description of these obj
       type: "Operations",
       description: `The operations applied to the document in this transaction. Can be applied to this or another document with \`doc.applyOperations(operations)\`.
 
-Unless you're building your own sync solution or undo manager, you don't need to use it. Even if that's the case, its internal structure should be irrelevant since \`applyOperations\` is the only API that understands it. But for the curious, its simplified form is:
-
-\`\`\`ts
-// Each row inserts, deletes or moves nodes, or sets state. A batch with a
-// single row that does not set state leaves out that row's brackets.
-type Operations = [head: string, ...rows: Row[]];
-
-\`\`\`
+Unless you're building your own sync solution or undo manager, you don't need to use it. Even then, treat it as opaque JSON: send or store it as it is, and pass it to \`applyOperations\`, the only API that reads it.
 `,
       required: true,
     },
