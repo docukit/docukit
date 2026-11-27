@@ -46,6 +46,10 @@ export function ownKey(key: string) {
  * object a new hidden class for each new key, and node ids are new each
  * time; an object that lost a key keeps its keys in a hash table instead,
  * which is cheaper for thousands of them.
+ *
+ * The code that reads patches then sees both shapes. Where documents that
+ * insert nodes and documents that do not run in the same process, that code
+ * is polymorphic, and slower for the documents that do not.
  */
 export function idRecord() {
   const patch: StatePatch = { a: {} };
