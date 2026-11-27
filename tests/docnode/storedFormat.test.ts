@@ -4,6 +4,7 @@ import {
   defineState,
   number,
   string,
+  text as text_,
   type ChangeEvent,
   type DocConfig,
   type DocNode,
@@ -31,9 +32,19 @@ import {
   TextExtension,
   assertDoc,
 } from "./utils.js";
+import {
+  batchesOf,
+  config as paragraphConfig,
+  first,
+  paragraph,
+  textDoc as paragraphDoc,
+} from "./text/utils.js";
 
 const ROOT_ID = "01kc52hq510g6y44jhq0wqrjb3";
 type StoredTypes = [name: string, ...keys: string[]][];
+
+/** The `letters` column of a stored document. */
+const lettersOf = (json: JsonDoc) => (json.length === 3 ? [] : json[11]);
 
 describe("stored format", () => {
   test("the root, then the other nodes in preorder as columns", () => {
@@ -428,6 +439,169 @@ describe("integers are stored as bytes in one column", () => {
   ])("the column %j throws", (column, message) => {
     expect(() => Doc.fromJSON(testConfig, withColumn(column))).toThrowError(
       `Invalid stored document: ${message}`,
+    );
+  });
+});
+
+describe("texts keep the ids of their letters in a column", () => {
+  test("the string in values, and the id runs of its letters in letters", () => {
+    const a = paragraphDoc();
+    checkUndoManager(1, a, () => {
+      paragraph(a, "Hola mundo");
+      paragraph(a, "chau");
+    });
+    a.forceCommit();
+    // Another session types "," after "Hola".
+    const b = Doc.fromJSON(paragraphConfig, a.toJSON());
+    b.forceCommit();
+    const batches = batchesOf(b, () => first(b).state.body.insert(4, ","));
+    for (const batch of batches) a.applyOperations(batch);
+    a.forceCommit();
+    expect(a.toJSON()).toStrictEqual([
+      a.root.id,
+      "root",
+      {},
+      [["p", "body", "bold", "title"]],
+      [0, 0],
+      [2, 0, 0],
+      [1, 1],
+      ["Hola, mundo", "chau"],
+      [sessionOf(a), sessionOf(b)],
+      // The paragraphs are clocks 0 and 11 of the first session.
+      [1, 21],
+      // No integers.
+      "",
+      // "Hola": clocks 1-4 of the first session (odd: 2 * 1 + 1), length 4.
+      // ",": the next session (even: 2 * 1), clock 0, length 1.
+      // " mundo": the session before (2 * -1), clock 5 (0 after "Hola"),
+      // and 0: the rest of the string.
+      // "chau": clocks 12-15 of the same session (2 * 1 + 1: 1 after the
+      // 11 that follows " mundo"), the rest of its string.
+      [3, 4, 2, 0, 1, -2, 0, 0, 3, 0],
+    ]);
+    expect(loadAndSave(a)).toStrictEqual(a.toJSON());
+  });
+
+  test("runs that follow in clock are written as one", () => {
+    const doc = paragraphDoc();
+    const node = paragraph(doc, "abc");
+    node.state.body.insert(1, "X");
+    node.state.body.delete(1, 1);
+    doc.forceCommit();
+    // Clocks 1-3 again, though "a" and "bc" are runs apart.
+    expect(lettersOf(doc.toJSON())).toStrictEqual([3, 0]);
+    expect(loadAndSave(doc)).toStrictEqual(doc.toJSON());
+  });
+
+  test("an empty text has no letters, and with integers the column follows them", () => {
+    const doc = paragraphDoc();
+    paragraph(doc, "");
+    paragraph(doc, "a").state.bold.set(true);
+    doc.forceCommit();
+    const json = doc.toJSON();
+    expect(intsOf(json)).toStrictEqual([1]);
+    // Clock 2, after the paragraphs at 0 and 1.
+    expect(lettersOf(json)).toStrictEqual([5, 0]);
+    expect(loadAndSave(doc)).toStrictEqual(json);
+  });
+
+  test("a document without letters has no column", () => {
+    const doc = paragraphDoc();
+    paragraph(doc, "");
+    doc.forceCommit();
+    expect(doc.toJSON()).toHaveLength(10);
+  });
+
+  const Root = defineNode({ type: "root", state: { title: text_() } });
+  const rootConfig = { type: "root", extensions: [{ nodes: [Root] }] };
+
+  test("the text of the root needs the columns, even without other nodes", () => {
+    const doc = new Doc(rootConfig);
+    if (!doc.root.is(Root)) throw new Error("The root is a Root");
+    doc.root.state.title.insert(0, "T");
+    doc.forceCommit();
+    expect(doc.toJSON()).toStrictEqual([
+      doc.root.id,
+      "root",
+      { title: "T" },
+      [],
+      [],
+      [0],
+      [],
+      [],
+      [sessionOf(doc)],
+      [],
+      "",
+      [1, 0],
+    ]);
+    expect(loadAndSave(doc)).toStrictEqual(doc.toJSON());
+  });
+
+  test("a root's text without its letters throws", () => {
+    expect(() =>
+      Doc.fromJSON(rootConfig, [ROOT_ID, "root", { title: "T" }]),
+    ).toThrowError(
+      "Invalid stored document: it has fewer letter runs than texts.",
+    );
+  });
+
+  /** A paragraph "abcd" of node `s.0`, with `letters` as its column. */
+  const withLetters = (letters: unknown): JsonDoc => {
+    const json: JsonDoc = [
+      ROOT_ID,
+      "root",
+      {},
+      [["p", "body"]],
+      [0],
+      [1, 0],
+      [1],
+      ["abcd"],
+      ["s"],
+      [1],
+      "",
+      [],
+    ];
+    // Not always numbers: what `JSON.parse` of a stored document could return.
+    Reflect.set(json, 11, letters);
+    return json;
+  };
+
+  test("a loaded text has the ids of its letters", () => {
+    // Letters at clocks 1-2 and 5-6 of `s`.
+    const doc = Doc.fromJSON(paragraphConfig, withLetters([3, 2, 5, 0]));
+    // A row that names "c" (`s.4`: clock 5) inserts after it.
+    doc.applyOperations(["t.0", "s.4,0|X"]);
+    expect(first(doc).state.body.get()).toBe("abcXd");
+  });
+
+  /** The largest clock of an id, `zzzzzzzz`: 8 digits of 64. */
+  const MAX_CLOCK = 64 ** 8 - 1;
+
+  test.each([
+    [5, "its letters are not valid."],
+    [undefined, "it has fewer letter runs than texts."],
+    [[], "it has fewer letter runs than texts."],
+    [[1, 0, 1, 0], "it has more letter runs than texts."],
+    [[1.5, 0], "it has a letter run that is not valid."],
+    [["1", 0], "it has a letter run that is not valid."],
+    [[1], "it has a letter run that is not valid."],
+    // Runs of 2 and 1 letters leave one out.
+    [[1, 2, 1, 1], "it has a letter run that is not valid."],
+    [[1, 5], "it has a letter run that is not valid."],
+    [[1, -1], "it has a letter run that is not valid."],
+    [[2, 0, 0], "it has a letter run that is not valid."],
+    [[-3, 0], "it has a letter run that is not valid."],
+    [[2 * (MAX_CLOCK - 2) + 1, 0], "it has a letter run that is not valid."],
+  ])("letters %j that do not fit throw", (letters, message) => {
+    expect(() =>
+      Doc.fromJSON(paragraphConfig, withLetters(letters)),
+    ).toThrowError(`Invalid stored document: ${message}`);
+  });
+
+  test("a run can end at the largest clock, and a length can be the rest", () => {
+    const json = withLetters([2 * (MAX_CLOCK - 3) + 1, 4]);
+    expect(first(Doc.fromJSON(paragraphConfig, json)).state.body.get()).toBe(
+      "abcd",
     );
   });
 });

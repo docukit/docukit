@@ -1,8 +1,15 @@
-import { Doc, type Operations, defineNode, text } from "@docukit/docnode";
+import {
+  Doc,
+  type Operations,
+  _INTERNAL_decodeOperations as decode,
+  defineNode,
+  text,
+} from "@docukit/docnode";
 import { describe, expect, test } from "vitest";
 import {
   Paragraph,
   batchOf,
+  batchesOf,
   bodies,
   config,
   docWithParagraph,
@@ -181,7 +188,7 @@ describe("text()", () => {
     expect(bodies(doc)).toStrictEqual(["ab", "ab"]);
   });
 
-  test("a stored document keeps a text as a string, and its letters get new ids", () => {
+  test("a stored document keeps a text as its string, and its letters keep their ids", () => {
     const doc = textDoc();
     paragraph(doc, "Hola");
     doc.forceCommit();
@@ -189,20 +196,20 @@ describe("text()", () => {
     expect(json[7]).toStrictEqual(["Hola"]);
     const loaded = Doc.fromJSON(config, json);
     loaded.forceCommit();
-    expect(bodies(loaded)).toStrictEqual(["Hola"]);
-    expect(first(loaded).state.body.length).toBe(4);
-    const [head, ...rows] = batchOf(loaded, () =>
-      first(loaded).state.body.insert(4, "!"),
-    );
-    expect(rows).toStrictEqual(["-1,0|!"]);
-    expect(head.split(".")[0]).not.toBe(doc.root.first!.id.split(".")[0]);
+    expect([bodies(loaded), first(loaded).state.body.length]).toStrictEqual([
+      ["Hola"],
+      4,
+    ]);
+    // An edit names the same letters in both: its prev and next.
+    const edit = (doc: Doc) =>
+      decode(batchOf(doc, () => first(doc).state.body.insert(4, "!")))[0][0];
+    expect(edit(loaded)?.slice(2)).toStrictEqual(edit(doc)?.slice(2));
     expect(loaded.toJSON()[7]).toStrictEqual(["Hola!"]);
   });
 
-  test("loading a document records its texts for its listeners", () => {
+  test("loading a document records its texts as the batch that made them", () => {
     const doc = textDoc();
-    paragraph(doc, "Hola");
-    doc.forceCommit();
+    const [made] = batchesOf(doc, () => paragraph(doc, "Hola"));
     const loaded = Doc.fromJSON(
       { ...config, undoManager: { maxUndoSteps: 10 } },
       doc.toJSON(),
@@ -210,11 +217,7 @@ describe("text()", () => {
     const batches: Operations[] = [];
     loaded.onChange(({ operations }) => batches.push(operations));
     loaded.forceCommit();
-    const id = loaded.root.first!.id;
-    expect(batches[0]!.slice(1)).toStrictEqual([
-      [0, id, "p"],
-      `@${id},body|Hola`,
-    ]);
+    expect(batches).toStrictEqual([made]);
   });
 
   test("the root can have a text", () => {

@@ -1198,7 +1198,11 @@ export class Doc {
     const values: Json[] = [];
     const rootType = this._storedType(root.type);
     const rootMasks: number[] = [];
-    writeValues(root, rootType, values, rootMasks);
+    const ids = new IdsWriter(this._nodeIds);
+    const letters = this._textEngine?.lettersWriter((session) =>
+      ids.index(session),
+    );
+    writeValues(root, rootType, values, rootMasks, letters);
     const rootState: Record<string, Json> = {};
     let at = 0;
     for (let c = 0; c < rootMasks.length; c++)
@@ -1208,7 +1212,9 @@ export class Doc {
         k++, mask >>>= 1
       )
         if ((mask & 1) === 1) rootState[rootType.keys[k]!] = values[at++]!;
-    if (!root.first) return [root.id, root.type, rootState];
+    // The letters of a text of the root are in a column of the long form.
+    if (!root.first && !letters?.column.length)
+      return [root.id, root.type, rootState];
     values.length = 0;
     const ints: Ints = { list: [], bits: 0 };
     const types: StoredType[] = [];
@@ -1216,7 +1222,6 @@ export class Doc {
     const typeColumn: number[] = [];
     const children: number[] = [0];
     const states: number[] = [];
-    const ids = new IdsWriter(this._nodeIds);
     let lastTypeName = "";
     let lastType = rootType;
     let lastTypeIndex = 0;
@@ -1243,7 +1248,7 @@ export class Doc {
       }
       typeColumn.push(lastTypeIndex);
       states.push(
-        writeMask(node, lastType, values, 0, lastType.firstEnd, ints),
+        writeMask(node, lastType, values, 0, lastType.firstEnd, ints, letters),
       );
       for (let k = MASK_BITS; k < lastType.keys.length; k += MASK_BITS)
         states.push(
@@ -1254,6 +1259,7 @@ export class Doc {
             k,
             Math.min(k + MASK_BITS, lastType.keys.length),
             ints,
+            letters,
           ),
         );
       children.push(0);
@@ -1282,6 +1288,11 @@ export class Doc {
       ids.ids,
     ];
     if (ints.list.length > 0) json.push(writeInts(ints.list, ints.bits));
+    if (letters && letters.column.length > 0) {
+      // An empty integer column before it, if there are no integers.
+      if (json.length === 10) json.push("");
+      json.push(letters.column);
+    }
     return json;
   }
 
@@ -1289,9 +1300,11 @@ export class Doc {
   private _storedType(name: string): StoredType {
     const definition = this._resolvedNodeDefs.get(name)!;
     const keys = Object.keys(definition.state);
+    const textKeys = definition.textKeys;
     return {
       name,
       keys,
+      texts: textKeys && keys.map((key) => textKeys.includes(key)),
       definitions: keys.map((key) => definition.state[key]!),
       defaults: keys.map((key) => definition.defaultJson[key]!),
       firstEnd: Math.min(keys.length, MASK_BITS),
@@ -1338,30 +1351,69 @@ export class Doc {
   private _readJson(json: JsonDoc) {
     const [id, rootType, rootState] = json;
     const root = this._storedNode(id, rootType, -1, 0);
+    const nodes = json.length === 3 ? undefined : json;
+    const sessions = nodes ? this._readSessions(nodes[8]) : [];
+    const letters = this._textEngine?.lettersReader(nodes?.[11], sessions);
     const rootDefinition = this._resolvedNodeDefs.get(rootType)!;
     for (const key in rootState)
-      root["_values"]()[key] = freezeInDev(
+      root["_values"]()[key] = storedValue(
         this._storedStateDefinition(rootDefinition, key).fromJSON(
           rootState[key],
         ),
+        root,
+        key,
+        rootDefinition.textKeys,
+        letters,
       );
     const map = new Map([[id, root]]);
-    if (json.length !== 3) this._readNodes(json, root, map);
+    if (nodes) this._readNodes(nodes, root, map, sessions, letters);
+    letters?.end();
+    // Columns without nodes (not what `toJSON` writes) insert nothing.
+    this._unrecordedLoad = root.first !== undefined;
     // @ts-expect-error - read-only property
     this.root = root;
     this._nodeMap = map;
   }
 
-  /** Builds the nodes below `root` of a stored document into `map`. */
+  /**
+   * Registers the sessions of a stored document in `NodeIds`, and returns
+   * the index there of each.
+   */
+  private _readSessions(sessions: string[]) {
+    // The same sessions an id read as text could have (see `clockAt`),
+    // checked before any is registered.
+    for (const session of sessions)
+      if (
+        typeof session !== "string" ||
+        session === "" ||
+        session.length > MAX_SESSION_LENGTH
+      )
+        throw new Error(
+          "Invalid stored document: it has a session that is not valid.",
+        );
+    const nodeIds = this._nodeIds;
+    return sessions.map((session) => nodeIds?.register(session) ?? -1);
+  }
+
+  /**
+   * Builds the nodes below `root` of a stored document into `map`.
+   * `sessionIndexes` has the index in `NodeIds` of each stored session.
+   */
   private _readNodes(
     json: Exclude<JsonDoc, { length: 3 }>,
     root: DocNode,
     map: Map<string, DocNode>,
+    sessionIndexes: number[],
+    letters: LettersReader | undefined,
   ) {
     const [, rootType, , storedTypes, typeColumn, children, states, values] =
       json;
     const [, , , , , , , , sessions, ids, intColumn] = json;
-    const ints = intColumn === undefined ? undefined : readInts(intColumn);
+    // `""`: no integers, before a `letters` column.
+    const ints =
+      intColumn === undefined || intColumn === ""
+        ? undefined
+        : readInts(intColumn);
     const count = typeColumn.length;
     if (children.length !== count + 1)
       throw new Error(
@@ -1378,22 +1430,7 @@ export class Doc {
       return { name, definition, keys };
     });
     const nodeIds = this._nodeIds;
-    // The index in `nodeIds` of each stored session, and the clock that
-    // follows the last one read of each.
-    // The same sessions an id read as text could have (see `clockAt`),
-    // checked before any is registered.
-    for (const session of sessions)
-      if (
-        typeof session !== "string" ||
-        session === "" ||
-        session.length > MAX_SESSION_LENGTH
-      )
-        throw new Error(
-          "Invalid stored document: it has a session that is not valid.",
-        );
-    const sessionIndexes = sessions.map(
-      (session) => nodeIds?.register(session) ?? -1,
-    );
+    // The clock that follows the last one read of each stored session.
     const nextClocks = sessions.map(() => 0);
     let idAt = 0;
     let valueAt = 0;
@@ -1510,6 +1547,7 @@ export class Doc {
       ) as DocNode;
       index++;
       const keyCount = type.keys.length;
+      const textKeys = type.definition.textKeys;
       for (let base = 0; ; base += MASK_BITS) {
         if (maskAt === states.length)
           throw new Error(
@@ -1542,10 +1580,12 @@ export class Doc {
                 );
               json = ints[intAt++]!;
             }
-            // The value is the stored document's, not a copy: frozen, like a
-            // value set with `set`.
-            state[key] = freezeInDev(
+            state[key] = storedValue(
               this._storedStateDefinition(type.definition, key).fromJSON(json),
+              node,
+              key,
+              textKeys,
+              letters,
             );
           }
         }
@@ -1585,8 +1625,6 @@ export class Doc {
         "Invalid stored document: it has more integers than its values say.",
       );
     nodeIds?.forgetIndexes();
-    // Columns without nodes (not what `toJSON` writes) insert nothing.
-    this._unrecordedLoad = root.first !== undefined;
   }
 
   /**
@@ -1743,14 +1781,23 @@ class IdsWriter {
     this._step = 1;
   }
 
-  flush() {
-    if (this._count === 0) return;
-    let index = this._indexes[this._session];
+  /**
+   * The index in `sessions` of a session of `NodeIds`, which `sessions` gets
+   * if it is new. Texts use it too, for the `letters` column.
+   */
+  index(session: number) {
+    let index = this._indexes[session];
     if (index === undefined) {
-      index = this._indexes[this._session] = this.sessions.length;
-      this.sessions.push(this._nodeIds!.session(this._session));
+      index = this._indexes[session] = this.sessions.length;
+      this.sessions.push(this._nodeIds!.session(session));
       this._nextClocks.push(0);
     }
+    return index;
+  }
+
+  flush() {
+    if (this._count === 0) return;
+    const index = this.index(this._session);
     const clock = this._start - this._nextClocks[index]!;
     const length = this._count * this._step;
     if (index === this._lastSession && length === 1)
@@ -1768,6 +1815,8 @@ type StoredType = {
   keys: string[];
   definitions: StateDefinition[];
   defaults: Json[];
+  /** Whether each key is a text, if the type has texts. */
+  texts: boolean[] | undefined;
   /** The end of the keys of its first mask. */
   firstEnd: number;
 };
@@ -1782,19 +1831,51 @@ const MASK_BITS = 30;
 /** The integers of the integer column, and the bits they need (see `writeInts`). */
 type Ints = { list: number[]; bits: number };
 
+/** What writes the `letters` column (see `TextEngine.lettersWriter`). */
+type LettersWriter = ReturnType<TextEngine["lettersWriter"]>;
+
+/** What reads the `letters` column (see `TextEngine.lettersReader`). */
+type LettersReader = ReturnType<TextEngine["lettersReader"]>;
+
+/**
+ * A value of a stored document as the node keeps it. The value is the stored
+ * document's, not a copy: frozen, like a value set with `set`. A text gets
+ * the ids of its letters from `letters`.
+ */
+function storedValue(
+  value: unknown,
+  node: DocNode,
+  key: string,
+  textKeys: string[] | undefined,
+  letters: LettersReader | undefined,
+) {
+  if (
+    letters &&
+    typeof value === "string" &&
+    value !== "" &&
+    textKeys?.includes(key)
+  )
+    return letters.read(node, key, value);
+  return freezeInDev(value);
+}
+
 /**
  * Pushes to `values` the node's state values that are not the default, as
  * plain JSON, and to `masks` the masks of their keys: bit `k` of mask `c`
  * stands for `type.keys[c * MASK_BITS + k]`. With `ints`, 32-bit integers go
- * to `ints` instead, and `values` holds `0`.
+ * to `ints` instead, and `values` holds `0`. With `letters`, a text that is
+ * not empty writes the ids of its letters there too.
  */
 function writeValues(
   node: DocNode,
   type: StoredType,
   values: Json[],
   masks: number[],
+  letters: LettersWriter | undefined,
 ) {
-  masks.push(writeMask(node, type, values, 0, type.firstEnd));
+  masks.push(
+    writeMask(node, type, values, 0, type.firstEnd, undefined, letters),
+  );
   for (let k = MASK_BITS; k < type.keys.length; k += MASK_BITS)
     masks.push(
       writeMask(
@@ -1803,6 +1884,8 @@ function writeValues(
         values,
         k,
         Math.min(k + MASK_BITS, type.keys.length),
+        undefined,
+        letters,
       ),
     );
 }
@@ -1815,6 +1898,7 @@ function writeMask(
   from: number,
   to: number,
   ints?: Ints,
+  letters?: LettersWriter,
 ) {
   const state: Record<string, unknown> = node["_state"];
   if (state === NO_STATE) return 0;
@@ -1840,6 +1924,8 @@ function writeMask(
       ints.bits |= json ^ (json >> 31);
     } else values.push(json);
     mask += bit;
+    // A text that is not empty: the ids of its letters.
+    if (letters && type.texts?.[k]) letters.write(node, key);
   }
   return mask;
 }
