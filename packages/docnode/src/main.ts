@@ -29,7 +29,12 @@ import {
 } from "./utils.js";
 import * as ops from "./operations.js";
 import { readInts, writeInts } from "./ints.js";
-import { MAX_CLOCK, NodeIds, numberToBase64 } from "./idGenerator.js";
+import {
+  MAX_CLOCK,
+  MAX_SESSION_LENGTH,
+  NodeIds,
+  numberToBase64,
+} from "./idGenerator.js";
 import { decodeTime, ulid } from "ulid";
 import { UndoManager } from "./undoManager.js";
 import { decodeOperations } from "./wire.js";
@@ -1316,7 +1321,11 @@ export class Doc {
     // The same sessions an id read as text could have (see `clockAt`),
     // checked before any is registered.
     for (const session of sessions)
-      if (typeof session !== "string" || session === "")
+      if (
+        typeof session !== "string" ||
+        session === "" ||
+        session.length > MAX_SESSION_LENGTH
+      )
         throw new Error(
           "Invalid stored document: it has a session that is not valid.",
         );
@@ -1371,6 +1380,10 @@ export class Doc {
             clock = nodeIds.splitClock;
           }
         } else {
+          if (!Number.isInteger(entry))
+            throw new Error(
+              "Invalid stored document: it has an id run that is not valid.",
+            );
           // The parity of a run's first number says its form (see
           // `IdsWriter`). Not `% 2 === 1`: -3 % 2 is -1.
           let delta: number | string | undefined;

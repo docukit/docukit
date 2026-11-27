@@ -652,6 +652,39 @@ describe("reading a stored document", () => {
     );
   });
 
+  test("a session longer than 64 characters throws, and its ids are written whole", () => {
+    const session = "s".repeat(65);
+    expect(() =>
+      Doc.fromJSON(config, twoNodesWithIds([session], [0, 0, 2])),
+    ).toThrowError(
+      "Invalid stored document: it has a session that is not valid.",
+    );
+    const ids = [`${session}.-`, `${session}.0`];
+    const doc = Doc.fromJSON(config, twoNodesWithIds([], ids));
+    doc.forceCommit();
+    expect(doc.toJSON().slice(8)).toStrictEqual([[], ids]);
+    expect(loadAndSave(doc)).toStrictEqual(doc.toJSON());
+    // One character shorter, they are a run.
+    const shorter = session.slice(1);
+    const short = Doc.fromJSON(
+      config,
+      twoNodesWithIds([], [`${shorter}.-`, `${shorter}.0`]),
+    );
+    short.forceCommit();
+    expect(short.toJSON().slice(8)).toStrictEqual([[shorter], [0, 0, 2]]);
+  });
+
+  test("a run that does not start with an integer, as parsed JSON could have, throws", () => {
+    const ids = [0, 0, 2];
+    // `null % 2` is 0: it would read as a run of the first session.
+    Reflect.set(ids, 0, null);
+    expect(() =>
+      Doc.fromJSON(config, twoNodesWithIds(["s"], ids)),
+    ).toThrowError(
+      "Invalid stored document: it has an id run that is not valid.",
+    );
+  });
+
   test("a session that is not a string, as parsed JSON could have, throws", () => {
     const sessions = ["s"];
     // Not a string: what `JSON.parse` of a stored document could return.
