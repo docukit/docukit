@@ -9,6 +9,8 @@ import {
 import { upgradeOperations } from "@docukit/docnode/compat";
 import { describe, expect, test } from "vitest";
 import {
+  TestExtension,
+  TestNode,
   Text,
   assertDoc,
   text,
@@ -47,10 +49,12 @@ describe("operations format", () => {
   test("the head is the first node's id, and its session's nodes are numbers", () => {
     const doc = textDoc();
     const [batch] = batchesOf(doc, () => doc.root.append(...text(doc, "a")));
+    // One node is inserted without its list, and without the zeros of no
+    // parent and no siblings.
     expect(batch).toStrictEqual([
       doc.root.first!.id,
-      [0, [[1, "text"]], 0, 0, 0],
-      [-9, [1], ["value"], ["a"]],
+      [0, 1, "text"],
+      [-9, 1, "value", "a"],
     ]);
   });
 
@@ -67,22 +71,22 @@ describe("operations format", () => {
     );
     const [b, c] = batches.map(([head, ...rows]) => ({ head, rows }));
     expect(b!.rows).toStrictEqual([
-      [0, [[1, "text"]], 0, -1, 0],
-      [-9, [1], ["value"], ["b"]],
+      [0, 1, "text", 0, -1],
+      [-9, 1, "value", "b"],
     ]);
-    expect(c!.rows).toStrictEqual(b!.rows.with(1, [-9, [1], ["value"], ["c"]]));
+    expect(c!.rows).toStrictEqual([b!.rows[0], [-9, 1, "value", "c"]]);
     expect(c!.head).not.toBe(b!.head);
   });
 
-  test("nodes made one after the other are a run, counted by 1 in the patch", () => {
+  test("nodes made one after the other are a run, in the insert and in the patch", () => {
     const doc = textDoc();
     const [batch] = batchesOf(doc, () =>
       doc.root.append(...text(doc, "a", "b", "c")),
     );
     expect(batch).toStrictEqual([
       doc.root.first!.id,
-      [0, [[1, "text", 3]], 0, 0, 0],
-      [-9, [1, 1, 1], ["value", "value", "value"], ["a", "b", "c"]],
+      [0, [[1, "text", 3]]],
+      [-9, [1, 3], "value", ["a", "b", "c"]],
     ]);
     expect(decode(batch!)[0][0]![1]).toStrictEqual(
       childIds(doc).map((id) => [id, "text"]),
@@ -100,16 +104,52 @@ describe("operations format", () => {
         [1, "text"],
         [-2, "text", 2],
       ],
-      0,
-      0,
-      0,
     ]);
   });
 
-  test("delete and move rows, nodes before the head's are negative", () => {
+  test("a number node of the patch is its difference from the one before", () => {
+    const doc = new Doc({ type: "root", extensions: [TestExtension] });
+    const nodes = [1, 2, 3, 4].map(() => doc.createNode(TestNode));
+    const [batch] = batchesOf(doc, () => {
+      nodes.forEach((node, at) => {
+        node.state.string.set(`${at}`);
+        node.state.number.set(at + 1);
+      });
+      doc.root.append(...nodes);
+    });
+    // A run writes its first node again for each key: 0 from the one before.
+    expect(batch![2]).toStrictEqual([
+      -9,
+      [1, 4],
+      "string",
+      ["0", "1", "2", "3"],
+      [0, 4],
+      "number",
+      [1, 2, 3, 4],
+    ]);
+
+    // The second node has other keys than the first: no run.
+    const [first, second, , fourth] = nodes;
+    const [edited] = batchesOf(doc, () => {
+      first!.state.string.set("a");
+      first!.state.number.set(5);
+      second!.state.number.set(6);
+      fourth!.state.number.set(8);
+    });
+    expect(edited).toStrictEqual([
+      first!.id,
+      [-9, 1, "string", "a", 0, "number", 5, 1, "number", 6, 2, "number", 8],
+    ]);
+  });
+
+  test("a batch of one row has no brackets, and nodes before the head's are negative", () => {
     const doc = textDoc();
     doc.root.append(...text(doc, "a", "b", "c"));
-    const [first, last] = [doc.root.first!, doc.root.last!];
+    const [first, second, last] = [
+      doc.root.first!,
+      doc.root.first!.next!,
+      doc.root.last!,
+    ];
     const batches = batchesOf(
       doc,
       commits(
@@ -119,9 +159,10 @@ describe("operations format", () => {
       ),
     );
     expect(batches).toStrictEqual([
-      [last.id, [2, 1, 0, 0, 0, -2]],
-      [first.id, [1, 1, 2]],
+      [last.id, 2, 1, 0, 0, 0, -2],
+      [first.id, 1, 1, 2],
     ]);
+    expect(decode(batches[1]!)).toStrictEqual([[[1, first.id, second.id]], {}]);
     assertDoc(doc, ["c"]);
   });
 
@@ -129,18 +170,26 @@ describe("operations format", () => {
     const doc = textDoc();
     const replica = Doc.fromJSON(config, doc.toJSON());
     replica.forceCommit();
-    const [inserted] = batchesOf(doc, () => doc.root.append(...text(doc, "a")));
+    const [inserted] = batchesOf(doc, () =>
+      doc.root.append(...text(doc, "a", "b")),
+    );
     replica.applyOperations(inserted!);
     const [edited] = batchesOf(replica, () => {
-      replica.root.append(...text(replica, "b"));
-      const node = replica.root.first!;
-      if (node.is(Text)) node.state.value.set("A");
+      replica.root.append(...text(replica, "c"));
+      replica.root.children().forEach((node) => {
+        if (node.is(Text) && node.id !== replica.root.last!.id)
+          node.state.value.set(node.state.value.get().toUpperCase());
+      });
     });
+    const [a, b] = childIds(doc);
     expect(edited).toStrictEqual([
       replica.root.last!.id,
-      [0, [[1, "text"]], 0, doc.root.first!.id, 0],
-      [-9, [1, doc.root.first!.id], ["value", "value"], ["b", "A"]],
+      [0, 1, "text", 0, b!],
+      [-9, 1, "value", "c", [a!, 2], "value", ["A", "B"]],
     ]);
+    doc.applyOperations(edited!);
+    doc.forceCommit();
+    assertDoc(doc, ["A", "B", "c"]);
 
     let n = 0;
     const custom = new Doc({
@@ -152,15 +201,15 @@ describe("operations format", () => {
     );
     expect(plain).toStrictEqual([
       "",
-      [0, [["n1", "text"]], 0, 0, 0],
-      [-9, ["n1"], ["value"], ["x"]],
+      [0, "n1", "text"],
+      [-9, "n1", "value", "x"],
     ]);
   });
 
   test("an id of the head's session that its generator would not write stays whole", () => {
     expect(
-      mergeOperations(["S.0", [1, 1, 0]], ["", [1, "S.-0", "S.0.1"]]),
-    ).toStrictEqual(["S.0", [1, 1, 0], [1, "S.-0", "S.0.1"]]);
+      mergeOperations(["S.0", 1, 1], ["", 1, "S.-0", "S.0.1"]),
+    ).toStrictEqual(["S.0", [1, 1], [1, "S.-0", "S.0.1"]]);
   });
 
   test("a batch with only a state patch takes its head from it", () => {
@@ -170,7 +219,7 @@ describe("operations format", () => {
     const [batch] = batchesOf(doc, () => {
       if (second.is(Text)) second.state.value.set("B");
     });
-    expect(batch).toStrictEqual([second.id, [-9, [1], ["value"], ["B"]]]);
+    expect(batch).toStrictEqual([second.id, [-9, 1, "value", "B"]]);
   });
 
   test("the change event writes each batch once, when it is read", () => {
@@ -198,12 +247,21 @@ describe("a batch that does not follow the format", () => {
     [batch("", [0, [["x", "text", 3]], 0, 0, 0]), "a run of 3 nodes from 'x'"],
     [batch("", [1, 5, 0]), "5 is not a node of the head's session"],
     [batch("s.0", [1, -5, 0]), "-5 is not a node of the head's session"],
-    [batch("s.0", [-9, [1], ["value"], []]), "three lists of equal length"],
-    [batch("s.0", [-9, [1], ["value"], "z"]), "three lists of equal length"],
-    [batch("s.0", [-9, [1], ["__proto__"], [{}]]), "every object has"],
+    [batch("s.zzzzzzzz", [0, [[1, "text", 2]]]), "a run of 2 nodes"],
+    [batch("", 1, 5), "5 is not a node of the head's session"],
+    [batch("s.0", 0, 1, 2), "its row 1 is not an operation"],
+    [batch("s.0", [0, ["text"]]), "its row 1 is not an operation"],
+    [batch("s.0", [-9, 1, "value"]), "not triples of node, key and value"],
+    [batch("s.0", [-9, 1, 2, "a"]), "a key that is not a string"],
+    [batch("s.0", [-9, 1, "__proto__", {}]), "every object has"],
+    [batch("s.0", [-9, [1, 1], "value", ["a"]]), "a run of 1 nodes"],
+    [batch("s.0", [-9, [1, 2], "value", ["a"]]), "not have a value for each"],
+    [batch("s.0", [-9, [1, 2], "value", "ab"]), "not have a value for each"],
     [batch("s.0", [7]), "its row 1 is not an operation"],
+    [batch("s.0", 7), "its row 1 is not an operation"],
+    [batch("s.0", "x"), "its row 1 is not an operation"],
     [batch("", [0, [["__proto__", "text"]], 0, 0, 0]), "every object has"],
-    [batch("s.0", [-9, [1], ["value"], ["a"]], [1, 1, 0]), "its row 1"],
+    [batch("s.0", [-9, 1, "value", "a"], [1, 1]), "its row 1"],
   ])("%j throws and changes nothing", (operations, message) => {
     const doc = textDoc();
     doc.root.append(...text(doc, "a"));
@@ -215,7 +273,7 @@ describe("a batch that does not follow the format", () => {
   });
 
   test.each([
-    ["a batch", () => decode(["", [-9, ["__proto__"], ["value"], ["a"]]])],
+    ["a batch", () => decode(["", [-9, "__proto__", "value", "a"]])],
     [
       "a custom generator",
       () => {
@@ -333,18 +391,22 @@ describe("upgradeOperations", () => {
   test("a batch of the previous format applies as it did", () => {
     const doc = textDoc();
     const id = doc.createNode(Text).id;
-    doc.applyOperations(
-      upgradeOperations([
-        [[0, [[id, "text"]], 0, 0, 0]],
-        { [id]: { value: '"old"' } },
-      ]),
-    );
+    const upgraded = upgradeOperations([
+      [[0, [[id, "text"]], 0, 0, 0]],
+      { [id]: { value: '"old"' } },
+    ]);
+    expect(upgraded).toStrictEqual([
+      id,
+      [0, 1, "text"],
+      [-9, 1, "value", "old"],
+    ]);
+    doc.applyOperations(upgraded);
     doc.forceCommit();
     assertDoc(doc, ["old"]);
   });
 
   test("a batch of the current format is returned as it is", () => {
-    const batch: Operations = ["", [1, "a", 0]];
+    const batch: Operations = ["", 1, "a"];
     expect(upgradeOperations(batch)).toBe(batch);
   });
 });
