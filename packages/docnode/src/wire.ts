@@ -7,7 +7,8 @@ import type {
   StatePatch,
 } from "./operations.js";
 import type { Json } from "./types.js";
-import { clockAt, numberToBase64 } from "./idGenerator.js";
+import { MAX_CLOCK, clockAt, numberToBase64 } from "./idGenerator.js";
+import { ownId } from "./utils.js";
 
 // `Operations`, a batch as it travels and is stored, is `[head, ...rows]`,
 // plain JSON read on its own:
@@ -119,30 +120,61 @@ export function encodeOperations(draft: DraftOperations): Operations {
   return rows;
 }
 
-/** The draft that a batch (see the format above) stands for. */
+/** The most nodes a batch may insert, so that a broken one cannot hang. */
+const MAX_BATCH_NODES = 1_000_000;
+
+/** A batch that does not follow the format above. */
+const invalid = (why: string) => new Error(`Invalid operations: ${why}.`);
+
+/**
+ * The draft that a batch (see the format above) stands for. It throws on a
+ * batch that does not follow the format, before anything is applied: each
+ * check is a comparison in a loop the decoding already makes.
+ */
 export function decodeOperations(operations: Operations): DraftOperations {
   const [head, ...rows] = operations;
+  if (typeof head !== "string")
+    throw new Error(
+      "These operations are in the previous format: convert them with `upgradeOperations` from `@docukit/docnode/compat`.",
+    );
   const dot = head.lastIndexOf(".");
   const base = clockAt(head, dot);
   const prefix = head.slice(0, dot + 1);
-  const node = (ref: NodeRef): string =>
-    typeof ref === "string"
-      ? ref
-      : prefix + numberToBase64(ref > 0 ? base + ref - 1 : base + ref);
+  const node = (ref: NodeRef): string => {
+    if (typeof ref === "string") return ownId(ref);
+    const clock = ref > 0 ? base + ref - 1 : base + ref;
+    if (
+      base < 0 ||
+      ref === 0 ||
+      !Number.isInteger(ref) ||
+      clock < 0 ||
+      clock > MAX_CLOCK
+    )
+      throw invalid(`${ref} is not a node of the head's session`);
+    return prefix + numberToBase64(clock);
+  };
   const id = (ref: NodeRef): string | 0 => (ref === 0 ? 0 : node(ref));
   const ordered: OrderedOperation[] = [];
   const patch: StatePatch = {};
-  for (const row of rows) {
+  let inserted = 0;
+  for (let at = 0; at < rows.length; at++) {
+    const row = rows[at]!;
     if (row[0] === 0) {
       const nodes: [string, string][] = [];
-      for (const [ref, type, count = 1] of row[1]) {
+      for (const entry of row[1]) {
+        const [ref, type, count = 1] = entry;
         const first = node(ref);
         nodes.push([first, type]);
-        if (count === 1) continue;
+        inserted += count;
+        if (entry.length === 2) continue;
         // A run: the nodes after the first, in its session.
         const firstDot = first.lastIndexOf(".");
         const session = first.slice(0, firstDot + 1);
         const clock = clockAt(first, firstDot);
+        if (!Number.isInteger(count) || count < 2 || clock < 0)
+          throw invalid(`a run of ${count} nodes from '${first}'`);
+        if (inserted > MAX_BATCH_NODES || clock + count - 1 > MAX_CLOCK)
+          throw invalid(`it inserts more than ${MAX_BATCH_NODES} nodes`);
         for (let i = 1; i < count; i++)
           nodes.push([session + numberToBase64(clock + i), type]);
       }
@@ -152,15 +184,17 @@ export function decodeOperations(operations: Operations): DraftOperations {
     } else if (row[0] === 2) {
       const [, start, end, parent, prev, next] = row;
       ordered.push([2, node(start), id(end), id(parent), id(prev), id(next)]);
-    } else {
+    } else if (row[0] === PATCH && at === rows.length - 1) {
       const [, nodes, keys, values] = row;
+      if (keys.length !== nodes.length || values.length !== nodes.length)
+        throw invalid("the columns of its state patch differ in length");
       let last = 0;
       for (let entry = 0; entry < nodes.length; entry++) {
         let ref = nodes[entry]!;
         if (typeof ref === "number") last = ref += last;
         (patch[node(ref)] ??= {})[keys[entry]!] = values[entry]!;
       }
-    }
+    } else throw invalid(`its row ${at + 1} is not an operation`);
   }
   return [ordered, patch];
 }

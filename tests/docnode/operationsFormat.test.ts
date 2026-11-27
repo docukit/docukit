@@ -1,5 +1,7 @@
 import {
   Doc,
+  defineNode,
+  defineState,
   mergeOperations,
   type Operations,
   _INTERNAL_decodeOperations as decode,
@@ -178,6 +180,103 @@ describe("operations format", () => {
     doc.root.append(...text(doc, "a"));
     doc.forceCommit();
     expect(read[0]).toBe(read[1]);
+  });
+});
+
+describe("a batch that does not follow the format", () => {
+  /** A batch with `head` and `rows` as they come, whatever their shape. */
+  const batch = (head: unknown, ...rows: unknown[]) => {
+    const parts: Operations = [""];
+    [head, ...rows].forEach((part, at) => Reflect.set(parts, at, part));
+    return parts;
+  };
+
+  test.each([
+    [batch([], {}), "These operations are in the previous format"],
+    [batch("s.0", [0, [[1, "text", 0]], 0, 0, 0]), "a run of 0 nodes"],
+    [batch("s.0", [0, [[1, "text", 1e9]], 0, 0, 0]), "more than 1000000"],
+    [batch("", [0, [["x", "text", 3]], 0, 0, 0]), "a run of 3 nodes from 'x'"],
+    [batch("", [1, 5, 0]), "5 is not a node of the head's session"],
+    [batch("s.0", [1, -5, 0]), "-5 is not a node of the head's session"],
+    [batch("s.0", [-9, [1], ["value"], []]), "columns of its state patch"],
+    [batch("s.0", [7]), "its row 1 is not an operation"],
+    [batch("", [0, [["__proto__", "text"]], 0, 0, 0]), "every object has"],
+    [batch("s.0", [-9, [1], ["value"], ["a"]], [1, 1, 0]), "its row 1"],
+  ])("%j throws and changes nothing", (operations, message) => {
+    const doc = textDoc();
+    doc.root.append(...text(doc, "a"));
+    doc.forceCommit();
+    const before = doc.toJSON();
+    expect(() => doc.applyOperations(operations)).toThrowError(message);
+    doc.forceCommit();
+    expect(doc.toJSON()).toStrictEqual(before);
+  });
+
+  test.each([
+    ["a batch", () => decode(["", [-9, ["__proto__"], ["value"], ["a"]]])],
+    [
+      "a custom generator",
+      () => {
+        let made = 0;
+        // The root first, then a node with an id that every object has.
+        const generate = () => (made++ === 0 ? "root" : "toString");
+        const doc = new Doc({
+          ...config,
+          nodeIdGenerator: { generate, validate: () => true },
+        });
+        doc.createNode(Text);
+      },
+    ],
+    [
+      "a stored document",
+      () => {
+        const doc = textDoc();
+        doc.root.append(...text(doc, "a"));
+        doc.forceCommit();
+        const json = doc.toJSON();
+        Reflect.set(json, 9, ["__proto__"]);
+        Doc.fromJSON(config, json);
+      },
+    ],
+  ])("an id that every object has, from %s, throws", (_, load) => {
+    expect(load).toThrowError("is a key that every object has");
+    expect(Object.prototype).not.toHaveProperty("value");
+  });
+});
+
+describe("applying operations", () => {
+  test("the inverse of a key changed twice in a transaction is its first value, even null", () => {
+    const Maybe = defineNode({
+      type: "maybe",
+      state: { value: defineState({ fromJSON: (json) => json ?? null }) },
+    });
+    const maybeConfig = { type: "root", extensions: [{ nodes: [Maybe] }] };
+    const sender = new Doc(maybeConfig);
+    const node = sender.createNode(Maybe);
+    sender.root.append(node);
+    sender.forceCommit();
+    const receiver = Doc.fromJSON(maybeConfig, sender.toJSON());
+    receiver.forceCommit();
+    const [first, second] = batchesOf(
+      sender,
+      commits(
+        sender,
+        () => node.state.value.set("first"),
+        () => node.state.value.set("second"),
+      ),
+    );
+    const inverses: Operations[] = [];
+    receiver.onChange(({ inverseOperations }) =>
+      inverses.push(inverseOperations),
+    );
+    receiver.applyOperations(first!);
+    receiver.applyOperations(second!);
+    receiver.forceCommit();
+    receiver.applyOperations(inverses[0]!);
+    receiver.forceCommit();
+    const undone = receiver.getNodeById(node.id);
+    if (!undone?.is(Maybe)) throw new Error("The node is a Maybe");
+    expect(undone.state.value.get()).toBe(null);
   });
 });
 

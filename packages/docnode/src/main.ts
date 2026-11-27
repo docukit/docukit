@@ -25,6 +25,7 @@ import {
   equalJson,
   ULID_REGEX,
   defineNode,
+  ownId,
 } from "./utils.js";
 import * as ops from "./operations.js";
 import { MAX_CLOCK, NodeIds, numberToBase64 } from "./idGenerator.js";
@@ -98,7 +99,7 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     } else {
       this._session = session;
       this._clock = clock;
-      this.id = id ?? doc["_idGen"].generate();
+      this.id = id ?? ownId(doc["_idGen"].generate());
     }
   }
 
@@ -722,7 +723,7 @@ export class Doc {
       throw new Error(`Invalid document id: ${config.id}.`);
     }
 
-    const id = config.id ?? idGen.generate();
+    const id = ownId(config.id ?? idGen.generate());
     // @ts-expect-error - private constructor
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     this.root = new DocNode(this, config.type, id);
@@ -1516,7 +1517,8 @@ export class Doc {
    * custom generator without `extractTime`: `NodeIds` reads the others.
    */
   private _validateNodeId(id: string) {
-    if (!this._idGen.validate(id)) throw new Error(`Invalid node id: ${id}.`);
+    if (!this._idGen.validate(ownId(id)))
+      throw new Error(`Invalid node id: ${id}.`);
   }
 
   /** A node of a stored document or of an operation, without state yet. */

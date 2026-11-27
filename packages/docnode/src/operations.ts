@@ -351,7 +351,9 @@ export const onApplyOperations = (doc: Doc, operations: DraftOperations) => {
         // an existing node. It changes nothing and needs no inverse.
         if (equalJson(current, value)) continue;
         doc["_diff"].updated.add(id);
-        (currentInverseStatePatch[id] ??= {})[key] ??= current;
+        // The first inverse of a key in the transaction wins, even `null`.
+        const inverse = (currentInverseStatePatch[id] ??= {});
+        if (inverse[key] === undefined) inverse[key] = current;
       }
       (currentStatePatch[id] ??= {})[key] = value;
       // The value is the batch's: frozen, like a value set here.

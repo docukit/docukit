@@ -22,6 +22,16 @@ export function detachRange(startNode: DocNode, endNode: DocNode) {
 }
 
 /**
+ * Throws if `id` is a key that every object inherits, like `__proto__` or
+ * `toString`: node ids are keys of plain objects, such as state patches.
+ */
+export function ownId(id: string) {
+  if (id in Object.prototype)
+    throw new Error(`Invalid node id: '${id}' is a key that every object has.`);
+  return id;
+}
+
+/**
  * Only way to check if an object is empty in O(1)
  * see https://stackoverflow.com/a/59787784/10476393
  */
