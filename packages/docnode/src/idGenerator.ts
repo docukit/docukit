@@ -114,7 +114,12 @@ export class NodeIds {
   private _made = 0;
   /** The sessions of the document's nodes, by index. */
   private _sessions: string[] = [];
-  /** The index of each session, made when there is a second one. */
+  /**
+   * The index of each session, made when a lookup needs it. A load drops it
+   * (`forgetIndexes`): a document many clients wrote has a session per
+   * client, and the map would keep an entry for each though the document may
+   * never look one up again.
+   */
   private _indexes: Map<string, number> | undefined;
   /** The index of `_session` in `_sessions`. */
   private _index = 0;
@@ -157,13 +162,22 @@ export class NodeIds {
     if (sessions[0] === session) return 0;
     // A literal of one: a first push would reserve 17 slots.
     if (sessions.length === 0) return ((this._sessions = [session]), 0);
-    this._indexes ??= new Map([[sessions[0]!, 0]]);
-    let index = this._indexes.get(session);
+    let indexes = this._indexes;
+    if (!indexes) {
+      indexes = this._indexes = new Map();
+      for (let i = 0; i < sessions.length; i++) indexes.set(sessions[i]!, i);
+    }
+    let index = indexes.get(session);
     if (index === undefined) {
       index = sessions.push(session) - 1;
-      this._indexes.set(session, index);
+      indexes.set(session, index);
     }
     return index;
+  }
+
+  /** Drops the map of indexes: `register` makes it again when it needs it. */
+  forgetIndexes() {
+    this._indexes = undefined;
   }
 
   /** A session of the table. */

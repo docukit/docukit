@@ -87,6 +87,23 @@ describe("stored format", () => {
     expect(loadAndSave(a)).toStrictEqual(json);
   });
 
+  test("a loaded document finds the stored session of an id it receives", () => {
+    const a = textDoc();
+    a.root.append(...text(a, "a1"));
+    a.forceCommit();
+    const b = Doc.fromJSON(config, a.toJSON());
+    b.forceCommit();
+    const sent: Parameters<Doc["applyOperations"]>[0][] = [];
+    a.onChange(({ operations }) => sent.push(operations));
+    a.root.append(...text(a, "a2"));
+    a.forceCommit();
+    for (const operations of sent) b.applyOperations(operations);
+    b.forceCommit();
+    // a1 and a2 are one run of the same session, as `a` writes them.
+    expect(b.toJSON()[8]).toStrictEqual([sessionOf(a)]);
+    expect(b.toJSON()).toStrictEqual(a.toJSON());
+  });
+
   test("the ids of a custom generator are written as they are", () => {
     let n = 0;
     const custom = {
