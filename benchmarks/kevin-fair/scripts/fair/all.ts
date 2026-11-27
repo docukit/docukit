@@ -1,4 +1,4 @@
-// The whole fair measurement, one process at a time: runs A and B (Kevin rows + G1.9), the bytes pass, the
+// The whole fair measurement, one process at a time: runs A and B (Kevin rows + G1.8 and G1.9), the bytes pass, the
 // instruction pass, then the statistics. Repeats a run when the machine was busy (exit code 3 of run.ts).
 // usage: SUBJECTS=yjs13,yjs14,<base>,<new> BASE=<base> NEW=<new> node scripts/fair/all.ts [steps]
 //   steps = comma list of: runs,extra,ic,compare (default: all)
@@ -16,9 +16,9 @@ const steps = (process.argv[2] ?? "runs,extra,ic,compare").split(",");
 const SUBJECTS = process.env.SUBJECTS;
 if (!SUBJECTS)
   throw new Error("set SUBJECTS, e.g. SUBJECTS=yjs13,yjs14,base,new");
-// G1.9 = B1.9 with Yjs storing one element per number (XmlElement in Yjs 13, Node in Yjs 14).
-const G19 =
-  process.env.G19_SUBJECTS ??
+// G1.8 and G1.9 = B1.8 and B1.9 with Yjs storing one element per number (XmlElement in Yjs 13, Node in Yjs 14).
+const G_SUBJECTS =
+  process.env.G_SUBJECTS ??
   SUBJECTS.replace("yjs13", "yjs13xml").replace("yjs14", "yjs14node");
 const KEVIN_ROWS = "[B1.8],[B1.9],[B1.10],[B1.11],[B3.1],[B3.2],[B3.3],[B3.4]";
 const ROUNDS = process.env.ROUNDS ?? "30",
@@ -56,7 +56,7 @@ const run = (out: string, env: Record<string, string>, maxTries = 3) => {
 };
 const sets = [
   { id: "kevin", subjects: SUBJECTS, rows: KEVIN_ROWS },
-  { id: "g19", subjects: G19, rows: "[B1.9]" },
+  { id: "g", subjects: G_SUBJECTS, rows: "[B1.8],[B1.9]" },
 ];
 if (steps.includes("runs")) {
   for (const ab of ["A", "B"])
@@ -107,13 +107,15 @@ if (steps.includes("compare")) {
         yjs: ["yjs13", "yjs14"],
       },
       {
-        id: "g19",
-        A: `${DIR}/g19-A.json`,
-        B: `${DIR}/g19-B.json`,
-        xA: `${DIR}/g19-xA.json`,
-        xB: `${DIR}/g19-xB.json`,
+        id: "g",
+        A: `${DIR}/g-A.json`,
+        B: `${DIR}/g-B.json`,
+        xA: `${DIR}/g-xA.json`,
+        xB: `${DIR}/g-xB.json`,
         yjs: ["yjs13xml", "yjs14node"],
         rename: {
+          "[B1.8] Append N numbers":
+            "[G1.8] Append N numbers (Yjs: XmlElement / Node)",
           "[B1.9] Insert Array of N numbers":
             "[G1.9] Insert Array of N numbers (Yjs: XmlElement / Node)",
         },

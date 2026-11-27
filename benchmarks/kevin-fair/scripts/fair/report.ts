@@ -56,21 +56,22 @@ P();
 
 if (S) {
   const kevinRows: string[] = S.sets.kevin.rows;
-  const g19 = S.sets.g19?.rows?.[0] as string | undefined;
-  const at = kevinRows.findIndex((r) => r.startsWith("[B1.9]")) + 1;
-  const rows = g19
-    ? [...kevinRows.slice(0, at), g19, ...kevinRows.slice(at)]
-    : kevinRows;
+  // Each G row right after its B row (G1.8 after B1.8, G1.9 after B1.9).
+  const gRows: string[] = S.sets.g?.rows ?? [];
+  const rows = kevinRows.flatMap((r) => {
+    const g = gRows.find((x) => x.slice(2, 6) === r.slice(2, 6));
+    return g ? [r, g] : [r];
+  });
   const short = (r: string) =>
     r
       .replace(/^\[(\w+\.\d+)\] /, "$1 ")
       .replace("20√N clients concurrently ", "20√N ");
   const libs = (S.sets.kevin.libs as string[]).filter((l) => !YJS.has(l));
-  const main = ["loadNoGc", "mem", "time", "save", "bytes", "doc"];
+  const main = ["loadNoGc", "mem", "time", "save", "bytes", "doc", "docRaw"];
   P("## Cells won, lost or tied per library");
   P();
   P(
-    "Cells = rows × columns with a verdict (bytes, stored doc, load without forced GC, memory, time, save). G1.9 included.",
+    "Cells = rows × columns with a verdict (bytes, stored doc gzip and uncompressed, load without forced GC, memory, time, save). G1.8 and G1.9 included.",
   );
   P();
   P("| Library | 🟢 win | 🔴 loss | ⚪ tie | 🟡 unstable | no % |");
@@ -90,20 +91,20 @@ if (S) {
   P("## One table per library");
   P();
   P(
-    "Columns: **bytes/update** = gzip of the update stream; **stored doc** = gzip of the saved document; **load** = the inner window `load + check` without the harness's forced GC (the verdict column); **load, Kevin** = upstream `parseTime` (includes 2 full forced GCs), shown as % only; **memory** = `memFairWarm`; **time** = the whole row; **save** = `encodeTime`.",
+    "Columns: **bytes/update** = uncompressed, as DocSync sends them; **stored doc** = the saved document, with gzip and uncompressed; **load** = the inner window `load + check` without the harness's forced GC (the verdict column); **load, Kevin** = upstream `parseTime` (includes 2 full forced GCs), shown as % only; **memory** = `memFairWarm`; **time** = the whole row; **save** = `encodeTime`.",
   );
   P();
   for (const lib of libs) {
     P(`### ${name(lib)}`);
     P();
     P(
-      "| Row | bytes/update | stored doc | load | load, Kevin (% only) | memory | time | save |",
+      "| Row | bytes/update | stored doc (gzip) | stored doc (uncompressed) | load | load, Kevin (% only) | memory | time | save |",
     );
-    P("|---|---|---|---|---|---|---|---|");
+    P("|---|---|---|---|---|---|---|---|---|");
     for (const r of rows) {
       const c = (k: string, v = true) => cell(S.cells[r]?.[k]?.[lib], v);
       P(
-        `| ${short(r)} | ${c("bytes")} | ${c("doc")} | ${c("loadNoGc")} | ${c("loadKevin", false)} | ${c("mem")} | ${c("time")} | ${c("save")} |`,
+        `| ${short(r)} | ${c("bytes")} | ${c("doc")} | ${c("docRaw")} | ${c("loadNoGc")} | ${c("loadKevin", false)} | ${c("mem")} | ${c("time")} | ${c("save")} |`,
       );
     }
     P();
@@ -111,9 +112,9 @@ if (S) {
   P("### Reference: median of the best Yjs in each cell");
   P();
   P(
-    "| Row | bytes/update | stored doc | load | load, Kevin | memory | time | save |",
+    "| Row | bytes/update | stored doc (gzip) | stored doc (uncompressed) | load | load, Kevin | memory | time | save |",
   );
-  P("|---|---|---|---|---|---|---|---|");
+  P("|---|---|---|---|---|---|---|---|---|");
   const units: Record<string, string> = Object.fromEntries(
     S.cols.map((c: any) => [c.key, c.unit]),
   );
@@ -127,7 +128,7 @@ if (S) {
         : "—";
     };
     P(
-      `| ${short(r)} | ${c("bytes")} | ${c("doc")} | ${c("loadNoGc")} | ${c("loadKevin")} | ${c("mem")} | ${c("time")} | ${c("save")} |`,
+      `| ${short(r)} | ${c("bytes")} | ${c("doc")} | ${c("docRaw")} | ${c("loadNoGc")} | ${c("loadKevin")} | ${c("mem")} | ${c("time")} | ${c("save")} |`,
     );
   }
   P();

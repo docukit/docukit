@@ -20,11 +20,15 @@ const rawGet =
   };
 const COLS: Col[] = [
   {
+    // Uncompressed: DocSync (Socket.IO) sends updates as they are, and gzip on a single small update makes it bigger.
     key: "bytes",
-    label: "bytes/update (gzip of the stream)",
+    label: "bytes/update (uncompressed)",
     unit: "B",
     src: "extra",
-    get: (r) => r.streamGzip as number | undefined,
+    get: (r) =>
+      typeof r.bytes === "number" && typeof r.updates === "number" && r.updates
+        ? r.bytes / r.updates
+        : undefined,
   },
   {
     key: "doc",
@@ -32,6 +36,13 @@ const COLS: Col[] = [
     unit: "B",
     src: "extra",
     get: (r) => r.docGzip as number | undefined,
+  },
+  {
+    key: "docRaw",
+    label: "stored doc (uncompressed)",
+    unit: "B",
+    src: "extra",
+    get: (r) => r.docRaw as number | undefined,
   },
   {
     key: "loadNoGc",
@@ -92,13 +103,6 @@ const COLS: Col[] = [
       const v = raw[`${row} (avgUpdateSize)`] ?? raw[`${row} (updateSize)`];
       return v === undefined ? undefined : num(v);
     },
-  },
-  {
-    key: "docRaw",
-    label: "docSize (raw)",
-    unit: "B",
-    src: "run",
-    get: rawGet("docSize"),
   },
 ];
 
