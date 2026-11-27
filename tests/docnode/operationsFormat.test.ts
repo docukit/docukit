@@ -262,6 +262,36 @@ describe("a batch that does not follow the format", () => {
     [batch("s.0", "x"), "its row 1 is not an operation"],
     [batch("", [0, [["__proto__", "text"]], 0, 0, 0]), "every object has"],
     [batch("s.0", [-9, 1, "value", "a"], [1, 1]), "its row 1"],
+    [batch("s.0", [0, []]), "its row 1 is not an operation"],
+    [batch("s.0", [0, [[1, "text", 2, 0]]]), "its row 1 is not an operation"],
+    [batch("s.0", [0, [[1, "text"]], 0, 0, 0, 0]), "row 1 has items after"],
+    [batch("s.0", [0, 1, "text", 0, 0, 0, 0]), "row 1 has items after"],
+    [batch("s.0", [1, 1, 0, 0]), "row 1 has items after"],
+    [batch("s.0", [2, 1, 0, 0, 0, 0, 0]), "row 1 has items after"],
+    [batch("s.0", 1, 1, 0, 0), "row 1 has items after"],
+    [batch("s.0", [-9, [1, 2, 0], "value", ["a", "b"]]), "not a node and a"],
+    // Each node counts, those before a run too, before the run is expanded.
+    [
+      batch("s.9", [
+        0,
+        [
+          [-1, "text"],
+          [-2, "text"],
+          [1, "text", 999_999],
+        ],
+      ]),
+      "more than 1000000",
+    ],
+    [
+      batch(
+        "s.9",
+        [0, -1, "text"],
+        [0, -2, "text"],
+        [0, [[1, "text", 1e6 - 1]]],
+      ),
+      "more than 1000000",
+    ],
+    [batch("s.0", 0, [[1, "text", 1e6 + 1]]), "more than 1000000"],
   ])("%j throws and changes nothing", (operations, message) => {
     const doc = textDoc();
     doc.root.append(...text(doc, "a"));

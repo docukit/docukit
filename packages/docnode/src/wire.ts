@@ -271,6 +271,14 @@ const isFlat = (
 /** A batch that does not follow the format above. */
 const invalid = (why: string) => new Error(`Invalid operations: ${why}.`);
 
+/** `inserted` plus `more` nodes, if a batch may insert them. */
+function counted(inserted: number, more: number) {
+  inserted += more;
+  if (inserted > MAX_BATCH_NODES)
+    throw invalid(`it inserts more than ${MAX_BATCH_NODES} nodes`);
+  return inserted;
+}
+
 /** The whole id of `ref`, in a batch with a head of `prefix` and `base`. */
 function nodeOf(ref: Json | undefined, prefix: string, base: number): string {
   if (typeof ref === "string") return ownId(ref);
@@ -320,6 +328,8 @@ function readRow(
   inserted: number,
 ): number {
   const tag = row[at];
+  // Where the row's last item may be: one past it is too many.
+  let end: number;
   if (tag === 0) {
     const nodes: [string, string][] = [];
     const list = row[at + 1];
@@ -330,17 +340,19 @@ function readRow(
       if (typeof type !== "string")
         throw invalid(`its row ${index} is not an operation`);
       nodes.push([nodeOf(list, prefix, base), type]);
-      inserted++;
+      inserted = counted(inserted, 1);
       to++;
-    } else
+    } else {
+      if (list.length === 0)
+        throw invalid(`its row ${index} is not an operation`);
       for (const entry of list) {
-        if (!isList(entry) || typeof entry[1] !== "string")
+        if (!isList(entry) || entry.length > 3 || typeof entry[1] !== "string")
           throw invalid(`its row ${index} is not an operation`);
         const type = entry[1];
         const first = nodeOf(entry[0], prefix, base);
         nodes.push([first, type]);
         if (entry.length === 2) {
-          inserted++;
+          inserted = counted(inserted, 1);
           continue;
         }
         // A run: the nodes after the first, in its session.
@@ -349,12 +361,11 @@ function readRow(
         const clock = clockAt(first, firstDot);
         const count = entry[2];
         assertRun(first, clock, count);
-        inserted += count;
-        if (inserted > MAX_BATCH_NODES)
-          throw invalid(`it inserts more than ${MAX_BATCH_NODES} nodes`);
+        inserted = counted(inserted, count);
         for (let i = 1; i < count; i++)
           nodes.push([session + numberToBase64(clock + i), type]);
       }
+    }
     ordered.push([
       0,
       nodes,
@@ -362,12 +373,14 @@ function readRow(
       idOf(row[to + 1], prefix, base),
       idOf(row[to + 2], prefix, base),
     ]);
+    end = to + 2;
   } else if (tag === 1) {
     ordered.push([
       1,
       nodeOf(row[at + 1], prefix, base),
       idOf(row[at + 2], prefix, base),
     ]);
+    end = at + 2;
   } else if (tag === 2) {
     ordered.push([
       2,
@@ -377,7 +390,10 @@ function readRow(
       idOf(row[at + 4], prefix, base),
       idOf(row[at + 5], prefix, base),
     ]);
+    end = at + 5;
   } else throw invalid(`its row ${index} is not an operation`);
+  if (row.length > end + 1)
+    throw invalid(`its row ${index} has items after its operation`);
   return inserted;
 }
 
@@ -404,6 +420,8 @@ function readPatch(
       continue;
     }
     // A run: a value for each node from the first on, in its session.
+    if (ref.length !== 2)
+      throw invalid("its state patch has a run that is not a node and a count");
     let start = ref[0];
     if (typeof start === "number") last = start += last;
     const first = nodeOf(start, prefix, base);
