@@ -478,7 +478,7 @@ const createClientUtils = async (
           for (const { operations: batch } of result.operations) {
             for (const operations of batch) {
               const [, statePatch] = decodeOperations(operations);
-              for (const nodeState of Object.values(statePatch)) {
+              for (const nodeState of statePatch.values()) {
                 const value = nodeState.value;
                 if (typeof value === "string") opsChildren.push(value);
               }

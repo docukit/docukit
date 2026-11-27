@@ -73,17 +73,18 @@ export const onSetState = {
     const statePatchs = doc["_operations"][1];
     const value = stateKeyToJson(node, key);
 
-    const prevValue = doc["_inverseOperations"][1][node.id]?.[key];
-    const nodePatch = statePatchs[node.id];
+    const inversePatch = doc["_inverseOperations"][1].get(node.id);
+    const prevValue = inversePatch?.[key];
+    const nodePatch = statePatchs.get(node.id);
     if (prevValue !== undefined && nodePatch && equalJson(prevValue, value)) {
       delete nodePatch[key];
       if (isObjectEmpty(nodePatch)) {
-        delete statePatchs[node.id];
+        statePatchs.delete(node.id);
         doc["_diff"].updated.delete(node.id);
       }
-      delete doc["_inverseOperations"][1][node.id]?.[key];
+      delete inversePatch![key];
     } else {
-      (statePatchs[node.id] ??= {})[key] = value;
+      patchOf(statePatchs, node.id)[key] = value;
       if (!doc["_diff"].inserted.has(node.id))
         doc["_diff"].updated.add(node.id);
     }
@@ -93,8 +94,9 @@ export const onSetState = {
     const insertedInSameTransaction = doc["_diff"].inserted.has(node.id);
     if (insertedInSameTransaction) return;
     const inverseStatePatchs = doc["_inverseOperations"][1];
-    if (inverseStatePatchs[node.id]?.[key] !== undefined) return;
-    (inverseStatePatchs[node.id] ??= {})[key] = stateKeyToJson(node, key);
+    const inverse = patchOf(inverseStatePatchs, node.id);
+    if (inverse[key] !== undefined) return;
+    inverse[key] = stateKeyToJson(node, key);
   },
 };
 
@@ -179,7 +181,7 @@ function copyInsertedToDiff(node: DocNode) {
   // [#4GOSK]
   const jsonState = node["_stateJson"]();
   if (isObjectEmpty(jsonState)) return;
-  doc["_operations"][1][node.id] = jsonState;
+  doc["_operations"][1].set(node.id, jsonState);
 }
 
 export const onDeleteRange = (
@@ -214,7 +216,7 @@ export const onDeleteRange = (
   detachRange(startNode, endNode);
   startNode.to(endNode).forEach((node) => {
     node.descendants({ includeSelf: true }).forEach((node) => {
-      delete doc["_operations"][1][node.id];
+      doc["_operations"][1].delete(node.id);
       doc["_diff"].updated.delete(node.id);
       if (node.first) {
         const jsonNodes: [string, string][] = [];
@@ -345,12 +347,12 @@ export const onApplyOperations = (doc: Doc, operations: DraftOperations) => {
   const toApplyStatePatch = operations[1];
   const currentStatePatch = doc["_operations"][1];
   const currentInverseStatePatch = doc["_inverseOperations"][1];
-  for (const id in toApplyStatePatch) {
+  for (const [id, state] of toApplyStatePatch) {
     const node = doc.getNodeById(id);
     if (!node) continue;
     const insertedInSameTransaction = doc["_diff"].inserted.has(id);
-    for (const key in toApplyStatePatch[id]) {
-      const value = toApplyStatePatch[id][key]!;
+    for (const key in state) {
+      const value = state[key]!;
       // The state of a node inserted in this transaction is part of its
       // creation and needs no inverse: the inverse operation is a delete.
       if (!insertedInSameTransaction) {
@@ -360,10 +362,10 @@ export const onApplyOperations = (doc: Doc, operations: DraftOperations) => {
         if (equalJson(current, value)) continue;
         doc["_diff"].updated.add(id);
         // The first inverse of a key in the transaction wins, even `null`.
-        const inverse = (currentInverseStatePatch[id] ??= {});
+        const inverse = patchOf(currentInverseStatePatch, id);
         if (inverse[key] === undefined) inverse[key] = current;
       }
-      (currentStatePatch[id] ??= {})[key] = value;
+      patchOf(currentStatePatch, id)[key] = value;
       // The value is the batch's: frozen, like a value set here.
       node["_values"]()[key] = freezeInDev(parseStateKey(node, key, value));
     }
@@ -377,7 +379,7 @@ const hasChanges = (doc: Doc) => {
     diff.inserted.size > 0 ||
     diff.deleted.size > 0 ||
     diff.moved.size > 0 ||
-    !isObjectEmpty(doc["_operations"][1])
+    doc["_operations"][1].size > 0
   );
 };
 
@@ -440,10 +442,10 @@ const copyDeletedToDiff = (node: DocNode) => {
     diff.moved.delete(node.id);
   } else {
     // backup the previous state in inverseOperations.statePatch
-    const inversePatchState = doc["_inverseOperations"][1][node.id];
+    const inversePatch = doc["_inverseOperations"][1];
     const currentState = node["_stateJson"]();
-    const previousState = { ...currentState, ...inversePatchState };
-    doc["_inverseOperations"][1][node.id] = previousState;
+    const previousState = { ...currentState, ...inversePatch.get(node.id) };
+    inversePatch.set(node.id, previousState);
     // add to diff.deleted
     diff.deleted.set(node.id, node);
   }
@@ -482,8 +484,18 @@ export type OrderedOperation =
 //   includeDescendants: 1 | 0,
 // ]
 
-/** The new value of each changed key of each node, as JSON. */
-export type StatePatch = { [id: string]: Record<string, Json> };
+/**
+ * The new value of each changed key of each node, as JSON. A `Map`, since its
+ * keys are mostly new node ids: an object would get a new shape for each.
+ */
+export type StatePatch = Map<string, Record<string, Json>>;
+
+/** The patch of node `id` in `patch`, which it adds if missing. */
+export function patchOf(patch: StatePatch, id: string) {
+  let state = patch.get(id);
+  if (!state) patch.set(id, (state = {}));
+  return state;
+}
 
 /**
  * The operations of a transaction as the document records and applies them,
@@ -539,13 +551,11 @@ export type OperationsRow =
 /** Concatenates drafts (see `mergeOperations`). */
 export function mergeDrafts(...drafts: DraftOperations[]): DraftOperations {
   const orderedOperations: OrderedOperation[] = [];
-  const statePatch: StatePatch = {};
+  const statePatch: StatePatch = new Map();
   for (const [ordered, patch] of drafts) {
     orderedOperations.push(...ordered);
-    for (const nodeId in patch) {
-      statePatch[nodeId] ??= {};
-      Object.assign(statePatch[nodeId], patch[nodeId]);
-    }
+    for (const [nodeId, state] of patch)
+      Object.assign(patchOf(statePatch, nodeId), state);
   }
   return [orderedOperations, statePatch];
 }

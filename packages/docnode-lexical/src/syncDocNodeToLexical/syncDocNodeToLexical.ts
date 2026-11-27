@@ -273,7 +273,7 @@ function $applyDocNodeOperations(
 
   // Apply state patches (update node properties)
   // updateFromJSON() safely updates properties while preserving children
-  for (const docNodeId in statePatch) {
+  for (const docNodeId of statePatch.keys()) {
     const lexicalKey = docNodeIdToLexicalKey.get(docNodeId);
     if (!lexicalKey) {
       continue;

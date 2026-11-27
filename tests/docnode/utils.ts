@@ -321,7 +321,7 @@ export function humanReadableOperations(doc: Doc, changeEvent: ChangeEvent) {
     }
     const statePatch = operations[1];
     const readableStatePatch = Object.fromEntries(
-      Object.entries(statePatch).map(([k, v]) => {
+      [...statePatch].map(([k, v]) => {
         return [
           id(k),
           Object.fromEntries(
@@ -520,8 +520,8 @@ export function checkUndoManager(
       // A node can be in diff.updated and diff.moved at the same time
       // expect(diff.moved.has(id)).toBe(false);
       expect(diff.deleted.has(id)).toBe(false);
-      expect(operations[1][id]).toBeDefined();
-      expect(inverseOperations[1][id]).toBeDefined();
+      expect(operations[1].get(id)).toBeDefined();
+      expect(inverseOperations[1].get(id)).toBeDefined();
     });
     diff.inserted.forEach((id) => {
       expect(id).toMatch(DOCNODE_ID());
@@ -538,10 +538,10 @@ export function checkUndoManager(
       expect(id).toMatch(DOCNODE_ID());
       expect(doc.getNodeById(id)).toBeUndefined();
     });
-    for (const id in operations[1]) {
+    for (const id of operations[1].keys()) {
       if (!diff.inserted.has(id)) expect(diff.updated.has(id)).toBe(true);
     }
-    for (const id in inverseOperations[1]) {
+    for (const id of inverseOperations[1].keys()) {
       if (!diff.deleted.has(id)) expect(diff.updated.has(id)).toBe(true);
     }
 
@@ -554,9 +554,9 @@ export function checkUndoManager(
     });
     doc["_nodeMap"].forEach((node) => {
       if (diff.updated.has(node.id)) {
-        expect(operations[1][node.id]).toBeDefined();
+        expect(operations[1].get(node.id)).toBeDefined();
       } else if (!diff.inserted.has(node.id)) {
-        expect(operations[1][node.id]).toBeUndefined();
+        expect(operations[1].get(node.id)).toBeUndefined();
       }
       if (!node.is(Text) || diff.updated.has(node.id)) return;
       expect(() => node.state.value.getPrev()).toThrowError(getPrevError);

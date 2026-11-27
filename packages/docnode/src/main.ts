@@ -26,7 +26,6 @@ import {
   ULID_REGEX,
   defineNode,
   ownId,
-  idRecord,
 } from "./utils.js";
 import * as ops from "./operations.js";
 import { readInts, writeInts } from "./ints.js";
@@ -617,8 +616,8 @@ export class Doc {
     | "normalize2"
     | "change"
     | "disposed" = "idle";
-  protected _operations: ops.DraftOperations = [[], {}];
-  protected _inverseOperations: ops.DraftOperations = [[], {}];
+  protected _operations: ops.DraftOperations = [[], new Map()];
+  protected _inverseOperations: ops.DraftOperations = [[], new Map()];
   protected _transactionFlags: TransactionFlags;
   private _isForceCommitCallback = false;
   /**
@@ -631,8 +630,6 @@ export class Doc {
   };
   /** Whether `fromJSON` loaded nodes that `_recordLoad` did not record yet. */
   protected _unrecordedLoad = false;
-  /** Whether a transaction of this document inserted nodes (see `_reset`). */
-  private _insertsNodes = false;
   protected _diff: Diff = {
     deleted: new Map(),
     inserted: new Set(),
@@ -980,8 +977,7 @@ export class Doc {
     operations: ops.DraftOperations,
     flags?: TransactionFlags,
   ) {
-    const hasOperations =
-      operations[0].length > 0 || !isObjectEmpty(operations[1]);
+    const hasOperations = operations[0].length > 0 || operations[1].size > 0;
     if (!hasOperations) {
       if (
         this._lifeCycleStage === "change" ||
@@ -1057,12 +1053,8 @@ export class Doc {
 
   /** Clears what the transaction recorded, to start the next one. */
   private _reset() {
-    // A document that inserts nodes will likely patch new ids next, so its
-    // patch starts as a hash table (see `idRecord`). One that does not keeps
-    // a fast object for the few ids it patches, like the root's.
-    if (this._diff.inserted.size > 0) this._insertsNodes = true;
-    this._operations = [[], this._insertsNodes ? idRecord() : {}];
-    this._inverseOperations = [[], {}];
+    this._operations = [[], new Map()];
+    this._inverseOperations = [[], new Map()];
     this._transactionFlags = {};
     this._diff = {
       deleted: new Map(),
@@ -1539,7 +1531,7 @@ export class Doc {
         inserted.add(node.id);
         if (node["_state"] !== NO_STATE) {
           const state = node["_stateJson"]();
-          if (!isObjectEmpty(state)) patch[node.id] = state;
+          if (!isObjectEmpty(state)) patch.set(node.id, state);
         }
       }
       if (node.first) {
@@ -1838,7 +1830,7 @@ function stateKeyMethods(
             "will want to use getPrev with nodes from diff.updated.",
           ].join(" "),
         );
-      const maybePrevState = doc["_inverseOperations"][1][node.id]?.[key];
+      const maybePrevState = doc["_inverseOperations"][1].get(node.id)?.[key];
       return maybePrevState !== undefined
         ? [true, ops.parseStateKey(node, key, maybePrevState)]
         : [false, node["_state"][key]];
