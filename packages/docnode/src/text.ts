@@ -1,5 +1,5 @@
 import type { Doc, DocNode } from "./main.js";
-import type { TextOperation } from "./operations.js";
+import type { MoveOperation, TextOperation } from "./operations.js";
 import type { StateDefinition, TextEngine } from "./types.js";
 import { MAX_CLOCK, numberToBase64 } from "./idGenerator.js";
 import { textEngines, withTransaction } from "./utils.js";
@@ -21,6 +21,12 @@ import { textEngines, withTransaction } from "./utils.js";
 // - Operations: see `TextOperation` and `wire.ts`. Deleting letters is
 //   `[1, first, last]`, like deleting nodes: an id is of a node or of a
 //   letter, never both. An undo puts letters back with their own ids.
+// - Moving letters (`moveTo`, for Enter and for Backspace at the start of a
+//   paragraph) is a row 2 over them, like moving nodes: the letters keep
+//   their ids, so the edits of other replicas follow them. Its undo is a
+//   move back. Like Loro's `MovableList`, a letter's id does not change when
+//   it moves; without concurrent moves to settle (the server orders them),
+//   no other place is kept for it.
 // - A stored document keeps a text as its string, in `values`, and the id
 //   runs of its letters in the `letters` column (see `engine.lettersWriter`).
 
@@ -29,38 +35,6 @@ type TextChange = { index: number; deleted: number; inserted: string };
 
 /** A change as the transaction keeps it, with the letters it deleted. */
 export type Splice = [index: number, deleted: string, inserted: string];
-
-/** What `node.state[key]` gives for a `text()` key. */
-type TextMethods = {
-  /** The text. */
-  get(this: void): string;
-  /**
-   * The text at the start of the transaction, rebuilt from `changes`, and
-   * whether it differs. Like `getPrev` of other states, only for nodes in
-   * `diff.updated`.
-   */
-  getPrev(this: void): [changed: boolean, value: string];
-  /**
-   * Replaces the text with `value`, keeping the common prefix and suffix:
-   * the smallest edit. With repeated letters, several places give the same
-   * text (typing "a" in "aa"); `caret`, where the edit ended in the new text
-   * (the cursor after typing, pasting or deleting), picks that place, so
-   * that concurrent edits stay with the letters they were made on.
-   */
-  set(
-    this: void,
-    value: string | ((prev: string) => string),
-    caret?: number,
-  ): void;
-  /** Inserts `text` at `index` (in UTF-16 code units, like `string.length`). */
-  insert(this: void, index: number, text: string): void;
-  /** Deletes `length` letters from `index`. */
-  delete(this: void, index: number, length: number): void;
-  /** The changes of this transaction (local, remote or undo), in order. */
-  changes(this: void): readonly TextChange[];
-  /** The length of the text. */
-  readonly length: number;
-};
 
 /**
  * A text: a string whose letters have ids. Each node and key gets its own
@@ -504,6 +478,19 @@ const splitPair = (what: string, index: number) =>
     `The ${what} ${index} splits a surrogate pair: a letter written with two code units.`,
   );
 
+/** Throws unless `length` letters from `index` are letters of the text. */
+function checkRange(
+  state: TextState,
+  index: number,
+  length: number,
+  what: "delete" | "move",
+) {
+  checkIndex(state, index, "index");
+  if (!Number.isInteger(length) || length < 0)
+    throw new RangeError(`Cannot ${what} ${length} letters.`);
+  checkIndex(state, index + length, "end");
+}
+
 /** Throws unless `index` is a place of the text that splits no letter pair. */
 function checkIndex(state: TextState, index: number, what: string) {
   if (!Number.isInteger(index) || index < 0 || index > state.length)
@@ -638,65 +625,248 @@ function valueOf(node: DocNode, key: string) {
 const invalidLetters = (what: string) =>
   new Error(`Invalid stored document: ${what}.`);
 
+/**
+ * The letters from `first` to `last` (`0`: `first` only), if both are in one
+ * text of the document, in that order.
+ */
+function rangeOf(doc: Doc, first: string, last: string | 0) {
+  const from = indexOf(doc, first);
+  if (!from) return undefined;
+  const to = last === 0 ? from : indexOf(doc, last);
+  if (to?.state !== from.state || to.index < from.index) return undefined;
+  return {
+    state: from.state,
+    index: from.index,
+    length: to.index - from.index + 1,
+  };
+}
+
+/**
+ * Where an insert or a move puts letters (see `TextOperation`): with `key`,
+ * the start of that text of the node (`0` for the root), if the node is in
+ * the document; else right after `prev`, or if it is gone right before
+ * `next`. If none of them is, nowhere.
+ */
+function targetOf(
+  doc: Doc,
+  nodeId: string | 0 | undefined,
+  prev: string | 0,
+  next: string | 0,
+  key: string | undefined,
+) {
+  if (key !== undefined) {
+    const node = nodeId ? doc.getNodeById(nodeId) : doc.root;
+    const keys = node && doc["_resolvedNodeDefs"].get(node.type)!.textKeys;
+    if (!keys?.includes(key)) return undefined;
+    // The text has letters already: the new ones go first.
+    return { state: stateOf(node!, key), index: 0 };
+  }
+  const after = prev === 0 ? undefined : indexOf(doc, prev);
+  if (after) return { state: after.state, index: after.index + 1 };
+  return next === 0 ? undefined : indexOf(doc, next);
+}
+
+/**
+ * The move of the letters from `first` to `last` between `prev` and `next`
+ * of the text, or into it if both are `0`: it is empty.
+ */
+const moveOf = (
+  state: TextState,
+  first: string,
+  last: string | 0,
+  prev: string | 0,
+  next: string | 0,
+): MoveOperation =>
+  prev === 0 && next === 0
+    ? [2, first, last, nodeRef(state.node), 0, 0, state.key]
+    : [2, first, last, 0, prev, next];
+
+/**
+ * Moves `length` letters from `index` of `source` to `target`, where they
+ * start at `to` after the move, with their ids. Both nodes are in the
+ * document: it records the move, its inverse (a move back) and the changes
+ * of both texts.
+ */
+function moveLetters(
+  source: TextState,
+  index: number,
+  length: number,
+  target: TextState,
+  to: number,
+) {
+  const doc = source.node.doc;
+  const first = letterAt(source, index);
+  const last = length > 1 ? letterAt(source, index + length - 1) : 0;
+  // Where they go in the target as it is now, with them.
+  const at = source === target && to > index ? to + length : to;
+  doc["_operations"][0].push(
+    moveOf(
+      target,
+      first,
+      last,
+      at > 0 ? letterAt(target, at - 1) : 0,
+      at < target.length ? letterAt(target, at) : 0,
+    ),
+  );
+  const inserted = doc["_diff"].inserted;
+  const sourceIsNew = inserted.has(source.node.id);
+  const targetIsNew = inserted.has(target.node.id);
+  // If both nodes are new, the inverse deletes them.
+  if (!sourceIsNew || !targetIsNew)
+    doc["_inverseOperations"][0].push(
+      moveOf(
+        source,
+        first,
+        last,
+        index > 0 ? letterAt(source, index - 1) : 0,
+        index + length < source.length ? letterAt(source, index + length) : 0,
+      ),
+    );
+  if (!sourceIsNew) doc["_diff"].updated.add(source.node.id);
+  if (!targetIsNew) doc["_diff"].updated.add(target.node.id);
+  let moved = "";
+  for (const run of cut(source, index, length)) {
+    place(target, to + moved.length, run.text, run.s, run.c);
+    moved += run.text;
+  }
+  addChange(source, [index, moved, ""]);
+  addChange(target, [to, "", moved]);
+}
+
+/**
+ * What `node.state[key]` gives for a `text()` key. Exported as a type: it
+ * names the type of a text in declarations, and `moveTo` takes only a text.
+ */
+export class TextMethods {
+  protected readonly _node: DocNode;
+  protected readonly _key: string;
+
+  constructor(node: DocNode, key: string) {
+    this._node = node;
+    this._key = key;
+  }
+
+  /** The text. */
+  readonly get = () => valueOf(this._node, this._key);
+
+  /**
+   * The text at the start of the transaction, rebuilt from `changes`, and
+   * whether it differs. Like `getPrev` of other states, only for nodes in
+   * `diff.updated`.
+   */
+  readonly getPrev = (): [changed: boolean, value: string] => {
+    const node = this._node;
+    if (!node.doc["_diff"].updated.has(node.id)) throw new Error(getPrevError);
+    const current = valueOf(node, this._key);
+    let prev = current;
+    const splices = splicesOf(node, this._key);
+    for (let i = splices.length - 1; i >= 0; i--) {
+      const [index, deleted, inserted] = splices[i]!;
+      prev =
+        prev.slice(0, index) + deleted + prev.slice(index + inserted.length);
+    }
+    return [prev !== current, prev];
+  };
+
+  /**
+   * Replaces the text with `value`, keeping the common prefix and suffix:
+   * the smallest edit. With repeated letters, several places give the same
+   * text (typing "a" in "aa"); `caret`, where the edit ended in the new text
+   * (the cursor after typing, pasting or deleting), picks that place, so
+   * that concurrent edits stay with the letters they were made on.
+   */
+  readonly set = (
+    value: string | ((prev: string) => string),
+    caret?: number,
+  ) => {
+    const { _node: node, _key: key } = this;
+    withTransaction(node.doc, () => {
+      const state = stateOf(node, key);
+      const next = typeof value === "function" ? value(textOf(state)) : value;
+      if (next !== textOf(state)) replace(state, next, caret);
+    });
+  };
+
+  /** Inserts `text` at `index` (in UTF-16 code units, like `string.length`). */
+  readonly insert = (index: number, text: string) => {
+    const { _node: node, _key: key } = this;
+    checkIndex(stateOf(node, key), index, "index");
+    withTransaction(node.doc, () => insertNew(stateOf(node, key), index, text));
+  };
+
+  /** Deletes `length` letters from `index`. */
+  readonly delete = (index: number, length: number) => {
+    const { _node: node, _key: key } = this;
+    checkRange(stateOf(node, key), index, length, "delete");
+    withTransaction(node.doc, () => {
+      if (length > 0) deleteLetters(stateOf(node, key), index, length);
+    });
+  };
+
+  /**
+   * Moves `length` letters from `index` to `target`, a text of a node of the
+   * same document (or this text), where they start at `targetIndex` after
+   * the move, as in Loro's `MovableList.move`. The letters keep their ids,
+   * so what other replicas do to them follows them. Enter moves the letters
+   * after the caret into the empty text of a new paragraph; Backspace at the
+   * start of a paragraph moves all of its letters to the end of the one
+   * before. Both nodes must be in the document.
+   */
+  readonly moveTo = (
+    index: number,
+    length: number,
+    target: TextMethods,
+    targetIndex: number,
+  ) => {
+    const { _node: node, _key: key } = this;
+    const { _node: targetNode, _key: targetKey } = target;
+    if (
+      targetNode.doc !== node.doc ||
+      !isAttached(node) ||
+      !isAttached(targetNode)
+    )
+      throw new Error(
+        "Letters can only be moved between texts of nodes in the same document.",
+      );
+    const source = stateOf(node, key);
+    checkRange(source, index, length, "move");
+    const state = stateOf(targetNode, targetKey);
+    // In this text, `targetIndex` is after the letters leave.
+    const at =
+      state === source && targetIndex > index
+        ? targetIndex + length
+        : targetIndex;
+    checkIndex(state, at, "target index");
+    if (length === 0 || (state === source && targetIndex === index)) return;
+    withTransaction(node.doc, () =>
+      moveLetters(
+        stateOf(node, key),
+        index,
+        length,
+        stateOf(targetNode, targetKey),
+        targetIndex,
+      ),
+    );
+  };
+
+  /** The changes of this transaction (local, remote or undo), in order. */
+  readonly changes = (): readonly TextChange[] =>
+    splicesOf(this._node, this._key).map(([index, deleted, inserted]) => ({
+      index,
+      deleted: deleted.length,
+      inserted,
+    }));
+
+  /** The length of the text. */
+  get length() {
+    const value = valueAt(this._node, this._key);
+    return value instanceof TextState ? value.length : 0;
+  }
+}
+
 /** What `doc` asks of texts (see `TextEngine`). */
 const engine: TextEngine = {
-  methods: (node, key): TextMethods => ({
-    get: () => valueOf(node, key),
-    getPrev: () => {
-      const id = node["_id"];
-      if (id === undefined || !node.doc["_diff"].updated.has(id))
-        throw new Error(getPrevError);
-      const current = valueOf(node, key);
-      let prev = current;
-      const splices = splicesOf(node, key);
-      for (let i = splices.length - 1; i >= 0; i--) {
-        const [index, deleted, inserted] = splices[i]!;
-        prev =
-          prev.slice(0, index) + deleted + prev.slice(index + inserted.length);
-      }
-      return [prev !== current, prev];
-    },
-    set: (value, caret) =>
-      withTransaction(node.doc, () => {
-        if (!isAttached(node)) {
-          const current = valueOf(node, key);
-          const next = typeof value === "function" ? value(current) : value;
-          if (next !== current) node["_values"]()[key] = next;
-          return;
-        }
-        const state = stateOf(node, key);
-        const next = typeof value === "function" ? value(textOf(state)) : value;
-        if (next !== textOf(state)) replace(state, next, caret);
-      }),
-    insert: (index, text) => {
-      if (!isAttached(node)) return editLoose(node, key, index, 0, text);
-      checkIndex(stateOf(node, key), index, "index");
-      withTransaction(node.doc, () =>
-        insertNew(stateOf(node, key), index, text),
-      );
-    },
-    delete: (index, length) => {
-      if (!isAttached(node)) return editLoose(node, key, index, length, "");
-      const state = stateOf(node, key);
-      checkIndex(state, index, "index");
-      checkLength(length);
-      checkIndex(state, index + length, "end");
-      withTransaction(node.doc, () => {
-        if (length > 0) deleteLetters(stateOf(node, key), index, length);
-      });
-    },
-    changes: () =>
-      splicesOf(node, key).map(([index, deleted, inserted]) => ({
-        index,
-        deleted: deleted.length,
-        inserted,
-      })),
-    get length() {
-      const value = valueAt(node, key);
-      if (value instanceof TextState) return value.length;
-      return typeof value === "string" ? value.length : 0;
-    },
-  }),
+  methods: (node, key) => new TextMethods(node, key),
 
   attach: (node, keys, ordered) => {
     // A node loaded in the document has its letters there already (see
@@ -729,36 +899,34 @@ const engine: TextEngine = {
     const c = ids.splitClock;
     // Letters that are here already are left as they are, like a node.
     if (lettersOf(doc).find(s, c)) return;
-    let state: TextState;
-    let index: number;
-    if (key !== undefined) {
-      const node = nodeId === 0 ? doc.root : doc.getNodeById(nodeId!);
-      const keys = node && doc["_resolvedNodeDefs"].get(node.type)!.textKeys;
-      if (!keys?.includes(key)) return;
-      state = stateOf(node!, key);
-      // The text has letters already: the new ones go first.
-      index = 0;
-    } else {
-      // Right after `prev`; if it is gone, right before `next`.
-      const after = prev === 0 ? undefined : indexOf(doc, prev);
-      const before = after || next === 0 ? undefined : indexOf(doc, next);
-      const anchor = after ?? before;
-      if (!anchor) return;
-      state = anchor.state;
-      index = after ? anchor.index + 1 : anchor.index;
-    }
+    const target = targetOf(doc, nodeId, prev, next, key);
+    if (!target) return;
     // A letter of this session past what it made: another replica has it.
     const last = `${ids.session(s)}.${numberToBase64(c + text.length - 1)}`;
     if (ids.collides(last)) ids.renew();
-    insertLetters(state, index, text, s, c);
+    insertLetters(target.state, target.index, text, s, c);
   },
 
   delete: (doc, start, end) => {
-    const from = indexOf(doc, start);
-    if (!from) return;
-    const to = end === 0 ? from : indexOf(doc, end);
-    if (to?.state !== from.state || to.index < from.index) return;
-    deleteLetters(from.state, from.index, to.index - from.index + 1);
+    const range = rangeOf(doc, start, end);
+    if (range) deleteLetters(range.state, range.index, range.length);
+  },
+
+  move: (doc, operation) => {
+    const [, first, last, nodeId, prev, next, key] = operation;
+    // A border of the range is gone: the move is dropped, like a delete.
+    const range = rangeOf(doc, first, last);
+    if (!range) return;
+    const { state: source, index, length } = range;
+    const target = targetOf(doc, nodeId, prev, next, key);
+    if (!target) return;
+    let at = target.index;
+    if (target.state === source) {
+      // Into the moved letters, or right before or after them: no change.
+      if (at >= index && at <= index + length) return;
+      if (at > index) at -= length;
+    }
+    moveLetters(source, index, length, target.state, at);
   },
 
   /**

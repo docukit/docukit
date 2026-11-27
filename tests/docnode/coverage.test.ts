@@ -411,6 +411,10 @@ describe("operations.ts coverage", () => {
     const operations: Operations = ["", [2, "missing-start", 0, 0, 0, 0]];
 
     expect(() => doc.applyOperations(operations)).not.toThrow();
+    const node = doc.createNode(Text);
+    doc.root.append(node);
+    doc.applyOperations(["", [2, node.id, "missing-end", 0, 0, 0]]);
+    expect(doc.root.first).toBe(node);
   });
 });
 

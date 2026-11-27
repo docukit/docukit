@@ -332,6 +332,8 @@ describe("a batch that does not follow the format", () => {
     [batch("s.0", [0, 1, "text", 0, 0, 0, 0]), "row 1 has items after"],
     [batch("s.0", [1, 1, 0, 0]), "row 1 has items after"],
     [batch("s.0", [2, 1, 0, 0, 0, 0, 0]), "row 1 has items after"],
+    [batch("s.0", [2, 1, 0, 0, 1, 0, "body"]), "its row 1 is not an operation"],
+    [batch("s.0", [2, 1, 0, 0, 0, 0, "body", 0]), "row 1 has items after"],
     [batch("s.0", 1, 1, 0, 0), "row 1 has items after"],
     [batch("s.0", [3, [1, 2, 0], "value", ["a", "b"]]), "not a node and a"],
     // Each node counts, those before a run too, before the run is expanded.
