@@ -8,7 +8,7 @@ import type {
 } from "./operations.js";
 import type { Json } from "./types.js";
 import { MAX_CLOCK, clockAt, numberToBase64 } from "./idGenerator.js";
-import { ownId, ownKey } from "./utils.js";
+import { idRecord, ownId, ownKey } from "./utils.js";
 
 // `Operations`, a batch as it travels and is stored, is `[head, ...rows]`,
 // plain JSON read on its own:
@@ -196,7 +196,7 @@ export function decodeOperations(operations: Operations): DraftOperations {
   const base = clockAt(head, dot);
   const prefix = head.slice(0, dot + 1);
   const ordered: OrderedOperation[] = [];
-  const patch: StatePatch = {};
+  let patch: StatePatch = {};
   let inserted = 0;
   for (let index = 1; index < operations.length; index++) {
     const row = operations[index] as OperationsRow;
@@ -254,6 +254,10 @@ export function decodeOperations(operations: Operations): DraftOperations {
         values.length !== nodes.length
       )
         throw invalid("its state patch is not three lists of equal length");
+      // Keyed by nodes of the head's session, new ids each time, the patch is
+      // a hash table (see `idRecord`). Keyed by whole ids, like the root's, it
+      // stays a fast object, which is faster for those few ids.
+      if (typeof nodes[0] === "number") patch = idRecord();
       let last = 0;
       for (let entry = 0; entry < nodes.length; entry++) {
         let ref = nodes[entry]!;

@@ -26,6 +26,7 @@ import {
   ULID_REGEX,
   defineNode,
   ownId,
+  idRecord,
 } from "./utils.js";
 import * as ops from "./operations.js";
 import { readInts, writeInts } from "./ints.js";
@@ -630,6 +631,8 @@ export class Doc {
   };
   /** Whether `fromJSON` loaded nodes that `_recordLoad` did not record yet. */
   protected _unrecordedLoad = false;
+  /** Whether a transaction of this document inserted nodes (see `_reset`). */
+  private _insertsNodes = false;
   protected _diff: Diff = {
     deleted: new Map(),
     inserted: new Set(),
@@ -1049,7 +1052,16 @@ export class Doc {
     // End update stage before normalization
     this._lifeCycleStage = "idle";
     ops.maybeTriggerListeners(this, ignoreEmptyDiff);
-    this._operations = [[], {}];
+    this._reset();
+  }
+
+  /** Clears what the transaction recorded, to start the next one. */
+  private _reset() {
+    // A document that inserts nodes will likely patch new ids next, so its
+    // patch starts as a hash table (see `idRecord`). One that does not keeps
+    // a fast object for the few ids it patches, like the root's.
+    if (this._diff.inserted.size > 0) this._insertsNodes = true;
+    this._operations = [[], this._insertsNodes ? idRecord() : {}];
     this._inverseOperations = [[], {}];
     this._transactionFlags = {};
     this._diff = {
@@ -1073,16 +1085,7 @@ export class Doc {
       },
       true,
     );
-    this["_operations"] = [[], {}];
-    this["_inverseOperations"] = [[], {}];
-    this["_transactionFlags"] = {};
-    this["_diff"] = {
-      deleted: new Map(),
-      inserted: new Set(),
-      moved: new Set(),
-      updated: new Set(),
-    };
-    this["_lifeCycleStage"] = "idle";
+    this._reset();
   }
 
   /**
