@@ -32,7 +32,7 @@ import { ownId, ownKey } from "./utils.js";
 //   the one before (like a run of Yjs structs, or of ids in a stored
 //   document). One node is inserted as `[0, node, type, parent, prev, next]`,
 //   without the list.
-// - The state patch, if any, is the last row: `[-9, node, key, value, ...]`,
+// - The state patch, if any, is the last row: `[3, node, key, value, ...]`,
 //   a triple per key a node changed, the value as JSON. `[node, count], key,
 //   values` sets `key` on `count` nodes one right after the other, a value
 //   each, so an insert of many nodes writes each key once. A number node,
@@ -43,7 +43,7 @@ import { ownId, ownKey } from "./utils.js";
 //   row's brackets: `[head, 1, 1]` deletes the head's node.
 
 /** The tag of the state patch row. */
-const PATCH = -9;
+const PATCH = 3;
 
 /** The clock of `id` if it is `session.clock` (see `clockAt`), else -1. */
 const clockOf = (id: string) => clockAt(id, id.lastIndexOf("."));

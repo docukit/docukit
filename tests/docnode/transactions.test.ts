@@ -515,21 +515,21 @@ describe("undoManager", () => {
       withOperations(["", [2]]),
       withOperations(["", [2, "start", 0, 0, 0, null]]),
       withOperations(["", [2, "start", 0, 0, 0, 0, 0]]),
-      withOperations(["", [3]]),
+      withOperations(["", [4]]),
       // One row without its brackets.
       withOperations(["", 1]),
       withOperations(["", 1, "start", 0, 0]),
-      withOperations(["", -9, "node", "value", "x"]),
+      withOperations(["", 3, "node", "value", "x"]),
       // The state patch: node, key and value triples, the last row.
-      withOperations(["", [-9, "node", "value"]]),
-      withOperations(["", [-9, {}, "value", "x"]]),
-      withOperations(["", [-9, "node", 1, "x"]]),
-      withOperations(["", [-9, ["node"], "value", ["x"]]]),
-      withOperations(["", [-9, ["node", 1.5], "value", ["x"]]]),
-      withOperations(["", [-9, ["node", 2, 0], "value", ["x", "y"]]]),
-      withOperations(["", [-9, [{}, 2], "value", ["x", "y"]]]),
-      withOperations(["", [-9, ["node", 2], "value", "x"]]),
-      withOperations(["", [-9, "node", "value", "x"], [1, "start"]]),
+      withOperations(["", [3, "node", "value"]]),
+      withOperations(["", [3, {}, "value", "x"]]),
+      withOperations(["", [3, "node", 1, "x"]]),
+      withOperations(["", [3, ["node"], "value", ["x"]]]),
+      withOperations(["", [3, ["node", 1.5], "value", ["x"]]]),
+      withOperations(["", [3, ["node", 2, 0], "value", ["x", "y"]]]),
+      withOperations(["", [3, [{}, 2], "value", ["x", "y"]]]),
+      withOperations(["", [3, ["node", 2], "value", "x"]]),
+      withOperations(["", [3, "node", "value", "x"], [1, "start"]]),
     ];
 
     for (const malformed of malformedHistories) {
@@ -587,12 +587,12 @@ describe("undoManager", () => {
     const first: Operations = [
       "",
       [1, "a"],
-      [-9, "a", "value", "1", "b", "value", "2"],
+      [3, "a", "value", "1", "b", "value", "2"],
     ];
     const second: Operations = [
       "",
       [2, "b"],
-      [-9, "b", "value", "3", "c", "value", "4"],
+      [3, "b", "value", "3", "c", "value", "4"],
     ];
     const copies = structuredClone([first, second]);
 
@@ -602,7 +602,7 @@ describe("undoManager", () => {
       "",
       [1, "a"],
       [2, "b"],
-      [-9, "a", "value", "1", "b", "value", "3", "c", "value", "4"],
+      [3, "a", "value", "1", "b", "value", "3", "c", "value", "4"],
     ]);
     expect([first, second]).toStrictEqual(copies);
   });
@@ -1021,7 +1021,7 @@ describe("applyOperations", () => {
             [created.id, "text"],
           ],
         ],
-        [-9, existing!.id, "value", "updated", created.id, "value", "created"],
+        [3, existing!.id, "value", "updated", created.id, "value", "created"],
       ]);
       assertDoc(doc, ["updated", "created"]);
       expect(doc.getNodeById(existing!.id)).toBe(existing);
@@ -1037,7 +1037,7 @@ describe("applyOperations", () => {
       doc.applyOperations([
         "",
         [0, existing!.id, "text"],
-        [-9, existing!.id, "value", "updated"],
+        [3, existing!.id, "value", "updated"],
       ]);
       assertDoc(doc, ["updated"]);
     });
@@ -1053,7 +1053,7 @@ describe("applyOperations", () => {
       doc.applyOperations([
         "",
         [0, id, "unregistered"],
-        [-9, existing!.id, "value", "updated"],
+        [3, existing!.id, "value", "updated"],
       ]),
     ).not.toThrow();
     assertDoc(doc, ["existing"]);

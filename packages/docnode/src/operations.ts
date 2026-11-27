@@ -554,11 +554,11 @@ export type OrderedRow =
     ];
 
 /**
- * The state patch, always the last row: `[-9, node, key, value, ...]`, a
+ * The state patch, always the last row: `[3, node, key, value, ...]`, a
  * triple per key a node changed, or `[node, count], key, values` for a key
  * set on a run of nodes.
  */
-export type PatchRow = readonly [op: -9, ...entries: Json[]];
+export type PatchRow = readonly [op: 3, ...entries: Json[]];
 
 /** Concatenates drafts (see `mergeOperations`). */
 export function mergeDrafts(...drafts: DraftOperations[]): DraftOperations {

@@ -54,7 +54,7 @@ describe("operations format", () => {
     expect(batch).toStrictEqual([
       doc.root.first!.id,
       [0, 1, "text"],
-      [-9, 1, "value", "a"],
+      [3, 1, "value", "a"],
     ]);
   });
 
@@ -72,9 +72,9 @@ describe("operations format", () => {
     const [b, c] = batches.map(([head, ...rows]) => ({ head, rows }));
     expect(b!.rows).toStrictEqual([
       [0, 1, "text", 0, -1],
-      [-9, 1, "value", "b"],
+      [3, 1, "value", "b"],
     ]);
-    expect(c!.rows).toStrictEqual([b!.rows[0], [-9, 1, "value", "c"]]);
+    expect(c!.rows).toStrictEqual([b!.rows[0], [3, 1, "value", "c"]]);
     expect(c!.head).not.toBe(b!.head);
   });
 
@@ -86,7 +86,7 @@ describe("operations format", () => {
     expect(batch).toStrictEqual([
       doc.root.first!.id,
       [0, [[1, "text", 3]]],
-      [-9, [1, 3], "value", ["a", "b", "c"]],
+      [3, [1, 3], "value", ["a", "b", "c"]],
     ]);
     expect(decode(batch!)[0][0]![1]).toStrictEqual(
       childIds(doc).map((id) => [id, "text"]),
@@ -119,7 +119,7 @@ describe("operations format", () => {
     });
     // A run writes its first node again for each key: 0 from the one before.
     expect(batch![2]).toStrictEqual([
-      -9,
+      3,
       [1, 4],
       "string",
       ["0", "1", "2", "3"],
@@ -138,7 +138,7 @@ describe("operations format", () => {
     });
     expect(edited).toStrictEqual([
       first!.id,
-      [-9, 1, "string", "a", 0, "number", 5, 1, "number", 6, 2, "number", 8],
+      [3, 1, "string", "a", 0, "number", 5, 1, "number", 6, 2, "number", 8],
     ]);
   });
 
@@ -188,7 +188,7 @@ describe("operations format", () => {
     expect(edited).toStrictEqual([
       replica.root.last!.id,
       [0, 1, "text", 0, b!],
-      [-9, 1, "value", "c", [a!, 2], "value", ["A", "B"]],
+      [3, 1, "value", "c", [a!, 2], "value", ["A", "B"]],
     ]);
     doc.applyOperations(edited!);
     doc.forceCommit();
@@ -205,7 +205,7 @@ describe("operations format", () => {
     expect(plain).toStrictEqual([
       "",
       [0, "n1", "text"],
-      [-9, "n1", "value", "x"],
+      [3, "n1", "value", "x"],
     ]);
   });
 
@@ -227,7 +227,7 @@ describe("operations format", () => {
     expect(batchOfSession(64)).toStrictEqual([
       a,
       [0, [[1, "text", 2]]],
-      [-9, [1, 2], "value", ["a", "b"]],
+      [3, [1, 2], "value", ["a", "b"]],
     ]);
     const [long, longer] = [`${"s".repeat(65)}.1`, `${"s".repeat(65)}.2`];
     const batch = batchOfSession(65);
@@ -240,7 +240,7 @@ describe("operations format", () => {
           [longer, "text"],
         ],
       ],
-      [-9, long, "value", "a", longer, "value", "b"],
+      [3, long, "value", "a", longer, "value", "b"],
     ]);
 
     // A document with sessions of its own writes them whole too.
@@ -267,7 +267,7 @@ describe("operations format", () => {
     const [batch] = batchesOf(doc, () => {
       if (second.is(Text)) second.state.value.set("B");
     });
-    expect(batch).toStrictEqual([second.id, [-9, 1, "value", "B"]]);
+    expect(batch).toStrictEqual([second.id, [3, 1, "value", "B"]]);
   });
 
   test("the change event writes each batch once, when it is read", () => {
@@ -299,17 +299,17 @@ describe("a batch that does not follow the format", () => {
     [batch("", 1, 5), "5 is not a node of the head's session"],
     [batch("s.0", 0, 1, 2), "its row 1 is not an operation"],
     [batch("s.0", [0, ["text"]]), "its row 1 is not an operation"],
-    [batch("s.0", [-9, 1, "value"]), "not triples of node, key and value"],
-    [batch("s.0", [-9, 1, 2, "a"]), "a key that is not a string"],
-    [batch("s.0", [-9, 1, "__proto__", {}]), "every object has"],
-    [batch("s.0", [-9, [1, 1], "value", ["a"]]), "a run of 1 nodes"],
-    [batch("s.0", [-9, [1, 2], "value", ["a"]]), "not have a value for each"],
-    [batch("s.0", [-9, [1, 2], "value", "ab"]), "not have a value for each"],
+    [batch("s.0", [3, 1, "value"]), "not triples of node, key and value"],
+    [batch("s.0", [3, 1, 2, "a"]), "a key that is not a string"],
+    [batch("s.0", [3, 1, "__proto__", {}]), "every object has"],
+    [batch("s.0", [3, [1, 1], "value", ["a"]]), "a run of 1 nodes"],
+    [batch("s.0", [3, [1, 2], "value", ["a"]]), "not have a value for each"],
+    [batch("s.0", [3, [1, 2], "value", "ab"]), "not have a value for each"],
     [batch("s.0", [7]), "its row 1 is not an operation"],
     [batch("s.0", 7), "its row 1 is not an operation"],
     [batch("s.0", "x"), "its row 1 is not an operation"],
     [batch("", [0, [["__proto__", "text"]], 0, 0, 0]), "every object has"],
-    [batch("s.0", [-9, 1, "value", "a"], [1, 1]), "its row 1"],
+    [batch("s.0", [3, 1, "value", "a"], [1, 1]), "its row 1"],
     [batch("s.0", [0, []]), "its row 1 is not an operation"],
     [batch("s.0", [0, [[1, "text", 2, 0]]]), "its row 1 is not an operation"],
     [batch("s.0", [0, [[1, "text"]], 0, 0, 0, 0]), "row 1 has items after"],
@@ -317,7 +317,7 @@ describe("a batch that does not follow the format", () => {
     [batch("s.0", [1, 1, 0, 0]), "row 1 has items after"],
     [batch("s.0", [2, 1, 0, 0, 0, 0, 0]), "row 1 has items after"],
     [batch("s.0", 1, 1, 0, 0), "row 1 has items after"],
-    [batch("s.0", [-9, [1, 2, 0], "value", ["a", "b"]]), "not a node and a"],
+    [batch("s.0", [3, [1, 2, 0], "value", ["a", "b"]]), "not a node and a"],
     // Each node counts, those before a run too, before the run is expanded.
     [
       batch("s.9", [
@@ -360,7 +360,7 @@ describe("a batch that does not follow the format", () => {
     const broken: [Operations, string][] = [
       [[id, [0, [[1, "text", 1e6]]]], "1 is not a node of the head's session"],
       [["", [0, [[id, "text", 1e6]]]], "a run of 1000000 nodes"],
-      [["", [-9, [id, 2], "value", ["a", "b"]]], "a run of 2 nodes"],
+      [["", [3, [id, 2], "value", ["a", "b"]]], "a run of 2 nodes"],
     ];
     for (const [operations, message] of broken)
       expect(() => doc.applyOperations(operations)).toThrowError(message);
@@ -373,7 +373,7 @@ describe("a batch that does not follow the format", () => {
   });
 
   test.each([
-    ["a batch", () => decode(["", [-9, "__proto__", "value", "a"]])],
+    ["a batch", () => decode(["", [3, "__proto__", "value", "a"]])],
     [
       "a custom generator",
       () => {
@@ -498,7 +498,7 @@ describe("upgradeOperations", () => {
     expect(upgraded).toStrictEqual([
       id,
       [0, 1, "text"],
-      [-9, 1, "value", "old"],
+      [3, 1, "value", "old"],
     ]);
     doc.applyOperations(upgraded);
     doc.forceCommit();
