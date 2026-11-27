@@ -11,6 +11,14 @@ const FIRST_CHAR = base64Alphabet[0]!;
 const CLOCK_DIGITS = 8;
 /** The largest clock of a `session.clock` id (see `clockAt`). */
 export const MAX_CLOCK = ALPH_LEN ** CLOCK_DIGITS - 1;
+/**
+ * The most characters the session of a `session.clock` id has; the sessions
+ * `NodeIds` makes have about a dozen. A batch or a stored document writes the
+ * session of a run once, and reading it writes the session into each id of
+ * the run: the bound keeps a few bytes from making a lot of text. An id with
+ * a longer session is written whole, as one of a custom generator.
+ */
+export const MAX_SESSION_LENGTH = 64;
 
 // O(1) char -> index map
 const IDX = new Int16Array(128).fill(-1);
@@ -64,14 +72,15 @@ function incrementStringInBase64(str: string): string {
 }
 
 /**
- * The clock of an id `session.clock` whose dot is at `dot`, if
- * `numberToBase64` writes it back the same (up to 8 digits); else -1. Every
- * place that splits a node id uses it, so all agree on which ids are
- * `session.clock`.
+ * The clock of an id `session.clock` whose dot is at `dot`, if the session
+ * has at most `MAX_SESSION_LENGTH` characters and `numberToBase64` writes the
+ * clock back the same (up to 8 digits); else -1. Every place that splits a
+ * node id uses it, so all agree on which ids are `session.clock`.
  */
 export function clockAt(id: string, dot: number) {
   const length = id.length - dot - 1;
-  if (dot < 1 || length < 1 || length > CLOCK_DIGITS) return -1;
+  if (dot < 1 || dot > MAX_SESSION_LENGTH) return -1;
+  if (length < 1 || length > CLOCK_DIGITS) return -1;
   if (length > 1 && id.charCodeAt(dot + 1) === 45) return -1; // "-" = 0
   let clock = 0;
   for (let i = dot + 1; i < id.length; i++) {

@@ -52,9 +52,7 @@ export const ops = (data: Record<string, string> = {}): Operations => [
   "",
   [
     -9,
-    Object.keys(data).map(() => "testNode"),
-    Object.keys(data),
-    Object.values(data),
+    ...Object.entries(data).flatMap(([key, value]) => ["testNode", key, value]),
   ],
 ];
 

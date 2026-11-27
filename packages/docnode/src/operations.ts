@@ -514,9 +514,15 @@ export type NodeRef = string | number;
  * A batch of operations as it travels and is stored: plain JSON, read on its
  * own. See `wire.ts`.
  */
-export type Operations = readonly [head: string, ...rows: OperationsRow[]];
+export type Operations =
+  | readonly [head: string, ...rows: OperationsRow[]]
+  /** A batch of one row that is not a state patch, without its brackets. */
+  | readonly [head: string, ...row: OrderedRow];
 
-export type OperationsRow =
+export type OperationsRow = OrderedRow | PatchRow;
+
+/** A row that inserts, deletes or moves nodes, without its trailing zeros. */
+export type OrderedRow =
   | readonly [
       op: 0,
       /** A count is a run of nodes made one after the other. */
@@ -524,29 +530,35 @@ export type OperationsRow =
         | readonly [node: NodeRef, type: string]
         | readonly [node: NodeRef, type: string, count: number]
       )[],
-      parent: NodeRef,
-      prev: NodeRef,
-      next: NodeRef,
+      parent?: NodeRef,
+      prev?: NodeRef,
+      next?: NodeRef,
     ]
-  | readonly [op: 1, start: NodeRef, end: NodeRef]
+  /** One node, without the list. */
+  | readonly [
+      op: 0,
+      node: NodeRef,
+      type: string,
+      parent?: NodeRef,
+      prev?: NodeRef,
+      next?: NodeRef,
+    ]
+  | readonly [op: 1, start: NodeRef, end?: NodeRef]
   | readonly [
       op: 2,
       start: NodeRef,
-      end: NodeRef,
-      parent: NodeRef,
-      prev: NodeRef,
-      next: NodeRef,
-    ]
-  /**
-   * The state patch, always the last row: `[-9, nodes, keys, values]`, an
-   * entry per key a node changed.
-   */
-  | readonly [
-      op: -9,
-      nodes: readonly NodeRef[],
-      keys: readonly string[],
-      values: readonly Json[],
+      end?: NodeRef,
+      parent?: NodeRef,
+      prev?: NodeRef,
+      next?: NodeRef,
     ];
+
+/**
+ * The state patch, always the last row: `[-9, node, key, value, ...]`, a
+ * triple per key a node changed, or `[node, count], key, values` for a key
+ * set on a run of nodes.
+ */
+export type PatchRow = readonly [op: -9, ...entries: Json[]];
 
 /** Concatenates drafts (see `mergeOperations`). */
 export function mergeDrafts(...drafts: DraftOperations[]): DraftOperations {

@@ -426,22 +426,32 @@ describe("undoManager", () => {
   });
 
   test("importHistory changes nothing when a stack does not decode", () => {
-    const source = createTextDocWithUndo();
-    source.root.append(...text(source, "1"));
-    source.forceCommit();
-    const history = source.undoManager.exportHistory();
     const doc = createTextDocWithUndo();
+    doc.root.append(...text(doc, "1"));
+    doc.forceCommit();
+    doc.root.append(...text(doc, "2"));
+    doc.forceCommit();
+    doc.undoManager.undo();
     const before = doc.undoManager.exportHistory();
+    expect(before.undoStack).toHaveLength(1);
+    expect(before.redoStack).toHaveLength(1);
     const broken: UndoHistory = {
       ...before,
-      undoStack: history.undoStack,
+      undoStack: [...before.undoStack, ...before.redoStack],
       // A run of one node, which the format writes as a single entry.
-      redoStack: [
-        { operations: ["s.0", [0, [[1, "text", 1]], 0, 0, 0]], meta: {} },
-      ],
+      redoStack: [{ operations: ["s.0", 0, [[1, "text", 1]]], meta: {} }],
     };
-    expect(() => doc.undoManager.importHistory(broken)).toThrowError(
-      "a run of 1 nodes",
+    let error: unknown;
+    try {
+      doc.undoManager.importHistory(broken);
+    } catch (thrown) {
+      error = thrown;
+    }
+    expect(error).toBeInstanceOf(TypeError);
+    expect(error).toHaveProperty("message", "Invalid undo history");
+    expect(error).toHaveProperty(
+      "cause.message",
+      expect.stringContaining("a run of 1 nodes"),
     );
     expect(doc.undoManager.exportHistory()).toStrictEqual(before);
   });
@@ -450,7 +460,7 @@ describe("undoManager", () => {
     const doc = createTextDocWithUndo();
     const history: UndoHistory = {
       ...doc.undoManager.exportHistory(),
-      undoStack: [{ operations: ["", [2, "start", 0, 0, 0, 0]], meta: {} }],
+      undoStack: [{ operations: ["", 2, "start"], meta: {} }],
     };
 
     doc.undoManager.importHistory(history);
@@ -493,22 +503,33 @@ describe("undoManager", () => {
       withOperations(["", [0, [["id", "type", "2"]], 0, 0, 0]]),
       withOperations(["", [0, [["id", "type"]], null, 0, 0]]),
       withOperations(["", [0, [["id", "type"]], 0, 0.5, 0]]),
-      withOperations(["", [0, [["id", "type"]], 0, 0]]),
+      withOperations(["", [0, [["id", "type"]], 0, 0, 0, 0]]),
+      // One node, without the list.
+      withOperations(["", [0, null, "type"]]),
+      withOperations(["", [0, "id", 1]]),
+      withOperations(["", [0, "id", "type", 0, 0, null]]),
+      withOperations(["", [0, "id", "type", 0, 0, 0, 0]]),
       withOperations(["", [1]]),
       withOperations(["", [1, null, 0]]),
+      withOperations(["", [1, "start", 0, 0]]),
       withOperations(["", [2]]),
       withOperations(["", [2, "start", 0, 0, 0, null]]),
+      withOperations(["", [2, "start", 0, 0, 0, 0, 0]]),
       withOperations(["", [3]]),
-      // The state patch: columns of nodes, keys and values, the last row.
-      withOperations(["", [-9, ["node"], ["value"]]]),
-      withOperations(["", [-9, "node", ["value"], ["x"]]]),
-      withOperations(["", [-9, [{}], ["value"], ["x"]]]),
+      // One row without its brackets.
+      withOperations(["", 1]),
+      withOperations(["", 1, "start", 0, 0]),
+      withOperations(["", -9, "node", "value", "x"]),
+      // The state patch: node, key and value triples, the last row.
+      withOperations(["", [-9, "node", "value"]]),
+      withOperations(["", [-9, {}, "value", "x"]]),
+      withOperations(["", [-9, "node", 1, "x"]]),
       withOperations(["", [-9, ["node"], "value", ["x"]]]),
-      withOperations(["", [-9, ["node"], [1], ["x"]]]),
-      withOperations(["", [-9, ["node"], ["value"], "x"]]),
-      withOperations(["", [-9, ["node"], ["value", "key"], ["x"]]]),
-      withOperations(["", [-9, ["node"], ["value"], ["x", "y"]]]),
-      withOperations(["", [-9, ["node"], ["value"], ["x"]], [1, "start", 0]]),
+      withOperations(["", [-9, ["node", 1.5], "value", ["x"]]]),
+      withOperations(["", [-9, ["node", 2, 0], "value", ["x", "y"]]]),
+      withOperations(["", [-9, [{}, 2], "value", ["x", "y"]]]),
+      withOperations(["", [-9, ["node", 2], "value", "x"]]),
+      withOperations(["", [-9, "node", "value", "x"], [1, "start"]]),
     ];
 
     for (const malformed of malformedHistories) {
@@ -565,13 +586,13 @@ describe("undoManager", () => {
   test("mergeOperations combines operations without mutating inputs", () => {
     const first: Operations = [
       "",
-      [1, "a", 0],
-      [-9, ["a", "b"], ["value", "value"], ["1", "2"]],
+      [1, "a"],
+      [-9, "a", "value", "1", "b", "value", "2"],
     ];
     const second: Operations = [
       "",
-      [2, "b", 0, 0, 0, 0],
-      [-9, ["b", "c"], ["value", "value"], ["3", "4"]],
+      [2, "b"],
+      [-9, "b", "value", "3", "c", "value", "4"],
     ];
     const copies = structuredClone([first, second]);
 
@@ -579,9 +600,9 @@ describe("undoManager", () => {
 
     expect(merged).toStrictEqual([
       "",
-      [1, "a", 0],
-      [2, "b", 0, 0, 0, 0],
-      [-9, ["a", "b", "c"], ["value", "value", "value"], ["1", "3", "4"]],
+      [1, "a"],
+      [2, "b"],
+      [-9, "a", "value", "1", "b", "value", "3", "c", "value", "4"],
     ]);
     expect([first, second]).toStrictEqual(copies);
   });
@@ -999,16 +1020,8 @@ describe("applyOperations", () => {
             [existing!.id, "text"],
             [created.id, "text"],
           ],
-          0,
-          0,
-          0,
         ],
-        [
-          -9,
-          [existing!.id, created.id],
-          ["value", "value"],
-          ["updated", "created"],
-        ],
+        [-9, existing!.id, "value", "updated", created.id, "value", "created"],
       ]);
       assertDoc(doc, ["updated", "created"]);
       expect(doc.getNodeById(existing!.id)).toBe(existing);
@@ -1023,8 +1036,8 @@ describe("applyOperations", () => {
       doc.forceCommit();
       doc.applyOperations([
         "",
-        [0, [[existing!.id, "text"]], 0, 0, 0],
-        [-9, [existing!.id], ["value"], ["updated"]],
+        [0, existing!.id, "text"],
+        [-9, existing!.id, "value", "updated"],
       ]);
       assertDoc(doc, ["updated"]);
     });
@@ -1039,8 +1052,8 @@ describe("applyOperations", () => {
     expect(() =>
       doc.applyOperations([
         "",
-        [0, [[id, "unregistered"]], 0, 0, 0],
-        [-9, [existing!.id], ["value"], ["updated"]],
+        [0, id, "unregistered"],
+        [-9, existing!.id, "value", "updated"],
       ]),
     ).not.toThrow();
     assertDoc(doc, ["existing"]);

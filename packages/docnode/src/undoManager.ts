@@ -218,9 +218,18 @@ function exportStackItem(item: UndoStackItem): UndoHistoryItem {
 function importStack(items: UndoHistoryItem[], maxSteps: number) {
   const retainedItems = maxSteps === 0 ? [] : items.slice(-maxSteps);
   return retainedItems.map((item) => ({
-    operations: decodeOperations(item.operations),
+    operations: importOperations(item.operations),
     meta: new Map(Object.entries(item.meta)),
   }));
+}
+
+/** The draft of an item's batch: `decodeOperations` checks its format. */
+function importOperations(operations: Operations) {
+  try {
+    return decodeOperations(operations);
+  } catch (cause) {
+    throw new TypeError("Invalid undo history", { cause });
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -231,65 +240,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-function isString(value: unknown): value is string {
-  return typeof value === "string";
-}
-
-/** A node in a batch: a number (of the head's session) or a whole id. */
-function isNodeRef(value: unknown): boolean {
-  return Number.isInteger(value) || typeof value === "string";
-}
-
-/** `[node, type]` or `[node, type, count]` of an insert row. */
-function isInsertedNodes(value: unknown): boolean {
-  return (
-    Array.isArray(value) &&
-    (value.length === 2 ||
-      (value.length === 3 && Number.isInteger(value[2]))) &&
-    isNodeRef(value[0]) &&
-    isString(value[1])
-  );
-}
-
-/** A row of a batch (see `wire.ts`); the state patch must be the last. */
-function isRow(value: unknown, last: boolean): boolean {
-  if (!Array.isArray(value)) return false;
-  const row: unknown[] = value;
-  const [tag, ...rest] = row;
-  if (tag === 0)
-    return (
-      rest.length === 4 &&
-      Array.isArray(rest[0]) &&
-      rest[0].every(isInsertedNodes) &&
-      rest.slice(1).every(isNodeRef)
-    );
-  if (tag === 1) return rest.length === 2 && rest.every(isNodeRef);
-  if (tag === 2) return rest.length === 5 && rest.every(isNodeRef);
-  // `[-9, nodes, keys, values]`: columns of the same length.
-  const [nodes, keys, values] = rest;
-  return (
-    tag === -9 &&
-    last &&
-    rest.length === 3 &&
-    Array.isArray(nodes) &&
-    nodes.every(isNodeRef) &&
-    Array.isArray(keys) &&
-    keys.every(isString) &&
-    Array.isArray(values) &&
-    keys.length === nodes.length &&
-    values.length === nodes.length
-  );
-}
-
-function isOperations(value: unknown): value is Operations {
-  if (!Array.isArray(value) || !isString(value[0])) return false;
-  const rows: unknown[] = value.slice(1);
-  return rows.every((row, index) => isRow(row, index === rows.length - 1));
-}
-
+/** Its batch is only a list here: `importOperations` checks the rest. */
 function isHistoryItem(value: unknown): value is UndoHistoryItem {
   return (
-    isRecord(value) && isOperations(value.operations) && isRecord(value.meta)
+    isRecord(value) && Array.isArray(value.operations) && isRecord(value.meta)
   );
 }
 

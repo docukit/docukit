@@ -11,34 +11,61 @@ const insertedNodesSchema = v.array(
   ]),
 );
 
-/** A row of a batch (see `Operations` in `@docukit/docnode`). */
-const rowSchema = v.union([
-  v.tuple([
-    v.literal(0),
-    insertedNodesSchema,
-    nodeRefSchema,
-    nodeRefSchema,
-    nodeRefSchema,
-  ]),
-  v.tuple([v.literal(1), nodeRefSchema, nodeRefSchema]),
-  v.tuple([
-    v.literal(2),
-    nodeRefSchema,
-    nodeRefSchema,
-    nodeRefSchema,
-    nodeRefSchema,
-    nodeRefSchema,
-  ]),
-  v.tuple([
-    v.literal(-9),
-    v.array(nodeRefSchema),
-    v.array(v.string()),
-    v.array(v.lazy(() => jsonSchema)),
-  ]),
+/** A row that inserts, deletes or moves nodes (see `Operations` in `@docukit/docnode`). */
+const orderedRowSchema = v.union([
+  v.pipe(
+    v.tupleWithRest([v.literal(0), insertedNodesSchema], nodeRefSchema),
+    v.maxLength(5),
+  ),
+  // One node, without the list.
+  v.pipe(
+    v.tupleWithRest([v.literal(0), nodeRefSchema, v.string()], nodeRefSchema),
+    v.maxLength(6),
+  ),
+  v.pipe(
+    v.tupleWithRest([v.literal(1), nodeRefSchema], nodeRefSchema),
+    v.maxLength(3),
+  ),
+  v.pipe(
+    v.tupleWithRest([v.literal(2), nodeRefSchema], nodeRefSchema),
+    v.maxLength(6),
+  ),
 ]);
 
-/** `[head, ...rows]`. */
-const operationsSchema = v.tupleWithRest([v.string()], rowSchema);
+/** The state patch: `[-9, node, key, value, ...]`, the last row. Keys are strings. */
+const patchRowSchema = v.pipe(
+  v.tupleWithRest(
+    [v.literal(-9)],
+    v.lazy(() => jsonSchema),
+  ),
+  v.check(
+    (row) =>
+      row.length % 3 === 1 &&
+      row.every((item, index) => index % 3 !== 2 || typeof item === "string"),
+  ),
+);
+
+const rowsSchema = v.pipe(
+  v.array(v.union([orderedRowSchema, patchRowSchema])),
+  v.check((rows) =>
+    rows.every((row, index) => row[0] !== -9 || index === rows.length - 1),
+  ),
+);
+
+const headSchema = v.tupleWithRest([v.string()], v.unknown());
+
+/**
+ * `[head, ...rows]`, or `[head, ...row]` for one row that is not a state
+ * patch. The batch is checked as it is and kept as it came, so that no
+ * schema adds or drops an item.
+ */
+const operationsSchema = v.custom<Operations>(
+  (input) =>
+    v.is(headSchema, input) &&
+    (typeof input[1] === "number"
+      ? v.is(orderedRowSchema, input.slice(1))
+      : v.is(rowsSchema, input.slice(1))),
+);
 
 const jsonSchema: v.GenericSchema<unknown, Json> = v.lazy(() =>
   v.union([
