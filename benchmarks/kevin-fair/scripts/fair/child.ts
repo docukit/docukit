@@ -54,6 +54,8 @@ try {
   const encodedByRun: unknown[] = [];
   const stat = { updates: 0, bytes: 0 };
   const chunks: Buffer[] = [];
+  const emitted = { updates: 0, bytes: 0 };
+  const emittedChunks: Buffer[] = [];
   let encoded: Buffer | undefined;
   if (mode === "time") {
     // The harness's own memUsed can start from a heap that still holds the previous document. Keep each row's stored
@@ -77,8 +79,15 @@ try {
       getName: () => inner.getName(),
     };
   } else {
-    // The stream of a row = what the harness delivers: each distinct update passed to applyUpdate (B1-B3).
+    // The stream of a row = what the harness delivers: each distinct update passed to applyUpdate (B1-B3). B4 has
+    // one replica and delivers nothing: its stream is what that replica emits.
     const seen = new Set<unknown>();
+    const emit = (h: (u: any) => void) => (u: any) => {
+      emitted.updates++;
+      emitted.bytes += u.length;
+      emittedChunks.push(Buffer.from(toBytes(u)));
+      h(u);
+    };
     const wrap = (crdt: object) =>
       new Proxy(crdt, {
         get(t: any, p) {
@@ -103,7 +112,7 @@ try {
         },
       });
     factory = {
-      create: (h: unknown) => wrap(inner.create(h)),
+      create: (h: (u: any) => void) => wrap(inner.create(emit(h))),
       load: (h: unknown, bin: unknown) => wrap(inner.load(h, bin)),
       getName: () => inner.getName(),
     };
@@ -171,15 +180,17 @@ try {
       JSON.stringify({ status: "ok", node: process.version, results }),
     );
   } else {
-    const all = Buffer.concat(chunks);
+    // Nothing delivered (B4): the emitted stream.
+    const own = stat.updates === 0;
+    const all = Buffer.concat(own ? emittedChunks : chunks);
     writeFileSync(
       out,
       JSON.stringify({
         status: "ok",
         node: process.version,
         extra: {
-          updates: stat.updates,
-          bytes: stat.bytes,
+          updates: own ? emitted.updates : stat.updates,
+          bytes: own ? emitted.bytes : stat.bytes,
           streamGzip: all.length ? gz(all) : 0,
           docRaw: encoded?.length,
           docGzip: encoded ? gz(encoded) : undefined,

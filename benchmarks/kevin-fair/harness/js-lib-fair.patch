@@ -76,6 +76,26 @@
        logMemoryUsed(crdtFactory.getName(), id, startHeapUsed)
      })
    }
+--- js-lib/b4.js
++++ js-lib-fair/b4.js
+@@ -1,4 +1,5 @@
+-import { setBenchmarkResult, benchmarkTime, logMemoryUsed, getMemUsed, tryGc, runBenchmark } from './utils.js'
++// FAIR COPY of upstream b4.js (JavaScript like upstream): adds an inner (loadNoGc) window around load + check.
++import { setBenchmarkResult, benchmarkTime, logMemoryUsed, getMemUsed, tryGc, runBenchmark, innerStart, innerEnd } from './utils.js'
+ import * as t from 'lib0/testing'
+ import { CrdtFactory, AbstractCrdt } from './index.js' // eslint-disable-line
+ // @ts-ignore
+@@ -39,8 +40,10 @@
+       // @ts-ignore we only store doc so it is not garbage collected
+       let doc = null // eslint-disable-line
+       benchmarkTime(crdtFactory.getName(), `${id} (parseTime)`, () => {
++        const __inner = innerStart()
+         doc = crdtFactory.load(() => {}, encodedState)
+         check(doc)
++        innerEnd(__inner, crdtFactory.getName(), `${id} (loadNoGc)`)
+       })
+       logMemoryUsed(crdtFactory.getName(), id, startHeapUsed)
+     })()
 --- js-lib/index.js
 +++ js-lib-fair/index.js
 @@ -1,7 +1,8 @@

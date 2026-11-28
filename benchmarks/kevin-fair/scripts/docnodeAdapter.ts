@@ -11,11 +11,13 @@
 // time of B2/B3.
 //
 // Array = children of the root (state `v` of each item). Map = root state `b`.
-// Text = root state `t` = defineText(), only where the tree exports it.
+// Text = root state `t`: `text()` (milestone 2) or the older `defineText()`, only where the tree exports one.
 import * as DN from "@docukit/docnode";
 
 const { Doc, defineNode, defineState } = DN as any;
-const defineText = (DN as any).defineText as undefined | (() => unknown);
+const defineText = ((DN as any).text ?? (DN as any).defineText) as
+  | undefined
+  | (() => unknown);
 const ROOT_ID = "01kc52hq510g6y44jhq0wqrjb3";
 
 const value = defineState({
@@ -221,8 +223,7 @@ export class DocNodeCrdt {
 
   // ----- text
   private text() {
-    if (!defineText)
-      throw new Error("not supported: no defineText on this tree");
+    if (!defineText) throw new Error("not supported: no text() on this tree");
     return this.doc.root.state.t;
   }
 
