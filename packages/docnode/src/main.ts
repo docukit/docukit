@@ -16,6 +16,7 @@ import {
   type NodeIdGenerator,
   type TransactionFlags,
   type StateDefinition,
+  type TextEngine,
 } from "./types.js";
 import {
   detachRange,
@@ -26,6 +27,7 @@ import {
   ULID_REGEX,
   defineNode,
   ownId,
+  textEngines,
 } from "./utils.js";
 import * as ops from "./operations.js";
 import { readInts, writeInts } from "./ints.js";
@@ -38,6 +40,7 @@ import {
 import { decodeTime, ulid } from "ulid";
 import { UndoManager } from "./undoManager.js";
 import { decodeOperations } from "./wire.js";
+import type { Letters, Splice } from "./text.js";
 
 /** Where a node keeps its document (see `DocNode.doc`). */
 const DOC: unique symbol = Symbol("doc");
@@ -620,11 +623,18 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     return [this.id, this.type, this._stateJson() as NodeState.Jsonified<T>];
   }
 
-  /** Each value that is not the default, as JSON (see `ops.stateKeyToJson`). */
-  private _stateJson(): Record<string, Json> {
+  /**
+   * Each value that is not the default, as JSON (see `ops.stateKeyToJson`).
+   * Without `withText`, it leaves out the texts: operations insert their
+   * letters instead (see `text.ts`).
+   */
+  private _stateJson(withText = true): Record<string, Json> {
     const jsonState: Record<string, Json> = {};
-    const defaults = this.doc["_resolvedNodeDefs"].get(this.type)!.defaultJson;
+    const definition = this.doc["_resolvedNodeDefs"].get(this.type)!;
+    const defaults = definition.defaultJson;
+    const textKeys = withText ? undefined : definition.textKeys;
     for (const key in this._state) {
+      if (textKeys?.includes(key)) continue;
       const json = ops.stateKeyToJson(this, key);
       if (!equalJson(json, defaults[key])) jsonState[key] = json;
     }
@@ -670,6 +680,12 @@ export class Doc {
     updated: new Set(),
   };
   protected _idGen: NodeIdGenerator;
+  /** What texts need, if a registered node has a `text()` key. */
+  protected _textEngine: TextEngine | undefined;
+  /** The letters of the texts by id, made when needed (see `text.ts`). */
+  protected _letters: Letters | undefined;
+  /** The changes of each text in the transaction (see `text.ts`). */
+  protected _textChanges: Map<DocNode, Map<string, Splice[]>> | undefined;
   /** The ids of this document's session, unless a generator without time makes them. */
   protected _nodeIds: NodeIds | undefined;
   readonly root: DocNode;
@@ -693,6 +709,7 @@ export class Doc {
         defaultStrings: {},
         defaultJson: {},
         methods: undefined as unknown as ResolvedNodeDefinition["methods"],
+        textKeys: undefined,
       };
 
       for (const key in nodeDef.state) {
@@ -720,6 +737,22 @@ export class Doc {
           }
           resolvedNodeDef.defaultStrings[key] = stringified;
           resolvedNodeDef.defaultJson[key] = JSON.parse(stringified) as Json;
+          const textEngine = textEngines.get(state);
+          if (textEngine) {
+            // An insert into an empty text names the key: `@node,key|text`,
+            // after the `N>` of letters that start elsewhere.
+            if (key.includes(",") || key.includes("|") || key.includes(">"))
+              throw new Error(
+                `The text key '${key}' of node type '${nodeDef.type}' cannot contain ',', '|' or '>'.`,
+              );
+            // Letters have ids `session.clock` (see `NodeIds`).
+            if (config.nodeIdGenerator && !config.nodeIdGenerator.extractTime)
+              throw new Error(
+                `The text key '${key}' of node type '${nodeDef.type}' needs ids of the form session.clock: a nodeIdGenerator without extractTime cannot be used with text().`,
+              );
+            (resolvedNodeDef.textKeys ??= []).push(key);
+            this._textEngine = textEngine;
+          }
         }
       }
 
@@ -739,11 +772,11 @@ export class Doc {
         }
       }
       for (const key in resolvedNodeDef.state) {
-        const methodsOf = stateKeyMethods(
-          key,
-          resolvedNodeDef.state[key]!,
-          resolvedNodeDef.defaultState[key],
-        );
+        const definition = resolvedNodeDef.state[key]!;
+        const textEngine = textEngines.get(definition);
+        const methodsOf = textEngine
+          ? (node: DocNode) => textEngine.methods(node, key)
+          : stateKeyMethods(key, definition, resolvedNodeDef.defaultState[key]);
         Object.defineProperty(State.prototype, key, {
           enumerable: true,
           get(this: State) {
@@ -1089,6 +1122,7 @@ export class Doc {
     this._operations = [[], new Map()];
     this._inverseOperations = [[], new Map()];
     this._transactionFlags = {};
+    this._textChanges = undefined;
     this._diff = {
       deleted: new Map(),
       inserted: new Set(),
@@ -1578,8 +1612,10 @@ export class Doc {
       if (node !== root) {
         inserted.add(node.id);
         if (node["_state"] !== NO_STATE) {
-          const state = node["_stateJson"]();
+          const state = node["_stateJson"](false);
           if (!isObjectEmpty(state)) patch.set(node.id, state);
+          const textKeys = this._resolvedNodeDefs.get(node.type)!.textKeys;
+          if (textKeys) this._textEngine!.attach(node, textKeys, inserts);
         }
       }
       if (node.first) {

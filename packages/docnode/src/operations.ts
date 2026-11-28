@@ -80,7 +80,9 @@ export const onSetState = {
       delete nodePatch[key];
       if (isObjectEmpty(nodePatch)) {
         statePatchs.delete(node.id);
-        doc["_diff"].updated.delete(node.id);
+        // A change of its text keeps it updated.
+        if (!doc["_textChanges"]?.has(node))
+          doc["_diff"].updated.delete(node.id);
       }
       delete inversePatch![key];
     } else {
@@ -121,13 +123,13 @@ export const onInsertRange = (
       newParent = target.parent!;
       break;
   }
+  // New nodes take their ids first, in the order of the rows below, and
+  // then their texts' letters, in the order of their rows: new ids follow
+  // the rows, and a batch writes only the first one.
+  takeIds(nodes);
   doc["_operations"][0].push([
     0,
-    nodes.map((node) => {
-      // A new node takes its id here, so that new ids follow the rows.
-      node["_takeId"]();
-      return [node.id, node.type];
-    }),
+    nodes.map((node) => [node.id, node.type]),
     newParent === doc.root ? 0 : newParent.id,
     newPrev?.id ?? 0,
     newNext?.id ?? 0,
@@ -145,6 +147,17 @@ export const onInsertRange = (
   }
 };
 
+/** Gives ids to the new ones of `nodes` and their descendants, as rows list them. */
+function takeIds(nodes: DocNode[]) {
+  for (const node of nodes) node["_takeId"]();
+  for (const node of nodes) takeChildIds(node);
+}
+
+function takeChildIds(parent: DocNode) {
+  for (let child = parent.first; child; child = child.next) child["_takeId"]();
+  for (let child = parent.first; child; child = child.next) takeChildIds(child);
+}
+
 /**
  * The descendants of an inserted node, in the order a walk of them finds
  * them: each list of children is inserted when its first child is found.
@@ -153,12 +166,11 @@ function onInsertChildren(doc: Doc, parent: DocNode) {
   const first = parent.first;
   if (!first) return;
   const written: [string, string][] = [];
-  for (let child: DocNode | undefined = first; child; child = child.next) {
-    child["_takeId"]();
+  for (let child: DocNode | undefined = first; child; child = child.next)
     written.push([child.id, child.type]);
-  }
-  copyInsertedToDiff(first);
   doc["_operations"][0].push([0, written, parent.id, 0, 0]);
+  // After the insert of the list: the inserts of its texts' letters follow it.
+  copyInsertedToDiff(first);
   if (!doc["_diff"].inserted.has(parent.id)) {
     const last = parent.last!;
     doc["_inverseOperations"][0].push([
@@ -185,9 +197,11 @@ function copyInsertedToDiff(node: DocNode) {
     diff.inserted.add(node.id);
   }
   // [#4GOSK]
-  const jsonState = node["_stateJson"]();
-  if (isObjectEmpty(jsonState)) return;
-  doc["_operations"][1].set(node.id, jsonState);
+  const jsonState = node["_stateJson"](false);
+  if (!isObjectEmpty(jsonState)) doc["_operations"][1].set(node.id, jsonState);
+  const textKeys = doc["_resolvedNodeDefs"].get(node.type)!.textKeys;
+  if (textKeys)
+    doc["_textEngine"]!.attach(node, textKeys, doc["_operations"][0]);
 }
 
 export const onDeleteRange = (
@@ -220,10 +234,20 @@ export const onDeleteRange = (
   }
 
   detachRange(startNode, endNode);
+  // The inserts that put the texts' letters back, after the nodes.
+  const textInserts: OrderedOperation[] = [];
+  const definitions = doc["_resolvedNodeDefs"];
   startNode.to(endNode).forEach((node) => {
     node.descendants({ includeSelf: true }).forEach((node) => {
       doc["_operations"][1].delete(node.id);
       doc["_diff"].updated.delete(node.id);
+      const textKeys = definitions.get(node.type)!.textKeys;
+      if (textKeys)
+        doc["_textEngine"]!.detach(
+          node,
+          textKeys,
+          shouldAddToInverseOps ? textInserts : undefined,
+        );
       if (node.first) {
         const jsonNodes: [string, string][] = [];
         node.children().forEach((childNode) => {
@@ -244,6 +268,7 @@ export const onDeleteRange = (
    * TODO: To avoid a reverse and make this more performant, we can use an iterator
    * other than.descendants().forEach above.
    */
+  tempInverseOperations.push(...textInserts);
   inverseOperations.push(...tempInverseOperations.reverse());
 };
 
@@ -316,11 +341,14 @@ export const onApplyOperations = (doc: Doc, operations: DraftOperations) => {
         if (parent) doc["_insertRange"](parent, "append", nodes);
         break;
       case 1:
+        const start = doc.getNodeById(operation[1]);
+        // An id that is not of a node may be of a letter (see `text.ts`).
+        if (!start) {
+          doc["_textEngine"]?.delete(doc, operation[1], operation[2]);
+          break;
+        }
         try {
-          doc
-            .getNodeById(operation[1])!
-            .to(doc.getNodeById(operation[2] || operation[1])!)
-            .delete();
+          start.to(doc.getNodeById(operation[2] || operation[1])!).delete();
         } catch {}
         break;
       case 2:
@@ -347,6 +375,9 @@ export const onApplyOperations = (doc: Doc, operations: DraftOperations) => {
           else startNode.to(endNode).move(parentNode, "append");
         } catch {}
         break;
+      case 4:
+        doc["_textEngine"]?.insert(doc, operation);
+        break;
     }
   }
   // Apply state patch
@@ -357,7 +388,10 @@ export const onApplyOperations = (doc: Doc, operations: DraftOperations) => {
     const node = doc.getNodeById(id);
     if (!node) continue;
     const insertedInSameTransaction = doc["_diff"].inserted.has(id);
+    const textKeys = doc["_resolvedNodeDefs"].get(node.type)!.textKeys;
     for (const key in state) {
+      // A text changes only through its letters (see `text.ts`).
+      if (textKeys?.includes(key)) continue;
       const value = state[key]!;
       // The state of a node inserted in this transaction is part of its
       // creation and needs no inverse: the inverse operation is a delete.
@@ -385,6 +419,7 @@ const hasChanges = (doc: Doc) => {
     diff.inserted.size > 0 ||
     diff.deleted.size > 0 ||
     diff.moved.size > 0 ||
+    diff.updated.size > 0 ||
     doc["_operations"][1].size > 0
   );
 };
@@ -449,7 +484,7 @@ const copyDeletedToDiff = (node: DocNode) => {
   } else {
     // backup the previous state in inverseOperations.statePatch
     const inversePatch = doc["_inverseOperations"][1];
-    const currentState = node["_stateJson"]();
+    const currentState = node["_stateJson"](false);
     const previousState = { ...currentState, ...inversePatch.get(node.id) };
     inversePatch.set(node.id, previousState);
     // add to diff.deleted
@@ -476,10 +511,35 @@ type MoveOperation = [
   next: string | 0,
 ];
 
+/**
+ * An insert of letters (see `text.ts`): `text`, whose letters take the
+ * clocks from `first` on, right after `prev`, or if it is gone right before
+ * `next` (`0` for none). With `key`, into the empty text of that key of
+ * `node` (`0` for the root), or at its start if it has letters.
+ */
+export type TextOperation =
+  | [
+      operation: 4,
+      first: string,
+      prev: string | 0,
+      next: string | 0,
+      text: string,
+    ]
+  | [
+      operation: 4,
+      first: string,
+      prev: 0,
+      next: 0,
+      text: string,
+      node: string | 0,
+      key: string,
+    ];
+
 export type OrderedOperation =
   | InsertOperation
   | DeleteOperation
-  | MoveOperation;
+  | MoveOperation
+  | TextOperation;
 
 // TODO: not implemented yet
 // type ChangeTypeOperation = [
@@ -525,7 +585,13 @@ export type Operations =
   /** A batch of one row that is not a state patch, without its brackets. */
   | readonly [head: string, ...row: OrderedRow];
 
-export type OperationsRow = OrderedRow | PatchRow;
+export type OperationsRow = OrderedRow | PatchRow | LetterRow;
+
+/**
+ * An insert of letters (see `wire.ts`): `"prev,next|text"`, `"prev|text"`
+ * or `"@node,key|text"`, after `"N>"` when its letters start elsewhere.
+ */
+export type LetterRow = string;
 
 /** A row that inserts, deletes or moves nodes, without its trailing zeros. */
 export type OrderedRow =

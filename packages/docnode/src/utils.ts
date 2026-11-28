@@ -1,5 +1,17 @@
 import type { Doc, DocNode } from "./main.js";
-import type { Json, StateRecord } from "./types.js";
+import type {
+  Json,
+  StateDefinition,
+  StateRecord,
+  TextEngine,
+} from "./types.js";
+
+/**
+ * The engine of each definition `text()` made (see `text.ts`): a document
+ * reaches texts only through it, so that `text.ts` is bundled only with
+ * `text()`.
+ */
+export const textEngines = new WeakMap<StateDefinition, TextEngine>();
 
 // lowercase ulid
 export const ULID_REGEX = /^[0-7][0-9a-hjkmnp-tv-z]{25}$/;
