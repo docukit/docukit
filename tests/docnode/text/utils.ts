@@ -114,10 +114,38 @@ export function orderedServer(setup: (doc: Doc) => void) {
   };
 }
 
-type Edit = (
-  body: DocNode<typeof Paragraph>["state"]["body"],
-  doc: Doc,
-) => void;
+type Body = DocNode<typeof Paragraph>["state"]["body"];
+
+type Edit = (body: Body, doc: Doc) => void;
+
+/**
+ * `count` edits of `body` at seeded random places, which leave it in many
+ * runs: inserts of 1-3 letters (some at the start, as typing backwards) and
+ * deletes of 1-5. Returns the text they should give.
+ */
+export function randomEdits(body: Body, count: number, seed = 1) {
+  let state = seed;
+  const random = (n: number) => {
+    state = (Math.imul(state, 1103515245) + 12345) >>> 0;
+    return (state >>> 8) % n;
+  };
+  let expected = body.get();
+  for (let i = 0; i < count; i++) {
+    const kind = random(10);
+    if (kind < 6 || expected.length === 0) {
+      const index = kind === 0 ? 0 : random(expected.length + 1);
+      const letters = "xyz".slice(0, 1 + random(3));
+      body.insert(index, letters);
+      expected = expected.slice(0, index) + letters + expected.slice(index);
+    } else {
+      const index = random(expected.length);
+      const length = Math.min(1 + random(5), expected.length - index);
+      body.delete(index, length);
+      expected = expected.slice(0, index) + expected.slice(index + length);
+    }
+  }
+  return expected;
+}
 
 /**
  * Two replicas edit the first paragraph at once from what `setup` made. The
