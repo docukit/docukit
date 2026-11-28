@@ -51,7 +51,10 @@
 
 ## Performance Numbers
 
-- A performance number used for a decision or in a PR description must come from `benchmarks/kevin-fair/scripts/fair/docnode-compare.ts` (on the `bench/kevin-fair` branch until milestone 4 brings it to `main`). It runs the whole fair method and prints verdicts.
+Both commands live in `benchmarks/kevin-fair/` on the `bench/kevin-fair` branch until milestone 4 brings them to `main`.
+
+- **Every change, and PR descriptions:** `scripts/fair/quick-compare.ts <base-ref> <new-ref>` (~3–4 min). Mark its numbers "quick" and report its readings as it prints them, including "no change beyond ±X %".
+- **Important changes, only when the owner asks, and to close a milestone:** `scripts/fair/docnode-compare.ts`, the whole fair method (25–60 min). The artifact's tables come from it.
 - Never report numbers from ad-hoc scripts, fewer rounds, one run, or `--smoke`. Short runs move with GC and JIT timing. They may only say "this may have changed, confirm it", without numbers.
 
 ## TypeScript Rules
