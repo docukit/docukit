@@ -12,7 +12,6 @@ import {
   first,
   orderedServer,
   paragraph,
-  textDoc,
 } from "./utils.js";
 
 type Edit = (
@@ -232,14 +231,11 @@ describe("applying letter rows", () => {
   });
 
   test("the letters of a deleted node leave the document, and an undo brings them back", () => {
-    const { log, replica, edit } = orderedServer((doc) => paragraph(doc, "ab"));
+    const { replica, edit } = orderedServer((doc) => paragraph(doc, "ab"));
     const docA = replica();
-    const docB = textDoc({
-      id: docA.root.id,
+    const docB = replica({
       undoManager: { maxUndoSteps: 10, mergeInterval: 0 },
     });
-    for (const batch of log) docB.applyOperations(batch);
-    docB.forceCommit();
     const [insertX] = edit(docA, () => first(docA).state.body.insert(1, "X"));
     const [insertY] = edit(docA, () => first(docA).state.body.insert(0, "Y"));
     // A row that names a letter: B finds letters by id from now on.
@@ -255,18 +251,48 @@ describe("applying letter rows", () => {
     expect(bodies(docB)).toStrictEqual(["YaXb"]);
   });
 
-  test("a loaded text has new ids, which batches of others do not name", () => {
-    const { server, replica, edit } = orderedServer((doc) =>
-      paragraph(doc, "ab"),
+  test("a document loaded from a snapshot finds the letters that rows name", () => {
+    const { server, replica, edit, send } = orderedServer((doc) =>
+      paragraph(doc, "Hola mundo"),
     );
-    const loaded = Doc.fromJSON(config, server.toJSON());
-    const doc = replica();
-    const [batch] = edit(doc, () => first(doc).state.body.insert(1, "X"));
-    loaded.applyOperations(batch!);
-    expect(bodies(loaded)).toStrictEqual(["ab"]);
-    // Its letters get ids when it is first edited, or copied.
-    first(loaded).state.body.insert(2, "!");
-    first(loaded).copy(loaded.root, "append");
-    expect(bodies(loaded)).toStrictEqual(["ab!", "ab!"]);
+    const docA = replica();
+    send(edit(docA, () => first(docA).state.body.insert(4, ",")));
+    // B loads the server's snapshot, as DocSync does, then both edit.
+    const docB = Doc.fromJSON(config, server.toJSON());
+    docB.forceCommit();
+    const batchesA = edit(docA, () => first(docA).state.body.insert(5, "!"));
+    const batchesB = edit(docB, () => first(docB).state.body.delete(0, 1));
+    for (const batch of batchesB) docA.applyOperations(batch);
+    for (const batch of batchesA) docB.applyOperations(batch);
+    expect([bodies(docA), bodies(docB)]).toStrictEqual([
+      ["ola,! mundo"],
+      ["ola,! mundo"],
+    ]);
+  });
+
+  test("a copy of a loaded text takes new ids, which rows then find", () => {
+    const { replica, edit } = orderedServer((doc) => paragraph(doc, "ab"));
+    const [loaded, other] = [replica(), replica()];
+    const [insertX] = edit(other, () => first(other).state.body.insert(1, "X"));
+    // A row that names a letter: `loaded` finds letters by id from now on.
+    loaded.applyOperations(insertX!);
+    const [copy] = edit(loaded, () =>
+      first(loaded).copy(loaded.root, "append"),
+    );
+    // As a copy in the same document: the new node and its letters are of
+    // the batch's session, the loaded document's.
+    const original = loaded.root.first!.id;
+    expect(copy!.slice(1)).toStrictEqual([
+      [0, -1, "p", 0, original],
+      "@-1,body|aXb",
+    ]);
+    // A row of another replica that names a letter of the copy finds it.
+    other.applyOperations(copy!);
+    const [insertY] = edit(other, () => {
+      const node = other.root.last!;
+      if (node.is(Paragraph)) node.state.body.insert(3, "Y");
+    });
+    loaded.applyOperations(insertY!);
+    expect(bodies(loaded)).toStrictEqual(["aXb", "aXbY"]);
   });
 });

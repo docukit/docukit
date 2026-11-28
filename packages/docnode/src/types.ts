@@ -144,6 +144,29 @@ export type TextEngine = {
   insert(doc: Doc, operation: TextOperation): void;
   /** Applies a delete of the letters from `start` to `end`. */
   delete(doc: Doc, start: string, end: string | 0): void;
+  /**
+   * Writes the `letters` column of a stored document (see `JsonDoc`), one
+   * text at a time. `sessionIndex` gives the index in the stored `sessions`
+   * of a session of `NodeIds`.
+   */
+  lettersWriter(sessionIndex: (session: number) => number): {
+    /** Writes the id runs of the non-empty text of the node's key. */
+    write(node: DocNode, key: string): void;
+    readonly column: number[];
+  };
+  /**
+   * Reads the `letters` column of a stored document, one text at a time.
+   * `sessions` has the index in `NodeIds` of each stored session.
+   */
+  lettersReader(
+    column: unknown,
+    sessions: number[],
+  ): {
+    /** The text of the node's key, `text` with the ids of its runs. */
+    read(node: DocNode, key: string, text: string): unknown;
+    /** Throws if the column has runs left. */
+    end(): void;
+  };
 };
 
 export type JsonDocNode<T extends NodeDefinition = NodeDefinition> = [
@@ -170,6 +193,7 @@ export type JsonDoc =
       sessions: string[],
       ids: (number | string)[],
       ints?: string,
+      letters?: number[],
     ];
 
 /**

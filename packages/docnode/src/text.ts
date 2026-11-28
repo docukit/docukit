@@ -1,7 +1,7 @@
 import type { Doc, DocNode } from "./main.js";
 import type { TextOperation } from "./operations.js";
 import type { StateDefinition, TextEngine } from "./types.js";
-import { numberToBase64 } from "./idGenerator.js";
+import { MAX_CLOCK, numberToBase64 } from "./idGenerator.js";
 import { textEngines, withTransaction } from "./utils.js";
 
 // `text()`: a string whose letters have ids, so that an edit of one replica
@@ -21,6 +21,8 @@ import { textEngines, withTransaction } from "./utils.js";
 // - Operations: see `TextOperation` and `wire.ts`. Deleting letters is
 //   `[1, first, last]`, like deleting nodes: an id is of a node or of a
 //   letter, never both. An undo puts letters back with their own ids.
+// - A stored document keeps a text as its string, in `values`, and the id
+//   runs of its letters in the `letters` column (see `engine.lettersWriter`).
 
 /** A change of a text in a transaction, in the order they were applied. */
 type TextChange = { index: number; deleted: number; inserted: string };
@@ -66,8 +68,8 @@ type TextMethods = {
  */
 export function text(): StateDefinition<string, string, TextMethods> {
   const definition: StateDefinition<string, string, TextMethods> = {
-    // A stored document keeps a text as its string: its letters get new ids
-    // when it is first used (see `stateOf`).
+    // A stored document keeps a text as its string, and the ids of its
+    // letters in another column (see `engine.lettersReader`).
     fromJSON: (json) => (typeof json === "string" ? json : ""),
     toJSON: (value: string | TextState) =>
       typeof value === "string" ? value : textOf(value),
@@ -217,10 +219,10 @@ function isAttached(node: DocNode) {
 
 /**
  * The text of the node's key, which must be in the document or being
- * inserted. A text that was never edited there is a string (the default, one
- * of a stored document or a copy, or one edited before the node was
- * inserted): it becomes a `TextState` here, its letters taking new ids of
- * the document's session.
+ * inserted. A text that was never edited there is a string (the default, the
+ * string of a copy, or one edited before the node was inserted): it becomes a
+ * `TextState` here, its letters taking new ids of the document's session.
+ * The document does not have those letters yet: `engine.attach` adds them.
  */
 function stateOf(node: DocNode, key: string) {
   const value = valueAt(node, key);
@@ -232,8 +234,6 @@ function stateOf(node: DocNode, key: string) {
     state.runs.push(run);
     state.length = value.length;
     state.cached = value;
-    const letters = node.doc["_letters"];
-    if (letters && isAttached(node)) letters.add(run);
   }
   node["_values"]()[key] = state;
   return state;
@@ -623,12 +623,20 @@ const getPrevError = [
 const splicesOf = (node: DocNode, key: string): readonly Splice[] =>
   node.doc["_textChanges"]?.get(node)?.get(key) ?? [];
 
-/** The string of a text that may not be a `TextState` yet (see `stateOf`). */
+/**
+ * The string of a text that may not be a `TextState` yet: one never edited
+ * of a node in a document is empty (see `stateOf`), and one of a node not
+ * inserted yet is a string (see `editLoose`).
+ */
 function valueOf(node: DocNode, key: string) {
   const value = valueAt(node, key);
   if (value instanceof TextState) return textOf(value);
   return typeof value === "string" ? value : "";
 }
+
+/** The error of a `letters` column that does not fit its texts. */
+const invalidLetters = (what: string) =>
+  new Error(`Invalid stored document: ${what}.`);
 
 /** What `doc` asks of texts (see `TextEngine`). */
 const engine: TextEngine = {
@@ -751,5 +759,122 @@ const engine: TextEngine = {
     const to = end === 0 ? from : indexOf(doc, end);
     if (to?.state !== from.state || to.index < from.index) return;
     deleteLetters(from.state, from.index, to.index - from.index + 1);
+  },
+
+  /**
+   * The `letters` column: for each non-empty text, in the order the document
+   * writes its values (the root's, then each node's in preorder, by key),
+   * the runs of its letters, as Loro stores a text: its string and its id
+   * runs. A run is written as the id runs of nodes (`IdsWriter`, `main.ts`):
+   * its session minus the previous run's (0 before the first run), and its
+   * first clock minus the clock that follows the last letter written of its
+   * session (0 before any).
+   *
+   * - Odd first number, `2 * clock + 1`: a run of the previous run's session.
+   * - Even, `2 * session`: then its clock.
+   * - Then its length; `0` in the last run of a text: the rest of its string.
+   *
+   * With sessions `["A", "B"]`, the texts "Hola, mundo" ("Hola" clocks 0-3
+   * of A, "," clock 0 of B, " mundo" clocks 4-9 of A) and "chau" (clocks
+   * 10-13 of A) are:
+   *
+   * ```
+   * [0, 0, 4,  2, 0, 1,  -2, 0, 0,  1, 0]
+   *  A  0  4   B  0  1    A  0 rest  A,0 rest
+   * ```
+   *
+   * The `0` clocks of A are 0 after the start, after "Hola" (4) and after
+   * " mundo" (10).
+   */
+  lettersWriter: (sessionIndex) => {
+    const column: number[] = [];
+    const nextClocks: number[] = [];
+    let lastSession = 0;
+    const push = (s: number, c: number, length: number, last: boolean) => {
+      const session = sessionIndex(s);
+      const clock = c - (nextClocks[session] ?? 0);
+      const stored = last ? 0 : length;
+      if (session === lastSession) column.push(2 * clock + 1, stored);
+      else column.push(2 * (session - lastSession), clock, stored);
+      lastSession = session;
+      nextClocks[session] = c + length;
+    };
+    return {
+      column,
+      write: (node, key) => {
+        const runs = stateOf(node, key).runs;
+        // Runs that follow in clock are written as one.
+        let { s, c } = runs[0]!;
+        let length = runs[0]!.text.length;
+        for (let i = 1; i < runs.length; i++) {
+          const run = runs[i]!;
+          if (run.s === s && run.c === c + length) {
+            length += run.text.length;
+            continue;
+          }
+          push(s, c, length, false);
+          ({ s, c } = run);
+          length = run.text.length;
+        }
+        push(s, c, length, true);
+      },
+    };
+  },
+
+  lettersReader: (column, sessions) => {
+    if (column !== undefined && !Array.isArray(column))
+      throw invalidLetters("its letters are not valid");
+    const numbers: readonly unknown[] = column ?? [];
+    const nextClocks = sessions.map(() => 0);
+    let at = 0;
+    let session = 0;
+    /** The next number of the column, an integer. */
+    const next = () => {
+      const number = numbers[at++];
+      if (typeof number === "number" && Number.isInteger(number)) return number;
+      throw invalidLetters("it has a letter run that is not valid");
+    };
+    return {
+      read: (node, key, text) => {
+        if (at === numbers.length)
+          throw invalidLetters("it has fewer letter runs than texts");
+        const state = new TextState(node, key);
+        for (let start = 0; start < text.length; ) {
+          // Its form by the parity of its first number. Not `% 2 === 1`:
+          // -3 % 2 is -1.
+          const first = next();
+          let delta: number;
+          if (first % 2 === 0) {
+            session += first / 2;
+            delta = next();
+          } else delta = (first - 1) / 2;
+          const length = next();
+          const left = text.length - start;
+          const clock = nextClocks[session]! + delta;
+          const size = length === 0 ? left : length;
+          if (
+            !(session in sessions) ||
+            length < 0 ||
+            length > left ||
+            clock < 0 ||
+            clock + size - 1 > MAX_CLOCK
+          )
+            throw invalidLetters("it has a letter run that is not valid");
+          nextClocks[session] = clock + size;
+          const end = start + size;
+          state.runs.push(
+            new Run(sessions[session]!, clock, text.slice(start, end), state),
+          );
+          start = end;
+        }
+        state.length = text.length;
+        state.cached = text;
+        return state;
+      },
+      end: () => {
+        if (at !== numbers.length)
+          throw invalidLetters("it has more letter runs than texts");
+      },
+    };
   },
 };
