@@ -486,8 +486,7 @@ function checkRange(
   what: "delete" | "move",
 ) {
   checkIndex(state, index, "index");
-  if (!Number.isInteger(length) || length < 0)
-    throw new RangeError(`Cannot ${what} ${length} letters.`);
+  checkLength(length, what);
   checkIndex(state, index + length, "end");
 }
 
@@ -514,10 +513,10 @@ function checkPlace(text: string, index: number, what: string) {
   if (splitsPair(text, index)) throw splitPair(what, index);
 }
 
-/** Throws unless `length` letters can be deleted. */
-function checkLength(length: number) {
+/** Throws unless `length` letters can be deleted or moved. */
+function checkLength(length: number, what: "delete" | "move") {
   if (!Number.isInteger(length) || length < 0)
-    throw new RangeError(`Cannot delete ${length} letters.`);
+    throw new RangeError(`Cannot ${what} ${length} letters.`);
 }
 
 /**
@@ -534,7 +533,7 @@ function editLoose(
 ) {
   const value = valueOf(node, key);
   checkPlace(value, index, "index");
-  checkLength(length);
+  checkLength(length, "delete");
   checkPlace(value, index + length, "end");
   withTransaction(node.doc, () => {
     node["_values"]()[key] =
@@ -756,7 +755,9 @@ export class TextMethods {
    */
   readonly getPrev = (): [changed: boolean, value: string] => {
     const node = this._node;
-    if (!node.doc["_diff"].updated.has(node.id)) throw new Error(getPrevError);
+    const id = node["_id"];
+    if (id === undefined || !node.doc["_diff"].updated.has(id))
+      throw new Error(getPrevError);
     const current = valueOf(node, this._key);
     let prev = current;
     const splices = splicesOf(node, this._key);
@@ -781,6 +782,12 @@ export class TextMethods {
   ) => {
     const { _node: node, _key: key } = this;
     withTransaction(node.doc, () => {
+      if (!isAttached(node)) {
+        const current = valueOf(node, key);
+        const next = typeof value === "function" ? value(current) : value;
+        if (next !== current) node["_values"]()[key] = next;
+        return;
+      }
       const state = stateOf(node, key);
       const next = typeof value === "function" ? value(textOf(state)) : value;
       if (next !== textOf(state)) replace(state, next, caret);
@@ -790,6 +797,7 @@ export class TextMethods {
   /** Inserts `text` at `index` (in UTF-16 code units, like `string.length`). */
   readonly insert = (index: number, text: string) => {
     const { _node: node, _key: key } = this;
+    if (!isAttached(node)) return editLoose(node, key, index, 0, text);
     checkIndex(stateOf(node, key), index, "index");
     withTransaction(node.doc, () => insertNew(stateOf(node, key), index, text));
   };
@@ -797,6 +805,7 @@ export class TextMethods {
   /** Deletes `length` letters from `index`. */
   readonly delete = (index: number, length: number) => {
     const { _node: node, _key: key } = this;
+    if (!isAttached(node)) return editLoose(node, key, index, length, "");
     checkRange(stateOf(node, key), index, length, "delete");
     withTransaction(node.doc, () => {
       if (length > 0) deleteLetters(stateOf(node, key), index, length);
@@ -860,7 +869,8 @@ export class TextMethods {
   /** The length of the text. */
   get length() {
     const value = valueAt(this._node, this._key);
-    return value instanceof TextState ? value.length : 0;
+    if (value instanceof TextState) return value.length;
+    return typeof value === "string" ? value.length : 0;
   }
 }
 
