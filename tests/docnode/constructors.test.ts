@@ -442,6 +442,29 @@ describe("createNode", () => {
       id: rootId,
       extensions: [TextExtension],
     });
-    expect(doc.createNode(Text).id).toMatch(DOCNODE_ID("[\\w-]+"));
+    const node = doc.createNode(Text);
+    doc.root.append(node);
+    expect(node.id).toMatch(DOCNODE_ID("[\\w-]+"));
+  });
+  test("a node has no id until it is inserted", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const node = doc.createNode(Text);
+    expect(() => node.id).toThrowError(
+      "A node of type 'text' has no id until it is inserted into the document.",
+    );
+    doc.root.append(node);
+    expect(node.id).toMatch(DOCNODE_ID());
+  });
+
+  test("a subtree takes its ids when inserted, the parent before its children", () => {
+    const doc = new Doc({ type: "root", extensions: [TextExtension] });
+    const [child1, child2, parent] = [1, 2, 3].map(() => doc.createNode(Text));
+    parent!.append(child1!, child2!);
+    child1!.insertAfter(doc.createNode(Text));
+    doc.root.append(parent!);
+    const clocks = [parent!, child1!, child1!.next!, child2!].map(
+      (node) => node.id.split(".")[1],
+    );
+    expect(clocks).toStrictEqual(["-", "0", "1", "2"]);
   });
 });

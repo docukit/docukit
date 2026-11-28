@@ -123,7 +123,11 @@ export const onInsertRange = (
   }
   doc["_operations"][0].push([
     0,
-    nodes.map((node) => [node.id, node.type]),
+    nodes.map((node) => {
+      // A new node takes its id here, so that new ids follow the rows.
+      node["_takeId"]();
+      return [node.id, node.type];
+    }),
     newParent === doc.root ? 0 : newParent.id,
     newPrev?.id ?? 0,
     newNext?.id ?? 0,
@@ -148,10 +152,12 @@ export const onInsertRange = (
 function onInsertChildren(doc: Doc, parent: DocNode) {
   const first = parent.first;
   if (!first) return;
-  copyInsertedToDiff(first);
   const written: [string, string][] = [];
-  for (let child: DocNode | undefined = first; child; child = child.next)
+  for (let child: DocNode | undefined = first; child; child = child.next) {
+    child["_takeId"]();
     written.push([child.id, child.type]);
+  }
+  copyInsertedToDiff(first);
   doc["_operations"][0].push([0, written, parent.id, 0, 0]);
   if (!doc["_diff"].inserted.has(parent.id)) {
     const last = parent.last!;

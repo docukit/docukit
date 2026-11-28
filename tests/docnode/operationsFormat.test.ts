@@ -13,6 +13,7 @@ import {
   TestNode,
   Text,
   assertDoc,
+  nextNodeId,
   text,
   textDoc,
   textDocConfig as config,
@@ -93,16 +94,31 @@ describe("operations format", () => {
     );
   });
 
-  test("a run stops where the clocks do not follow", () => {
+  test("nodes take their ids when inserted, in the order of the rows", () => {
     const doc = textDoc();
+    doc.createNode(Text); // Never inserted: it takes no clock.
     const [a, b, c] = text(doc, "a", "b", "c");
     const [batch] = batchesOf(doc, () => doc.root.append(c!, a!, b!));
-    // The head is `c`, the third node made: `a` and `b` are before it.
+    expect(batch![1]).toStrictEqual([0, [[1, "text", 3]]]);
+    expect(c!.id).toMatch(/\.-$/); // The first clock of the session.
+  });
+
+  test("a run stops where the clocks do not follow", () => {
+    const doc = textDoc();
+    const [old] = text(doc, "old");
+    doc.root.append(old!);
+    doc.forceCommit();
+    old!.delete();
+    doc.forceCommit();
+    const [a, b] = text(doc, "a", "b");
+    const [batch] = batchesOf(doc, () => doc.root.append(a!, old!, b!));
+    // `old` is put back with its id, a clock before the head `a`.
     expect(batch![1]).toStrictEqual([
       0,
       [
         [1, "text"],
-        [-2, "text", 2],
+        [-1, "text"],
+        [2, "text"],
       ],
     ]);
   });
@@ -384,7 +400,7 @@ describe("a batch that does not follow the format", () => {
           ...config,
           nodeIdGenerator: { generate, validate: () => true },
         });
-        doc.createNode(Text);
+        doc.root.append(doc.createNode(Text));
       },
     ],
     [
@@ -490,7 +506,7 @@ describe("applying operations", () => {
 describe("upgradeOperations", () => {
   test("a batch of the previous format applies as it did", () => {
     const doc = textDoc();
-    const id = doc.createNode(Text).id;
+    const id = nextNodeId(doc);
     const upgraded = upgradeOperations([
       [[0, [[id, "text"]], 0, 0, 0]],
       { [id]: { value: '"old"' } },

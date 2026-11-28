@@ -14,6 +14,7 @@ import {
   createTextDocWithUndo,
   emptyUpdate,
   humanReadableOperations,
+  nextNodeId,
   text,
   Text,
   TextExtension,
@@ -1009,7 +1010,7 @@ describe("applyOperations", () => {
     const doc = createTextDocWithUndo();
     checkUndoManager(2, doc, () => {
       const [existing] = text(doc, "existing");
-      const created = doc.createNode(Text);
+      const created = nextNodeId(doc);
       doc.root.append(existing!);
       doc.forceCommit();
       doc.applyOperations([
@@ -1018,10 +1019,10 @@ describe("applyOperations", () => {
           0,
           [
             [existing!.id, "text"],
-            [created.id, "text"],
+            [created, "text"],
           ],
         ],
-        [3, existing!.id, "value", "updated", created.id, "value", "created"],
+        [3, existing!.id, "value", "updated", created, "value", "created"],
       ]);
       assertDoc(doc, ["updated", "created"]);
       expect(doc.getNodeById(existing!.id)).toBe(existing);
@@ -1048,7 +1049,7 @@ describe("applyOperations", () => {
     const [existing] = text(doc, "existing");
     doc.root.append(existing!);
     doc.forceCommit();
-    const id = doc.createNode(Text).id;
+    const id = nextNodeId(doc);
     expect(() =>
       doc.applyOperations([
         "",
