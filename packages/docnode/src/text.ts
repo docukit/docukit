@@ -210,13 +210,17 @@ function valueAt(node: DocNode, key: string) {
 }
 
 /** Whether the node is in its document. */
-const isAttached = (node: DocNode) =>
-  node.doc["_nodeMap"].get(node.id) === node;
+function isAttached(node: DocNode) {
+  const id = node["_id"];
+  return id !== undefined && node.doc["_nodeMap"].get(id) === node;
+}
 
 /**
- * The text of the node's key. A text that was never edited is a string (the
- * default, or one of a stored document or a copy): it becomes a `TextState`
- * here, its letters taking new ids of the document's session.
+ * The text of the node's key, which must be in the document or being
+ * inserted. A text that was never edited there is a string (the default, one
+ * of a stored document or a copy, or one edited before the node was
+ * inserted): it becomes a `TextState` here, its letters taking new ids of
+ * the document's session.
  */
 function stateOf(node: DocNode, key: string) {
   const value = valueAt(node, key);
@@ -290,12 +294,12 @@ function indexOf(doc: Doc, id: string) {
 }
 
 /** Cuts the run at `at` in two: the second part starts at letter `offset`. */
-function split(state: TextState, at: number, offset: number, indexed: boolean) {
+function split(state: TextState, at: number, offset: number) {
   const run = state.runs[at]!;
   const right = new Run(run.s, run.c + offset, run.text.slice(offset), state);
   run.text = run.text.slice(0, offset);
   state.runs.splice(at + 1, 0, right);
-  if (indexed) state.node.doc["_letters"]?.add(right);
+  state.node.doc["_letters"]?.add(right);
 }
 
 /** Puts `text`, letters of session `s` from clock `c`, at `index`. */
@@ -305,7 +309,6 @@ function place(
   text: string,
   s: number,
   c: number,
-  indexed: boolean,
 ) {
   const runs = state.runs;
   let run: Run | undefined = new Run(s, c, text, state);
@@ -318,7 +321,7 @@ function place(
     const left = runs[at]!;
     const offset = index - state.before;
     if (offset < left.text.length) {
-      split(state, at, offset, indexed);
+      split(state, at, offset);
       runs.splice(at + 1, 0, run);
     } else if (left.s === s && left.c + offset === c) {
       // Typing after the letter typed before, the most common edit.
@@ -326,7 +329,7 @@ function place(
       run = undefined;
     } else runs.splice(at + 1, 0, run);
   }
-  if (run && indexed) state.node.doc["_letters"]?.add(run);
+  if (run) state.node.doc["_letters"]?.add(run);
   state.length += text.length;
   state.cached = undefined;
 }
@@ -335,22 +338,17 @@ function place(
  * Takes `length` letters from `index` out of the text. Returns them as runs,
  * in order, the ones that follow in clock joined.
  */
-function cut(
-  state: TextState,
-  index: number,
-  length: number,
-  indexed: boolean,
-) {
+function cut(state: TextState, index: number, length: number) {
   const runs = state.runs;
-  const letters = indexed ? state.node.doc["_letters"] : undefined;
+  const letters = state.node.doc["_letters"];
   let at = seek(state, index);
   const offset = index - state.before;
-  if (offset > 0) split(state, at++, offset, indexed);
+  if (offset > 0) split(state, at++, offset);
   const taken: Run[] = [];
   let end = at;
   for (let left = length; left > 0; end++) {
     const run = runs[end]!;
-    if (run.text.length > left) split(state, end, left, indexed);
+    if (run.text.length > left) split(state, end, left);
     left -= run.text.length;
     letters?.remove(run);
     const last = taken[taken.length - 1];
@@ -420,8 +418,8 @@ function addChange(state: TextState, splice: Splice) {
 }
 
 /**
- * Inserts `text` at `index`, its letters of session `s` from clock `c`. In
- * the document, it records the insert, its inverse and the change.
+ * Inserts `text` at `index`, its letters of session `s` from clock `c`, and
+ * records the insert, its inverse and the change.
  */
 function insertLetters(
   state: TextState,
@@ -431,61 +429,52 @@ function insertLetters(
   c: number,
 ) {
   const node = state.node;
-  const attached = isAttached(node);
-  if (attached) {
-    const doc = node.doc;
-    const run = new Run(s, c, text, state);
-    const first = idOf(doc, run, 0);
-    if (state.length === 0)
-      doc["_operations"][0].push([
-        4,
-        first,
-        0,
-        0,
-        text,
-        nodeRef(node),
-        state.key,
-      ]);
-    else
-      doc["_operations"][0].push([
-        4,
-        first,
-        index > 0 ? letterAt(state, index - 1) : 0,
-        index < state.length ? letterAt(state, index) : 0,
-        text,
-      ]);
-    if (!doc["_diff"].inserted.has(node.id)) {
-      const last = text.length > 1 ? idOf(doc, run, text.length - 1) : 0;
-      const inverse = doc["_inverseOperations"][0];
-      const before = inverse[inverse.length - 1];
-      // Right after the letters the delete before deletes (an undo that
-      // puts back a long delete, or typing): one delete for them all.
-      if (
-        before?.[0] === 1 &&
-        index > 0 &&
-        (before[2] || before[1]) === letterAt(state, index - 1)
-      )
-        inverse[inverse.length - 1] = [1, before[1], last || first];
-      else inverse.push([1, first, last]);
-      doc["_diff"].updated.add(node.id);
-    }
-    addChange(state, [index, "", text]);
+  const doc = node.doc;
+  const run = new Run(s, c, text, state);
+  const first = idOf(doc, run, 0);
+  if (state.length === 0)
+    doc["_operations"][0].push([
+      4,
+      first,
+      0,
+      0,
+      text,
+      nodeRef(node),
+      state.key,
+    ]);
+  else
+    doc["_operations"][0].push([
+      4,
+      first,
+      index > 0 ? letterAt(state, index - 1) : 0,
+      index < state.length ? letterAt(state, index) : 0,
+      text,
+    ]);
+  if (!doc["_diff"].inserted.has(node.id)) {
+    const last = text.length > 1 ? idOf(doc, run, text.length - 1) : 0;
+    const inverse = doc["_inverseOperations"][0];
+    const before = inverse[inverse.length - 1];
+    // Right after the letters the delete before deletes (an undo that puts
+    // back a long delete, or typing): one delete for them all.
+    if (
+      before?.[0] === 1 &&
+      index > 0 &&
+      (before[2] || before[1]) === letterAt(state, index - 1)
+    )
+      inverse[inverse.length - 1] = [1, before[1], last || first];
+    else inverse.push([1, first, last]);
+    doc["_diff"].updated.add(node.id);
   }
-  place(state, index, text, s, c, attached);
+  addChange(state, [index, "", text]);
+  place(state, index, text, s, c);
 }
 
 /**
- * Deletes `length` letters from `index`. In the document, it records the
- * delete, its inverse (inserts that put the letters back with their ids) and
- * the change.
+ * Deletes `length` letters from `index`, and records the delete, its inverse
+ * (inserts that put the letters back with their ids) and the change.
  */
 function deleteLetters(state: TextState, index: number, length: number) {
   const node = state.node;
-  const attached = isAttached(node);
-  if (!attached) {
-    cut(state, index, length, false);
-    return;
-  }
   const doc = node.doc;
   const prev = index > 0 ? letterAt(state, index - 1) : 0;
   const next =
@@ -493,7 +482,7 @@ function deleteLetters(state: TextState, index: number, length: number) {
   const first = letterAt(state, index);
   const last = length > 1 ? letterAt(state, index + length - 1) : 0;
   doc["_operations"][0].push([1, first, last]);
-  const taken = cut(state, index, length, true);
+  const taken = cut(state, index, length);
   let deleted = "";
   for (const run of taken) deleted += run.text;
   if (!doc["_diff"].inserted.has(node.id)) {
@@ -506,12 +495,19 @@ function deleteLetters(state: TextState, index: number, length: number) {
   addChange(state, [index, deleted, ""]);
 }
 
+const outOfRange = (what: string, index: number, length: number) =>
+  new RangeError(
+    `The ${what} ${index} is out of the range of a text of length ${length}.`,
+  );
+const splitPair = (what: string, index: number) =>
+  new RangeError(
+    `The ${what} ${index} splits a surrogate pair: a letter written with two code units.`,
+  );
+
 /** Throws unless `index` is a place of the text that splits no letter pair. */
 function checkIndex(state: TextState, index: number, what: string) {
   if (!Number.isInteger(index) || index < 0 || index > state.length)
-    throw new RangeError(
-      `The ${what} ${index} is out of the range of a text of length ${state.length}.`,
-    );
+    throw outOfRange(what, index, state.length);
   if (index === 0 || index === state.length) return;
   const run = state.runs[seek(state, index - 1)]!;
   const offset = index - 1 - state.before;
@@ -521,9 +517,42 @@ function checkIndex(state: TextState, index: number, what: string) {
       ? run.text.charCodeAt(offset + 1)
       : state.runs[state.at + 1]!.text.charCodeAt(0);
   if (isHighSurrogate(high) && isLowSurrogate(low))
-    throw new RangeError(
-      `The ${what} ${index} splits a surrogate pair: a letter written with two code units.`,
-    );
+    throw splitPair(what, index);
+}
+
+/** `checkIndex` for the string of a text. */
+function checkPlace(text: string, index: number, what: string) {
+  if (!Number.isInteger(index) || index < 0 || index > text.length)
+    throw outOfRange(what, index, text.length);
+  if (splitsPair(text, index)) throw splitPair(what, index);
+}
+
+/** Throws unless `length` letters can be deleted. */
+function checkLength(length: number) {
+  if (!Number.isInteger(length) || length < 0)
+    throw new RangeError(`Cannot delete ${length} letters.`);
+}
+
+/**
+ * Replaces `length` letters from `index` with `text` in the text of a node
+ * that is not in the document. It stays a string: its letters take their ids
+ * when the node is inserted (see `attach`), after the ids of the nodes.
+ */
+function editLoose(
+  node: DocNode,
+  key: string,
+  index: number,
+  length: number,
+  text: string,
+) {
+  const value = valueOf(node, key);
+  checkPlace(value, index, "index");
+  checkLength(length);
+  checkPlace(value, index + length, "end");
+  withTransaction(node.doc, () => {
+    node["_values"]()[key] =
+      value.slice(0, index) + text + value.slice(index + length);
+  });
 }
 
 /** Inserts `text` at `index` with new ids of the document's session. */
@@ -606,7 +635,8 @@ const engine: TextEngine = {
   methods: (node, key): TextMethods => ({
     get: () => valueOf(node, key),
     getPrev: () => {
-      if (!node.doc["_diff"].updated.has(node.id))
+      const id = node["_id"];
+      if (id === undefined || !node.doc["_diff"].updated.has(id))
         throw new Error(getPrevError);
       const current = valueOf(node, key);
       let prev = current;
@@ -620,21 +650,28 @@ const engine: TextEngine = {
     },
     set: (value, caret) =>
       withTransaction(node.doc, () => {
+        if (!isAttached(node)) {
+          const current = valueOf(node, key);
+          const next = typeof value === "function" ? value(current) : value;
+          if (next !== current) node["_values"]()[key] = next;
+          return;
+        }
         const state = stateOf(node, key);
         const next = typeof value === "function" ? value(textOf(state)) : value;
         if (next !== textOf(state)) replace(state, next, caret);
       }),
     insert: (index, text) => {
+      if (!isAttached(node)) return editLoose(node, key, index, 0, text);
       checkIndex(stateOf(node, key), index, "index");
       withTransaction(node.doc, () =>
         insertNew(stateOf(node, key), index, text),
       );
     },
     delete: (index, length) => {
+      if (!isAttached(node)) return editLoose(node, key, index, length, "");
       const state = stateOf(node, key);
       checkIndex(state, index, "index");
-      if (!Number.isInteger(length) || length < 0)
-        throw new RangeError(`Cannot delete ${length} letters.`);
+      checkLength(length);
       checkIndex(state, index + length, "end");
       withTransaction(node.doc, () => {
         if (length > 0) deleteLetters(stateOf(node, key), index, length);

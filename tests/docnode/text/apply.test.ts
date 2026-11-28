@@ -226,7 +226,9 @@ describe("applying letter rows", () => {
     const session = node.id.split(".")[0]!;
     doc.applyOperations([`${session}.z`, `@${node.id},body|q`]);
     expect(node.state.body.get()).toBe("q");
-    expect(doc.createNode(Paragraph).id.split(".")[0]).not.toBe(session);
+    const fresh = doc.createNode(Paragraph);
+    doc.root.append(fresh);
+    expect(fresh.id.split(".")[0]).not.toBe(session);
   });
 
   test("the letters of a deleted node leave the document, and an undo brings them back", () => {

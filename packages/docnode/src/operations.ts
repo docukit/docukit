@@ -123,13 +123,13 @@ export const onInsertRange = (
       newParent = target.parent!;
       break;
   }
+  // New nodes take their ids first, in the order of the rows below, and
+  // then their texts' letters, in the order of their rows: new ids follow
+  // the rows, and a batch writes only the first one.
+  takeIds(nodes);
   doc["_operations"][0].push([
     0,
-    nodes.map((node) => {
-      // A new node takes its id here, so that new ids follow the rows.
-      node["_takeId"]();
-      return [node.id, node.type];
-    }),
+    nodes.map((node) => [node.id, node.type]),
     newParent === doc.root ? 0 : newParent.id,
     newPrev?.id ?? 0,
     newNext?.id ?? 0,
@@ -147,6 +147,17 @@ export const onInsertRange = (
   }
 };
 
+/** Gives ids to the new ones of `nodes` and their descendants, as rows list them. */
+function takeIds(nodes: DocNode[]) {
+  for (const node of nodes) node["_takeId"]();
+  for (const node of nodes) takeChildIds(node);
+}
+
+function takeChildIds(parent: DocNode) {
+  for (let child = parent.first; child; child = child.next) child["_takeId"]();
+  for (let child = parent.first; child; child = child.next) takeChildIds(child);
+}
+
 /**
  * The descendants of an inserted node, in the order a walk of them finds
  * them: each list of children is inserted when its first child is found.
@@ -155,11 +166,8 @@ function onInsertChildren(doc: Doc, parent: DocNode) {
   const first = parent.first;
   if (!first) return;
   const written: [string, string][] = [];
-  for (let child: DocNode | undefined = first; child; child = child.next) {
-    child["_takeId"]();
+  for (let child: DocNode | undefined = first; child; child = child.next)
     written.push([child.id, child.type]);
-  }
-  copyInsertedToDiff(first);
   doc["_operations"][0].push([0, written, parent.id, 0, 0]);
   // After the insert of the list: the inserts of its texts' letters follow it.
   copyInsertedToDiff(first);

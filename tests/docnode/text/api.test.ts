@@ -135,7 +135,41 @@ describe("text()", () => {
     expect(node.state.body.get()).toBe("ola");
     expect(node.state.body.changes()).toStrictEqual([]);
     const [, ...rows] = batchOf(doc, () => doc.root.append(node));
-    expect(rows).toStrictEqual([[0, -2, "p"], ":1,3:1,2>@-2,body|ola"]);
+    // The node takes its id when inserted, and then its letters, in order.
+    expect(rows).toStrictEqual([[0, -1, "p"], "@-1,body|ola"]);
+  });
+
+  test("set on a text of a node not inserted yet", () => {
+    const doc = textDoc();
+    const node = doc.createNode(Paragraph);
+    const { body } = node.state;
+    body.set("ab");
+    body.set((prev) => `${prev}c`);
+    body.set("abc");
+    expect([body.get(), body.length]).toStrictEqual(["abc", 3]);
+    expect(() => body.getPrev()).toThrowError("getPrev cannot be used");
+    const [, ...rows] = batchOf(doc, () => doc.root.append(node));
+    expect(rows).toStrictEqual([[0, -1, "p"], "@-1,body|abc"]);
+  });
+
+  test("a subtree takes the ids of its nodes first, and then of its letters", () => {
+    const doc = textDoc();
+    const [parent, child] = [
+      doc.createNode(Paragraph),
+      doc.createNode(Paragraph),
+    ];
+    child.state.body.insert(0, "cd");
+    parent.state.body.insert(0, "ab");
+    parent.append(child);
+    const [head, ...rows] = batchOf(doc, () => doc.root.append(parent));
+    // No letter row says where its letters start: they follow each other.
+    expect(rows).toStrictEqual([
+      [0, -2, "p"],
+      "@-2,body|ab",
+      [0, -1, "p", -2],
+      "@-1,body|cd",
+    ]);
+    expect(head).toBe(`${parent.id.split(".")[0]}.1`);
   });
 
   test("a copy of a node copies its text, with new ids", () => {
@@ -194,13 +228,17 @@ describe("text()", () => {
   });
 });
 
-describe("text() errors", () => {
+describe.each([
+  ["in the document", () => docWithParagraph().body],
+  // A string until the node is inserted, checked the same.
+  ["of a node not inserted", () => textDoc().createNode(Paragraph).state.body],
+])("text() errors, %s", (_, emptyBody) => {
   test.each([
     [-1, "The index -1 is out of the range of a text of length 2."],
     [3, "The index 3 is out of the range of a text of length 2."],
     [0.5, "The index 0.5 is out of the range of a text of length 2."],
   ])("insert at %d", (index, error) => {
-    const { body } = docWithParagraph();
+    const body = emptyBody();
     body.insert(0, "ab");
     expect(() => body.insert(index, "x")).toThrowError(error);
   });
@@ -211,13 +249,13 @@ describe("text() errors", () => {
     [1, 2, "The end 3 is out of the range of a text of length 2."],
     [-1, 1, "The index -1 is out of the range of a text of length 2."],
   ])("delete at %d %d letters", (index, length, error) => {
-    const { body } = docWithParagraph();
+    const body = emptyBody();
     body.insert(0, "ab");
     expect(() => body.delete(index, length)).toThrowError(error);
   });
 
   test("an edit cannot split a surrogate pair", () => {
-    const { body } = docWithParagraph();
+    const body = emptyBody();
     body.insert(0, `a${THUMB}`);
     body.insert(3, THUMB);
     const error = "splits a surrogate pair";
@@ -230,7 +268,9 @@ describe("text() errors", () => {
     body.delete(1, 4);
     expect(body.get()).toBe("a");
   });
+});
 
+describe("text() errors", () => {
   test("an empty insert or delete changes nothing", () => {
     const { doc, body } = docWithParagraph();
     expect(batchOf(doc, () => body.insert(0, "a")).length).toBe(2);

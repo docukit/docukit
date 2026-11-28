@@ -102,10 +102,11 @@ describe("letter rows", () => {
     body.insert(0, "abc");
     const rows = rowsOf(doc, () => {
       body.insert(0, "X");
-      doc.createNode(Paragraph);
+      doc.root.append(doc.createNode(Paragraph));
       body.insert(4, "Y");
     });
-    expect(rows).toStrictEqual([",-3|X", "3>-1,0|Y"]);
+    // The node inserted between them takes the clock after "X".
+    expect(rows).toStrictEqual([",-3|X", [0, 2, "p", 0, -4], "3>-1,0|Y"]);
   });
 
   test("letters of another session are whole ids", () => {
@@ -121,7 +122,7 @@ describe("letter rows", () => {
   test("merged batches keep where each insert's letters start", () => {
     const { doc, body } = docWithParagraph();
     const a = batchOf(doc, () => body.insert(0, "a"));
-    doc.createNode(Paragraph);
+    batchOf(doc, () => doc.root.append(doc.createNode(Paragraph)));
     const b = batchOf(doc, () => body.insert(1, "b"));
     const merged = mergeOperations(a, b);
     expect(merged.slice(1)).toStrictEqual([":1,3>@-1,body|ab"]);
