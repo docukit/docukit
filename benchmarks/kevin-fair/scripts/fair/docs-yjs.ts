@@ -1,6 +1,7 @@
 // App-shaped documents probe for Yjs (same content as the DocNode probe: docs-yjs-tree.ts, the same seeded tree).
 // node --expose-gc --max-old-space-size=2048 docs-yjs.ts make <yjs13|yjs14> <kind> <file>
 // node --expose-gc --max-old-space-size=2048 docs-yjs.ts measure <yjs13|yjs14> <kind> <file> <out.json>
+// env FAIR_WARM (default 2): warm-up loads and saves before the measured ones.
 // `measure` has the same windows as the DocNode probe, in a fresh process: load the stored doc (applyUpdateV2),
 // memory (first load and, after a throw-away load, the warm one), then save (encodeStateAsUpdateV2 of the loaded doc), gzip.
 import { readFileSync, writeFileSync } from "node:fs";
@@ -60,6 +61,12 @@ if (mode === "make") {
   const bytes = new Uint8Array(readFileSync(file));
   const nodes = Number(readFileSync(file + ".nodes", "utf8"));
   const g = (globalThis as any).gc as () => void;
+  // Warm-up (FAIR_WARM, default 2): load and save the same document first, so the code is already optimized.
+  for (let w = 0; w < Number(process.env.FAIR_WARM ?? 2); w++) {
+    const warm = new Y.Doc();
+    Y.applyUpdateV2(warm, bytes);
+    Y.encodeStateAsUpdateV2(warm);
+  }
   g();
   g();
   const h0 = process.memoryUsage().heapUsed;

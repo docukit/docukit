@@ -1,8 +1,9 @@
 // DocNode against DocNode (NEW against BASE): time and thread instructions, same statistics.
-// A change counts as better / worse only if time and instructions point the same way (both "win" or both "loss").
+// A change counts as better / worse only if time and instructions point the same way (both "better" or both "worse").
+// A run still busy after its retries (meta.repeat) gives "no verdict: busy machine".
 // usage: BASE=<base> NEW=<new> node ic-compare.ts <dir>   (needs kevin-A/B, ic-A/B and, if present, docs-A/B, docs-ic-A/B)
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { compareCell, num } from "./stats.ts";
+import { judge, roundMap, num, NO_OUTCOME_TINY } from "./stats.ts";
 const DIR = process.argv[2]!,
   NEW = process.env.NEW!,
   BASE = process.env.BASE!;
@@ -11,21 +12,32 @@ const load = (f: string) =>
   existsSync(`${DIR}/${f}`)
     ? JSON.parse(readFileSync(`${DIR}/${f}`, "utf8"))
     : undefined;
-const samples = (run: any, row: string, lib: string, key: string) =>
-  (run?.timing?.[row]?.[lib]?.samples ?? [])
-    .map((s: any) => s.raw[`${row} (${key})`])
-    .filter((v: unknown) => v !== undefined)
-    .map(num) as number[];
-const judge = (t: string, i: string) =>
-  t === "win" && i === "win"
-    ? "better"
-    : t === "loss" && i === "loss"
-      ? "worse"
-      : t === "tie" && i === "tie"
-        ? "same"
-        : t === "tie (unstable)" || i === "tie (unstable)"
-          ? "inconclusive (unstable)"
-          : "inconclusive (time and instructions disagree)"; // DocNode against DocNode (NEW against BASE): time and thread instructions, same statistics.
+const series = (a: any, b: any, row: string, lib: string, key: string) => {
+  const get = (run: any) =>
+    roundMap(run?.timing?.[row]?.[lib]?.samples, (raw) =>
+      raw[`${row} (${key})`] === undefined
+        ? undefined
+        : num(raw[`${row} (${key})`]),
+    );
+  return { A: get(a), B: get(b) };
+};
+const judgement = (t: string, i: string) =>
+  t === NO_OUTCOME_TINY
+    ? "no outcome (both < 0.1 ms)"
+    : t.startsWith("no verdict")
+      ? t
+      : i.startsWith("no verdict")
+        ? `${i} (instructions)`
+        : t === "better" && i === "better"
+          ? "better"
+          : t === "worse" && i === "worse"
+            ? "worse"
+            : t === "equivalent" && i === "equivalent"
+              ? "same"
+              : t === "inconclusive" || i === "inconclusive"
+                ? "inconclusive"
+                : "inconclusive (time and instructions disagree)";
+const busy = (...runs: any[]) => runs.some((r) => r?.meta?.repeat);
 const out: any = { new: NEW, base: BASE, kevin: {}, docs: {} };
 const [kA, kB, iA, iB] = [
   load("kevin-A.json"),
@@ -46,27 +58,20 @@ if (kA && kB && iA && iB)
         r.startsWith(row.slice(0, row.indexOf("]") + 1)),
       ) ?? row;
     for (const [col, tk, ik] of KCOLS as [string, string, string][]) {
-      const t = compareCell(
-        samples(kA, full, NEW, tk),
-        samples(kB, full, NEW, tk),
-        samples(kA, full, BASE, tk),
-        samples(kB, full, BASE, tk),
-        true,
+      const t = judge(
+        series(kA, kB, full, NEW, tk),
+        { [BASE]: series(kA, kB, full, BASE, tk) },
+        { tiny: true, busy: busy(kA, kB) },
       );
-      const i = compareCell(
-        samples(iA, row, NEW, ik),
-        samples(iB, row, NEW, ik),
-        samples(iA, row, BASE, ik),
-        samples(iB, row, BASE, ik),
-        false,
+      const i = judge(
+        series(iA, iB, row, NEW, ik),
+        { [BASE]: series(iA, iB, row, BASE, ik) },
+        { tiny: false, busy: busy(iA, iB) },
       );
       (out.kevin[row] ??= {})[col] = {
         time: t,
         ins: i,
-        judgement:
-          t.verdict === "no %"
-            ? "no % (both < 0.1 ms)"
-            : judge(t.verdict, i.verdict),
+        judgement: judgement(t.outcome, i.outcome),
       };
     }
   }
@@ -79,31 +84,27 @@ const [dA, dB, diA, diB] = [
 if (dA && dB && diA && diB)
   for (const kind of Object.keys(diA.timing))
     for (const col of ["load", "save", "fromJSON", "toJSON"]) {
-      const g = (run: any, lib: string, k: string) =>
-        (run.timing[kind]?.[lib]?.samples ?? [])
-          .map((s: any) => s.raw[k])
-          .filter((v: unknown): v is number => typeof v === "number");
-      const t = compareCell(
-        g(dA, NEW, col),
-        g(dB, NEW, col),
-        g(dA, BASE, col),
-        g(dB, BASE, col),
-        true,
+      const g = (a: any, b: any, lib: string, k: string) => {
+        const get = (run: any) =>
+          roundMap(run.timing[kind]?.[lib]?.samples, (raw) =>
+            typeof raw[k] === "number" ? raw[k] : undefined,
+          );
+        return { A: get(a), B: get(b) };
+      };
+      const t = judge(
+        g(dA, dB, NEW, col),
+        { [BASE]: g(dA, dB, BASE, col) },
+        { tiny: true, busy: busy(dA, dB) },
       );
-      const i = compareCell(
-        g(diA, NEW, col + "Ins"),
-        g(diB, NEW, col + "Ins"),
-        g(diA, BASE, col + "Ins"),
-        g(diB, BASE, col + "Ins"),
-        false,
+      const i = judge(
+        g(diA, diB, NEW, col + "Ins"),
+        { [BASE]: g(diA, diB, BASE, col + "Ins") },
+        { tiny: false, busy: busy(diA, diB) },
       );
       (out.docs[kind] ??= {})[col] = {
         time: t,
         ins: i,
-        judgement:
-          t.verdict === "no %"
-            ? "no % (both < 0.1 ms)"
-            : judge(t.verdict, i.verdict),
+        judgement: judgement(t.outcome, i.outcome),
       };
     }
 writeFileSync(`${DIR}/fair-ic-summary.json`, JSON.stringify(out, null, 1));

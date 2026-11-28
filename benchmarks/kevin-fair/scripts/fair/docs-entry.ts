@@ -2,6 +2,7 @@
 // fresh process and times load / save, with FAIR_IC=1 also the thread's instruction count of each window.
 // node --expose-gc --max-old-space-size=2048 <bundle> make <kind> <file>
 // node --expose-gc --max-old-space-size=2048 <bundle> measure <kind> <file> <out.json>
+// env FAIR_WARM (default 2): warm-up loads and saves before the measured ones.
 // kinds: explorer-ulid (file-explorer tree, 2,000 nodes, ULID ids from a custom generator), explorer
 // (same tree, DocNode's default ids), lexical (~10,000 docnode-lexical nodes).
 import { Doc, defineNode, defineState, string } from "@docukit/docnode";
@@ -175,6 +176,13 @@ if (mode === "make") {
 } else {
   const text = readFileSync(file, "utf8");
   const g = (globalThis as any).gc as () => void;
+  // Warm-up (FAIR_WARM, default 2): load and save the same document first, so the code is already optimized.
+  const id = readFileSync(file + ".id", "utf8");
+  for (let w = 0; w < Number(process.env.FAIR_WARM ?? 2); w++) {
+    const warm = Doc.fromJSON({ ...configs[kind](), id }, JSON.parse(text));
+    warm.forceCommit();
+    JSON.stringify(warm.toJSON());
+  }
   g();
   g();
   const h0 = process.memoryUsage().heapUsed;

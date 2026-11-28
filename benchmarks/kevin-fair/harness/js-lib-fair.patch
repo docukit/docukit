@@ -93,7 +93,7 @@
  export * from './b1.js'
 --- js-lib/utils.js
 +++ js-lib-fair/utils.js
-@@ -1,3 +1,11 @@
+@@ -1,3 +1,12 @@
 +// FAIR COPY of upstream js-lib/utils.js (crdt-benchmarks @796f7025). Prints 2 decimals instead of rounding. JavaScript
 +// because the upstream harness is plain JS and this copy must stay line-for-line comparable with it.
 +// Changes (the upstream columns are NOT changed):
@@ -102,13 +102,16 @@
 +//  - FAIR_IC=1: every window also records the thread's instruction count (`... ins`), see scripts/fair/icount.ts.
 +//  - FAIR_GC=1: every window also records the bytes the code allocated (`... alloc`), and, after `finishGc()`, the GC
 +//    pause time that fell inside it (`... gc`) and the window minus those pauses (`... noGcPause`).
++//  - resetResults() forgets every result and GC window, so that warm-up passes (scripts/fair/child.ts) are not kept.
  import * as prng from 'lib0/prng'
  import * as metric from 'lib0/metric'
  import * as math from 'lib0/math'
-@@ -40,13 +48,65 @@
+@@ -38,15 +47,72 @@
+     }
+     fs.writeFileSync(path, JSON.stringify(json, null, 2))
    }
- }
- 
++}
++
 +// Instruction counter (only when FAIR_IC=1; a top-level await keeps the normal path free of any extra import).
 +const IC = typeof process !== 'undefined' && process.env.FAIR_IC === '1' ? (await import('../../scripts/fair/icount.ts')).counts : null
 +// GC tracking (only when FAIR_GC=1).
@@ -132,13 +135,18 @@
 +    benchmarkResults[`${w.key} noGcPause)`] = { [w.libname]: w.t1 - w.t0 - pause }
 +  }
 +}
++/** Forgets the results and GC windows recorded so far (after the warm-up passes). */
++export const resetResults = () => {
++  for (const key in benchmarkResults) delete benchmarkResults[key]
++  gcWindows.length = 0
+ }
 +const columnOf = id => id.slice(id.lastIndexOf(' (') + 2, -1)
 +const rowOf = id => id.slice(0, id.lastIndexOf(' ('))
 +const record = (libname, id, ms, ins) => {
 +  benchmarkResults[`${rowOf(id)} (${columnOf(id)} exact)`] = { [libname]: ms }
 +  if (ins !== undefined) benchmarkResults[`${rowOf(id)} (${columnOf(id)} ins)`] = { [libname]: ins }
 +}
-+
+ 
 +const recordGc = (libname, id, t0, t1, a0) => {
 +  const a1 = allocated()
 +  const key = `${rowOf(id)} (${columnOf(id)}`
@@ -173,7 +181,7 @@
  /**
   * @param {string} name
   * @param {function(string):boolean} filter
-@@ -83,7 +143,7 @@
+@@ -83,7 +149,7 @@
      }
      const diff = process.memoryUsage().heapUsed - startHeapUsed
      const p = metric.prefix(diff)

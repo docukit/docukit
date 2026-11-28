@@ -1,8 +1,10 @@
 // The official local runner. One process per library and round, all rows in that process, same rows and order for every
 // library, rounds interleave the libraries and alternate their order, one process at a time.
 // env: W (work folder, default: benchmarks/kevin-fair), OUT, SUBJECTS (comma list), ROWS (comma list of row prefixes), ROUNDS (30), MODE (time | extra),
-//      HARNESS (fair), FAIR_IC (0/1), LABEL (free text saved in meta).
+//      HARNESS (fair), FAIR_IC (0/1), FAIR_GC (0/1: GC diagnostics, never for an outcome), EXTRA_FLAGS (Node flags,
+//      for example the second heap history's `--import .../heap-preload.ts`), LABEL (free text saved in meta).
 // Exit code 3 = "repeat this run": the machine was busy (load average > 6 in more than a quarter of the processes).
+// The file keeps `meta.repeat` = true; compare.ts never uses such a run for a verdict.
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { loadavg } from "node:os";
@@ -28,6 +30,7 @@ const acc: any = {
     rows: ROWS.split(","),
     harness: process.env.HARNESS ?? "fair",
     fairIc: process.env.FAIR_IC === "1",
+    fairGc: process.env.FAIR_GC === "1",
     flags: [
       "--expose-gc",
       "--max-old-space-size=2048",

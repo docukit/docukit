@@ -3,6 +3,9 @@
 //  time : upstream columns + exact windows + loadNoGc (+ ins when FAIR_IC=1) + memFair + memFairWarm.
 //  extra: one row per process; wraps applyUpdate/getEncodedState to count the update stream and the stored doc
 //         (bytes and gzip-9). Never used for timing.
+// env FAIR_WARM (default 2): warm-up passes before the measured one. Each runs the same rows with the plain factory and
+//  its results are dropped, so every library is measured with its code already optimized, like a long session. The
+//  random inputs come from one seeded generator, so the measured pass gets the same inputs for every library.
 import { writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import { resolve } from "node:path";
@@ -15,6 +18,7 @@ const [mode, subject, rowsArg, out] = process.argv.slice(2) as [
   string,
   string,
 ];
+const WARM = Number(process.env.FAIR_WARM ?? 2);
 const prefixes = rowsArg.split(",");
 const wanted = (n: string) => prefixes.some((p) => n.startsWith(p));
 const toBytes = (u: any) =>
@@ -113,6 +117,8 @@ try {
   console.info = () => {};
   console.log = () => {};
   try {
+    for (let w = 0; w < WARM; w++) await lib.runBenchmarks(inner, wanted);
+    lib.resetResults();
     await lib.runBenchmarks(factory, wanted);
     if (lib.finishGc) await lib.finishGc();
   } finally {

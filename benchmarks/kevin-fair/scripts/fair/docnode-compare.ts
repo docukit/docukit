@@ -1,13 +1,14 @@
 // The one way to tell whether a DocNode change is faster or slower. It runs the whole fair method on two DocuKit
 // checkouts (BASE and NEW): runs A and B of 30 rounds, instructions A and B of 15 rounds, and the fixed statistics.
-// It prints only verdicts: better / worse / same / inconclusive, with the median % next to "better" or "worse" only.
+// It prints only verdicts: better / worse / same / inconclusive / no verdict, with the % (ratio of means) next to
+// "better" or "worse" only.
 // A number used for a decision or a PR description comes from here, nowhere else.
 //
 // usage: node scripts/fair/docnode-compare.ts <base-tree> <new-tree> [--smoke]
 //   <tree>: a DocuKit checkout, for example a git worktree in trees/<name>.
 //   --smoke: 5 rounds, one run, no instructions. It names the cells that may have changed by more than 15 %, with no
 //   numbers, so that nobody reads it as a result: short runs move with GC and JIT timing (rules 5 and 6 in the
-//   README). Confirm with a full run.
+//   README). Small probes may flag, never decide. Confirm with a full run.
 // env: OUT_DIR (default out/docnode-compare), ROUNDS (30), IC_ROUNDS (15), QUIET_LOAD (4): before each run, wait up to
 //   30 minutes for the 1-minute load average to drop under it, so that a busy machine does not burn the run.
 import { spawnSync } from "node:child_process";
@@ -15,7 +16,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { loadavg } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { med, num } from "./stats.ts";
+import { mean, num } from "./stats.ts";
 
 const W = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const args = process.argv.slice(2);
@@ -73,7 +74,8 @@ const waitQuiet = () => {
     sleep(30_000);
   }
 };
-// run.ts exits with 3 when the machine was busy (rule 10): wait and repeat, up to 3 times.
+// run.ts exits with 3 when the machine was busy (rule 10): wait and repeat, up to 3 times. A run still busy keeps
+// `meta.repeat`, and ic-compare.ts gives its cells "no verdict: busy machine".
 const run = (out: string, env: Record<string, string>) => {
   for (let i = 1; i <= 3; i++) {
     waitQuiet();
@@ -103,7 +105,7 @@ if (smoke) {
     for (const [col, key] of COLS) {
       const b = values(row, BASE, key),
         n = values(row, NEW, key);
-      if (b.length && n.length && Math.abs(med(n) / med(b) - 1) > 0.15)
+      if (b.length && n.length && Math.abs(mean(n) / mean(b) - 1) > 0.15)
         changed.push(`${row.slice(0, row.indexOf("]") + 1)} ${col}`);
     }
   console.log(
@@ -143,5 +145,5 @@ for (const [row, cols] of Object.entries<any>(summary.kevin))
   }
 if (!ok)
   console.log(
-    "\nWARNING: the machine stayed busy (load > 6 in more than a quarter of the processes) in at least one run. Do not use these verdicts; run again on a quiet machine.",
+    '\nWARNING: the machine stayed busy (load > 6 in more than a quarter of the processes) in at least one run. Its cells say "no verdict: busy machine"; run again on a quiet machine.',
   );

@@ -1,7 +1,16 @@
-// Statistics of the app-shaped documents probe: same rule as the Kevin rows (median, % vs the best Yjs, 95 % bootstrap interval,
-// +-2 % band, A and B must agree). usage: node docs-compare.ts <dir with docs-A.json docs-B.json docs-ic-A.json docs-ic-B.json>
+// Statistics of the app-shaped documents probe: same rule as the Kevin rows (stats.ts: mean, % against the better Yjs,
+// pooled paired-block interval, +-2 % band, A/B drift check, flags). A run still busy after its retries gets
+// "no verdict: busy machine".
+// usage: node docs-compare.ts <dir with docs-A.json docs-B.json docs-ic-A.json docs-ic-B.json>
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { compareCell, med, spread } from "./stats.ts";
+import {
+  judge,
+  roundMap,
+  allValues,
+  spread,
+  mean,
+  type Runs,
+} from "./stats.ts";
 const DIR = process.argv[2]!;
 const load = (f: string) =>
   existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : undefined;
@@ -23,47 +32,41 @@ const summarize = (
   suffix = "",
 ) => {
   const cells: any = {};
+  const busy = !!(a.meta?.repeat || b.meta?.repeat);
   for (const kind of Object.keys(a.timing))
     for (const col of cols) {
       const get = (run: any, lib: string) =>
-        (run.timing[kind]?.[lib]?.samples ?? [])
-          .map((s: any) => s.raw[col.key + suffix])
-          .filter((v: unknown): v is number => typeof v === "number");
+        roundMap(run.timing[kind]?.[lib]?.samples, (raw) =>
+          typeof raw[col.key + suffix] === "number"
+            ? raw[col.key + suffix]
+            : undefined,
+        );
       const libs = Object.keys(a.timing[kind]);
-      const all = Object.fromEntries(
+      const all: Record<string, Runs> = Object.fromEntries(
         libs.map((l) => [l, { A: get(a, l), B: get(b, l) }]),
       );
-      const pooled = (l: string) => [...all[l]!.A, ...all[l]!.B];
-      const ys = yjs.filter((y) => pooled(y).length);
-      const ref = ys.length
-        ? ys.reduce((x, y) => (med(pooled(y)) < med(pooled(x)) ? y : x))
-        : undefined;
+      const ys = yjs.filter((y) => all[y] && allValues(all[y]!).length);
+      const refs = Object.fromEntries(ys.map((y) => [y, all[y]!]));
       for (const lib of libs) {
-        const p = pooled(lib);
+        const p = allValues(all[lib]!);
         if (!p.length) continue;
-        const base = {
-          median: med(p),
+        const extra = {
           min: Math.min(...p),
           max: Math.max(...p),
-          n: p.length,
           spread: spread(p),
         };
-        ((cells[kind] ??= {})[col.key] ??= {})[lib] = !ref
-          ? { ...base, verdict: "no %" }
-          : lib === ref
-            ? { ...base, ref, pct: 0, verdict: "reference" }
-            : {
-                ...base,
-                ref,
-                refMedian: med(pooled(ref)),
-                ...compareCell(
-                  all[lib]!.A,
-                  all[lib]!.B,
-                  all[ref]!.A,
-                  all[ref]!.B,
-                  col.unit === "ms",
-                ),
-              };
+        const j = judge(all[lib]!, ys.includes(lib) ? {} : refs, {
+          tiny: col.unit === "ms",
+          busy,
+        });
+        if (ys.includes(lib)) {
+          // A Yjs row: its mean only; the better Yjs is marked as the reference.
+          const best = ys.reduce((x, y) =>
+            mean(allValues(all[y]!)) < mean(allValues(all[x]!)) ? y : x,
+          );
+          j.outcome = lib === best ? "reference" : "other Yjs";
+        }
+        ((cells[kind] ??= {})[col.key] ??= {})[lib] = { ...j, ...extra };
       }
     }
   return cells;
