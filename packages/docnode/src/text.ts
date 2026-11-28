@@ -625,11 +625,13 @@ const splicesOf = (node: DocNode, key: string): readonly Splice[] =>
 
 /**
  * The string of a text that may not be a `TextState` yet: one never edited
- * of a node in a document is empty (see `stateOf`).
+ * of a node in a document is empty (see `stateOf`), and one of a node not
+ * inserted yet is a string (see `editLoose`).
  */
 function valueOf(node: DocNode, key: string) {
   const value = valueAt(node, key);
-  return value instanceof TextState ? textOf(value) : "";
+  if (value instanceof TextState) return textOf(value);
+  return typeof value === "string" ? value : "";
 }
 
 /** The error of a `letters` column that does not fit its texts. */
@@ -691,7 +693,8 @@ const engine: TextEngine = {
       })),
     get length() {
       const value = valueAt(node, key);
-      return value instanceof TextState ? value.length : 0;
+      if (value instanceof TextState) return value.length;
+      return typeof value === "string" ? value.length : 0;
     },
   }),
 
