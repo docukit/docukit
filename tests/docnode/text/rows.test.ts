@@ -7,6 +7,7 @@ import { describe, expect, test } from "vitest";
 import {
   Paragraph,
   batchOf,
+  bodies,
   docWithParagraph,
   first,
   orderedServer,
@@ -117,13 +118,13 @@ describe("letter rows", () => {
     expect(batch!.slice(1)).toStrictEqual([`${prev}|x`]);
   });
 
-  test("merged batches keep where each row's letters start", () => {
+  test("merged batches keep where each insert's letters start", () => {
     const { doc, body } = docWithParagraph();
     const a = batchOf(doc, () => body.insert(0, "a"));
     doc.createNode(Paragraph);
     const b = batchOf(doc, () => body.insert(1, "b"));
     const merged = mergeOperations(a, b);
-    expect(merged.slice(1)).toStrictEqual([a[1], "3>1,0|b"]);
+    expect(merged.slice(1)).toStrictEqual([":1,3>@-1,body|ab"]);
     expect(decode(merged)[0]).toStrictEqual([...decode(a)[0], ...decode(b)[0]]);
   });
 
@@ -148,6 +149,90 @@ describe("letter rows", () => {
     expect(decode(["a.5", "-1|b", ",-2|c"])[0]).toStrictEqual([
       [4, "a.5", "a.4", "a.5", "b"],
       [4, "a.6", 0, "a.3", "c"],
+    ]);
+  });
+});
+
+describe("letter rows of an undo", () => {
+  /** A text "abcd" whose letters are four runs, deleted. */
+  function deletedRuns() {
+    const { doc, body } = docWithParagraph(0);
+    body.insert(0, "ac");
+    doc.forceCommit();
+    body.insert(1, "b");
+    doc.forceCommit();
+    body.insert(3, "d");
+    doc.forceCommit();
+    body.delete(0, 4);
+    doc.forceCommit();
+    return { doc, body };
+  }
+
+  test("letters of many runs come back in one row", () => {
+    const { doc, body } = deletedRuns();
+    expect(rowsOf(doc, () => doc.undoManager.undo())).toStrictEqual([
+      ":1,3:1,2:1,4>@-1,body|abcd",
+    ]);
+    expect(body.get()).toBe("abcd");
+  });
+
+  test("their redo is one delete", () => {
+    const { doc, body } = deletedRuns();
+    doc.undoManager.undo();
+    expect(batchOf(doc, () => doc.undoManager.redo()).slice(1)).toStrictEqual([
+      1, 1, 4,
+    ]);
+    expect(body.get()).toBe("");
+  });
+
+  test("letters of many runs come back between their neighbours", () => {
+    const { doc, body } = docWithParagraph(0);
+    body.insert(0, "acZ");
+    doc.forceCommit();
+    body.insert(1, "b");
+    doc.forceCommit();
+    body.delete(0, 3);
+    doc.forceCommit();
+    expect(rowsOf(doc, () => doc.undoManager.undo())).toStrictEqual([
+      ":1,4:1,2>,3|abc",
+    ]);
+    expect(body.get()).toBe("abcZ");
+  });
+
+  test("a run of another session starts at its whole id", () => {
+    const doc = textDoc({
+      undoManager: { maxUndoSteps: 10, mergeInterval: 0 },
+    });
+    const other = textDoc();
+    other.applyOperations(batchOf(doc, () => paragraph(doc, "hi")));
+    other.forceCommit();
+    const typed = batchOf(other, () => first(other).state.body.insert(1, "XY"));
+    doc.applyOperations(typed);
+    doc.forceCommit();
+    first(doc).state.body.delete(0, 4);
+    doc.forceCommit();
+    const batch = batchOf(doc, () => doc.undoManager.undo());
+    // "h" and "i" are of the session of `doc`, the head's; "XY" are not.
+    const xy = String(decode(batch)[0][1]![1]);
+    expect(xy).toContain(".");
+    expect(batch.slice(1)).toStrictEqual([`:1,${xy}:2,2>@-1,body|hXYi`]);
+    expect(bodies(doc)).toStrictEqual(["hXYi"]);
+  });
+
+  test.each<[string, Operations]>([
+    ["a run without its length", ["a.0", "1,3>-1,0|ab"]],
+    ["a length that is not a number", ["a.0", ":x,3>-1,0|ab"]],
+    ["a run of no letters", ["a.0", ":0,3>-1,0|ab"]],
+    ["a last run of no letters", ["a.0", ":2,3>-1,0|ab"]],
+  ])("an invalid batch: %s", (_, batch) => {
+    expect(() => decode(batch)).toThrowError("Invalid operations");
+  });
+
+  test("the later runs of a row go after the run before", () => {
+    expect(decode(["a.5", ":1,b.2:2,>a.1|xyzw"])[0]).toStrictEqual([
+      [4, "a.5", "a.1", "a.2", "x"],
+      [4, "b.2", "a.5", "a.2", "yz"],
+      [4, "b.4", "b.3", "a.2", "w"],
     ]);
   });
 });

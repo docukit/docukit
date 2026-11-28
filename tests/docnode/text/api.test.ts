@@ -135,12 +135,7 @@ describe("text()", () => {
     expect(node.state.body.get()).toBe("ola");
     expect(node.state.body.changes()).toStrictEqual([]);
     const [, ...rows] = batchOf(doc, () => doc.root.append(node));
-    expect(rows).toStrictEqual([
-      [0, -2, "p"],
-      "@-2,body|o",
-      "3>1,0|l",
-      "2>3,0|a",
-    ]);
+    expect(rows).toStrictEqual([[0, -2, "p"], ":1,3:1,2>@-2,body|ola"]);
   });
 
   test("a copy of a node copies its text, with new ids", () => {
