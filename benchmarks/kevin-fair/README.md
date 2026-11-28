@@ -55,11 +55,45 @@ cd benchmarks/kevin-fair
 ./setup.sh   # downloads crdt-benchmarks @796f7025 into cb/, applies the patches, installs Yjs 13, Yjs 14 and esbuild
 ```
 
-### Compare two DocNode versions
+### Quick check of a DocNode change (default, ~2–4 min)
 
-This is the only source of numbers for a decision or a PR description about DocNode speed. It runs the whole method
-(rules 4, 6, 7, 10 and 11) and prints only verdicts, with the % (ratio of means) next to "better" or "worse" only
-(~25 min).
+The default for every change and for a PR description, marked "quick". Give it two git refs (or two checkouts):
+
+```sh
+node scripts/fair/quick-compare.ts origin/main <your-branch>              # rows picked from the changed files
+node scripts/fair/quick-compare.ts origin/main <your-branch> --rows "[B1.8],[B1.11]"
+```
+
+- **Rows:** only the ones the change can move (`ROW_MAP` in the script: a file it does not list moves every tree row).
+  Nothing in `packages/docnode/src` changed = nothing to measure.
+- **No waiting:** it never waits for a quiet machine and never repeats a run. Each round runs BASE and NEW one after
+  the other in alternating order, and the statistic uses each pair, so load that hits both cancels out.
+- **Stops when it knows:** looks at 10, 20 and 40 rounds (99 %, 99 %, then 95 % intervals); a row leaves when all its
+  cells are decided.
+- **Same warm-up** as the full method (two passes). One pass was tried: it left code unoptimized (same tree, B1.9 save
+  +129 %, B1.8 time +15 % against two passes), which changes what is measured.
+- **Statistic:** mean of ln(NEW / BASE) over two-round blocks, Student t interval. Verdicts as in rule 7 (±2 %). An
+  undecided cell says how far it can have moved: "no change beyond ±X %", or which way it leans.
+- **Instructions too:** after the time rounds, 10 paired rounds count the thread's instructions (`FAIR_IC=1`), which do
+  not move with the machine's load. A cell is "better" / "worse" / "same" only when time and instructions agree, as in
+  the full method; otherwise both readings are shown. They are not perfectly clean: a young GC runs on the main
+  thread, so short windows (save, ~1 ms) still vary.
+- **No bytes:** they are exact; measure them once with the extra pass.
+- It writes `quick-summary.json` and updates `out/measured.json`: per row and column the date, commits, mode, rounds,
+  interval, spread and load. The artifact's "updated" column reads that file.
+
+What it gives (2026-11-28, Apple M3 Pro, another VM keeping the load at 6–8; trial with one warm-up pass and 60
+rounds, 3.7 min): main against main, 8 tree rows: no cell "better" or "worse", intervals ±5–22 %. main against a
+change: ±5–12 %, one cell "same". So a quick check rules out changes bigger than ~10 % on a busy machine; finer
+differences need a quiet machine or the full method below. Final version (two warm-up passes, 40 rounds of time +
+10 of instructions, load 5.6): 3.7 min, most cells within ±3–5 % in time and in instructions.
+
+### Full method: important changes, when asked, and to close a milestone (~25–60 min)
+
+Run it for an important change (when the owner asks for it) and when a milestone closes, for the artifact's tables.
+It runs the whole method (rules 4, 6, 7, 10 and 11) and prints only verdicts, with the % (ratio of means) next to
+"better" or "worse" only. It waits for a quiet machine and repeats busy runs, so on a shared machine it can end with
+"no verdict: busy machine" (2026-11-28: run B was busy three times).
 
 ```sh
 git worktree add --detach trees/base origin/main
@@ -157,6 +191,7 @@ node scripts/fair/gc-onoff.ts candidate out/gc-onoff.json     # does FAIR_GC=1 m
 | `scripts/fair/docs*.ts`, `build-docs.ts`             | App-shaped documents probe (DocNode and Yjs build the same seeded content) and its statistics.                                                                                                                                      |
 | `scripts/fair/ic-compare.ts`, `icount.ts`            | DocNode against DocNode with instructions; the thread instruction counter.                                                                                                                                                          |
 | `scripts/fair/docnode-compare.ts`                    | DocNode against DocNode, end to end: bundles, runs, instructions, statistics, verdicts only.                                                                                                                                        |
+| `scripts/fair/quick-compare.ts`                      | Quick check, the default: rows from the changed files, paired rounds without waiting, stops when it knows.                                                                                                                          |
 | `scripts/fair/report.ts`, `warm-pilot.ts`            | Markdown report; warm-up pilot.                                                                                                                                                                                                     |
 | `cb/`, `deps/`, `trees/`, `bundles/`, `out/`, `tmp/` | Work folders, git-ignored. Never commit raw output or bundles.                                                                                                                                                                      |
 
