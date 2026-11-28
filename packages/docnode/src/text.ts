@@ -3,6 +3,7 @@ import type { MoveOperation, TextOperation } from "./operations.js";
 import type { StateDefinition, TextEngine } from "./types.js";
 import { MAX_CLOCK, numberToBase64 } from "./idGenerator.js";
 import { textEngines, withTransaction } from "./utils.js";
+import { TextTree, type Leaf } from "./textTree.js";
 
 // `text()`: a string whose letters have ids, so that an edit of one replica
 // lands in the same place on the others. The server orders the edits (Base
@@ -12,8 +13,9 @@ import { textEngines, withTransaction } from "./utils.js";
 //   the clock of the document's session (`NodeIds.take`).
 // - A text keeps its letters as runs (`Run`): letters of one session with
 //   consecutive clocks, so only the first id of a run is kept (as Yjs's
-//   `ContentString` and Loro's `TextChunk`), and a saved cursor to go from an
-//   index to a run, since edits are usually near the one before.
+//   `ContentString` and Loro's `TextChunk`), in a B-tree (`TextTree`) to go
+//   from an index to a run and back, and a saved cursor, since edits are
+//   usually in the run of the one before.
 // - The id of a letter leads to its run through `Letters`, the runs of each
 //   session sorted by clock (as Yjs's `findIndexSS`). It is built the first
 //   time an operation names a letter by its id: a replica that only types
@@ -59,6 +61,8 @@ class Run {
   c: number;
   text: string;
   readonly owner: TextState;
+  /** Its leaf in the owner's tree, while it is there. */
+  leaf: Leaf<Run> | undefined = undefined;
 
   constructor(s: number, c: number, text: string, owner: TextState) {
     this.s = s;
@@ -72,17 +76,26 @@ class Run {
 class TextState {
   readonly node: DocNode;
   readonly key: string;
-  readonly runs: Run[] = [];
-  length = 0;
-  /** The saved cursor: the run `at` and the letters before it. */
-  at = 0;
+  readonly tree: TextTree<Run>;
+  /**
+   * The saved cursor: the run `at` and the letters before it. Each edit
+   * moves it or clears it.
+   */
+  at: Run | undefined = undefined;
   before = 0;
   /** The text, until it changes. */
-  cached: string | undefined = "";
+  cached: string | undefined;
 
-  constructor(node: DocNode, key: string) {
+  /** A text of `runs`, whose letters are `text`. */
+  constructor(node: DocNode, key: string, runs: readonly Run[], text: string) {
     this.node = node;
     this.key = key;
+    this.tree = new TextTree(runs, text.length);
+    this.cached = text;
+  }
+
+  get length() {
+    return this.tree.length;
   }
 }
 
@@ -141,7 +154,7 @@ export class Letters {
       for (const key of keys) {
         const state = valueAt(node, key);
         if (!(state instanceof TextState)) continue;
-        for (const run of state.runs) {
+        for (const run of state.tree.runs()) {
           let runs = sessions.get(run.s);
           if (!runs) sessions.set(run.s, (runs = []));
           runs.push(run);
@@ -175,7 +188,7 @@ const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;
 function textOf(state: TextState) {
   if (state.cached !== undefined) return state.cached;
   let text = "";
-  for (const run of state.runs) text += run.text;
+  for (const run of state.tree.runs()) text += run.text;
   return (state.cached = text);
 }
 
@@ -201,13 +214,14 @@ function isAttached(node: DocNode) {
 function stateOf(node: DocNode, key: string) {
   const value = valueAt(node, key);
   if (value instanceof TextState) return value;
-  const state = new TextState(node, key);
-  if (typeof value === "string" && value !== "") {
+  const text = typeof value === "string" ? value : "";
+  const state = new TextState(node, key, [], text);
+  if (text !== "") {
     const ids = node.doc["_nodeIds"]!;
-    const run = new Run(ids["_index"], ids.take(value.length), value, state);
-    state.runs.push(run);
-    state.length = value.length;
-    state.cached = value;
+    state.tree.insert(
+      undefined,
+      new Run(ids["_index"], ids.take(text.length), text, state),
+    );
   }
   node["_values"]()[key] = state;
   return state;
@@ -215,26 +229,19 @@ function stateOf(node: DocNode, key: string) {
 
 /** The run with the letter at `index` of the text, which it sets as cursor. */
 function seek(state: TextState, index: number) {
-  const runs = state.runs;
-  let at = state.at;
-  let before = state.before;
-  while (index < before) before -= runs[--at]!.text.length;
-  while (index >= before + runs[at]!.text.length)
-    before += runs[at++]!.text.length;
-  state.at = at;
-  state.before = before;
-  return at;
+  const at = state.at;
+  if (at && index >= state.before && index < state.before + at.text.length)
+    return at;
+  const run = state.tree.find(index);
+  state.at = run;
+  state.before = state.tree.before;
+  return run;
 }
 
 /** How many letters of the text are before `run`, which it sets as cursor. */
 function startOf(state: TextState, run: Run) {
-  const runs = state.runs;
-  const index = runs.indexOf(run);
-  let at = state.at;
-  let before = state.before;
-  while (at < index) before += runs[at++]!.text.length;
-  while (at > index) before -= runs[--at]!.text.length;
-  state.at = at;
+  const before = state.tree.startOf(run);
+  state.at = run;
   state.before = before;
   return before;
 }
@@ -245,7 +252,7 @@ const idOf = (doc: Doc, run: Run, offset: number) =>
 
 /** The id of the letter at `index` of the text. */
 function letterAt(state: TextState, index: number) {
-  const run = state.runs[seek(state, index)]!;
+  const run = seek(state, index);
   return idOf(state.node.doc, run, index - state.before);
 }
 
@@ -267,13 +274,17 @@ function indexOf(doc: Doc, id: string) {
   return { state: run.owner, index: startOf(run.owner, run) + offset };
 }
 
-/** Cuts the run at `at` in two: the second part starts at letter `offset`. */
-function split(state: TextState, at: number, offset: number) {
-  const run = state.runs[at]!;
+/**
+ * Cuts `run` in two: the second part, which it returns, starts at letter
+ * `offset`. The cursor stays right: no letter moves.
+ */
+function split(state: TextState, run: Run, offset: number) {
   const right = new Run(run.s, run.c + offset, run.text.slice(offset), state);
   run.text = run.text.slice(0, offset);
-  state.runs.splice(at + 1, 0, right);
+  state.tree.resize(run, -right.text.length);
+  state.tree.insert(run, right);
   state.node.doc["_letters"]?.add(right);
+  return right;
 }
 
 /** Puts `text`, letters of session `s` from clock `c`, at `index`. */
@@ -284,27 +295,22 @@ function place(
   s: number,
   c: number,
 ) {
-  const runs = state.runs;
-  let run: Run | undefined = new Run(s, c, text, state);
-  if (index === 0) {
-    runs.unshift(run);
-    state.at = 0;
-    state.before = 0;
+  const tree = state.tree;
+  const run = new Run(s, c, text, state);
+  const left = index > 0 ? seek(state, index - 1) : undefined;
+  const offset = index - state.before;
+  if (left?.s === s && left.c + offset === c && offset === left.text.length) {
+    // Typing after the letter typed before, the most common edit: the cursor
+    // stays on the run.
+    left.text += text;
+    tree.resize(left, text.length);
   } else {
-    const at = seek(state, index - 1);
-    const left = runs[at]!;
-    const offset = index - state.before;
-    if (offset < left.text.length) {
-      split(state, at, offset);
-      runs.splice(at + 1, 0, run);
-    } else if (left.s === s && left.c + offset === c) {
-      // Typing after the letter typed before, the most common edit.
-      left.text += text;
-      run = undefined;
-    } else runs.splice(at + 1, 0, run);
+    if (left && offset < left.text.length) split(state, left, offset);
+    tree.insert(left, run);
+    state.node.doc["_letters"]?.add(run);
+    state.at = run;
+    state.before = index;
   }
-  if (run) state.node.doc["_letters"]?.add(run);
-  state.length += text.length;
   state.cached = undefined;
 }
 
@@ -313,29 +319,26 @@ function place(
  * in order, the ones that follow in clock joined.
  */
 function cut(state: TextState, index: number, length: number) {
-  const runs = state.runs;
+  const tree = state.tree;
   const letters = state.node.doc["_letters"];
-  let at = seek(state, index);
+  let run = seek(state, index);
   const offset = index - state.before;
-  if (offset > 0) split(state, at++, offset);
+  if (offset > 0) run = split(state, run, offset);
   const taken: Run[] = [];
-  let end = at;
-  for (let left = length; left > 0; end++) {
-    const run = runs[end]!;
-    if (run.text.length > left) split(state, end, left);
+  for (let left = length; left > 0; ) {
+    if (run.text.length > left) split(state, run, left);
     left -= run.text.length;
+    tree.remove(run);
     letters?.remove(run);
     const last = taken[taken.length - 1];
     if (last?.s === run.s && last.c + last.text.length === run.c)
       last.text += run.text;
     else taken.push(run);
+    // The letters after the ones taken start at `index` now.
+    if (left > 0) run = tree.find(index);
   }
-  runs.splice(at, end - at);
-  state.length -= length;
+  state.at = undefined;
   state.cached = undefined;
-  // The cursor: the run before the letters taken, which ends at `index`.
-  state.at = at > 0 ? at - 1 : 0;
-  state.before = at > 0 ? index - runs[at - 1]!.text.length : 0;
   return taken;
 }
 
@@ -495,13 +498,13 @@ function checkIndex(state: TextState, index: number, what: string) {
   if (!Number.isInteger(index) || index < 0 || index > state.length)
     throw outOfRange(what, index, state.length);
   if (index === 0 || index === state.length) return;
-  const run = state.runs[seek(state, index - 1)]!;
+  const run = seek(state, index - 1);
   const offset = index - 1 - state.before;
   const high = run.text.charCodeAt(offset);
   const low =
     offset + 1 < run.text.length
       ? run.text.charCodeAt(offset + 1)
-      : state.runs[state.at + 1]!.text.charCodeAt(0);
+      : seek(state, index).text.charCodeAt(0);
   if (isHighSurrogate(high) && isLowSurrogate(low))
     throw splitPair(what, index);
 }
@@ -886,8 +889,9 @@ const engine: TextEngine = {
       const value = valueAt(node, key);
       if (value === undefined || value === "") continue;
       const state = stateOf(node, key);
-      if (letters) for (const run of state.runs) letters.add(run);
-      ordered.push(...insertsOf(state, state.runs, 0, 0));
+      const runs = state.tree.runs();
+      if (letters) for (const run of runs) letters.add(run);
+      ordered.push(...insertsOf(state, runs, 0, 0));
     }
   },
 
@@ -897,8 +901,9 @@ const engine: TextEngine = {
       const value = valueAt(node, key);
       if (value === undefined || value === "") continue;
       const state = stateOf(node, key);
-      if (letters) for (const run of state.runs) letters.remove(run);
-      if (inverse) inverse.push(...insertsOf(state, state.runs, 0, 0));
+      const runs = state.tree.runs();
+      if (letters) for (const run of runs) letters.remove(run);
+      if (inverse) inverse.push(...insertsOf(state, runs, 0, 0));
     }
   },
 
@@ -980,7 +985,7 @@ const engine: TextEngine = {
     return {
       column,
       write: (node, key) => {
-        const runs = stateOf(node, key).runs;
+        const runs = stateOf(node, key).tree.runs();
         // Runs that follow in clock are written as one.
         let { s, c } = runs[0]!;
         let length = runs[0]!.text.length;
@@ -1016,7 +1021,9 @@ const engine: TextEngine = {
       read: (node, key, text) => {
         if (at === numbers.length)
           throw invalidLetters("it has fewer letter runs than texts");
-        const state = new TextState(node, key);
+        // The runs are read after their owner is made.
+        const runs: Run[] = [];
+        const state = new TextState(node, key, runs, text);
         for (let start = 0; start < text.length; ) {
           // Its form by the parity of its first number. Not `% 2 === 1`:
           // -3 % 2 is -1.
@@ -1040,13 +1047,11 @@ const engine: TextEngine = {
             throw invalidLetters("it has a letter run that is not valid");
           nextClocks[session] = clock + size;
           const end = start + size;
-          state.runs.push(
+          runs.push(
             new Run(sessions[session]!, clock, text.slice(start, end), state),
           );
           start = end;
         }
-        state.length = text.length;
-        state.cached = text;
         return state;
       },
       end: () => {
