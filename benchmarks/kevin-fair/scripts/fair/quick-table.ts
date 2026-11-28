@@ -8,12 +8,24 @@
 //    quiet machine, looks at 6 and 12 rounds with 99 % intervals; a row leaves when all its cells are decided. Against
 //    "the better Yjs": the larger of the two ratios, with the interval [max of the lower ends, max of the upper ends].
 //  - Exact cells (bytes per update, stored doc gzip and uncompressed): one pass (MODE=extra, no warm-up).
+//  - Yjs cache: Yjs does not change between runs, and Yjs 14 in B4 is most of the time (~9 s per pass). A run that
+//    measures Yjs stores its samples in out/yjs-cache.json, keyed by the rows, the harness files, the Yjs versions,
+//    Node and the warm-up; later runs reuse them and run only DocNode. Those comparisons are not paired (Welch's
+//    interval), so load that differs between the runs moves them; the table says the cache's date. `--fresh-yjs`
+//    measures Yjs again (do it for numbers that close a milestone, or when the machine's load changed a lot).
 //
-// usage: node scripts/fair/quick-table.ts <name>=<ref> [<name>=<ref> ...] [--rows "[B4],[B1.1]"]
+// usage: node scripts/fair/quick-table.ts <name>=<ref> [<name>=<ref> ...] [--rows "[B4],[B1.1]"] [--fresh-yjs]
 //   example: node scripts/fair/quick-table.ts antes=origin/main despues=docnode/m2-4-text-move
 // Writes OUT_DIR (default out/quick-table/<date>)/summary.json and table.html (the artifact's table, one per version,
 // with an "updated" note per row), and adds every cell to out/measured.json.
-import { mkdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  existsSync,
+  writeFileSync,
+} from "node:fs";
 import { resolve } from "node:path";
 import { med } from "./stats.ts";
 import {
@@ -27,7 +39,8 @@ import {
   treeOf,
   valuesOf,
   TINY_MS,
-  type Paired,
+  unpaired,
+  type Sample,
   type Store,
 } from "./quick.ts";
 
@@ -37,6 +50,9 @@ const flag = (name: string) => {
   return at < 0 ? undefined : args.splice(at, 2)[1];
 };
 const rowsFlag = flag("--rows")?.split(",");
+const freshAt = args.indexOf("--fresh-yjs");
+const fresh = freshAt >= 0;
+if (fresh) args.splice(freshAt, 1);
 const versions = args.map((a) => {
   const at = a.indexOf("=");
   if (at < 1)
@@ -102,6 +118,38 @@ const groups = [
   { id: "tree", rows: TREE_ROWS.filter(want), versions },
 ].filter((g) => g.rows.length > 0 && g.versions.length > 0);
 
+/** What makes Yjs samples reusable: the harness, the Yjs factories and versions, Node, the warm-up. */
+const fingerprint = (() => {
+  const hash = createHash("sha1");
+  const lib = `${W}/cb/js-lib-fair`;
+  for (const f of readdirSync(lib).sort())
+    if (f.endsWith(".js") && f !== "b4-editing-trace.js")
+      hash.update(readFileSync(`${lib}/${f}`));
+  for (const f of [
+    "cb/benchmarks/yjs/factory.js",
+    "cb/benchmarks/yjs14/factory.js",
+    "cb/node_modules/yjs/package.json",
+    "cb/benchmarks/yjs14/node_modules/yjs/package.json",
+  ])
+    if (existsSync(`${W}/${f}`)) hash.update(readFileSync(`${W}/${f}`));
+  hash.update(`${process.version} warm ${process.env.FAIR_WARM ?? "2"}`);
+  return hash.digest("hex").slice(0, 12);
+})();
+type CacheEntry = {
+  date: string;
+  loadMedian: number;
+  samples: Record<string, Record<string, Sample[]>>;
+  extra: Record<string, Record<string, Record<string, unknown>>>;
+};
+const CACHE_FILE = `${W}/out/yjs-cache.json`;
+const cache: Record<string, CacheEntry> = existsSync(CACHE_FILE)
+  ? JSON.parse(readFileSync(CACHE_FILE, "utf8"))
+  : {};
+const cacheKey = (group: string, rows: string[]) =>
+  `${fingerprint} ${group} ${rows.join(",")}`;
+/** The cached Yjs entries this run used, for the table's note. */
+const usedCache: CacheEntry[] = [];
+
 type Cell = {
   outcome: string;
   pct: number;
@@ -117,17 +165,20 @@ const loads: number[] = [];
 /** One timed cell of a version against the better Yjs. */
 function timedCell(
   store: Store,
+  yjsStore: Store | undefined,
   row: string,
   key: string,
   version: string,
   level: number,
 ): Cell | undefined {
   const mine = valuesOf(store, row, lib(version), key);
-  const refs = YJS.map((y) =>
-    paired(mine, valuesOf(store, row, y, key), level),
-  );
-  if (refs.some((r) => !r)) return undefined;
-  const [a, b] = refs as [Paired, Paired];
+  const against = (y: string) =>
+    yjsStore
+      ? unpaired(mine, valuesOf(yjsStore, row, y, key), level)
+      : paired(mine, valuesOf(store, row, y, key), level);
+  const a = against("yjs13"),
+    b = against("yjs14");
+  if (!a || !b) return undefined;
   const values = { docnode: a.libMean, yjs13: a.refMean, yjs14: b.refMean };
   const pct = Math.max(a.pct, b.pct);
   const ci: [number, number] = [
@@ -149,27 +200,41 @@ function timedCell(
 }
 
 for (const g of groups) {
-  const subjects = [...YJS, ...g.versions.map((v) => lib(v.name))];
+  const key = cacheKey(g.id, g.rows);
+  const cached = fresh ? undefined : cache[key];
+  let yjsStore: Store | undefined;
+  if (cached) {
+    usedCache.push(cached);
+    yjsStore = new Map();
+    for (const [row, byLib] of Object.entries(cached.samples))
+      yjsStore.set(row, new Map(Object.entries(byLib)));
+    log(`${g.id}: Yjs from the cache of ${cached.date}`);
+  }
+  const subjects = [
+    ...(cached ? [] : YJS),
+    ...g.versions.map((v) => lib(v.name)),
+  ];
   const store: Store = new Map();
+  const groupLoads: number[] = [];
   let active = [...g.rows];
   let done = 0;
   for (const look of LOOKS) {
     log(`${g.id}: rounds ${done + 1}-${look.rounds}: ${active.join(",")}`);
-    loads.push(
-      ...runRounds(
-        `${DIR}/${g.id}-${look.rounds}.json`,
-        subjects,
-        active,
-        look.rounds - done,
-        store,
-        done,
-      ),
+    const seen = runRounds(
+      `${DIR}/${g.id}-${look.rounds}.json`,
+      subjects,
+      active,
+      look.rounds - done,
+      store,
+      done,
     );
+    loads.push(...seen);
+    groupLoads.push(...seen);
     done = look.rounds;
     for (const row of active)
       for (const [col, key] of TIMED)
         for (const v of g.versions) {
-          const c = timedCell(store, row, key, v.name, look.level);
+          const c = timedCell(store, yjsStore, row, key, v.name, look.level);
           if (c) ((cells[row] ??= {})[col] ??= {})[v.name] = c;
         }
     active = active.filter((row) =>
@@ -189,24 +254,45 @@ for (const g of groups) {
     MODE: "extra",
     FAIR_WARM: "0",
   });
+  if (!cached) {
+    const entry: CacheEntry = {
+      date: new Date().toISOString(),
+      loadMedian: groupLoads.length ? med(groupLoads) : 0,
+      samples: {},
+      extra: {},
+    };
+    for (const row of g.rows)
+      for (const y of YJS) {
+        const list = store.get(row)?.get(y);
+        if (list) (entry.samples[row] ??= {})[y] = list;
+        const raw = extra.get(row)?.get(y)?.[0]?.raw;
+        if (raw) (entry.extra[row] ??= {})[y] = raw;
+      }
+    cache[key] = entry;
+    writeFileSync(CACHE_FILE, JSON.stringify(cache));
+  }
   for (const row of g.rows) {
-    const get = (l: string) => extra.get(row)?.get(l)?.[0]?.raw;
-    const y = YJS.map(get);
-    if (y.some((r) => !r)) continue;
+    const get = (l: string) =>
+      cached && YJS.includes(l)
+        ? cached.extra[row]?.[l]
+        : extra.get(row)?.get(l)?.[0]?.raw;
+    const y13 = get("yjs13"),
+      y14 = get("yjs14");
+    if (!y13 || !y14) continue;
     for (const v of g.versions) {
       const m = get(lib(v.name));
       if (!m) continue;
-      const of = (raw: any, col: string) =>
+      const of = (raw: Record<string, unknown>, col: string) =>
         col === "bytes"
-          ? raw.updates
-            ? raw.bytes / raw.updates
+          ? Number(raw.updates)
+            ? Number(raw.bytes) / Number(raw.updates)
             : NaN
           : Number(raw[col]);
       for (const col of EXACT) {
         const values = {
           docnode: of(m, col),
-          yjs13: of(y[0], col),
-          yjs14: of(y[1], col),
+          yjs13: of(y13, col),
+          yjs14: of(y14, col),
         };
         if (!Number.isFinite(values.docnode)) continue;
         const best = Math.min(values.yjs13, values.yjs14);
@@ -337,7 +423,10 @@ const tables = versions.map((v) => {
         0,
         ...TIMED.map(([col]) => cells[row]?.[col]?.[v.name]?.rounds ?? 0),
       );
-      const ageTip = `Medido el ${day} · modo rápido · ${v.name} = ${v.tree.label} (${commitOf(v.name)}) contra Yjs 13 y Yjs 14 · ${rounds ? `${rounds} rondas en pares, 2 pasadas de calentamiento` : "sin rondas"} · carga mediana ${es(loadMedian, 1)} (máx. ${es(maxLoad, 1)}) · bytes y tamaño: exactos`;
+      const yjsNote = usedCache.length
+        ? `Yjs del caché del ${usedCache.map((c) => new Date(c.date).toLocaleString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })).join(" y ")} (carga ${usedCache.map((c) => es(c.loadMedian, 1)).join(" y ")}; no en pares)`
+        : "Yjs en la misma corrida, en pares";
+      const ageTip = `Medido el ${day} · modo rápido · ${v.name} = ${v.tree.label} (${commitOf(v.name)}) contra Yjs 13 y Yjs 14 · ${rounds ? `${rounds} rondas, 2 pasadas de calentamiento` : "sin rondas"} · ${yjsNote} · carga mediana ${es(loadMedian, 1)} (máx. ${es(maxLoad, 1)}) · bytes y tamaño: exactos`;
       const first = `<td><b>${row.slice(1, -1)}</b> <span class="sub">${text}</span> <span class="pill ${rowRel}">${PILL[rowRel]}</span> <span class="age" data-date="${date}" data-tip="${ageTip}" tabindex="0"></span></td>`;
       const tds = COLUMNS.map(([col, , colRel]) => {
         const c = cells[row]?.[col]?.[v.name];

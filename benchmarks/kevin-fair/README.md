@@ -66,6 +66,9 @@ node scripts/fair/quick-compare.ts origin/main <your-branch> --rows "[B1.8],[B1.
 
 - **Rows:** only the ones the change can move (`ROW_MAP` in the script: a file it does not list moves every tree row).
   Nothing in `packages/docnode/src` changed = nothing to measure.
+  Prefer the default rows to a short `--rows` list: the rows that run in the same process shape V8's compiled code.
+  On 2026-11-28 `--rows "[B1.8],[B3.1]"` showed a change as +12 % in B1.8 time (and +10 % instructions), while the
+  default eight tree rows gave "no change beyond ±4 %" with the same instructions.
 - **No waiting:** it never waits for a quiet machine and never repeats a run. Each round runs BASE and NEW one after
   the other in alternating order, and the statistic uses each pair, so load that hits both cancels out.
 - **Stops when it knows:** looks at 10, 20 and 40 rounds (99 %, 99 %, then 95 % intervals); a row leaves when all its
@@ -101,7 +104,10 @@ because every subject of a process must run the same rows (they share one seeded
 stops at the first row a subject cannot run): text rows (B1.1–B1.7, B2.1–B2.4, B3.5, B4) with the versions that have
 `text()`, tree rows (B1.8–B1.11, B3.1–B3.4) with all of them. It writes `summary.json` and `table.html` (the
 artifact's table, with an "updated" note per row). Most of its time is Yjs 14 in B4 (~9 s per pass, three passes per
-process): 21 rows took ~15 min on 2026-11-28.
+process): 21 rows took ~10 min on 2026-11-28. Yjs does not change, so its samples are cached in
+`out/yjs-cache.json` (keyed by rows, harness files, Yjs versions, Node and warm-up); the same table then took 85 s.
+Cached comparisons are not paired (Welch's interval), so the tooltip says the cache's date and load. `--fresh-yjs`
+measures Yjs again.
 
 ### Full method: important changes, when asked, and to close a milestone (~25–60 min)
 

@@ -256,3 +256,45 @@ export const outcomeOf = (ci: [number, number]) =>
       : ci[0] >= -MIN_PCT && ci[1] <= MIN_PCT
         ? "same"
         : "inconclusive";
+
+/**
+ * `lib` against `ref` measured in another run (Welch's interval on the mean of ln values): for Yjs values reused from
+ * the cache. Not paired, so load that differs between the two runs moves it; quick-table prints the cache's date.
+ */
+export function unpaired(
+  lib: Map<number, number>,
+  ref: Map<number, number>,
+  level: number,
+): Paired | undefined {
+  const x = [...lib.values()].filter((v) => v > 0).map(Math.log);
+  const y = [...ref.values()].filter((v) => v > 0).map(Math.log);
+  if (x.length < 2 || y.length < 2) return undefined;
+  const mean = (a: number[]) => a.reduce((s, v) => s + v, 0) / a.length;
+  const variance = (a: number[], m: number) =>
+    a.reduce((s, v) => s + (v - m) ** 2, 0) / (a.length - 1);
+  const mx = mean(x),
+    my = mean(y);
+  const vx = variance(x, mx) / x.length,
+    vy = variance(y, my) / y.length;
+  const se = Math.sqrt(vx + vy);
+  const df =
+    se === 0
+      ? 29
+      : (vx + vy) ** 2 / (vx ** 2 / (x.length - 1) + vy ** 2 / (y.length - 1));
+  const t = T[level]![Math.max(1, Math.min(Math.floor(df), 29)) - 1]!;
+  const avg = (m: Map<number, number>) =>
+    [...m.values()].reduce((a, c) => a + c, 0) / m.size;
+  const ratios = [...lib.values()].map((v) => (v / Math.exp(my) - 1) * 100);
+  return {
+    pct: (Math.exp(mx - my) - 1) * 100,
+    ci: [
+      (Math.exp(mx - my - t * se) - 1) * 100,
+      (Math.exp(mx - my + t * se) - 1) * 100,
+    ],
+    level,
+    rounds: Math.min(x.length, y.length),
+    libMean: avg(lib),
+    refMean: avg(ref),
+    spread: quantile(ratios, 0.9) - quantile(ratios, 0.1),
+  };
+}

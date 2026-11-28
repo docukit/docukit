@@ -11,7 +11,10 @@
 //   Run `compare` again after `confirm` or `heap2`.
 // env: W (work folder, default: benchmarks/kevin-fair), OUT_DIR (default: $W/out/fair), SUBJECTS (required: the Yjs
 //      names plus bundle names in $W/bundles), BASE and NEW (the two DocNode bundles of the instruction pass),
-//      ROUNDS (30), GC_ROUNDS (30), EXTRA_ROUNDS (5), IC_ROUNDS (15), CONFIRM_ROUNDS (60), CONFIRM
+//      ROUNDS (30), GC_ROUNDS (30), EXTRA_ROUNDS (5), IC_ROUNDS (15), CONFIRM_ROUNDS (60), CONFIRM,
+//      TEXT_SUBJECTS (the Yjs names plus the bundles that have `text()`): adds the text set (B1.1-B1.7, B2.1-B2.4,
+//      B3.5, B4). A separate set because every subject of a process must run the same rows: they share one seeded
+//      random generator, and the harness stops at the first row a subject cannot run.
 // Writes the wall time of every step to $OUT_DIR/wall.json (docs-all.ts adds "docs"; report.ts prints the total).
 import { spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -30,6 +33,9 @@ const G_SUBJECTS =
   process.env.G_SUBJECTS ??
   SUBJECTS.replace("yjs13", "yjs13xml").replace("yjs14", "yjs14node");
 const KEVIN_ROWS = "[B1.8],[B1.9],[B1.10],[B1.11],[B3.1],[B3.2],[B3.3],[B3.4]";
+const TEXT_ROWS =
+  "[B4],[B1.1],[B1.2],[B1.3],[B1.4],[B1.5],[B1.6],[B1.7],[B2.1],[B2.2],[B2.3],[B2.4],[B3.5]";
+const TEXT_SUBJECTS = process.env.TEXT_SUBJECTS;
 const ROUNDS = process.env.ROUNDS ?? "30",
   GC_ROUNDS = process.env.GC_ROUNDS ?? "30",
   EXTRA_ROUNDS = process.env.EXTRA_ROUNDS ?? "5",
@@ -68,6 +74,9 @@ const run = (out: string, env: Record<string, string>, maxTries = 3) => {
 const sets = [
   { id: "kevin", subjects: SUBJECTS, rows: KEVIN_ROWS },
   { id: "g", subjects: G_SUBJECTS, rows: "[B1.8],[B1.9]" },
+  ...(TEXT_SUBJECTS
+    ? [{ id: "text", subjects: TEXT_SUBJECTS, rows: TEXT_ROWS }]
+    : []),
 ];
 const PRELOAD = `--import ${W}/scripts/fair/heap-preload.ts`;
 const withPreload = process.env.EXTRA_FLAGS
@@ -75,7 +84,12 @@ const withPreload = process.env.EXTRA_FLAGS
   : PRELOAD;
 // Named cells of the confirmation run, e.g. "B1.11:save" (set kevin) or "G1.9:time" (set g).
 const CONFIRM = (process.env.CONFIRM ?? "").split(",").filter(Boolean);
-const setOf = (cell: string) => (cell.startsWith("G") ? "g" : "kevin");
+const setOf = (cell: string) =>
+  cell.startsWith("G")
+    ? "g"
+    : TEXT_ROWS.includes(`[${cell.slice(0, cell.indexOf(":"))}]`)
+      ? "text"
+      : "kevin";
 
 if (steps.includes("runs"))
   phase(DIR, "official runs", () => {
@@ -193,6 +207,9 @@ if (steps.includes("compare"))
               "[G1.9] Insert Array of N numbers (Yjs: XmlElement / Node)",
           },
         },
+        ...(TEXT_SUBJECTS
+          ? [{ id: "text", ...files("text"), yjs: ["yjs13", "yjs14"] }]
+          : []),
       ],
     };
     writeFileSync(`${DIR}/config.json`, JSON.stringify(cfg, null, 1));
