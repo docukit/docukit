@@ -739,10 +739,11 @@ export class Doc {
           resolvedNodeDef.defaultJson[key] = JSON.parse(stringified) as Json;
           const textEngine = textEngines.get(state);
           if (textEngine) {
-            // An insert into an empty text names the key: `@node,key|text`.
-            if (key.includes(",") || key.includes("|"))
+            // An insert into an empty text names the key: `@node,key|text`,
+            // after the `N>` of letters that start elsewhere.
+            if (key.includes(",") || key.includes("|") || key.includes(">"))
               throw new Error(
-                `The text key '${key}' of node type '${nodeDef.type}' cannot contain ',' or '|'.`,
+                `The text key '${key}' of node type '${nodeDef.type}' cannot contain ',', '|' or '>'.`,
               );
             // Letters have ids `session.clock` (see `NodeIds`).
             if (config.nodeIdGenerator && !config.nodeIdGenerator.extractTime)

@@ -247,12 +247,12 @@ describe("text() errors", () => {
     expect(changes).toBe(0);
   });
 
-  test.each([",", "|"])("a text key cannot contain '%s'", (char) => {
+  test.each([",", "|", ">"])("a text key cannot contain '%s'", (char) => {
     const Node = defineNode({ type: "n", state: { [`a${char}b`]: text() } });
     expect(
       () => new Doc({ type: "root", extensions: [{ nodes: [Node] }] }),
     ).toThrowError(
-      `The text key 'a${char}b' of node type 'n' cannot contain ',' or '|'.`,
+      `The text key 'a${char}b' of node type 'n' cannot contain ',', '|' or '>'.`,
     );
   });
 
