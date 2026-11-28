@@ -88,6 +88,21 @@ change: ±5–12 %, one cell "same". So a quick check rules out changes bigger t
 differences need a quiet machine or the full method below. Final version (two warm-up passes, 40 rounds of time +
 10 of instructions, load 5.6): 3.7 min, most cells within ±3–5 % in time and in instructions.
 
+### Quick table against Yjs (default for the artifact's tables while a milestone is open)
+
+```sh
+node scripts/fair/quick-table.ts antes=origin/main despues=<your-branch>   # one or more <name>=<ref>
+node scripts/fair/quick-table.ts despues=<your-branch> --rows "[B4],[B1.2]"
+```
+
+DocNode versions against the better of Yjs 13 and Yjs 14, with the paired statistic of the quick check: looks at 6 and
+12 rounds (99 %), rows leave when decided, and bytes and stored doc from one exact pass. Rows run in two groups,
+because every subject of a process must run the same rows (they share one seeded random generator, and the harness
+stops at the first row a subject cannot run): text rows (B1.1–B1.7, B2.1–B2.4, B3.5, B4) with the versions that have
+`text()`, tree rows (B1.8–B1.11, B3.1–B3.4) with all of them. It writes `summary.json` and `table.html` (the
+artifact's table, with an "updated" note per row). Most of its time is Yjs 14 in B4 (~9 s per pass, three passes per
+process): 21 rows took ~15 min on 2026-11-28.
+
 ### Full method: important changes, when asked, and to close a milestone (~25–60 min)
 
 Run it for an important change (when the owner asks for it) and when a milestone closes, for the artifact's tables.
