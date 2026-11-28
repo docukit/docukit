@@ -1,15 +1,16 @@
 // The artifact's table from a full-method summary (all.ts → fair-summary.json): one DocNode bundle against the
 // better of Yjs 13 and Yjs 14, with the same look as quick-table.ts (colors, dimmed low-relevance cells, a tooltip
 // per cell and an "updated" note per row).
-// usage: node scripts/fair/summary-table.ts <dir with fair-summary.json> <bundle> <label for the tooltip> [rows]
-//   rows: comma list of short names, default every row of the summary except G1.8 and G1.9.
-// Writes <dir>/table.html.
+// usage: node scripts/fair/summary-table.ts <dir with fair-summary.json> <bundle> <label for the tooltip> [rows] [out]
+//   rows: comma list of short names (G1.8 and G1.9 too), default every row of the summary except G1.8 and G1.9.
+// Writes <out> (default <dir>/table.html).
 import { readFileSync, writeFileSync } from "node:fs";
 
-const [DIR, LIB, LABEL, ROWS] = process.argv.slice(2) as [
+const [DIR, LIB, LABEL, ROWS, OUT] = process.argv.slice(2) as [
   string,
   string,
   string,
+  string | undefined,
   string | undefined,
 ];
 if (!DIR || !LIB || !LABEL)
@@ -40,8 +41,16 @@ const ROW_TEXT: Record<string, [string, "hi" | "mid" | "lo"]> = {
   "[B3.2]": ["465 escriben un objeto", "lo"],
   "[B3.3]": ["465 escriben un string", "lo"],
   "[B3.4]": ["465 insertan en lista", "lo"],
+  "[G1.8]": ["agregar números al final, justo", "lo"],
+  "[G1.9]": ["pegar una lista, justo", "lo"],
 };
-const ORDER = Object.keys(ROW_TEXT);
+const YJS_NAME: Record<string, string> = {
+  yjs13: "Yjs 13",
+  yjs14: "Yjs 14",
+  yjs13xml: "Yjs 13 XmlElement",
+  yjs14node: "Yjs 14 Node",
+};
+const ORDER = Object.keys(ROW_TEXT).filter((r) => !r.startsWith("[G"));
 /** Column of the table, its key in the summary, its title and relevance. */
 const COLUMNS: [string, string, "hi" | "mid" | "lo"][] = [
   ["bytes", "bytes por update<br><small>sin comprimir</small>", "hi"],
@@ -75,6 +84,8 @@ const WORD: Record<string, string> = {
   worse: "pierde",
   equivalent: "empate",
   inconclusive: "no concluyente",
+  "no verdict: A/B drift": "sin veredicto: las tandas A y B no coinciden",
+  "no verdict: busy machine": "sin veredicto: máquina ocupada",
 };
 const CLASS: Record<string, string> = {
   better: "good",
@@ -88,7 +99,7 @@ const FLAG: Record<string, string> = {
 
 const full = Object.keys(S.cells);
 const wanted = ROWS
-  ? ROWS.split(",")
+  ? ROWS.split(",").filter((r) => full.some((f) => f.startsWith(r)))
   : ORDER.filter((r) => full.some((f) => f.startsWith(r)));
 const runs = Object.values<any>(S.meta.runs).filter((r) => r.rounds >= 30);
 const started = runs.map((r) => r.started).sort()[0];
@@ -105,14 +116,14 @@ const body = wanted
   .map((row) => {
     const name = full.find((f) => f.startsWith(row));
     const [text, rowRel] = ROW_TEXT[row] ?? [row, "lo"];
-    const ageTip = `Medido el ${day} · método completo · ${LABEL} contra Yjs 13 y Yjs 14 · 30 + 30 rondas, 2 pasadas de calentamiento, pasada de GC · carga mediana ${loads.map((l) => es(l, 1)).join(" a ")} (máx. ${es(maxLoad, 1)}) · bytes y tamaño: exactos`;
+    const ageTip = `Medido el ${day} · método completo · ${LABEL} contra ${row.startsWith("[G") ? "Yjs 13 XmlElement y Yjs 14 Node" : "Yjs 13 y Yjs 14"} · 30 + 30 rondas, 2 pasadas de calentamiento, pasada de GC · carga mediana ${loads.map((l) => es(l, 1)).join(" a ")} (máx. ${es(maxLoad, 1)}) · bytes y tamaño: exactos`;
     const first = `<td><b>${row.slice(1, -1)}</b> <span class="sub">${text}</span> <span class="pill ${rowRel}">${PILL[rowRel]}</span> <span class="age" data-date="${started}" data-tip="${ageTip}" tabindex="0"></span></td>`;
     const tds = COLUMNS.map(([col, , colRel]) => {
       const c = name ? S.cells[name]?.[col] : undefined;
       const x = c?.[LIB];
       if (!x) return `<td class="na" data-tip="Sin dato" tabindex="0">—</td>`;
       if (x.pct == null)
-        return `<td class="na" data-tip="DocNode ${unit(col, x.mean)} · Yjs 13 ${unit(col, c.yjs13.mean)} · Yjs 14 ${unit(col, c.yjs14.mean)} · sin veredicto: las dos medias bajo 0,1 ms" tabindex="0">—</td>`;
+        return `<td class="na" data-tip="DocNode ${unit(col, x.mean)} · sin veredicto: las dos medias bajo 0,1 ms" tabindex="0">—</td>`;
       const dim = Math.min(RANK[rowRel], RANK[colRel]) === 0 ? " dim" : "";
       const ref = c[x.ref];
       const exact = EXACT.has(col);
@@ -143,14 +154,18 @@ const body = wanted
         : x.ci
           ? ` · margen [${sgnPct(x.ci[0])}, ${sgnPct(x.ci[1])}]`
           : "";
-      const tip = `DocNode ${unit(col, x.mean)} · Yjs 13 ${unit(col, c.yjs13.mean)} · Yjs 14 ${unit(col, c.yjs14.mean)} · ${word}${margin}${flags}${dagger}`;
+      const yjs = Object.keys(c)
+        .filter((k) => k in YJS_NAME)
+        .map((k) => `${YJS_NAME[k]} ${unit(col, c[k].mean)}`)
+        .join(" · ");
+      const tip = `DocNode ${unit(col, x.mean)} · ${yjs} · ${word}${margin}${flags}${dagger}`;
       return `<td class="pc ${cls}${dim}" data-tip="${tip}" tabindex="0">${sgnPct(x.pct)}${dagger ? " †" : ""}</td>`;
     }).join("");
     return `<tr>${first}${tds}</tr>`;
   })
   .join("\n");
 writeFileSync(
-  `${DIR}/table.html`,
+  OUT ?? `${DIR}/table.html`,
   `<div class="scroll"><table class="pct"><thead>${head}</thead><tbody>\n${body}\n</tbody></table></div>\n`,
 );
-console.log(`wrote ${DIR}/table.html (${wanted.length} rows)`);
+console.log(`wrote ${OUT ?? `${DIR}/table.html`} (${wanted.length} rows)`);
