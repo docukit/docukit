@@ -154,19 +154,20 @@ function $syncLexicalToDocNode(
       prevDocChild = existingDocNode;
     } else {
       // Node doesn't exist - create it
-      const newDocNode = createDocNodeFromLexical(
-        doc,
-        lexicalChild,
-        dirtyElements,
-        dirtyLeaves,
-        keyBinding,
-      );
+      const created: [NodeKey, DocNode][] = [];
+      const newDocNode = createDocNodeFromLexical(doc, lexicalChild, created);
 
       // Insert at correct position
       if (prevDocChild) {
         prevDocChild.insertAfter(newDocNode);
       } else {
         docParentNode.prepend(newDocNode);
+      }
+
+      // A node gets its id when it is inserted: map the keys only now.
+      for (const [key, docNode] of created) {
+        lexicalKeyToDocNodeId.set(key, docNode.id);
+        docNodeIdToLexicalKey.set(docNode.id, key);
       }
 
       seenDocNodeIds.add(newDocNode.id);
@@ -274,35 +275,24 @@ function areJsonValuesEqual(left: unknown, right: unknown): boolean {
 }
 
 /**
- * Create a new DocNode from a LexicalNode
+ * Create a new DocNode from a LexicalNode, and add each Lexical key with its
+ * new DocNode to `created`: the DocNodes get their ids once inserted.
  */
 function createDocNodeFromLexical(
   doc: Doc,
   lexicalNode: LexicalNode,
-  dirtyElements: Map<NodeKey, boolean>,
-  dirtyLeaves: Set<NodeKey>,
-  keyBinding: KeyBinding,
+  created: [NodeKey, DocNode][],
 ): DocNode {
   const newDocNode = doc.createNode(LexicalDocNode);
 
   const serialized = lexicalNode.exportJSON();
   newDocNode.state.j.set(serialized);
-
-  // Store mapping
-  keyBinding.lexicalKeyToDocNodeId.set(lexicalNode.getKey(), newDocNode.id);
-  keyBinding.docNodeIdToLexicalKey.set(newDocNode.id, lexicalNode.getKey());
+  created.push([lexicalNode.getKey(), newDocNode]);
 
   // Recursively create children if element
   if ($isElementNode(lexicalNode)) {
     lexicalNode.getChildren().forEach((child) => {
-      const childDocNode = createDocNodeFromLexical(
-        doc,
-        child,
-        dirtyElements,
-        dirtyLeaves,
-        keyBinding,
-      );
-      newDocNode.append(childDocNode);
+      newDocNode.append(createDocNodeFromLexical(doc, child, created));
     });
   }
 

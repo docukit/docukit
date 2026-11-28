@@ -21,8 +21,11 @@ By default, DocNode uses **lowercase ULIDs** for root node IDs and a compact **b
 const doc = new Doc({ type: "root", extensions: [TextExtension] });
 doc.root.id; // '01kdfwt92h5jqa8a0tc7w3jfc8' (ULID)
 const node = doc.createNode(TextNode);
+doc.root.append(node);
 node.id; // '0abc.-' (compact base64)
 ```
+
+A node gets its id when it is inserted into the document, not when `createNode` makes it. Reading `node.id` before that throws. A subtree built before it is inserted gets its ids then, the parent before its children.
 
 ## Custom `nodeIdGenerator`
 
