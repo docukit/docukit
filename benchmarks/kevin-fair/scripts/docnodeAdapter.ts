@@ -45,7 +45,11 @@ const dec = new TextDecoder();
 type Server = { seq: number; log: Uint8Array[] };
 let server: Server = { seq: 0, log: [] };
 let savedSinceCreate = false;
-const meta = new WeakMap<Uint8Array, { seq: number; author: DocNodeCrdt }>();
+// Each update carries its number and author in a symbol property. A WeakMap kept every update of B4 (260,000) as an
+// entry, and growing it copied all of them inside the next row's window: B1.2 time read ~5 ms instead of ~0.1 ms
+// (2026-11-28). Yjs runs without this adapter, so it never paid that.
+const META = Symbol("server");
+type Meta = { seq: number; author: DocNodeCrdt };
 // The server's log, in its order (it stores and forwards; it builds no doc).
 
 export class DocNodeCrdt {
@@ -89,7 +93,8 @@ export class DocNodeCrdt {
       if (this.applying || event.flags?.skipUndo) return;
       const update = enc.encode(JSON.stringify(event.operations));
       const seq = this.server.seq++;
-      meta.set(update, { seq, author: this });
+      const numbered: Meta = { seq, author: this };
+      Reflect.set(update, META, numbered);
       this.server.log.push(update);
       this.pending.push({ seq, update });
       this.updateHandler(update);
@@ -117,7 +122,7 @@ export class DocNodeCrdt {
       this.dirty = false;
     }
     this.itemsCache = undefined;
-    const m = meta.get(update);
+    const m: Meta | undefined = Reflect.get(update, META);
     if (m === undefined) throw new Error("unknown update");
     // In-order delivery: everything this client sent before m.seq is acked.
     while (this.pending.length && this.pending[0]!.seq < m.seq)
