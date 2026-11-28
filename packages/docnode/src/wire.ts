@@ -7,6 +7,7 @@ import type {
   OrderedRow,
   PatchRow,
   StatePatch,
+  TextOperation,
 } from "./operations.js";
 import type { Json } from "./types.js";
 import { MAX_CLOCK, clockAt, numberToBase64 } from "./idGenerator.js";
@@ -41,6 +42,23 @@ import { ownId, ownKey } from "./utils.js";
 //   `IntDiffOptRleEncoder` write ids.
 // - A batch of one row that is not a state patch is written without the
 //   row's brackets: `[head, 1, 1]` deletes the head's node.
+// - An insert of letters (`TextOperation`, see `text.ts`) is a string row:
+//   `"prev,next|text"`, the letters after the first `|` as they are. `prev`
+//   and `next` are letters as the nodes above (a number, or a whole id, which
+//   has a `.`), `prev` empty for the start of the text and `next` `0` for its
+//   end. `"prev|text"` leaves out a `next` that is the letter made right
+//   after `prev`. `"@node,key|text"` inserts into the empty text of `key` of
+//   `node` (`0` for the root). Deleting letters is `[1, first, last]`.
+//   When the batch inserts letters, the head is the first of them. The
+//   letters of a row take consecutive clocks, from the one after the last
+//   letter of the row before (the head for the first row); a row whose
+//   letters start elsewhere says where first: `"N>prev,next|text"`.
+// - Letters put back by an undo come from runs of many sessions. Runs that go
+//   one after the other, each between the run before and the same `next`,
+//   are one row: `"N:4,M:2,K>prev,next|text"` says where each run starts
+//   and how many letters it has (the last one has the rest). A start left
+//   out is the letter after the run before, as for a row. The later runs of
+//   `"…>@node,key|text"` go to the end of that text.
 
 /** The tag of the state patch row. */
 const PATCH = 3;
@@ -60,8 +78,12 @@ function follows(id: string, next: string) {
   );
 }
 
-/** The first node id of the form `session.clock` that a draft names. */
+/**
+ * The first new letter of a draft, or else the first node id of the form
+ * `session.clock` that it names.
+ */
 function headOf(draft: DraftOperations) {
+  for (const op of draft[0]) if (op[0] === 4) return op[1];
   for (const op of draft[0]) {
     const first = op[0] === 0 ? op[1][0]![0] : op[1];
     if (clockOf(first) >= 0) return first;
@@ -97,9 +119,76 @@ function trimmed<Row extends unknown[]>(row: Row): Row {
   return row;
 }
 
+/** The id of the letter `count` letters after the letter `id`. */
+function letterAfter(id: string, count: number) {
+  const dot = id.lastIndexOf(".");
+  return id.slice(0, dot + 1) + numberToBase64(clockAt(id, dot) + count);
+}
+
+/** Whether an ordered operation inserts letters. */
+const isLetters = (op: OrderedOperation | undefined): op is TextOperation =>
+  op?.[0] === 4;
+
+/**
+ * Whether `op` puts letters right after those of `before`, between them and
+ * the same letter as `first`, the first insert of a row (or at the end of
+ * the text that `first` inserts into): it goes in the row of `first`.
+ */
+function continues(
+  first: TextOperation,
+  before: TextOperation,
+  op: OrderedOperation | undefined,
+): op is TextOperation {
+  return (
+    isLetters(op) &&
+    op[6] === undefined &&
+    op[3] === (first[6] === undefined ? first[3] : 0) &&
+    op[2] === letterAfter(before[1], before[4].length - 1)
+  );
+}
+
+/** Where letters that start at `first` start, in a row that expects `expected`. */
+const startOf = (
+  first: string,
+  expected: string,
+  prefix: string,
+  dot: number,
+  base: number,
+) => (first === expected ? "" : String(refOf(first, prefix, dot, base)));
+
+/**
+ * The row of the inserts of letters whose first one is `op` (see the format
+ * above): `starts` says where their letters start, if not where expected,
+ * and `text` has their letters.
+ *
+ * PENDING (open question of the text design): where the letters of a row
+ * start. This is option B, a `N>` only when they do not start right after
+ * the letters of the row before; options A (an order rule, no `N>`) and C
+ * (always `N>`) would change only `encodeOperations` and `readLetters`.
+ */
+function letterRowOf(
+  op: TextOperation,
+  starts: string,
+  text: string,
+  prefix: string,
+  dot: number,
+  base: number,
+) {
+  const [, , prev, next, , node, key] = op;
+  let row = starts === "" ? "" : `${starts}>`;
+  if (key !== undefined)
+    row += `@${node === 0 ? 0 : refOf(node!, prefix, dot, base)},${key}`;
+  else {
+    if (prev !== 0) row += refOf(prev, prefix, dot, base);
+    if (prev === 0 || next === 0 || !follows(prev, next))
+      row += `,${next === 0 ? 0 : refOf(next, prefix, dot, base)}`;
+  }
+  return `${row}|${text}`;
+}
+
 /** An ordered operation as a row of a batch (see the format above). */
 function rowOf(
-  op: OrderedOperation,
+  op: Exclude<OrderedOperation, TextOperation>,
   prefix: string,
   dot: number,
   base: number,
@@ -242,11 +331,33 @@ export function encodeOperations(draft: DraftOperations): Operations {
   const prefix = head.slice(0, dot + 1);
   const ordered = draft[0];
   const patch = patchRowOf(draft[1], prefix, dot, base);
+  const only = ordered.length === 1 && !patch ? ordered[0]! : undefined;
   // One row without its brackets (see the format).
-  if (ordered.length === 1 && !patch)
-    return [head, ...rowOf(ordered[0]!, prefix, dot, base)];
+  if (only && only[0] !== 4) return [head, ...rowOf(only, prefix, dot, base)];
   const rows: [string, ...OperationsRow[]] = [head];
-  for (const op of ordered) rows.push(rowOf(op, prefix, dot, base));
+  // Where the letters of the next insert of letters start, if not elsewhere.
+  let expected = head;
+  for (let i = 0; i < ordered.length; i++) {
+    const op = ordered[i]!;
+    if (!isLetters(op)) {
+      rows.push(rowOf(op, prefix, dot, base));
+      continue;
+    }
+    // The inserts after it that go in its row (see the format above).
+    let starts = startOf(op[1], expected, prefix, dot, base);
+    let text = op[4];
+    let last = op;
+    let run = ordered[i + 1];
+    while (continues(op, last, run)) {
+      const after = letterAfter(last[1], last[4].length);
+      starts += `:${last[4].length},${startOf(run[1], after, prefix, dot, base)}`;
+      text += run[4];
+      last = run;
+      run = ordered[++i + 1];
+    }
+    rows.push(letterRowOf(op, starts, text, prefix, dot, base));
+    expected = letterAfter(last[1], last[4].length);
+  }
   if (patch) rows.push(patch);
   return rows;
 }
@@ -288,6 +399,90 @@ function nodeOf(ref: Json | undefined, prefix: string, base: number): string {
       return prefix + numberToBase64(clock);
   }
   throw invalid(`${JSON.stringify(ref)} is not a node of the head's session`);
+}
+
+/**
+ * The whole id of a node or letter of a string row: a whole id has a `.`,
+ * anything else is a number (see `nodeOf`).
+ */
+function refIn(ref: string, prefix: string, base: number, index: number) {
+  if (ref.includes(".")) return ownId(ref);
+  if (!/^-?\d+$/.test(ref))
+    throw invalid(`its row ${index} names '${ref}', which is not a node`);
+  return nodeOf(Number(ref), prefix, base);
+}
+
+/**
+ * Adds to `ordered` the inserts of letters of the string row `row` (the
+ * `index`th of the batch), whose letters start at `expected` unless it says
+ * where (see `letterRowOf`). Returns where the letters of the next one start.
+ */
+function readLetters(
+  row: string,
+  index: number,
+  prefix: string,
+  base: number,
+  expected: string,
+  ordered: OrderedOperation[],
+) {
+  const bar = row.indexOf("|");
+  if (bar < 0) throw invalid(`its row ${index} is not an operation`);
+  const text = row.slice(bar + 1);
+  let anchors = row.slice(0, bar);
+  const start = anchors.indexOf(">");
+  // Where each run starts, with the length of each but the last.
+  const starts = start < 0 ? [""] : anchors.slice(0, start).split(",");
+  anchors = anchors.slice(start + 1);
+  let prev: string | 0 = 0;
+  let next: string | 0 = 0;
+  let node: string | 0 = 0;
+  let key: string | undefined;
+  const comma = anchors.indexOf(",");
+  if (anchors.startsWith("@")) {
+    if (comma < 0) throw invalid(`its row ${index} does not name a key`);
+    const ref = anchors.slice(1, comma);
+    if (ref !== "0") node = refIn(ref, prefix, base, index);
+    key = ownKey(anchors.slice(comma + 1));
+  } else if (comma < 0) {
+    // `next` left out: the letter made right after `prev`.
+    prev = refIn(anchors, prefix, base, index);
+    const prevClock = clockOf(prev);
+    if (prevClock < 0 || prevClock >= MAX_CLOCK)
+      throw invalid(`its row ${index} has no letter after '${prev}'`);
+    next = letterAfter(prev, 1);
+  } else {
+    const before = anchors.slice(0, comma);
+    const after = anchors.slice(comma + 1);
+    if (before !== "") prev = refIn(before, prefix, base, index);
+    if (after !== "0") next = refIn(after, prefix, base, index);
+  }
+  let at = 0;
+  for (let i = 0; i < starts.length; i++) {
+    let ref = starts[i]!;
+    let length = text.length - at;
+    if (i < starts.length - 1) {
+      const colon = ref.indexOf(":");
+      const count = ref.slice(colon + 1);
+      if (colon < 0 || !/^\d+$/.test(count) || Number(count) >= length)
+        throw invalid(`its row ${index} has a run without its length`);
+      length = Number(count);
+      ref = ref.slice(0, colon);
+    }
+    const first = ref === "" ? expected : refIn(ref, prefix, base, index);
+    const clock = clockOf(first);
+    if (length < 1 || clock < 0 || clock + length - 1 > MAX_CLOCK)
+      throw invalid(`its row ${index} does not insert letters of a session`);
+    const letters = text.slice(at, at + length);
+    if (i > 0)
+      ordered.push([4, first, prev, key === undefined ? next : 0, letters]);
+    else if (key === undefined) ordered.push([4, first, prev, next, letters]);
+    else ordered.push([4, first, 0, 0, letters, node, key]);
+    // The next run goes right after this one.
+    prev = letterAfter(first, length - 1);
+    expected = letterAfter(first, length);
+    at += length;
+  }
+  return expected;
 }
 
 /** Like `nodeOf`, but `0` or a left out node (none) is `0`. */
@@ -461,8 +656,13 @@ export function decodeOperations(operations: Operations): DraftOperations {
   }
   let patch: StatePatch = new Map();
   let inserted = 0;
+  let expected = head;
   for (let index = 1; index < operations.length; index++) {
     const row = operations[index];
+    if (typeof row === "string") {
+      expected = readLetters(row, index, prefix, base, expected, ordered);
+      continue;
+    }
     if (!isRow(row)) throw invalid(`its row ${index} is not an operation`);
     if (row[0] === PATCH && index === operations.length - 1)
       patch = readPatch(row, prefix, base);

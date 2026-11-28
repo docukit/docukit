@@ -155,6 +155,18 @@ export class NodeIds {
     return id;
   };
 
+  /**
+   * The clock of the first of `count` ids of the session taken at once, as
+   * the letters of a text take them (see `text.ts`): nodes and letters share
+   * the clock, like the structs of a Yjs client.
+   */
+  take(count: number) {
+    const clock = this._made;
+    this._made += count;
+    this._clock = numberToBase64(this._made);
+    return clock;
+  }
+
   /** Starts a new session: later ids are of it. */
   renew() {
     // Absolute: a root clock ahead of this device would leave the time part empty.

@@ -539,7 +539,7 @@ describe("append", () => {
           doc.root.append(node);
           node.append(node);
         },
-        `Node '${node.id}' cannot be inserted because it already exists in the doc.`,
+        "cannot be inserted because it already exists in the doc.",
       );
     });
   });
@@ -633,7 +633,7 @@ describe("prepend", () => {
           doc.root.append(node);
           node.prepend(node);
         },
-        `Node '${node.id}' cannot be inserted because it already exists in the doc.`,
+        "cannot be inserted because it already exists in the doc.",
       );
     });
   });
@@ -680,7 +680,7 @@ describe("insertAfter", () => {
           doc.root.append(node);
           node.insertAfter(node);
         },
-        `Node '${node.id}' cannot be inserted because it already exists in the doc.`,
+        "cannot be inserted because it already exists in the doc.",
       );
     });
   });
@@ -715,7 +715,7 @@ describe("insertAfter", () => {
           node2.insertAfter(node3);
         },
         // TODO: improve error message
-        "Cannot read properties of undefined (reading 'id')",
+        "Cannot read properties of undefined (reading '_isAttached')",
       );
     });
   });
@@ -934,8 +934,7 @@ describe("replace", () => {
           const node1New = text(doc, "new1").at(0)!;
           node1.replace(node1New);
         },
-        // TODO: improve error message
-        "Cannot read properties of undefined (reading 'id')",
+        "A node of type 'text' has no id until it is inserted into the document.",
       );
     });
   });
@@ -1326,6 +1325,9 @@ describe("to", () => {
     const doc2 = new Doc({ type: "root", extensions: [TextExtension] });
     const node1 = doc1.createNode(Text);
     const node2 = doc2.createNode(Text);
+    doc1.root.append(node1);
+    // Not last: moving after the last node of a parent changes nothing.
+    doc2.root.append(node2, doc2.createNode(Text));
     const range = node1.to(node2);
     const fn = (f: () => void) => {
       assertError(

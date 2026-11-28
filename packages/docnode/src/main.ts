@@ -16,6 +16,7 @@ import {
   type NodeIdGenerator,
   type TransactionFlags,
   type StateDefinition,
+  type TextEngine,
 } from "./types.js";
 import {
   detachRange,
@@ -26,6 +27,7 @@ import {
   ULID_REGEX,
   defineNode,
   ownId,
+  textEngines,
 } from "./utils.js";
 import * as ops from "./operations.js";
 import { readInts, writeInts } from "./ints.js";
@@ -38,6 +40,7 @@ import {
 import { decodeTime, ulid } from "ulid";
 import { UndoManager } from "./undoManager.js";
 import { decodeOperations } from "./wire.js";
+import type { Letters, Splice } from "./text.js";
 
 /** Where a node keeps its document (see `DocNode.doc`). */
 const DOC: unique symbol = Symbol("doc");
@@ -64,7 +67,6 @@ const stateClass = (type: string) => {
 type StateKeyMethods = NodeState.Methods<UnsafeDefinition>[string];
 
 export class DocNode<T extends NodeDefinition = NodeDefinition> {
-  readonly id: string;
   readonly type: string;
   // It needs to be `protected` instead of `privated` to be compiled so that
   // ts does not infer `Record<never, string>` outside this package. See:
@@ -80,12 +82,14 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
   // nothing, it stays out of `Object.keys` and JSON, and unlike a private
   // field (`#doc`) it can be read through a Proxy (Vue, MobX, Valtio).
   readonly [DOC]: Doc;
+  /** The node's id, or undefined until it is inserted into the document. */
+  protected _id: string | undefined;
   /**
    * The index of the node's session in the document's table (`NodeIds`), or
    * -1 when its id is of another form. With `_clock`, it is the id as numbers.
    */
-  protected readonly _session: number;
-  protected readonly _clock: number;
+  protected _session: number;
+  protected _clock: number;
 
   private constructor(
     doc: Doc,
@@ -97,20 +101,47 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     this.type = type;
     this._state = NO_STATE;
     this[DOC] = doc;
-    const ids = doc["_nodeIds"];
-    if (id === undefined && ids) {
-      this._session = ids["_index"];
-      this._clock = ids["_made"];
-      this.id = ids.generate();
-    } else {
-      this._session = session;
-      this._clock = clock;
-      this.id = id ?? ownId(doc["_idGen"].generate());
-    }
+    this._id = id;
+    this._session = session;
+    this._clock = clock;
+  }
+
+  /**
+   * The node's id. A node gets it when it is inserted into the document, not
+   * when `createNode` makes it: a batch writes only its first new id and the
+   * receiver counts the rest, so new ids must follow the order of the rows.
+   *
+   * @throws if the node was never inserted.
+   */
+  get id() {
+    const id = this._id;
+    if (id === undefined)
+      throw new Error(
+        `A node of type '${this.type}' has no id until it is inserted into the document.`,
+      );
+    return id;
   }
 
   get doc() {
     return this[DOC];
+  }
+
+  /** Gives the node the next id of the document, if it has none yet. */
+  private _takeId() {
+    if (this._id !== undefined) return;
+    const doc = this[DOC];
+    const ids = doc["_nodeIds"];
+    if (ids) {
+      this._session = ids["_index"];
+      this._clock = ids["_made"];
+      this._id = ids.generate();
+    } else this._id = ownId(doc["_idGen"].generate());
+  }
+
+  /** Whether the node is in the document. */
+  private _isAttached() {
+    const id = this._id;
+    return id !== undefined && this[DOC]["_nodeMap"].has(id);
   }
 
   /**
@@ -592,11 +623,18 @@ export class DocNode<T extends NodeDefinition = NodeDefinition> {
     return [this.id, this.type, this._stateJson() as NodeState.Jsonified<T>];
   }
 
-  /** Each value that is not the default, as JSON (see `ops.stateKeyToJson`). */
-  private _stateJson(): Record<string, Json> {
+  /**
+   * Each value that is not the default, as JSON (see `ops.stateKeyToJson`).
+   * Without `withText`, it leaves out the texts: operations insert their
+   * letters instead (see `text.ts`).
+   */
+  private _stateJson(withText = true): Record<string, Json> {
     const jsonState: Record<string, Json> = {};
-    const defaults = this.doc["_resolvedNodeDefs"].get(this.type)!.defaultJson;
+    const definition = this.doc["_resolvedNodeDefs"].get(this.type)!;
+    const defaults = definition.defaultJson;
+    const textKeys = withText ? undefined : definition.textKeys;
     for (const key in this._state) {
+      if (textKeys?.includes(key)) continue;
       const json = ops.stateKeyToJson(this, key);
       if (!equalJson(json, defaults[key])) jsonState[key] = json;
     }
@@ -642,6 +680,12 @@ export class Doc {
     updated: new Set(),
   };
   protected _idGen: NodeIdGenerator;
+  /** What texts need, if a registered node has a `text()` key. */
+  protected _textEngine: TextEngine | undefined;
+  /** The letters of the texts by id, made when needed (see `text.ts`). */
+  protected _letters: Letters | undefined;
+  /** The changes of each text in the transaction (see `text.ts`). */
+  protected _textChanges: Map<DocNode, Map<string, Splice[]>> | undefined;
   /** The ids of this document's session, unless a generator without time makes them. */
   protected _nodeIds: NodeIds | undefined;
   readonly root: DocNode;
@@ -665,6 +709,7 @@ export class Doc {
         defaultStrings: {},
         defaultJson: {},
         methods: undefined as unknown as ResolvedNodeDefinition["methods"],
+        textKeys: undefined,
       };
 
       for (const key in nodeDef.state) {
@@ -692,6 +737,22 @@ export class Doc {
           }
           resolvedNodeDef.defaultStrings[key] = stringified;
           resolvedNodeDef.defaultJson[key] = JSON.parse(stringified) as Json;
+          const textEngine = textEngines.get(state);
+          if (textEngine) {
+            // An insert into an empty text names the key: `@node,key|text`,
+            // after the `N>` of letters that start elsewhere.
+            if (key.includes(",") || key.includes("|") || key.includes(">"))
+              throw new Error(
+                `The text key '${key}' of node type '${nodeDef.type}' cannot contain ',', '|' or '>'.`,
+              );
+            // Letters have ids `session.clock` (see `NodeIds`).
+            if (config.nodeIdGenerator && !config.nodeIdGenerator.extractTime)
+              throw new Error(
+                `The text key '${key}' of node type '${nodeDef.type}' needs ids of the form session.clock: a nodeIdGenerator without extractTime cannot be used with text().`,
+              );
+            (resolvedNodeDef.textKeys ??= []).push(key);
+            this._textEngine = textEngine;
+          }
         }
       }
 
@@ -711,11 +772,11 @@ export class Doc {
         }
       }
       for (const key in resolvedNodeDef.state) {
-        const methodsOf = stateKeyMethods(
-          key,
-          resolvedNodeDef.state[key]!,
-          resolvedNodeDef.defaultState[key],
-        );
+        const definition = resolvedNodeDef.state[key]!;
+        const textEngine = textEngines.get(definition);
+        const methodsOf = textEngine
+          ? (node: DocNode) => textEngine.methods(node, key)
+          : stateKeyMethods(key, definition, resolvedNodeDef.defaultState[key]);
         Object.defineProperty(State.prototype, key, {
           enumerable: true,
           get(this: State) {
@@ -826,7 +887,7 @@ export class Doc {
       for (const node of nodes) this._checkInsertable(node);
       switch (position) {
         case "append": {
-          const attached = this._nodeMap.has(target.id);
+          const attached = target["_isAttached"]();
           if (attached) ops.onInsertRange(this, target, position, nodes);
           let current = target.last;
           for (const node of nodes) {
@@ -844,10 +905,10 @@ export class Doc {
           break;
         }
         case "before": {
-          ops.onInsertRange(this, target, position, nodes);
-          let current = target;
           const parent = target.parent!;
-          const attached = this._nodeMap.has(parent.id);
+          const attached = parent["_isAttached"]();
+          if (attached) ops.onInsertRange(this, target, position, nodes);
+          let current = target;
           for (let i = nodes.length - 1; i >= 0; i--) {
             const node = nodes[i]!;
             node["_attachNode"](parent, current.prev, current, attached);
@@ -870,7 +931,7 @@ export class Doc {
   /** Throws unless `node` and its descendants can be inserted in this document. */
   private _checkInsertable(node: DocNode) {
     if (this !== node.doc) throw new Error("Node is from a different doc");
-    if (this._nodeMap.has(node.id))
+    if (node["_isAttached"]())
       // TODO: replace node.id with ${JSON.stringify(this.toJSON())). But for that,
       // I should probably setState in onApplyOperations, otherwise the state will not appear yet.
       throw new Error(
@@ -1061,6 +1122,7 @@ export class Doc {
     this._operations = [[], new Map()];
     this._inverseOperations = [[], new Map()];
     this._transactionFlags = {};
+    this._textChanges = undefined;
     this._diff = {
       deleted: new Map(),
       inserted: new Set(),
@@ -1550,8 +1612,10 @@ export class Doc {
       if (node !== root) {
         inserted.add(node.id);
         if (node["_state"] !== NO_STATE) {
-          const state = node["_stateJson"]();
+          const state = node["_stateJson"](false);
           if (!isObjectEmpty(state)) patch.set(node.id, state);
+          const textKeys = this._resolvedNodeDefs.get(node.type)!.textKeys;
+          if (textKeys) this._textEngine!.attach(node, textKeys, inserts);
         }
       }
       if (node.first) {
@@ -1831,7 +1895,7 @@ function stateKeyMethods(
         // [#4GOSK] we update patchState only when setting state for an attached
         // node or when inserting a node, but not when setting state for a node
         // that is not attached yet
-        const isAttached = node.doc["_nodeMap"].has(node.id);
+        const isAttached = node["_isAttached"]();
         if (isAttached) ops.onSetState.inverseOps(node, key);
         // Frozen in development: a value changed in place would change the
         // document without an operation (see `freezeInDev`).
@@ -1857,7 +1921,8 @@ function stateKeyMethods(
       // It means the user is likely dirty-checking all nodes.
       // But shouldn't it still not throw an error and leave it up to the user's decision?
       const doc = node.doc;
-      if (!doc["_diff"].updated.has(node.id))
+      const id = node["_id"];
+      if (id === undefined || !doc["_diff"].updated.has(id))
         throw new Error(
           [
             "getPrev cannot be used on nodes that are not attached or that",
@@ -1865,7 +1930,7 @@ function stateKeyMethods(
             "will want to use getPrev with nodes from diff.updated.",
           ].join(" "),
         );
-      const maybePrevState = doc["_inverseOperations"][1].get(node.id)?.[key];
+      const maybePrevState = doc["_inverseOperations"][1].get(id)?.[key];
       return maybePrevState !== undefined
         ? [true, ops.parseStateKey(node, key, maybePrevState)]
         : [false, node["_state"][key]];

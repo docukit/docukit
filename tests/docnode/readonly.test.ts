@@ -69,6 +69,7 @@ describe("accessors & getters", () => {
       });
       expect(doc.root.id).toBe("custom-0");
       const node = doc.createNode(Text);
+      doc.root.append(node);
       expect(node.id).toBe("custom-1");
     });
 
@@ -86,6 +87,7 @@ describe("accessors & getters", () => {
       });
       expect(doc.root.id).toBe(`ts-${baseTime}-0`);
       const node = doc.createNode(Text);
+      doc.root.append(node);
       // Non-root uses NodeIds (compact IDs), not generate
       expect(node.id).toMatch(DOCNODE_ID());
     });
@@ -971,7 +973,6 @@ test("DocNode.doc is readonly and not enumerable", () => {
   const { root } = doc;
   expect(root.doc).toBe(doc);
   expect(Object.keys(root)).toStrictEqual([
-    "id",
     "type",
     "_state",
     "parent",
@@ -979,6 +980,7 @@ test("DocNode.doc is readonly and not enumerable", () => {
     "next",
     "first",
     "last",
+    "_id",
     "_session",
     "_clock",
   ]);
