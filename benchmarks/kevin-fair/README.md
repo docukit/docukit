@@ -127,6 +127,10 @@ node scripts/fair/docnode-compare.ts trees/base trees/new --smoke   # 5 rounds: 
 B3.2 time of +125 % (+38 % instructions) that was only a young GC landing inside the 2–5 ms window, and it vanished
 with a bigger young heap. Before each run the command waits for the load average to drop under `QUIET_LOAD` (4).
 
+For the artifact's table from a full run: `node scripts/fair/summary-table.ts <OUT_DIR> <bundle> "<label>"` writes
+`<OUT_DIR>/table.html` with the look of the quick table (colors, †, tooltips, the "updated" note). With text rows:
+`TEXT_SUBJECTS=yjs13,yjs14,<bundle>` (milestone 2 head, 2026-11-28: ~2 h, no busy repeats).
+
 ### Measure the best Yjs + the current DocNode + a candidate
 
 Both Yjs versions always run; each cell uses the better one as the reference. A DocNode subject is a DocuKit checkout
