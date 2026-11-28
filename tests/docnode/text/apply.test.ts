@@ -1,42 +1,15 @@
-import {
-  Doc,
-  type DocNode,
-  _INTERNAL_decodeOperations as decode,
-} from "@docukit/docnode";
+import { Doc, _INTERNAL_decodeOperations as decode } from "@docukit/docnode";
 import { describe, expect, test } from "vitest";
 import {
   Paragraph,
   bodies,
+  concurrent,
   config,
   docWithParagraph,
   first,
   orderedServer,
   paragraph,
 } from "./utils.js";
-
-type Edit = (
-  body: DocNode<typeof Paragraph>["state"]["body"],
-  doc: Doc,
-) => void;
-
-/**
- * Two replicas edit the first paragraph at once from what `setup` made. The
- * server gets `a` first, then `b`. Replica A applies `b` over its state, and
- * replica B rebases its pending `b` over the server's state. Returns the
- * texts of the server and both replicas.
- */
-function concurrent(setup: (doc: Doc) => void, a: Edit, b: Edit) {
-  const { server, replica, edit, send, rebase } = orderedServer(setup);
-  const [docA, docB] = [replica(), replica()];
-  const batchesA = edit(docA, (doc) => a(first(doc).state.body, doc));
-  const batchesB = edit(docB, (doc) => b(first(doc).state.body, doc));
-  send(batchesA);
-  send(batchesB);
-  for (const batch of batchesB) docA.applyOperations(batch);
-  docA.forceCommit();
-  const rebased = rebase(batchesB);
-  return [server, docA, rebased].map(bodies);
-}
 
 describe("applying letter rows", () => {
   test("a remote insert lands where it was made", () => {
