@@ -431,7 +431,17 @@ function insertLetters(
       ]);
     if (!doc["_diff"].inserted.has(node.id)) {
       const last = text.length > 1 ? idOf(doc, run, text.length - 1) : 0;
-      doc["_inverseOperations"][0].push([1, first, last]);
+      const inverse = doc["_inverseOperations"][0];
+      const before = inverse[inverse.length - 1];
+      // Right after the letters the delete before deletes (an undo that
+      // puts back a long delete, or typing): one delete for them all.
+      if (
+        before?.[0] === 1 &&
+        index > 0 &&
+        (before[2] || before[1]) === letterAt(state, index - 1)
+      )
+        inverse[inverse.length - 1] = [1, before[1], last || first];
+      else inverse.push([1, first, last]);
       doc["_diff"].updated.add(node.id);
     }
     addChange(state, [index, "", text]);
