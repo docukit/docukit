@@ -197,12 +197,27 @@ function patchRowOf(
   dot: number,
   base: number,
 ): PatchRow | undefined {
+  // One node (the usual transaction): no run to look for.
+  if (patch.size === 1) {
+    const row: [typeof PATCH, ...Json[]] = [PATCH];
+    patch.forEach((state, id) => {
+      let node = refOf(id, prefix, dot, base);
+      for (const key in state) {
+        row.push(node, key, state[key]!);
+        // The next key is on the same node: 0 from it (see the format).
+        if (typeof node === "number") node = 0;
+      }
+    });
+    // An entry is never empty (see `copyInsertedToDiff` and `onSetState`).
+    return row;
+  }
   const ids: string[] = [];
   const states: Record<string, Json>[] = [];
-  for (const [id, state] of patch) {
+  // `forEach`, not `for...of`: no iterator nor [id, state] pair per entry.
+  patch.forEach((state, id) => {
     ids.push(id);
     states.push(state);
-  }
+  });
   const row: [typeof PATCH, ...Json[]] = [PATCH];
   // A number node as its difference from the one before (see the format).
   let last = 0;
